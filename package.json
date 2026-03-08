@@ -2,6 +2,11 @@
   "name": "claude-stats",
   "version": "0.1.0",
   "description": "Collect and analyse Claude Code usage statistics from local session data",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/deotio/claude-stats"
+  },
+  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
