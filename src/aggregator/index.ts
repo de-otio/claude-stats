@@ -9,8 +9,9 @@ import { getGitRemoteUrl } from "../git.js";
 import { parseSessionFile, hashFirstKb } from "../parser/session.js";
 import { collectAccountMap } from "../parser/telemetry.js";
 import { checkSchema } from "../schema/monitor.js";
+import { estimateCost } from "../pricing.js";
 import type { Store } from "../store/index.js";
-import type { RawSessionEntry } from "../types.js";
+import type { RawSessionEntry, UsageWindow } from "../types.js";
 
 export interface CollectOptions {
   verbose?: boolean;
@@ -124,7 +125,11 @@ export async function collect(
 
     store.transaction(() => {
       if (parsed.session) {
-        store.upsertSession(parsed.session);
+        if (startOffset > 0) {
+          store.upsertSessionIncremental(parsed.session);
+        } else {
+          store.upsertSession(parsed.session);
+        }
         result.sessionsUpserted++;
       }
 
@@ -182,5 +187,84 @@ export async function collect(
   // Schema check: sample stored sessions per version
   // (skipped for brevity in initial implementation — triggered by diagnose command)
 
+  // Recompute usage windows for the past 2 days to catch any in-progress windows
+  const windowSince = Date.now() - 2 * 24 * 60 * 60 * 1000;
+  computeAndUpsertWindows(store, windowSince);
+
   return result;
+}
+
+const WINDOW_DURATION_MS = 5 * 60 * 60 * 1000; // 5 hours
+const IDLE_GAP_MS = 30 * 60 * 1000;             // 30 min gap = session boundary
+
+/**
+ * Compute 5-hour usage windows from recent sessions and upsert them.
+ *
+ * Sessions are sorted by first_timestamp. Greedy assignment: each session
+ * joins the current window if it starts within 5h of that window's start;
+ * otherwise a new window begins.
+ */
+function computeAndUpsertWindows(store: Store, since: number): void {
+  const sessions = store.getSessions({ since, includeCI: true, includeDeleted: true });
+  if (sessions.length === 0) return;
+
+  const sorted = sessions
+    .filter(s => s.first_timestamp != null)
+    .sort((a, b) => a.first_timestamp! - b.first_timestamp!);
+
+  if (sorted.length === 0) return;
+
+  // Get per-session message totals for cost computation
+  const sessionIds = sorted.map(s => s.session_id);
+  const msgTotals = store.getMessageTotalsBySession(sessionIds);
+
+  // Build a map: sessionId → estimated cost + tokensByModel
+  const sessionCostMap = new Map<string, { cost: number; tokensByModel: Record<string, number> }>();
+  for (const row of msgTotals) {
+    const entry = sessionCostMap.get(row.session_id) ?? { cost: 0, tokensByModel: {} };
+    const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens);
+    entry.cost += cost;
+    entry.tokensByModel[row.model] = (entry.tokensByModel[row.model] ?? 0) + row.input_tokens + row.output_tokens;
+    sessionCostMap.set(row.session_id, entry);
+  }
+
+  // Group sessions into 5-hour windows
+  const windows: UsageWindow[] = [];
+  let windowStart: number | null = null;
+  let currentWindow: UsageWindow | null = null;
+
+  for (const session of sorted) {
+    const ts = session.first_timestamp!;
+
+    if (windowStart === null || ts >= windowStart + WINDOW_DURATION_MS) {
+      // Start a new window
+      windowStart = ts;
+      currentWindow = {
+        windowStart: ts,
+        windowEnd: ts + WINDOW_DURATION_MS,
+        accountUuid: session.account_uuid,
+        totalCostEquivalent: 0,
+        promptCount: 0,
+        tokensByModel: {},
+        throttled: false,
+      };
+      windows.push(currentWindow);
+    }
+
+    const costs = sessionCostMap.get(session.session_id);
+    if (costs) {
+      currentWindow!.totalCostEquivalent += costs.cost;
+      for (const [model, tokens] of Object.entries(costs.tokensByModel)) {
+        currentWindow!.tokensByModel[model] = (currentWindow!.tokensByModel[model] ?? 0) + tokens;
+      }
+    }
+    currentWindow!.promptCount += session.prompt_count;
+    if (session.throttle_events > 0) currentWindow!.throttled = true;
+  }
+
+  // Upsert all computed windows
+  for (const w of windows) {
+    w.totalCostEquivalent = Math.round(w.totalCostEquivalent * 10000) / 10000;
+    store.upsertUsageWindow(w);
+  }
 }

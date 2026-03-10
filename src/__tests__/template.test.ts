@@ -16,6 +16,20 @@ const mockData: DashboardData = {
     cacheEfficiency: 28.6,
     estimatedCost: 3.75,
     totalDurationMs: 7200000,
+    planFee: 0,
+    planMultiplier: 0,
+    costPerPrompt: 0,
+    costPerActiveHour: 0,
+    dailyValueRate: 0,
+    tokensPerMinute: 0,
+    outputTokensPerPrompt: 0,
+    promptsPerHour: 0,
+    totalActiveHours: 2.0,
+    avgSessionDurationMinutes: 2.9,
+    throttleEvents: 0,
+    currentWindowStart: null,
+    currentWindowPrompts: 0,
+    currentWindowCost: 0,
   },
   byDay: [
     {
@@ -72,6 +86,10 @@ const mockData: DashboardData = {
     { reason: "tool_use", count: 28 },
     { reason: "max_tokens", count: 2 },
   ],
+  sinceIso: "2026-01-09",
+  byHour: [],
+  byWindow: [],
+  byConversationCost: [],
 };
 
 describe("renderDashboard", () => {
@@ -181,5 +199,77 @@ describe("renderDashboard", () => {
     expect(parsed.byProject).toHaveLength(1);
     expect(parsed.byEntrypoint).toHaveLength(2);
     expect(parsed.stopReasons).toHaveLength(3);
+    expect(parsed.byWindow).toEqual([]);
+    expect(parsed.byConversationCost).toEqual([]);
+  });
+
+  it("shows Plan Value card when planFee > 0", () => {
+    const withPlan: DashboardData = {
+      ...mockData,
+      summary: { ...mockData.summary, planFee: 100, planMultiplier: 3.75 },
+    };
+    const html = renderDashboard(withPlan);
+    expect(html).toContain("Plan Value");
+    expect(html).toContain("3.8×");
+  });
+
+  it("hides Plan Value card when planFee is 0", () => {
+    const html = renderDashboard(mockData); // planFee: 0
+    expect(html).not.toContain("Plan Value");
+  });
+
+  it("shows throttle events card when throttleEvents > 0", () => {
+    const withThrottles: DashboardData = {
+      ...mockData,
+      summary: { ...mockData.summary, throttleEvents: 3 },
+    };
+    const html = renderDashboard(withThrottles);
+    expect(html).toContain("Throttle Events");
+    expect(html).toContain(">3<");
+  });
+
+  it("includes cumulative usage chart canvas", () => {
+    const html = renderDashboard(mockData);
+    expect(html).toContain('id="chart-cumulative"');
+  });
+
+  it("renders usage windows chart when byWindow is non-empty", () => {
+    const withWindows: DashboardData = {
+      ...mockData,
+      byWindow: [{
+        windowStart: 1_000_000,
+        windowEnd: 1_018_000,
+        accountUuid: null,
+        totalCostEquivalent: 1.5,
+        promptCount: 10,
+        tokensByModel: {},
+        throttled: false,
+      }],
+    };
+    const html = renderDashboard(withWindows);
+    expect(html).toContain('id="chart-windows"');
+  });
+
+  it("renders conversation cost chart when byConversationCost is non-empty", () => {
+    const withCosts: DashboardData = {
+      ...mockData,
+      byConversationCost: [{
+        sessionId: "abc123",
+        projectPath: "/proj/foo",
+        durationMs: 60000,
+        estimatedCost: 0.25,
+        percentOfPlanFee: 0,
+        dominantModel: "claude-opus-4",
+        promptCount: 5,
+      }],
+    };
+    const html = renderDashboard(withCosts);
+    expect(html).toContain('id="chart-conv-cost"');
+  });
+
+  it("does not render window/conv-cost canvases when arrays are empty", () => {
+    const html = renderDashboard(mockData);
+    expect(html).not.toContain('id="chart-windows"');
+    expect(html).not.toContain('id="chart-conv-cost"');
   });
 });

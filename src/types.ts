@@ -64,7 +64,9 @@ export interface MessagePayload {
 /** A single line from a session JSONL file. All fields are optional. */
 export interface RawSessionEntry {
   type?: MessageType;
-  timestamp?: number;
+  /** ISO-8601 string (e.g. "2026-03-10T09:46:58.588Z") in modern Claude Code;
+   *  older versions may emit a numeric epoch-ms value. */
+  timestamp?: string | number;
   uuid?: string;
   sessionId?: string;
   parentUuid?: string | null;
@@ -127,6 +129,9 @@ export interface SessionRecord {
   subscriptionType: string | null;
   thinkingBlocks: number;
   sourceDeleted: boolean;
+  throttleEvents: number;
+  activeDurationMs: number | null;
+  medianResponseTimeMs: number | null;
 }
 
 export interface MessageRecord {
@@ -142,6 +147,10 @@ export interface MessageRecord {
   cacheReadTokens: number;
   tools: string[];
   thinkingBlocks: number;
+  serviceTier: string | null;
+  inferenceGeo: string | null;
+  ephemeral5mCacheTokens: number;
+  ephemeral1hCacheTokens: number;
 }
 
 // ─── Collection state ─────────────────────────────────────────────────────────
@@ -164,6 +173,27 @@ export interface SchemaFingerprint {
   /** top-level field names per message type */
   fieldsByType: Record<string, string[]>;
   usageFields: string[];
+}
+
+// ─── Usage windows ────────────────────────────────────────────────────────────
+
+export interface UsageWindow {
+  windowStart: number;    // epoch-ms, when the first prompt in this window occurred
+  windowEnd: number;      // epoch-ms, windowStart + 5 hours
+  accountUuid: string | null;
+  totalCostEquivalent: number;
+  promptCount: number;
+  tokensByModel: Record<string, number>;
+  throttled: boolean;
+}
+
+// ─── Plan configuration ───────────────────────────────────────────────────────
+
+export type PlanType = "pro" | "max" | "team" | "custom";
+
+export interface PlanConfig {
+  type: PlanType;
+  monthlyFee: number;
 }
 
 // ─── Parse errors / quarantine ───────────────────────────────────────────────

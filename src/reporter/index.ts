@@ -16,6 +16,8 @@ export interface ReportOptions {
   period?: "day" | "week" | "month" | "all";
   timezone?: string;
   includeCI?: boolean;
+  /** Monthly plan fee in USD for ROI calculations (0 = disabled). */
+  planFee?: number;
 }
 
 export function formatEntrypoint(ep: string): string {
@@ -46,27 +48,56 @@ export function formatBytes(n: number): string {
   return `${n} B`;
 }
 
+/**
+ * Returns the UTC epoch ms for midnight at the start of the given calendar date
+ * (year/month/day) in the specified IANA timezone.
+ *
+ * Uses a reference point at UTC noon to derive the timezone's UTC offset on
+ * that date (handles DST and sub-hour offsets like IST +5:30).
+ */
+function tzMidnight(year: number, month: number, day: number, tz: string): number {
+  // noon UTC on that calendar date — safely within the day for any timezone
+  const refUtc = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  // Represent that UTC moment as a local wall-clock time in the target tz
+  const localStr = refUtc.toLocaleString("en-US", {
+    timeZone: tz,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  });
+  // Parse "MM/DD/YYYY, HH:MM:SS" back as if it were UTC to get the offset
+  const [datePart, timePart] = localStr.split(", ");
+  const [mo, da, yr] = datePart!.split("/").map(Number);
+  const [hr, mn, sc] = timePart!.split(":").map(Number);
+  const localAsUtc = Date.UTC(yr!, mo! - 1, da!, hr!, mn!, sc!);
+  const offsetMs = refUtc.getTime() - localAsUtc; // positive = tz ahead of UTC
+  return Date.UTC(year, month - 1, day, 0, 0, 0) + offsetMs;
+}
+
 export function periodStart(period: string | undefined, tz: string): number {
   const now = new Date();
-  // Approximate period boundaries in the target timezone
-  const formatter = new Intl.DateTimeFormat("en-CA", {
+  const dateFmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: tz,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   });
-  const [year, month, day] = formatter.format(now).split("-").map(Number);
+  const [year, month, day] = dateFmt.format(now).split("-").map(Number) as [number, number, number];
 
   if (period === "day") {
-    return new Date(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T00:00:00`).getTime();
+    return tzMidnight(year, month, day, tz);
   }
   if (period === "week") {
-    const d = new Date(now);
-    d.setDate(now.getDate() - now.getDay());
-    return new Date(`${formatter.format(d)}T00:00:00`).getTime();
+    // Day of week (0=Sun) in the target timezone
+    const dowFmt = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" });
+    const dow = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(dowFmt.format(now));
+    // Subtract dow days to reach Sunday; format in tz to get the correct calendar date
+    const sunday = new Date(now.getTime() - dow * 86_400_000);
+    const [wy, wm, wd] = dateFmt.format(sunday).split("-").map(Number) as [number, number, number];
+    return tzMidnight(wy, wm, wd, tz);
   }
   if (period === "month") {
-    return new Date(`${year}-${String(month!).padStart(2, "0")}-01T00:00:00`).getTime();
+    return tzMidnight(year, month, 1, tz);
   }
   return 0;
 }
@@ -382,6 +413,40 @@ export function printSummary(store: Store, opts: ReportOptions = {}): void {
   }
   console.log(costLine);
 
+  // Plan ROI — only shown when a plan fee is configured
+  const planFee = opts.planFee ?? 0;
+  if (planFee > 0) {
+    const multiplier = totalCost / planFee;
+    console.log(`Plan ROI : ${formatCost(planFee)}/mo plan → ${multiplier.toFixed(1)}× API value received`);
+    if (totalPrompts > 0) {
+      console.log(`         : ${formatCost(planFee / totalPrompts)}/prompt   ${formatCost(planFee / rows.length)}/session`);
+    }
+  }
+
+  // Velocity metrics — computed from sessions with active_duration_ms
+  let totalActiveDurationMs = 0;
+  let sessionsWithDuration = 0;
+  for (const row of rows) {
+    if (row.active_duration_ms != null && row.active_duration_ms > 0) {
+      totalActiveDurationMs += row.active_duration_ms;
+      sessionsWithDuration++;
+    }
+  }
+  if (totalActiveDurationMs > 0 && totalPrompts > 0) {
+    const totalActiveMin = totalActiveDurationMs / 60_000;
+    const totalTokens = totalInput + totalOutput;
+    const tokPerMin = Math.round(totalTokens / totalActiveMin);
+    const promptsPerHour = ((totalPrompts / totalActiveDurationMs) * 3_600_000).toFixed(1);
+    const outputPerPrompt = Math.round(totalOutput / totalPrompts);
+    console.log(`Velocity : ${formatTokens(tokPerMin)} tok/min   ${promptsPerHour} prompts/hr   ${formatTokens(outputPerPrompt)} output/prompt`);
+  }
+
+  // Throttle events across all sessions
+  const totalThrottleEvents = rows.reduce((sum, r) => sum + (r.throttle_events ?? 0), 0);
+  if (totalThrottleEvents > 0) {
+    console.log(`Throttled: ${totalThrottleEvents} suspected usage-limit truncations detected`);
+  }
+
   if (modelCounts.size > 0) {
     const models = Array.from(modelCounts.entries())
       .sort((a, b) => b[1] - a[1])
@@ -520,13 +585,28 @@ export function printSessionList(store: Store, opts: ReportOptions = {}): void {
   const periodLabel = opts.period ? `${opts.period} (${tz})` : "all time";
   console.log(`\n─── Sessions — ${periodLabel} ───\n`);
 
-  const header = `${"Session".padEnd(10)}  ${"Started".padEnd(19)}  ${"Duration".padStart(8)}  ${"Prompts".padStart(7)}  ${"Input".padStart(8)}  ${"Output".padStart(8)}  ${"Model".padEnd(20)}`;
+  // Fetch per-session message totals for cost estimation
+  const messageTotalsBySession = store.getMessageTotalsBySession(rows.map(r => r.session_id));
+  const sessionCostMap = new Map<string, number>();
+  for (const mt of messageTotalsBySession) {
+    const prev = sessionCostMap.get(mt.session_id) ?? 0;
+    const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens);
+    sessionCostMap.set(mt.session_id, prev + cost);
+  }
+
+  const planFee = opts.planFee ?? 0;
+  const showCost = sessionCostMap.size > 0;
+
+  const header = showCost
+    ? `${"Session".padEnd(10)}  ${"Started".padEnd(19)}  ${"Duration".padStart(8)}  ${"Prompts".padStart(7)}  ${"Input".padStart(8)}  ${"Output".padStart(8)}  ${"Cost".padStart(8)}  ${"Model".padEnd(20)}`
+    : `${"Session".padEnd(10)}  ${"Started".padEnd(19)}  ${"Duration".padStart(8)}  ${"Prompts".padStart(7)}  ${"Input".padStart(8)}  ${"Output".padStart(8)}  ${"Model".padEnd(20)}`;
   console.log(header);
   console.log("─".repeat(header.length));
 
   let totalPrompts = 0;
   let totalInput = 0;
   let totalOutput = 0;
+  let totalCost = 0;
 
   for (const row of rows) {
     const sid = row.session_id.slice(0, 6) + "\u2026";
@@ -539,20 +619,37 @@ export function printSessionList(store: Store, opts: ReportOptions = {}): void {
     const duration = formatDuration(durationMs);
     const models: string[] = JSON.parse(row.models) as string[];
     const modelStr = models.length > 0 ? models[0]! : "";
+    const sessionCost = sessionCostMap.get(row.session_id) ?? 0;
 
     totalPrompts += row.prompt_count;
     totalInput += row.input_tokens;
     totalOutput += row.output_tokens;
+    totalCost += sessionCost;
 
-    console.log(
-      `${sid.padEnd(10)}  ${started.padEnd(19)}  ${duration.padStart(8)}  ${String(row.prompt_count).padStart(7)}  ${formatTokens(row.input_tokens).padStart(8)}  ${formatTokens(row.output_tokens).padStart(8)}  ${modelStr.padEnd(20)}`
-    );
+    if (showCost) {
+      const costStr = sessionCost > 0 ? formatCost(sessionCost) : "";
+      console.log(
+        `${sid.padEnd(10)}  ${started.padEnd(19)}  ${duration.padStart(8)}  ${String(row.prompt_count).padStart(7)}  ${formatTokens(row.input_tokens).padStart(8)}  ${formatTokens(row.output_tokens).padStart(8)}  ${costStr.padStart(8)}  ${modelStr.padEnd(20)}`
+      );
+    } else {
+      console.log(
+        `${sid.padEnd(10)}  ${started.padEnd(19)}  ${duration.padStart(8)}  ${String(row.prompt_count).padStart(7)}  ${formatTokens(row.input_tokens).padStart(8)}  ${formatTokens(row.output_tokens).padStart(8)}  ${modelStr.padEnd(20)}`
+      );
+    }
   }
 
   console.log("─".repeat(header.length));
-  console.log(
-    `${(rows.length + " sessions").padEnd(10 + 2 + 19 + 2 + 8)}  ${String(totalPrompts).padStart(7)}  ${formatTokens(totalInput).padStart(8)}  ${formatTokens(totalOutput).padStart(8)}`
-  );
+  if (showCost) {
+    const totalLine = `${(rows.length + " sessions").padEnd(10 + 2 + 19 + 2 + 8)}  ${String(totalPrompts).padStart(7)}  ${formatTokens(totalInput).padStart(8)}  ${formatTokens(totalOutput).padStart(8)}  ${formatCost(totalCost).padStart(8)}`;
+    console.log(totalLine);
+    if (planFee > 0 && totalCost > 0) {
+      console.log(`  Plan: ${formatCost(planFee)}/mo → ${(totalCost / planFee * 100).toFixed(1)}% of plan value used this period`);
+    }
+  } else {
+    console.log(
+      `${(rows.length + " sessions").padEnd(10 + 2 + 19 + 2 + 8)}  ${String(totalPrompts).padStart(7)}  ${formatTokens(totalInput).padStart(8)}  ${formatTokens(totalOutput).padStart(8)}`
+    );
+  }
   console.log();
 }
 

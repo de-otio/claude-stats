@@ -37,6 +37,9 @@ function makeSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
     subscriptionType: null,
     thinkingBlocks: 0,
     sourceDeleted: false,
+    throttleEvents: 0,
+    activeDurationMs: null,
+    medianResponseTimeMs: null,
     ...overrides,
   };
 }
@@ -255,14 +258,14 @@ describe("Store — messages", () => {
 
   it("inserts message records", () => {
     store.upsertMessages([
-      { uuid: "m1", sessionId: "s1", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0 },
+      { uuid: "m1", sessionId: "s1", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
     ]);
     const status = store.getStatus();
     expect(status.messageCount).toBe(1);
   });
 
   it("upserts on uuid conflict", () => {
-    const msg = { uuid: "m1", sessionId: "s1", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0 };
+    const msg = { uuid: "m1", sessionId: "s1", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 };
     store.upsertMessages([msg]);
     store.upsertMessages([{ ...msg, inputTokens: 200 }]);
     const status = store.getStatus();
@@ -379,10 +382,10 @@ describe("Store — getStopReasonCounts", () => {
 
   it("returns correct counts for different stop_reason values", () => {
     store.upsertMessages([
-      { uuid: "m1", sessionId: "s1", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0 },
-      { uuid: "m2", sessionId: "s1", timestamp: 1001, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0 },
-      { uuid: "m3", sessionId: "s1", timestamp: 1002, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "tool_use", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0 },
-      { uuid: "m4", sessionId: "s1", timestamp: 1003, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "max_tokens", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0 },
+      { uuid: "m1", sessionId: "s1", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
+      { uuid: "m2", sessionId: "s1", timestamp: 1001, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
+      { uuid: "m3", sessionId: "s1", timestamp: 1002, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "tool_use", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
+      { uuid: "m4", sessionId: "s1", timestamp: 1003, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "max_tokens", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
     ]);
     const counts = store.getStopReasonCounts(["s1"]);
     expect(counts.get("end_turn")).toBe(2);
@@ -392,8 +395,8 @@ describe("Store — getStopReasonCounts", () => {
 
   it("excludes null stop_reason messages", () => {
     store.upsertMessages([
-      { uuid: "m1", sessionId: "s1", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0 },
-      { uuid: "m2", sessionId: "s1", timestamp: 1001, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: null, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0 },
+      { uuid: "m1", sessionId: "s1", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
+      { uuid: "m2", sessionId: "s1", timestamp: 1001, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: null, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
     ]);
     const counts = store.getStopReasonCounts(["s1"]);
     expect(counts.size).toBe(1);
@@ -463,9 +466,9 @@ describe("Store — getSessionMessages", () => {
 
   it("returns messages ordered by timestamp ASC", () => {
     store.upsertMessages([
-      { uuid: "m3", sessionId: "s1", timestamp: 3000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: ["Read"], thinkingBlocks: 1 },
-      { uuid: "m1", sessionId: "s1", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0 },
-      { uuid: "m2", sessionId: "s1", timestamp: 2000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "tool_use", inputTokens: 200, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, tools: ["Edit", "Read"], thinkingBlocks: 0 },
+      { uuid: "m3", sessionId: "s1", timestamp: 3000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: ["Read"], thinkingBlocks: 1, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
+      { uuid: "m1", sessionId: "s1", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
+      { uuid: "m2", sessionId: "s1", timestamp: 2000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "tool_use", inputTokens: 200, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, tools: ["Edit", "Read"], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
     ]);
     const messages = store.getSessionMessages("s1");
     expect(messages).toHaveLength(3);
@@ -550,6 +553,110 @@ describe("Store — tags", () => {
     store.addTag("s2", "shared");
     const ids = store.getSessionIdsByTag("shared");
     expect(ids.sort()).toEqual(["s1", "s2"]);
+  });
+});
+
+describe("Store — usage windows", () => {
+  let store: Store;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  it("upsertUsageWindow stores and getUsageWindows retrieves", () => {
+    store.upsertUsageWindow({
+      windowStart: 1_000_000,
+      windowEnd: 1_018_000,
+      accountUuid: null,
+      totalCostEquivalent: 2.5,
+      promptCount: 10,
+      tokensByModel: { "claude-opus-4": 5000 },
+      throttled: false,
+    });
+    const windows = store.getUsageWindows();
+    expect(windows).toHaveLength(1);
+    expect(windows[0]!.promptCount).toBe(10);
+    expect(windows[0]!.totalCostEquivalent).toBe(2.5);
+    expect(windows[0]!.tokensByModel).toEqual({ "claude-opus-4": 5000 });
+  });
+
+  it("upsertUsageWindow is idempotent on windowStart conflict", () => {
+    const w = { windowStart: 1_000_000, windowEnd: 1_018_000, accountUuid: null, totalCostEquivalent: 1.0, promptCount: 5, tokensByModel: {}, throttled: false };
+    store.upsertUsageWindow(w);
+    store.upsertUsageWindow({ ...w, totalCostEquivalent: 3.0, promptCount: 15 });
+    const windows = store.getUsageWindows();
+    expect(windows).toHaveLength(1);
+    expect(windows[0]!.promptCount).toBe(15); // updated
+  });
+
+  it("getUsageWindows filters by since", () => {
+    store.upsertUsageWindow({ windowStart: 1_000, windowEnd: 19_000, accountUuid: null, totalCostEquivalent: 0, promptCount: 1, tokensByModel: {}, throttled: false });
+    store.upsertUsageWindow({ windowStart: 5_000, windowEnd: 23_000, accountUuid: null, totalCostEquivalent: 0, promptCount: 2, tokensByModel: {}, throttled: false });
+    const filtered = store.getUsageWindows({ since: 3_000 });
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0]!.windowStart).toBe(5_000);
+  });
+
+  it("getCurrentWindow returns most recent window", () => {
+    store.upsertUsageWindow({ windowStart: 1_000, windowEnd: 19_000, accountUuid: null, totalCostEquivalent: 0, promptCount: 1, tokensByModel: {}, throttled: false });
+    store.upsertUsageWindow({ windowStart: 9_000, windowEnd: 27_000, accountUuid: null, totalCostEquivalent: 0, promptCount: 2, tokensByModel: {}, throttled: false });
+    const current = store.getCurrentWindow();
+    expect(current).not.toBeNull();
+    expect(current!.windowStart).toBe(9_000);
+  });
+
+  it("getCurrentWindow returns null when no windows", () => {
+    expect(store.getCurrentWindow()).toBeNull();
+  });
+
+  it("throttled flag is preserved as MAX (never goes false after true)", () => {
+    store.upsertUsageWindow({ windowStart: 1_000, windowEnd: 19_000, accountUuid: null, totalCostEquivalent: 0, promptCount: 1, tokensByModel: {}, throttled: true });
+    store.upsertUsageWindow({ windowStart: 1_000, windowEnd: 19_000, accountUuid: null, totalCostEquivalent: 0, promptCount: 1, tokensByModel: {}, throttled: false });
+    const windows = store.getUsageWindows();
+    expect(windows[0]!.throttled).toBe(true);
+  });
+});
+
+describe("Store — getMessageTotalsBySession", () => {
+  let store: Store;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  it("returns per-session per-model totals", () => {
+    store.upsertMessages([
+      { uuid: "m1", sessionId: "s1", timestamp: 1000, claudeVersion: "v1", model: "claude-opus-4", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
+      { uuid: "m2", sessionId: "s1", timestamp: 2000, claudeVersion: "v1", model: "claude-opus-4", stopReason: "end_turn", inputTokens: 200, outputTokens: 80, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
+      { uuid: "m3", sessionId: "s2", timestamp: 3000, claudeVersion: "v1", model: "claude-sonnet-4", stopReason: "end_turn", inputTokens: 50, outputTokens: 20, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
+    ]);
+    const totals = store.getMessageTotalsBySession(["s1", "s2"]);
+    const s1Opus = totals.find(t => t.session_id === "s1" && t.model === "claude-opus-4");
+    expect(s1Opus).toBeDefined();
+    expect(s1Opus!.input_tokens).toBe(300);
+    expect(s1Opus!.output_tokens).toBe(130);
+    const s2Sonnet = totals.find(t => t.session_id === "s2" && t.model === "claude-sonnet-4");
+    expect(s2Sonnet).toBeDefined();
+    expect(s2Sonnet!.input_tokens).toBe(50);
+  });
+
+  it("returns empty array for empty session list", () => {
+    const totals = store.getMessageTotalsBySession([]);
+    expect(totals).toHaveLength(0);
   });
 });
 

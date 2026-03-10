@@ -6,6 +6,7 @@ import type { Store, SessionRow } from "../store/index.js";
 import type { ReportOptions } from "../reporter/index.js";
 import { periodStart } from "../reporter/index.js";
 import { estimateCost } from "../pricing.js";
+import type { UsageWindow } from "../types.js";
 
 export interface DashboardSummary {
   sessions: number;
@@ -17,12 +18,31 @@ export interface DashboardSummary {
   cacheEfficiency: number;
   estimatedCost: number;
   totalDurationMs: number;
+  // Plan ROI
+  planFee: number;
+  planMultiplier: number;
+  costPerPrompt: number;
+  costPerActiveHour: number;
+  dailyValueRate: number;
+  // Velocity
+  tokensPerMinute: number;
+  outputTokensPerPrompt: number;
+  promptsPerHour: number;
+  // Session patterns
+  totalActiveHours: number;
+  avgSessionDurationMinutes: number;
+  throttleEvents: number;
+  // Current window
+  currentWindowStart: string | null;
+  currentWindowPrompts: number;
+  currentWindowCost: number;
 }
 
 export interface DashboardData {
   generated: string;          // ISO timestamp
   period: string;
   timezone: string;
+  sinceIso: string | null;    // ISO date of period start, or null for "all time"
   summary: DashboardSummary;
   byDay: Array<{
     date: string;             // YYYY-MM-DD
@@ -56,6 +76,23 @@ export interface DashboardData {
     reason: string;
     count: number;
   }>;
+  byHour: Array<{
+    hour: string;             // "00"–"23"
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+  }>;
+  byWindow: UsageWindow[];
+  byConversationCost: Array<{
+    sessionId: string;
+    projectPath: string;
+    durationMs: number;
+    estimatedCost: number;
+    percentOfPlanFee: number;
+    dominantModel: string;
+    promptCount: number;
+  }>;
 }
 
 export function buildDashboard(store: Store, opts: ReportOptions): DashboardData {
@@ -86,8 +123,15 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     day: "2-digit",
   });
 
+  const hourFmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour: "numeric",
+    hour12: false,
+  });
+
   // Accumulators for grouping
   const dayMap = new Map<string, { sessions: number; prompts: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }>();
+  const hourMap = new Map<number, { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }>();
   const projectMap = new Map<string, { sessions: number; prompts: number; inputTokens: number; outputTokens: number }>();
   const entrypointMap = new Map<string, number>();
 
@@ -98,7 +142,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     totalCacheRead += row.cache_read_tokens;
     totalCacheCreate += row.cache_creation_tokens;
     if (row.first_timestamp != null && row.last_timestamp != null) {
-      totalDurationMs += row.last_timestamp - row.first_timestamp;
+      totalDurationMs += Math.abs(row.last_timestamp - row.first_timestamp);
     }
 
     // byDay
@@ -113,6 +157,17 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     dayEntry.cacheReadTokens += row.cache_read_tokens;
     dayEntry.cacheCreationTokens += row.cache_creation_tokens;
     dayMap.set(dateStr, dayEntry);
+
+    // byHour (only for "day" period)
+    if (opts.period === "day" && row.first_timestamp != null) {
+      const h = parseInt(hourFmt.format(new Date(row.first_timestamp)), 10) % 24;
+      const hourEntry = hourMap.get(h) ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 };
+      hourEntry.inputTokens += row.input_tokens;
+      hourEntry.outputTokens += row.output_tokens;
+      hourEntry.cacheReadTokens += row.cache_read_tokens;
+      hourEntry.cacheCreationTokens += row.cache_creation_tokens;
+      hourMap.set(h, hourEntry);
+    }
 
     // byProject
     const projEntry = projectMap.get(row.project_path) ?? { sessions: 0, prompts: 0, inputTokens: 0, outputTokens: 0 };
@@ -153,6 +208,21 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     });
   }
 
+  // ── Fill empty day buckets for the full period range so charts always show
+  //    all days in the selected window, not just days that have sessions ────
+  if (since > 0) {
+    const todayStr = dayFmt.format(new Date());
+    let cursor = new Date(since);
+    for (let i = 0; i < 400; i++) { // safety cap
+      const dateStr = dayFmt.format(cursor);
+      if (dateStr > todayStr) break;
+      if (!dayMap.has(dateStr)) {
+        dayMap.set(dateStr, { sessions: 0, prompts: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 });
+      }
+      cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
+    }
+  }
+
   // ── Compute per-day cost from byModel is impractical without per-day messages,
   //    so we distribute total cost proportionally by output tokens per day ────
   const totalOutputForCost = totalOutput || 1; // avoid division by zero
@@ -182,7 +252,6 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     }));
 
   // ── Cache efficiency ─────────────────────────────────────────────────────
-  // Total logical input = non-cached input + cache creation + cache read
   const totalLogicalInput = totalInput + totalCacheCreate + totalCacheRead;
   const cacheEfficiency = totalLogicalInput > 0
     ? Math.round(((totalCacheRead / totalLogicalInput) * 100) * 10) / 10
@@ -200,10 +269,89 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     .sort(([, a], [, b]) => b - a)
     .map(([entrypoint, sessions]) => ({ entrypoint, sessions }));
 
+  // ── Hourly breakdown (day period only) ───────────────────────────────────
+  const byHour: DashboardData["byHour"] = opts.period === "day"
+    ? Array.from({ length: 24 }, (_, h) => {
+        const e = hourMap.get(h) ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 };
+        return { hour: String(h).padStart(2, "0"), ...e };
+      })
+    : [];
+
+  // ── Plan ROI metrics ─────────────────────────────────────────────────────
+  const planFee = opts.planFee ?? 0;
+  const planMultiplier = planFee > 0 ? Math.round((totalCost / planFee) * 10) / 10 : 0;
+  const costPerPrompt = totalPrompts > 0 ? totalCost / totalPrompts : 0;
+  const daysInPeriod = since > 0 ? Math.max(1, (Date.now() - since) / (24 * 60 * 60 * 1000)) : 30;
+  const dailyValueRate = totalCost / daysInPeriod;
+
+  // ── Velocity + active hours ──────────────────────────────────────────────
+  let totalActiveDurationMs = 0;
+  let totalThrottleEvents = 0;
+  for (const row of rows) {
+    if (row.active_duration_ms != null) totalActiveDurationMs += row.active_duration_ms;
+    totalThrottleEvents += row.throttle_events ?? 0;
+  }
+  const totalActiveHours = totalActiveDurationMs / 3_600_000;
+  const avgSessionDurationMinutes = rows.length > 0
+    ? (totalActiveDurationMs / rows.length) / 60_000
+    : 0;
+  const tokensPerMinute = totalActiveDurationMs > 0
+    ? Math.round((totalInput + totalOutput) / (totalActiveDurationMs / 60_000))
+    : 0;
+  const outputTokensPerPrompt = totalPrompts > 0 ? Math.round(totalOutput / totalPrompts) : 0;
+  const promptsPerHour = totalActiveHours > 0
+    ? Math.round((totalPrompts / totalActiveHours) * 10) / 10
+    : 0;
+  const costPerActiveHour = totalActiveHours > 0 ? totalCost / totalActiveHours : 0;
+
+  // ── Usage windows ────────────────────────────────────────────────────────
+  const windowSince = since > 0 ? since : Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const byWindow = store.getUsageWindows({ since: windowSince });
+
+  const currentWindow = byWindow[0] ?? null;
+  const currentWindowStart = currentWindow ? new Date(currentWindow.windowStart).toISOString() : null;
+  const currentWindowPrompts = currentWindow?.promptCount ?? 0;
+  const currentWindowCost = currentWindow?.totalCostEquivalent ?? 0;
+
+  // ── Per-conversation cost ranking ─────────────────────────────────────────
+  const msgTotalsBySession = store.getMessageTotalsBySession(sessionIds);
+  const sessionCostMap = new Map<string, { cost: number; topModel: string; topModelTokens: number }>();
+  for (const mt of msgTotalsBySession) {
+    const entry = sessionCostMap.get(mt.session_id) ?? { cost: 0, topModel: mt.model ?? "", topModelTokens: 0 };
+    const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens);
+    entry.cost += cost;
+    const tokens = mt.input_tokens + mt.output_tokens;
+    if (tokens > entry.topModelTokens) {
+      entry.topModel = mt.model ?? "";
+      entry.topModelTokens = tokens;
+    }
+    sessionCostMap.set(mt.session_id, entry);
+  }
+
+  const byConversationCost: DashboardData["byConversationCost"] = rows
+    .map(row => {
+      const costs = sessionCostMap.get(row.session_id);
+      const cost = costs?.cost ?? 0;
+      return {
+        sessionId: row.session_id,
+        projectPath: row.project_path,
+        durationMs: row.first_timestamp != null && row.last_timestamp != null
+          ? row.last_timestamp - row.first_timestamp
+          : 0,
+        estimatedCost: Math.round(cost * 10000) / 10000,
+        percentOfPlanFee: planFee > 0 ? Math.round((cost / planFee) * 1000) / 10 : 0,
+        dominantModel: costs?.topModel ?? "",
+        promptCount: row.prompt_count,
+      };
+    })
+    .sort((a, b) => b.estimatedCost - a.estimatedCost)
+    .slice(0, 20);
+
   return {
     generated: new Date().toISOString(),
     period: opts.period ?? "all",
     timezone: tz,
+    sinceIso: since > 0 ? new Date(since).toISOString().slice(0, 10) : null,
     summary: {
       sessions: rows.length,
       prompts: totalPrompts,
@@ -214,11 +362,28 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       cacheEfficiency,
       estimatedCost: Math.round(totalCost * 100) / 100,
       totalDurationMs,
+      planFee,
+      planMultiplier,
+      costPerPrompt: Math.round(costPerPrompt * 10000) / 10000,
+      costPerActiveHour: Math.round(costPerActiveHour * 100) / 100,
+      dailyValueRate: Math.round(dailyValueRate * 100) / 100,
+      tokensPerMinute,
+      outputTokensPerPrompt,
+      promptsPerHour,
+      totalActiveHours: Math.round(totalActiveHours * 10) / 10,
+      avgSessionDurationMinutes: Math.round(avgSessionDurationMinutes * 10) / 10,
+      throttleEvents: totalThrottleEvents,
+      currentWindowStart,
+      currentWindowPrompts,
+      currentWindowCost: Math.round(currentWindowCost * 100) / 100,
     },
     byDay,
+    byHour,
     byProject,
     byModel,
     byEntrypoint,
     stopReasons,
+    byWindow,
+    byConversationCost,
   };
 }

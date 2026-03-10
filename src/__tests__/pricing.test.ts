@@ -149,6 +149,9 @@ describe("printSummary cost line", () => {
       subscriptionType: null,
       thinkingBlocks: 0,
       sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: null,
+      medianResponseTimeMs: null,
     });
 
     store.upsertMessages([
@@ -165,6 +168,10 @@ describe("printSummary cost line", () => {
         cacheReadTokens: 0,
         tools: [],
         thinkingBlocks: 0,
+        serviceTier: null,
+        inferenceGeo: null,
+        ephemeral5mCacheTokens: 0,
+        ephemeral1hCacheTokens: 0,
       },
       {
         uuid: "m-cost-2",
@@ -179,6 +186,10 @@ describe("printSummary cost line", () => {
         cacheReadTokens: 0,
         tools: [],
         thinkingBlocks: 0,
+        serviceTier: null,
+        inferenceGeo: null,
+        ephemeral5mCacheTokens: 0,
+        ephemeral1hCacheTokens: 0,
       },
     ]);
 
@@ -222,6 +233,9 @@ describe("printSummary cost line", () => {
       subscriptionType: null,
       thinkingBlocks: 0,
       sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: null,
+      medianResponseTimeMs: null,
     });
 
     store.upsertMessages([
@@ -238,6 +252,10 @@ describe("printSummary cost line", () => {
         cacheReadTokens: 0,
         tools: [],
         thinkingBlocks: 0,
+        serviceTier: null,
+        inferenceGeo: null,
+        ephemeral5mCacheTokens: 0,
+        ephemeral1hCacheTokens: 0,
       },
     ]);
 

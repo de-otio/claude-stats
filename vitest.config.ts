@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: false,
-    exclude: ["**/.claude/worktrees/**", "**/node_modules/**"],
+    exclude: ["**/.claude/worktrees/**", "**/node_modules/**", "dist/**"],
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],

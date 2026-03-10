@@ -335,6 +335,130 @@ describe("parseSessionFile", () => {
     expect(result.messages[0]!.tools).toEqual(["Read", "Edit", "Read"]);
   });
 
+  it("parses service_tier and inferenceGeo from usage data", async () => {
+    const entry = assistantEntry();
+    (entry as Record<string, unknown>).message = {
+      ...((entry as Record<string, unknown>).message as Record<string, unknown>),
+      usage: { input_tokens: 100, output_tokens: 50, service_tier: "standard", inference_geo: "us-east-1" },
+    };
+    (entry as Record<string, unknown>).uuid = "uuid-tier";
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.messages[0]!.serviceTier).toBe("standard");
+    expect(result.messages[0]!.inferenceGeo).toBe("us-east-1");
+  });
+
+  it("defaults service_tier and inferenceGeo to null when absent", async () => {
+    const entry = { ...assistantEntry(), uuid: "uuid-notier" };
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.messages[0]!.serviceTier).toBeNull();
+    expect(result.messages[0]!.inferenceGeo).toBeNull();
+  });
+
+  it("parses ephemeral cache token subtypes", async () => {
+    const entry = assistantEntry();
+    (entry as Record<string, unknown>).message = {
+      ...((entry as Record<string, unknown>).message as Record<string, unknown>),
+      usage: {
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_creation: { ephemeral_5m_input_tokens: 30, ephemeral_1h_input_tokens: 10 },
+      },
+    };
+    (entry as Record<string, unknown>).uuid = "uuid-eph";
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.messages[0]!.ephemeral5mCacheTokens).toBe(30);
+    expect(result.messages[0]!.ephemeral1hCacheTokens).toBe(10);
+  });
+
+  it("defaults ephemeral cache tokens to 0 when absent", async () => {
+    const entry = { ...assistantEntry(), uuid: "uuid-noeph" };
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.messages[0]!.ephemeral5mCacheTokens).toBe(0);
+    expect(result.messages[0]!.ephemeral1hCacheTokens).toBe(0);
+  });
+
+  it("counts throttle events when stop_reason is max_tokens and output < 200", async () => {
+    const throttled = {
+      type: "assistant",
+      sessionId: BASE_SESSION,
+      version: BASE_VERSION,
+      timestamp: 1_001_000,
+      uuid: "a-throttle",
+      message: {
+        model: "claude-opus-4-6",
+        stop_reason: "max_tokens",
+        content: [],
+        usage: { input_tokens: 500, output_tokens: 150 },
+      },
+    };
+    writeLines(filePath, [throttled]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.session!.throttleEvents).toBe(1);
+  });
+
+  it("does not count throttle event when output >= 200", async () => {
+    const notThrottled = {
+      type: "assistant",
+      sessionId: BASE_SESSION,
+      version: BASE_VERSION,
+      timestamp: 1_001_000,
+      uuid: "a-big",
+      message: {
+        model: "claude-opus-4-6",
+        stop_reason: "max_tokens",
+        content: [],
+        usage: { input_tokens: 500, output_tokens: 500 },
+      },
+    };
+    writeLines(filePath, [notThrottled]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.session!.throttleEvents).toBe(0);
+  });
+
+  it("defaults throttleEvents to 0 on normal end_turn responses", async () => {
+    writeLines(filePath, [assistantEntry()]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.session!.throttleEvents).toBe(0);
+  });
+
+  it("computes activeDurationMs from timestamps excluding idle gaps > 30 min", async () => {
+    const e1 = { ...userEntry(), timestamp: 0 };
+    const e2 = { ...assistantEntry(), timestamp: 60_000 };
+    const e3 = { ...userEntry(), timestamp: 62_000, uuid: `u-${Math.random()}` };
+    const e4 = { ...assistantEntry(), uuid: `a-${Math.random()}`, timestamp: 2_000_000 }; // 32 min gap → excluded
+    writeLines(filePath, [e1, e2, e3, e4]);
+    const result = await parseSessionFile(filePath, "/proj");
+    // Active gaps: 60_000 + 2_000 = 62_000ms (the 1,938,000ms gap is > 30 min, excluded)
+    expect(result.session!.activeDurationMs).toBe(62_000);
+  });
+
+  it("sets activeDurationMs to null when only one timestamp", async () => {
+    writeLines(filePath, [{ ...assistantEntry(), timestamp: 5000 }]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.session!.activeDurationMs).toBeNull();
+  });
+
+  it("computes medianResponseTimeMs from user→assistant pairs", async () => {
+    const u1 = { ...userEntry(), timestamp: 0 };
+    const a1 = { ...assistantEntry(), timestamp: 2000 };
+    const u2 = { ...userEntry(), timestamp: 5000, uuid: `u-${Math.random()}` };
+    const a2 = { ...assistantEntry(), uuid: `a-${Math.random()}`, timestamp: 9000 };
+    writeLines(filePath, [u1, a1, u2, a2]);
+    const result = await parseSessionFile(filePath, "/proj");
+    // Response times: [2000, 4000] → median = 3000
+    expect(result.session!.medianResponseTimeMs).toBe(3000);
+  });
+
+  it("sets medianResponseTimeMs to null when no user→assistant pairs exist", async () => {
+    writeLines(filePath, [assistantEntry()]); // no user message before it
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.session!.medianResponseTimeMs).toBeNull();
+  });
+
   it("accumulates thinkingBlocks across multiple messages at session level", async () => {
     const e1 = assistantEntry({});
     (e1 as Record<string, unknown>).message = {

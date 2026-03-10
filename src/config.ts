@@ -5,6 +5,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import type { PlanType, PlanConfig } from "./types.js";
 
 export interface Config {
   costThresholds?: {
@@ -12,6 +13,49 @@ export interface Config {
     week?: number;
     month?: number;
   };
+  plan?: {
+    type?: PlanType;
+    monthly_fee?: number;
+  };
+}
+
+/** Default monthly fees by plan type (USD). */
+const PLAN_FEES: Record<PlanType, number> = {
+  pro: 20,
+  max: 100,
+  team: 200,
+  custom: 0,
+};
+
+/** Known subscription_type strings from Claude telemetry → PlanType. */
+const SUBSCRIPTION_TYPE_MAP: Record<string, PlanType> = {
+  pro: "pro",
+  claude_pro: "pro",
+  max: "max",
+  claude_max: "max",
+  team: "team",
+  claude_team: "team",
+};
+
+/**
+ * Derive plan config from the stored config and optional telemetry subscription type.
+ * Returns null when no plan info is available and the fee would be 0 anyway.
+ */
+export function getPlanConfig(config: Config, subscriptionType?: string | null): PlanConfig | null {
+  const configPlan = config.plan;
+
+  let planType: PlanType | null = null;
+
+  if (configPlan?.type) {
+    planType = configPlan.type;
+  } else if (subscriptionType) {
+    planType = SUBSCRIPTION_TYPE_MAP[subscriptionType.toLowerCase()] ?? null;
+  }
+
+  if (!planType) return null;
+
+  const monthlyFee = configPlan?.monthly_fee ?? PLAN_FEES[planType];
+  return { type: planType, monthlyFee };
 }
 
 const CONFIG_DIR = path.join(os.homedir(), ".claude-stats");

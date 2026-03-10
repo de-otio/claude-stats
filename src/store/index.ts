@@ -16,9 +16,11 @@ import type {
   FileCheckpoint,
   SchemaFingerprint,
   ParseError,
+  UsageWindow,
 } from "../types.js";
+import { estimateCost } from "../pricing.js";
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 7;
 
 export class Store {
   private db: DatabaseSync;
@@ -56,6 +58,8 @@ export class Store {
     if (current < 3) this.migrateToV3();
     if (current < 4) this.migrateToV4();
     if (current < 5) this.migrateToV5();
+    if (current < 6) this.migrateToV6();
+    if (current < 7) this.migrateToV7();
 
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
@@ -165,6 +169,61 @@ export class Store {
     `);
   }
 
+  private migrateToV6(): void {
+    // Timestamps were previously stored as ISO-8601 TEXT (e.g. "2026-03-10T09:46:58.588Z")
+    // because RawSessionEntry.timestamp was mis-typed as number and the raw string was
+    // passed straight through to SQLite, which stored it as TEXT despite the INTEGER affinity.
+    // Convert any TEXT timestamps to epoch-milliseconds INTEGER so comparisons work correctly.
+    // (julianday → epoch-ms: subtract Julian epoch offset and convert days→ms)
+    this.db.exec(`
+      UPDATE sessions
+        SET first_timestamp = CAST((julianday(first_timestamp) - 2440587.5) * 86400000 AS INTEGER)
+        WHERE first_timestamp IS NOT NULL AND typeof(first_timestamp) = 'text'
+    `);
+    this.db.exec(`
+      UPDATE sessions
+        SET last_timestamp = CAST((julianday(last_timestamp) - 2440587.5) * 86400000 AS INTEGER)
+        WHERE last_timestamp IS NOT NULL AND typeof(last_timestamp) = 'text'
+    `);
+    this.db.exec(`
+      UPDATE messages
+        SET timestamp = CAST((julianday(timestamp) - 2440587.5) * 86400000 AS INTEGER)
+        WHERE timestamp IS NOT NULL AND typeof(timestamp) = 'text'
+    `);
+  }
+
+  private migrateToV7(): void {
+    // Helper to skip ALTER TABLE if column already exists (idempotent for partial migrations)
+    const addColumn = (table: string, column: string, def: string): void => {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === column)) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+      }
+    };
+    // New message-level fields for service tier, geo, and ephemeral cache breakdown
+    addColumn("messages", "service_tier", "TEXT");
+    addColumn("messages", "inference_geo", "TEXT");
+    addColumn("messages", "ephemeral_5m_cache_tokens", "INTEGER NOT NULL DEFAULT 0");
+    addColumn("messages", "ephemeral_1h_cache_tokens", "INTEGER NOT NULL DEFAULT 0");
+    // New session-level fields for usage analysis
+    addColumn("sessions", "throttle_events", "INTEGER NOT NULL DEFAULT 0");
+    addColumn("sessions", "active_duration_ms", "INTEGER");
+    addColumn("sessions", "median_response_time_ms", "INTEGER");
+    // New table for 5-hour usage window tracking
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS usage_windows (
+        window_start          INTEGER NOT NULL PRIMARY KEY,
+        window_end            INTEGER NOT NULL,
+        account_uuid          TEXT,
+        total_cost_equivalent REAL NOT NULL DEFAULT 0,
+        prompt_count          INTEGER NOT NULL DEFAULT 0,
+        tokens_by_model       TEXT NOT NULL DEFAULT '{}',
+        throttled             INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_windows_start ON usage_windows (window_start);
+    `);
+  }
+
   // ─── Transaction wrapper ────────────────────────────────────────────────────
 
   transaction<T>(fn: () => T): T {
@@ -191,9 +250,9 @@ export class Store {
         web_search_requests, web_fetch_requests,
         tool_use_counts, models, repo_url,
         account_uuid, organization_uuid, subscription_type,
-        thinking_blocks,
+        thinking_blocks, throttle_events, active_duration_ms, median_response_time_ms,
         source_deleted, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (session_id) DO UPDATE SET
         last_timestamp          = excluded.last_timestamp,
         claude_version          = excluded.claude_version,
@@ -213,6 +272,9 @@ export class Store {
         organization_uuid       = COALESCE(excluded.organization_uuid, sessions.organization_uuid),
         subscription_type       = COALESCE(excluded.subscription_type, sessions.subscription_type),
         thinking_blocks         = excluded.thinking_blocks,
+        throttle_events         = excluded.throttle_events,
+        active_duration_ms      = excluded.active_duration_ms,
+        median_response_time_ms = excluded.median_response_time_ms,
         source_deleted          = excluded.source_deleted,
         updated_at              = excluded.updated_at
     `).run(
@@ -241,6 +303,88 @@ export class Store {
       record.organizationUuid,
       record.subscriptionType,
       record.thinkingBlocks,
+      record.throttleEvents,
+      record.activeDurationMs,
+      record.medianResponseTimeMs,
+      record.sourceDeleted ? 1 : 0,
+      Date.now()
+    );
+  }
+
+  /**
+   * Upsert a session record from an incremental parse (startOffset > 0).
+   *
+   * Cumulative counters are ADDED to existing values (not replaced), because
+   * the parser only returned the delta since the last checkpoint.
+   * is_interactive uses MAX so it stays true once a queue-operation was seen
+   * in any earlier parse run.
+   */
+  upsertSessionIncremental(record: SessionRecord): void {
+    this.db.prepare(`
+      INSERT INTO sessions (
+        session_id, project_path, source_file, first_timestamp, last_timestamp,
+        claude_version, entrypoint, git_branch, permission_mode, is_interactive,
+        prompt_count, assistant_message_count,
+        input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+        web_search_requests, web_fetch_requests,
+        tool_use_counts, models, repo_url,
+        account_uuid, organization_uuid, subscription_type,
+        thinking_blocks, throttle_events, active_duration_ms, median_response_time_ms,
+        source_deleted, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (session_id) DO UPDATE SET
+        last_timestamp          = MAX(sessions.last_timestamp, excluded.last_timestamp),
+        claude_version          = excluded.claude_version,
+        is_interactive          = MAX(sessions.is_interactive, excluded.is_interactive),
+        prompt_count            = sessions.prompt_count + excluded.prompt_count,
+        assistant_message_count = sessions.assistant_message_count + excluded.assistant_message_count,
+        input_tokens            = sessions.input_tokens + excluded.input_tokens,
+        output_tokens           = sessions.output_tokens + excluded.output_tokens,
+        cache_creation_tokens   = sessions.cache_creation_tokens + excluded.cache_creation_tokens,
+        cache_read_tokens       = sessions.cache_read_tokens + excluded.cache_read_tokens,
+        web_search_requests     = sessions.web_search_requests + excluded.web_search_requests,
+        web_fetch_requests      = sessions.web_fetch_requests + excluded.web_fetch_requests,
+        tool_use_counts         = excluded.tool_use_counts,
+        models                  = excluded.models,
+        repo_url                = excluded.repo_url,
+        account_uuid            = COALESCE(excluded.account_uuid, sessions.account_uuid),
+        organization_uuid       = COALESCE(excluded.organization_uuid, sessions.organization_uuid),
+        subscription_type       = COALESCE(excluded.subscription_type, sessions.subscription_type),
+        thinking_blocks         = sessions.thinking_blocks + excluded.thinking_blocks,
+        throttle_events         = sessions.throttle_events + excluded.throttle_events,
+        active_duration_ms      = COALESCE(sessions.active_duration_ms, 0) + COALESCE(excluded.active_duration_ms, 0),
+        median_response_time_ms = COALESCE(sessions.median_response_time_ms, excluded.median_response_time_ms),
+        source_deleted          = excluded.source_deleted,
+        updated_at              = excluded.updated_at
+    `).run(
+      record.sessionId,
+      record.projectPath,
+      record.sourceFile,
+      record.firstTimestamp,
+      record.lastTimestamp,
+      record.claudeVersion,
+      record.entrypoint,
+      record.gitBranch,
+      record.permissionMode,
+      record.isInteractive ? 1 : 0,
+      record.promptCount,
+      record.assistantMessageCount,
+      record.inputTokens,
+      record.outputTokens,
+      record.cacheCreationTokens,
+      record.cacheReadTokens,
+      record.webSearchRequests,
+      record.webFetchRequests,
+      JSON.stringify(record.toolUseCounts),
+      JSON.stringify(record.models),
+      record.repoUrl,
+      record.accountUuid,
+      record.organizationUuid,
+      record.subscriptionType,
+      record.thinkingBlocks,
+      record.throttleEvents,
+      record.activeDurationMs,
+      record.medianResponseTimeMs,
       record.sourceDeleted ? 1 : 0,
       Date.now()
     );
@@ -253,23 +397,29 @@ export class Store {
       INSERT INTO messages (
         uuid, session_id, timestamp, claude_version, model, stop_reason,
         input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
-        tools, thinking_blocks
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        tools, thinking_blocks,
+        service_tier, inference_geo, ephemeral_5m_cache_tokens, ephemeral_1h_cache_tokens
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (uuid) DO UPDATE SET
-        model                 = excluded.model,
-        input_tokens          = excluded.input_tokens,
-        output_tokens         = excluded.output_tokens,
-        cache_creation_tokens = excluded.cache_creation_tokens,
-        cache_read_tokens     = excluded.cache_read_tokens,
-        tools                 = excluded.tools,
-        thinking_blocks       = excluded.thinking_blocks
+        model                       = excluded.model,
+        input_tokens                = excluded.input_tokens,
+        output_tokens               = excluded.output_tokens,
+        cache_creation_tokens       = excluded.cache_creation_tokens,
+        cache_read_tokens           = excluded.cache_read_tokens,
+        tools                       = excluded.tools,
+        thinking_blocks             = excluded.thinking_blocks,
+        service_tier                = excluded.service_tier,
+        inference_geo               = excluded.inference_geo,
+        ephemeral_5m_cache_tokens   = excluded.ephemeral_5m_cache_tokens,
+        ephemeral_1h_cache_tokens   = excluded.ephemeral_1h_cache_tokens
     `);
     for (const r of records) {
       stmt.run(
         r.uuid, r.sessionId, r.timestamp, r.claudeVersion,
         r.model, r.stopReason, r.inputTokens, r.outputTokens,
         r.cacheCreationTokens, r.cacheReadTokens,
-        JSON.stringify(r.tools), r.thinkingBlocks
+        JSON.stringify(r.tools), r.thinkingBlocks,
+        r.serviceTier, r.inferenceGeo, r.ephemeral5mCacheTokens, r.ephemeral1hCacheTokens
       );
     }
   }
@@ -561,6 +711,96 @@ export class Store {
     return rows.map(r => r.session_id);
   }
 
+  // ─── Usage windows ──────────────────────────────────────────────────────────
+
+  upsertUsageWindow(w: UsageWindow): void {
+    this.db.prepare(`
+      INSERT INTO usage_windows
+        (window_start, window_end, account_uuid, total_cost_equivalent, prompt_count, tokens_by_model, throttled)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (window_start) DO UPDATE SET
+        window_end            = excluded.window_end,
+        account_uuid          = COALESCE(excluded.account_uuid, usage_windows.account_uuid),
+        total_cost_equivalent = excluded.total_cost_equivalent,
+        prompt_count          = excluded.prompt_count,
+        tokens_by_model       = excluded.tokens_by_model,
+        throttled             = MAX(usage_windows.throttled, excluded.throttled)
+    `).run(
+      w.windowStart, w.windowEnd, w.accountUuid,
+      w.totalCostEquivalent, w.promptCount,
+      JSON.stringify(w.tokensByModel), w.throttled ? 1 : 0
+    );
+  }
+
+  getUsageWindows(filters: { since?: number; until?: number } = {}): UsageWindow[] {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (filters.since !== undefined) {
+      conditions.push("window_start >= ?");
+      params.push(filters.since);
+    }
+    if (filters.until !== undefined) {
+      conditions.push("window_start < ?");
+      params.push(filters.until);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const stmt = this.db.prepare(`SELECT * FROM usage_windows ${where} ORDER BY window_start DESC`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (stmt.all as (...args: any[]) => unknown[])(...params) as Array<Record<string, unknown>>;
+    return rows.map(r => ({
+      windowStart: r["window_start"] as number,
+      windowEnd: r["window_end"] as number,
+      accountUuid: r["account_uuid"] as string | null,
+      totalCostEquivalent: r["total_cost_equivalent"] as number,
+      promptCount: r["prompt_count"] as number,
+      tokensByModel: JSON.parse(r["tokens_by_model"] as string) as Record<string, number>,
+      throttled: Boolean(r["throttled"]),
+    }));
+  }
+
+  getCurrentWindow(): UsageWindow | null {
+    const row = this.db.prepare(
+      "SELECT * FROM usage_windows ORDER BY window_start DESC LIMIT 1"
+    ).get() as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return {
+      windowStart: row["window_start"] as number,
+      windowEnd: row["window_end"] as number,
+      accountUuid: row["account_uuid"] as string | null,
+      totalCostEquivalent: row["total_cost_equivalent"] as number,
+      promptCount: row["prompt_count"] as number,
+      tokensByModel: JSON.parse(row["tokens_by_model"] as string) as Record<string, number>,
+      throttled: Boolean(row["throttled"]),
+    };
+  }
+
+  // ─── Per-session message totals (for conversation cost ranking) ─────────────
+
+  /** Returns per-session per-model token totals for the given session IDs. */
+  getMessageTotalsBySession(sessionIds: string[]): SessionMessageTotalRow[] {
+    if (sessionIds.length === 0) return [];
+    // Process in batches of 500 to avoid SQLite variable limit
+    const results: SessionMessageTotalRow[] = [];
+    for (let i = 0; i < sessionIds.length; i += 500) {
+      const batch = sessionIds.slice(i, i + 500);
+      const placeholders = batch.map(() => "?").join(",");
+      const stmt = this.db.prepare(`
+        SELECT session_id, model,
+          SUM(input_tokens) AS input_tokens,
+          SUM(output_tokens) AS output_tokens,
+          SUM(cache_read_tokens) AS cache_read_tokens,
+          SUM(cache_creation_tokens) AS cache_creation_tokens
+        FROM messages
+        WHERE session_id IN (${placeholders})
+        GROUP BY session_id, model
+      `);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows = (stmt.all as (...args: any[]) => unknown[])(...batch) as SessionMessageTotalRow[];
+      results.push(...rows);
+    }
+    return results;
+  }
+
   getStatus(): StatusInfo {
     let dbSize = 0;
     try { dbSize = fs.statSync(paths.statsDb).size; } catch { /* ok */ }
@@ -608,6 +848,9 @@ export interface SessionRow {
   subscription_type: string | null;
   thinking_blocks: number;
   source_deleted: number;
+  throttle_events: number;
+  active_duration_ms: number | null;
+  median_response_time_ms: number | null;
 }
 
 export interface MessageRow {
@@ -623,6 +866,19 @@ export interface MessageRow {
   cache_read_tokens: number;
   tools: string; // JSON array
   thinking_blocks: number;
+  service_tier: string | null;
+  inference_geo: string | null;
+  ephemeral_5m_cache_tokens: number;
+  ephemeral_1h_cache_tokens: number;
+}
+
+export interface SessionMessageTotalRow {
+  session_id: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
 }
 
 export interface MessageTotalRow {

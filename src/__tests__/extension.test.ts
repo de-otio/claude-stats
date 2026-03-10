@@ -120,7 +120,7 @@ describe("patchForWebview", () => {
   it("wires up event listeners in bridge script", () => {
     const result = patchForWebview(sampleHtml, CSP_SOURCE, LOCAL_CHART_URI);
     expect(result).toContain("addEventListener");
-    expect(result).toContain("btn.textContent = 'Refresh'");
+    expect(result).toContain("vscode.postMessage({ command: 'refresh' })");
   });
 
   it("preserves the original HTML structure", () => {

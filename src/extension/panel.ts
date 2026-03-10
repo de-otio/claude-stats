@@ -156,15 +156,21 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
   // Wire up refresh button
   var btn = document.getElementById('refresh-btn');
   if (btn) {
-    btn.textContent = 'Refresh';
     btn.addEventListener('click', function() {
       vscode.postMessage({ command: 'refresh' });
     });
   }
 
+  // Hide auto-refresh button (not applicable in webview)
+  var autoBtn = document.getElementById('autorefresh-btn');
+  if (autoBtn) autoBtn.style.display = 'none';
+
   // Override global functions in case they're called from chart init script
   window.changePeriod = function(val) {
     vscode.postMessage({ command: 'changePeriod', period: val });
+  };
+  window.doRefresh = function() {
+    vscode.postMessage({ command: 'refresh' });
   };
   window.toggleRefresh = function() {
     vscode.postMessage({ command: 'refresh' });

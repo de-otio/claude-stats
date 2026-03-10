@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { loadConfig, saveConfig, getCostThreshold } from "../config.js";
+import { loadConfig, saveConfig, getCostThreshold, getPlanConfig } from "../config.js";
 import os from "os";
 import path from "path";
 import fs from "fs";
@@ -82,5 +82,47 @@ describe("getCostThreshold", () => {
   it("returns undefined for unknown period names", () => {
     const config = { costThresholds: { day: 10 } };
     expect(getCostThreshold(config, "year")).toBeUndefined();
+  });
+});
+
+describe("getPlanConfig", () => {
+  it("returns null when no plan config and no subscriptionType", () => {
+    expect(getPlanConfig({})).toBeNull();
+  });
+
+  it("uses default fee for known plan types", () => {
+    expect(getPlanConfig({ plan: { type: "pro" } })?.monthlyFee).toBe(20);
+    expect(getPlanConfig({ plan: { type: "max" } })?.monthlyFee).toBe(100);
+    expect(getPlanConfig({ plan: { type: "team" } })?.monthlyFee).toBe(200);
+  });
+
+  it("respects monthly_fee override", () => {
+    const result = getPlanConfig({ plan: { type: "pro", monthly_fee: 25 } });
+    expect(result?.monthlyFee).toBe(25);
+    expect(result?.type).toBe("pro");
+  });
+
+  it("auto-detects plan from subscriptionType telemetry", () => {
+    const result = getPlanConfig({}, "claude_pro");
+    expect(result?.type).toBe("pro");
+    expect(result?.monthlyFee).toBe(20);
+  });
+
+  it("auto-detects max plan from subscriptionType", () => {
+    expect(getPlanConfig({}, "max")?.type).toBe("max");
+  });
+
+  it("config plan type takes precedence over subscriptionType", () => {
+    const result = getPlanConfig({ plan: { type: "team" } }, "pro");
+    expect(result?.type).toBe("team");
+    expect(result?.monthlyFee).toBe(200);
+  });
+
+  it("returns null for unknown subscriptionType", () => {
+    expect(getPlanConfig({}, "unknown_plan_xyz")).toBeNull();
+  });
+
+  it("custom plan type returns 0 default fee", () => {
+    expect(getPlanConfig({ plan: { type: "custom" } })?.monthlyFee).toBe(0);
   });
 });

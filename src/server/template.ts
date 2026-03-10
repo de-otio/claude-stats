@@ -16,6 +16,11 @@ export function renderDashboard(data: DashboardData): string {
 
   const formattedCost = `$${data.summary.estimatedCost.toFixed(2)}`;
   const cacheEff = `${data.summary.cacheEfficiency.toFixed(1)}%`;
+  const planFee = data.summary.planFee;
+  const showPlan = planFee > 0;
+  const planMultiplierStr = data.summary.planMultiplier > 0
+    ? `${data.summary.planMultiplier.toFixed(1)}×`
+    : "";
 
   // Period selector: which option should be pre-selected
   const periods = ["day", "week", "month", "all"] as const;
@@ -145,10 +150,15 @@ export function renderDashboard(data: DashboardData): string {
     <select id="period-select" onchange="changePeriod(this.value)">
       ${periodOptions}
     </select>
-    <button id="refresh-btn" onclick="toggleRefresh()">Auto-refresh: off</button>
+    <button id="refresh-btn" onclick="doRefresh()">Refresh</button>
+    <button id="autorefresh-btn" onclick="toggleRefresh()" style="font-size:0.75rem; padding:0.3rem 0.6rem;">Auto: off</button>
   </div>
 
   <div class="summary-bar">
+    <div class="summary-card" style="grid-column: 1 / -1; text-align: left; padding: 0.5rem 0.75rem;">
+      <span style="font-size:0.7rem; color:#888;">Period: </span>
+      <span style="font-size:0.75rem; color:#a0c4ff;">${data.sinceIso ? `${data.sinceIso} → today` : "All time"}</span>
+    </div>
     <div class="summary-card">
       <div class="label">Sessions</div>
       <div class="value">${data.summary.sessions}</div>
@@ -181,11 +191,40 @@ export function renderDashboard(data: DashboardData): string {
       <div class="label">Est. Cost</div>
       <div class="value">${formattedCost}</div>
     </div>
+    ${showPlan ? `
+    <div class="summary-card" style="border-color:#59a14f;">
+      <div class="label">Plan Value</div>
+      <div class="value" style="color:#59a14f;">${planMultiplierStr}</div>
+      <div style="font-size:0.6rem;color:#888;margin-top:0.2rem;">of $${planFee.toFixed(0)}/mo</div>
+    </div>
+    ` : ""}
+    <div class="summary-card">
+      <div class="label">Active Hours</div>
+      <div class="value">${data.summary.totalActiveHours.toFixed(1)}h</div>
+    </div>
+    ${data.summary.costPerPrompt > 0 ? `
+    <div class="summary-card">
+      <div class="label">Cost / Prompt</div>
+      <div class="value">$${data.summary.costPerPrompt.toFixed(4)}</div>
+    </div>
+    ` : ""}
+    ${data.summary.tokensPerMinute > 0 ? `
+    <div class="summary-card">
+      <div class="label">Tok / Min</div>
+      <div class="value">${fmtNum(data.summary.tokensPerMinute)}</div>
+    </div>
+    ` : ""}
+    ${data.summary.throttleEvents > 0 ? `
+    <div class="summary-card" style="border-color:#e15759;">
+      <div class="label">Throttle Events</div>
+      <div class="value" style="color:#e15759;">${data.summary.throttleEvents}</div>
+    </div>
+    ` : ""}
   </div>
 
   <div class="charts-grid">
     <div class="chart-card">
-      <h2>Daily Token Usage</h2>
+      <h2 id="chart-daily-title">${data.period === "day" ? "Hourly Token Usage" : "Daily Token Usage"}</h2>
       <canvas id="chart-daily"></canvas>
     </div>
     <div class="chart-card">
@@ -212,6 +251,22 @@ export function renderDashboard(data: DashboardData): string {
       <h2>Cache Usage</h2>
       <canvas id="chart-cache"></canvas>
     </div>
+    <div class="chart-card" style="grid-column: 1 / -1;">
+      <h2>Cumulative API Value vs Plan Fee</h2>
+      <canvas id="chart-cumulative"></canvas>
+    </div>
+    ${data.byWindow.length > 0 ? `
+    <div class="chart-card" style="grid-column: 1 / -1;">
+      <h2>5-Hour Usage Windows</h2>
+      <canvas id="chart-windows"></canvas>
+    </div>
+    ` : ""}
+    ${data.byConversationCost.length > 0 ? `
+    <div class="chart-card" style="grid-column: 1 / -1;">
+      <h2>Top Conversations by API Cost</h2>
+      <canvas id="chart-conv-cost"></canvas>
+    </div>
+    ` : ""}
   </div>
 
   <div class="footer">Generated ${data.generated} &bull; Timezone: ${data.timezone}</div>
@@ -254,11 +309,17 @@ export function renderDashboard(data: DashboardData): string {
       }
       window.changePeriod = changePeriod;
 
+      // ── Manual refresh ────────────────────────────────────────────────────
+      function doRefresh() {
+        location.reload();
+      }
+      window.doRefresh = doRefresh;
+
       // ── Auto-refresh toggle ───────────────────────────────────────────────
       var refreshSecs = parseInt(urlParam('refresh') || '0', 10);
-      var refreshBtn = document.getElementById('refresh-btn');
+      var autoBtn = document.getElementById('autorefresh-btn');
       if (refreshSecs > 0) {
-        refreshBtn.textContent = 'Auto-refresh: on (' + refreshSecs + 's)';
+        if (autoBtn) autoBtn.textContent = 'Auto: on (' + refreshSecs + 's)';
         setTimeout(function () { location.reload(); }, refreshSecs * 1000);
       }
       function toggleRefresh() {
@@ -280,10 +341,14 @@ export function renderDashboard(data: DashboardData): string {
         plugins: { legend: { labels: { color: '#ccc', font: { size: 11 } } } }
       };
 
-      // ── 1. Daily stacked bar chart (input/output/cache) ────────────────
+      // ── 1. Daily/Hourly stacked bar chart (input/output/cache) ───────────
       (function () {
         var ctx = document.getElementById('chart-daily').getContext('2d');
-        var labels = d.byDay.map(function (r) { return r.date; });
+        var isHourly = d.period === 'day' && d.byHour && d.byHour.length > 0;
+        var src = isHourly ? d.byHour : d.byDay;
+        var labels = isHourly
+          ? d.byHour.map(function (r) { return r.hour + ':00'; })
+          : d.byDay.map(function (r) { return r.date; });
         new Chart(ctx, {
           type: 'bar',
           data: {
@@ -291,22 +356,22 @@ export function renderDashboard(data: DashboardData): string {
             datasets: [
               {
                 label: 'Output',
-                data: d.byDay.map(function (r) { return r.outputTokens; }),
+                data: src.map(function (r) { return r.outputTokens; }),
                 backgroundColor: '#f28e2b'
               },
               {
                 label: 'Input (non-cached)',
-                data: d.byDay.map(function (r) { return r.inputTokens; }),
+                data: src.map(function (r) { return r.inputTokens; }),
                 backgroundColor: '#4e79a7'
               },
               {
                 label: 'Cache Read',
-                data: d.byDay.map(function (r) { return r.cacheReadTokens; }),
+                data: src.map(function (r) { return r.cacheReadTokens; }),
                 backgroundColor: '#59a14f'
               },
               {
                 label: 'Cache Creation',
-                data: d.byDay.map(function (r) { return r.cacheCreationTokens; }),
+                data: src.map(function (r) { return r.cacheCreationTokens; }),
                 backgroundColor: '#e15759'
               }
             ]
@@ -472,6 +537,146 @@ export function renderDashboard(data: DashboardData): string {
             }]
           },
           options: chartOpts
+        });
+      }());
+
+      // ── 8. Cumulative API value vs plan fee ──────────────────────────────
+      (function () {
+        var el = document.getElementById('chart-cumulative');
+        if (!el || !d.byDay || d.byDay.length === 0) return;
+        var ctx = el.getContext('2d');
+        var labels = d.byDay.map(function (r) { return r.date; });
+        var cumulative = [];
+        var running = 0;
+        for (var i = 0; i < d.byDay.length; i++) {
+          running += d.byDay[i].estimatedCost;
+          cumulative.push(Math.round(running * 100) / 100);
+        }
+        var datasets = [{
+          label: 'Cumulative API Value ($)',
+          data: cumulative,
+          borderColor: '#4e79a7',
+          backgroundColor: 'rgba(78,121,167,0.15)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 2
+        }];
+        var planFee = d.summary.planFee;
+        if (planFee > 0) {
+          datasets.push({
+            label: 'Monthly Plan Fee ($' + planFee.toFixed(0) + ')',
+            data: labels.map(function () { return planFee; }),
+            borderColor: '#59a14f',
+            borderDash: [6, 3],
+            pointRadius: 0,
+            fill: false
+          });
+        }
+        new Chart(ctx, {
+          type: 'line',
+          data: { labels: labels, datasets: datasets },
+          options: Object.assign({}, chartOpts, {
+            scales: {
+              y: {
+                title: { display: true, text: 'USD ($)', color: '#888' },
+                ticks: { callback: function(v) { return '$' + v.toFixed(2); } }
+              }
+            }
+          })
+        });
+      }());
+
+      // ── 9. 5-hour usage windows ──────────────────────────────────────────
+      (function () {
+        var el = document.getElementById('chart-windows');
+        if (!el || !d.byWindow || d.byWindow.length === 0) return;
+        var ctx = el.getContext('2d');
+        var windows = d.byWindow.slice(0, 30).reverse(); // oldest first
+        var labels = windows.map(function (w) {
+          return new Date(w.windowStart).toISOString().slice(0, 16).replace('T', ' ');
+        });
+        var costs = windows.map(function (w) { return Math.round(w.totalCostEquivalent * 100) / 100; });
+        var bgColors = windows.map(function (w) { return w.throttled ? '#e15759' : '#4e79a7'; });
+        new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'API Value ($)',
+              data: costs,
+              backgroundColor: bgColors,
+            }]
+          },
+          options: Object.assign({}, chartOpts, {
+            plugins: Object.assign({}, chartOpts.plugins, {
+              legend: Object.assign({}, chartOpts.plugins.legend, {
+                display: false
+              }),
+              tooltip: {
+                callbacks: {
+                  afterLabel: function(ctx) {
+                    var w = windows[ctx.dataIndex];
+                    return w && w.throttled ? '⚠ Throttled' : '';
+                  }
+                }
+              }
+            }),
+            scales: {
+              y: {
+                title: { display: true, text: 'API Value ($)', color: '#888' },
+                ticks: { callback: function(v) { return '$' + v.toFixed(2); } }
+              },
+              x: { ticks: { maxRotation: 45, font: { size: 9 } } }
+            }
+          })
+        });
+      }());
+
+      // ── 10. Top conversations by cost ─────────────────────────────────────
+      (function () {
+        var el = document.getElementById('chart-conv-cost');
+        if (!el || !d.byConversationCost || d.byConversationCost.length === 0) return;
+        var ctx = el.getContext('2d');
+        var top = d.byConversationCost.slice(0, 15);
+        var labels = top.map(function (c) {
+          var parts = (c.projectPath || '').replace(/\\\\/g, '/').split('/');
+          var proj = parts[parts.length - 1] || c.projectPath;
+          return proj + ' (' + c.sessionId.slice(0, 6) + ')';
+        });
+        var costs = top.map(function (c) { return c.estimatedCost; });
+        var bgColors = top.map(function (_, i) { return COLORS[i % COLORS.length]; });
+        new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Est. API Cost ($)',
+              data: costs,
+              backgroundColor: bgColors
+            }]
+          },
+          options: Object.assign({}, chartOpts, {
+            indexAxis: 'y',
+            plugins: Object.assign({}, chartOpts.plugins, {
+              tooltip: {
+                callbacks: {
+                  afterLabel: function(ctx) {
+                    var c = top[ctx.dataIndex];
+                    var lines = ['Prompts: ' + c.promptCount];
+                    if (c.percentOfPlanFee > 0) lines.push(c.percentOfPlanFee.toFixed(1) + '% of plan fee');
+                    if (c.dominantModel) lines.push('Model: ' + c.dominantModel);
+                    return lines;
+                  }
+                }
+              }
+            }),
+            scales: {
+              x: {
+                title: { display: true, text: 'API Value ($)', color: '#888' },
+                ticks: { callback: function(v) { return '$' + v.toFixed(3); } }
+              }
+            }
+          })
         });
       }());
     }());

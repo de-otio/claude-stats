@@ -8,8 +8,7 @@ import { Store } from "../store/index.js";
 import { startServer } from "../server/index.js";
 
 const tmpDir = mkdtempSync(join(tmpdir(), "claude-stats-server-test-"));
-process.env["CLAUDE_STATS_DB"] = join(tmpDir, "test.db");
-const store = new Store();
+const store = new Store(join(tmpDir, "test.db"));
 let server: http.Server;
 let baseUrl: string;
 

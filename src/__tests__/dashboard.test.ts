@@ -38,6 +38,9 @@ function makeSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
     subscriptionType: null,
     thinkingBlocks: 0,
     sourceDeleted: false,
+    throttleEvents: 0,
+    activeDurationMs: null,
+    medianResponseTimeMs: null,
     ...overrides,
   };
 }
@@ -56,6 +59,10 @@ function makeMessage(overrides: Partial<MessageRecord> = {}): MessageRecord {
     cacheReadTokens: 4_000,
     tools: [],
     thinkingBlocks: 0,
+    serviceTier: null,
+    inferenceGeo: null,
+    ephemeral5mCacheTokens: 0,
+    ephemeral1hCacheTokens: 0,
     ...overrides,
   };
 }

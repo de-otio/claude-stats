@@ -97,6 +97,12 @@ export async function parseSessionFile(
   const toolUseCounts = new Map<string, number>();
   const modelsSet = new Set<string>();
 
+  // New accumulators for usage analysis
+  let throttleEvents = 0;
+  const allTimestamps: number[] = [];     // for active duration
+  const responseTimes: number[] = [];     // assistant_ts - user_ts pairs
+  let lastUserTimestamp: number | null = null;
+
   let lineNumber = 0;
   for (const { raw, offset } of linesToProcess) {
     lineNumber++;
@@ -127,7 +133,7 @@ export async function parseSessionFile(
     if (entry.permissionMode && !permissionMode)
       permissionMode = entry.permissionMode;
 
-    const ts = entry.timestamp ?? null;
+    const ts = toEpochMs(entry.timestamp);
     if (ts !== null) {
       if (firstTimestamp === null || ts < firstTimestamp) firstTimestamp = ts;
       if (lastTimestamp === null || ts > lastTimestamp) lastTimestamp = ts;
@@ -135,10 +141,15 @@ export async function parseSessionFile(
 
     const type = entry.type;
 
+    if (ts !== null) allTimestamps.push(ts);
+
     if (type === "queue-operation") {
       hasQueueOperation = true;
     } else if (type === "user") {
-      if (!entry.isMeta) promptCount++;
+      if (!entry.isMeta) {
+        promptCount++;
+        if (ts !== null) lastUserTimestamp = ts;
+      }
     } else if (type === "assistant") {
       assistantMessageCount++;
       const usage = entry.message?.usage;
@@ -146,9 +157,23 @@ export async function parseSessionFile(
 
       if (model) modelsSet.add(model);
 
+      // Compute response time for this assistant message
+      if (ts !== null && lastUserTimestamp !== null) {
+        responseTimes.push(ts - lastUserTimestamp);
+        lastUserTimestamp = null;
+      }
+
+      const msgOutputTokens = usage?.output_tokens ?? 0;
+      const msgStopReason = entry.message?.stop_reason;
+
+      // Throttle heuristic: truncated at suspiciously low output
+      if (msgStopReason === "max_tokens" && msgOutputTokens < 200) {
+        throttleEvents++;
+      }
+
       if (usage) {
         inputTokens += usage.input_tokens ?? 0;
-        outputTokens += usage.output_tokens ?? 0;
+        outputTokens += msgOutputTokens; // msgOutputTokens = usage.output_tokens ?? 0
         cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
         cacheReadTokens += usage.cache_read_input_tokens ?? 0;
         webSearchRequests += usage.server_tool_use?.web_search_requests ?? 0;
@@ -185,11 +210,15 @@ export async function parseSessionFile(
           model: model ?? null,
           stopReason: entry.message?.stop_reason ?? null,
           inputTokens: usage?.input_tokens ?? 0,
-          outputTokens: usage?.output_tokens ?? 0,
+          outputTokens: msgOutputTokens,
           cacheCreationTokens: usage?.cache_creation_input_tokens ?? 0,
           cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
           tools: msgTools,
           thinkingBlocks: thinkingBlockCount,
+          serviceTier: usage?.service_tier ?? null,
+          inferenceGeo: usage?.inference_geo ?? null,
+          ephemeral5mCacheTokens: usage?.cache_creation?.ephemeral_5m_input_tokens ?? 0,
+          ephemeral1hCacheTokens: usage?.cache_creation?.ephemeral_1h_input_tokens ?? 0,
         });
       }
     }
@@ -198,6 +227,28 @@ export async function parseSessionFile(
   const toolUseCountsArr: ToolUseCount[] = Array.from(
     toolUseCounts.entries()
   ).map(([name, count]) => ({ name, count }));
+
+  // Compute active session duration, excluding idle gaps > 30 minutes
+  let activeDurationMs: number | null = null;
+  if (allTimestamps.length >= 2) {
+    const sorted = allTimestamps.slice().sort((a, b) => a - b);
+    let active = 0;
+    for (let i = 1; i < sorted.length; i++) {
+      const gap = sorted[i]! - sorted[i - 1]!;
+      if (gap < 30 * 60_000) active += gap;
+    }
+    activeDurationMs = active;
+  }
+
+  // Compute median response time (assistant latency after user prompt)
+  let medianResponseTimeMs: number | null = null;
+  if (responseTimes.length > 0) {
+    const sorted = responseTimes.slice().sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    medianResponseTimeMs = sorted.length % 2 === 0
+      ? Math.round((sorted[mid - 1]! + sorted[mid]!) / 2)
+      : sorted[mid]!;
+  }
 
   const session: SessionRecord | null = sessionId
     ? {
@@ -227,6 +278,9 @@ export async function parseSessionFile(
         subscriptionType: null,
         thinkingBlocks: totalThinkingBlocks,
         sourceDeleted: false,
+        throttleEvents,
+        activeDurationMs,
+        medianResponseTimeMs,
       }
     : null;
 
@@ -240,4 +294,15 @@ function isValidJson(s: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Normalise a raw timestamp value to epoch-milliseconds.
+ * Modern Claude Code emits ISO-8601 strings; older versions emitted numbers.
+ * Returns null for missing, non-finite, or unparseable values.
+ */
+export function toEpochMs(raw: string | number | null | undefined): number | null {
+  if (raw == null) return null;
+  const ms = typeof raw === "number" ? raw : Date.parse(raw);
+  return isFinite(ms) ? ms : null;
 }

@@ -165,6 +165,9 @@ describe("printSummary", () => {
     subscriptionType: null,
     thinkingBlocks: 0,
     sourceDeleted: false,
+    throttleEvents: 0,
+    activeDurationMs: null,
+    medianResponseTimeMs: null,
     });
 
     printSummary(store, { timezone: "UTC" });
@@ -204,6 +207,9 @@ describe("printSummary", () => {
     subscriptionType: null,
     thinkingBlocks: 0,
     sourceDeleted: false,
+    throttleEvents: 0,
+    activeDurationMs: null,
+    medianResponseTimeMs: null,
     });
 
     printSummary(store, { period: "day", timezone: "UTC" });
@@ -239,6 +245,9 @@ describe("printSummary", () => {
       subscriptionType: null,
       thinkingBlocks: 0,
       sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: null,
+      medianResponseTimeMs: null,
     });
 
     printSummary(store, { timezone: "UTC" });
@@ -275,6 +284,9 @@ describe("printSummary", () => {
     subscriptionType: null,
     thinkingBlocks: 0,
     sourceDeleted: false,
+    throttleEvents: 0,
+    activeDurationMs: null,
+    medianResponseTimeMs: null,
       });
     }
 
@@ -311,11 +323,14 @@ describe("printSummary", () => {
       subscriptionType: null,
       thinkingBlocks: 0,
       sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: null,
+      medianResponseTimeMs: null,
     });
     store.upsertMessages([
-      { uuid: "sr-m1", sessionId: "stop-sess-1", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0 },
-      { uuid: "sr-m2", sessionId: "stop-sess-1", timestamp: 1001, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0 },
-      { uuid: "sr-m3", sessionId: "stop-sess-1", timestamp: 1002, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "tool_use", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0 },
+      { uuid: "sr-m1", sessionId: "stop-sess-1", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
+      { uuid: "sr-m2", sessionId: "stop-sess-1", timestamp: 1001, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
+      { uuid: "sr-m3", sessionId: "stop-sess-1", timestamp: 1002, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "tool_use", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
     ]);
 
     printSummary(store, { timezone: "UTC" });
@@ -354,10 +369,13 @@ describe("printSummary", () => {
       subscriptionType: null,
       thinkingBlocks: 0,
       sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: null,
+      medianResponseTimeMs: null,
     });
     store.upsertMessages([
-      { uuid: "tr-m1", sessionId: "trunc-sess-1", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0 },
-      { uuid: "tr-m2", sessionId: "trunc-sess-1", timestamp: 1001, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "max_tokens", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0 },
+      { uuid: "tr-m1", sessionId: "trunc-sess-1", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
+      { uuid: "tr-m2", sessionId: "trunc-sess-1", timestamp: 1001, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "max_tokens", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
     ]);
 
     printSummary(store, { timezone: "UTC" });
@@ -452,6 +470,9 @@ describe("printSummary — Source line", () => {
         subscriptionType: null,
         thinkingBlocks: 0,
         sourceDeleted: false,
+        throttleEvents: 0,
+        activeDurationMs: null,
+        medianResponseTimeMs: null,
       });
     }
     store.upsertSession({
@@ -481,6 +502,9 @@ describe("printSummary — Source line", () => {
       subscriptionType: null,
       thinkingBlocks: 0,
       sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: null,
+      medianResponseTimeMs: null,
     });
 
     printSummary(store, { timezone: "UTC" });
@@ -547,6 +571,9 @@ describe("printSessionList", () => {
       subscriptionType: null,
       thinkingBlocks: 0,
       sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: null,
+      medianResponseTimeMs: null,
     });
 
     printSessionList(store, { timezone: "UTC" });
@@ -609,10 +636,13 @@ describe("printSessionDetail", () => {
       subscriptionType: null,
       thinkingBlocks: 0,
       sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: null,
+      medianResponseTimeMs: null,
     });
     store.upsertMessages([
-      { uuid: "d-m1", sessionId: "detail-sess-1", timestamp: 1_700_000_000_000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "tool_use", inputTokens: 2_000, outputTokens: 500, cacheCreationTokens: 100, cacheReadTokens: 1_500, tools: ["Read"], thinkingBlocks: 1 },
-      { uuid: "d-m2", sessionId: "detail-sess-1", timestamp: 1_700_000_100_000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 3_000, outputTokens: 500, cacheCreationTokens: 100, cacheReadTokens: 1_500, tools: [], thinkingBlocks: 0 },
+      { uuid: "d-m1", sessionId: "detail-sess-1", timestamp: 1_700_000_000_000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "tool_use", inputTokens: 2_000, outputTokens: 500, cacheCreationTokens: 100, cacheReadTokens: 1_500, tools: ["Read"], thinkingBlocks: 1, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
+      { uuid: "d-m2", sessionId: "detail-sess-1", timestamp: 1_700_000_100_000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 3_000, outputTokens: 500, cacheCreationTokens: 100, cacheReadTokens: 1_500, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 },
     ]);
 
     printSessionDetail(store, "detail-sess-1", {});
@@ -672,6 +702,9 @@ describe("printSummary — Thinking line", () => {
       subscriptionType: null,
       thinkingBlocks: 7,
       sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: null,
+      medianResponseTimeMs: null,
     });
 
     printSummary(store, { timezone: "UTC" });
@@ -768,6 +801,9 @@ describe("printTrend", () => {
       subscriptionType: null,
       thinkingBlocks: 0,
       sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: null,
+      medianResponseTimeMs: null,
     };
   }
 
