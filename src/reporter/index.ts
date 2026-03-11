@@ -18,6 +18,8 @@ export interface ReportOptions {
   includeCI?: boolean;
   /** Monthly plan fee in USD for ROI calculations (0 = disabled). */
   planFee?: number;
+  /** Plan type string (e.g. "pro", "max_5x") used as fallback when telemetry subscription_type is absent. */
+  planType?: string;
 }
 
 export function formatEntrypoint(ep: string): string {

@@ -119,20 +119,20 @@ describe("lookupPlanFee", () => {
     expect(lookupPlanFee("max_20x")).toBe(200);
     expect(lookupPlanFee("team")).toBe(25);
     expect(lookupPlanFee("team_standard")).toBe(25);
-    expect(lookupPlanFee("team_premium")).toBe(150);
+    expect(lookupPlanFee("team_premium")).toBe(125);
   });
 
   it("normalizes case and separators", () => {
     expect(lookupPlanFee("Pro")).toBe(20);
     expect(lookupPlanFee("MAX-5X")).toBe(100);
     expect(lookupPlanFee("Max 20x")).toBe(200);
-    expect(lookupPlanFee("Team-Premium")).toBe(150);
+    expect(lookupPlanFee("Team-Premium")).toBe(125);
   });
 
   it("matches by prefix for variants", () => {
     expect(lookupPlanFee("pro_annual")).toBe(20);
     expect(lookupPlanFee("max_5x_monthly")).toBe(100);
-    expect(lookupPlanFee("team_premium_annual")).toBe(150);
+    expect(lookupPlanFee("team_premium_annual")).toBe(125);
   });
 
   it("returns null for unknown types", () => {

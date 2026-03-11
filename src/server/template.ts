@@ -181,19 +181,7 @@ export function renderDashboard(data: DashboardData): string {
     <button class="tab-btn" data-tab="plan">Plan</button>
     ${data.contextAnalysis ? `<button class="tab-btn" data-tab="context">Context</button>` : ""}
     ${data.modelEfficiency ? `<button class="tab-btn" data-tab="efficiency">Efficiency</button>` : ""}
-  </div>
-
-  <div class="pricing-panel" id="pricing-panel">
-    <h3>Token Pricing (per 1M tokens)</h3>
-    <table>
-      <thead>
-        <tr><th>Model</th><th>Input</th><th>Output</th><th>Cache Read</th><th>Cache Write</th></tr>
-      </thead>
-      <tbody>
-        ${pricingRows}
-      </tbody>
-    </table>
-    <div class="pricing-source">Source: Anthropic API pricing &mdash; last updated ${PRICING_VERIFIED_DATE} (auto-refreshed weekly). Costs shown are equivalent API rates, not subscription charges.</div>
+    <button class="tab-btn" data-tab="settings">Settings</button>
   </div>
 
   <!-- ═══════════════ TAB: Overview ═══════════════ -->
@@ -335,15 +323,45 @@ export function renderDashboard(data: DashboardData): string {
       const multiAccount = pu.byAccount.length > 1;
       return `
     <div class="summary-bar" style="margin-bottom:1rem;">
+      ${(() => {
+        const planLabels: Record<string, string> = { pro: 'Pro', max_5x: 'Max 5x', max_20x: 'Max 20x', team_standard: 'Team Standard', team_premium: 'Team Premium' };
+        // Always show accounts — prefer email over UUID
+        const accounts = pu.byAccount.filter(a => a.accountId !== '(unknown)');
+        if (accounts.length > 0) {
+          return accounts.map(a => {
+            const displayName = a.emailAddress || a.accountId;
+            const planName = a.subscriptionType ? (planLabels[a.subscriptionType] || a.subscriptionType) : null;
+            return `
+      <div class="summary-card" style="border-color:#4e79a7;">
+        <div class="label">Account</div>
+        <div class="value" style="font-size:0.8rem;color:#4e79a7;">${displayName}</div>
+        <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${planName ? planName + (a.detectedPlanFee ? ` ($${a.detectedPlanFee}/mo)` : '') : 'Plan not detected'}</div>
+      </div>`;
+          }).join('');
+        }
+        // No known accounts — show inferred plan from fee if available
+        if (hasPlanBudget) {
+          const monthly = Math.round(pu.weeklyPlanBudget * 4.33);
+          const feeMap: Record<number, string> = { 20: 'Pro', 25: 'Team Standard', 100: 'Max 5x', 125: 'Team Premium', 200: 'Max 20x' };
+          const planName = feeMap[monthly] || 'Custom';
+          return `
+      <div class="summary-card" style="border-color:#4e79a7;">
+        <div class="label">Current Plan</div>
+        <div class="value" style="font-size:0.85rem;color:#4e79a7;">${planName} ($${monthly}/mo)</div>
+        ${feeSource ? `<div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${feeSource}</div>` : ''}
+      </div>`;
+        }
+        return '';
+      })()}
       <div class="summary-card" style="border-color:${verdictColor};">
         <div class="label">Plan Verdict</div>
         <div class="value" style="font-size:0.95rem;color:${verdictColor};">${verdictLabel}</div>
-        ${feeSource ? `<div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${feeSource}</div>` : `<div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">Set --plan-fee or enrich telemetry</div>`}
+        ${!hasPlanBudget ? `<div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">Set --plan-fee or enrich telemetry</div>` : ''}
       </div>
       ${pu.recommendedPlan ? `
       <div class="summary-card" style="border-color:#b07aa1;">
         <div class="label">Suggested Plan</div>
-        <div class="value" style="font-size:0.95rem;color:#b07aa1;">${({pro:'Pro ($20)',team_standard:'Team Std ($25)',max5:'Max 5x ($100)',team_premium:'Team Premium ($150)',max20:'Max 20x ($200)'})[pu.recommendedPlan!] || pu.recommendedPlan}</div>
+        <div class="value" style="font-size:0.95rem;color:#b07aa1;">${({pro:'Pro ($20)',team_standard:'Team Std ($25)',max_5x:'Max 5x ($100)',team_premium:'Team Premium ($125)',max_20x:'Max 20x ($200)'})[pu.recommendedPlan!] || pu.recommendedPlan}</div>
         <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">based on avg $${pu.avgWeeklyCost.toFixed(2)}/week API value</div>
       </div>
       ` : ''}
@@ -379,9 +397,10 @@ export function renderDashboard(data: DashboardData): string {
       </div>
       ${pu.byAccount.map(acct => {
         const acctVerdictColor = acct.planVerdict === 'good-value' ? '#59a14f' : acct.planVerdict === 'underusing' ? '#f28e2b' : '#888';
+        const acctDisplayName = acct.emailAddress || acct.accountId;
         return `
       <div class="summary-card" style="border-color:${acctVerdictColor};">
-        <div class="label">${acct.accountId}</div>
+        <div class="label">${acctDisplayName}</div>
         <div class="value" style="font-size:0.85rem;">$${acct.estimatedCost.toFixed(2)}</div>
         <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${acct.subscriptionType ?? 'unknown plan'} &bull; ${acct.sessions} sessions${acct.detectedPlanFee ? ` &bull; $${acct.detectedPlanFee}/mo` : ''}</div>
         <div style="font-size:0.55rem;color:${acctVerdictColor};margin-top:0.1rem;">${acct.planVerdict === 'good-value' ? 'Good Value' : acct.planVerdict === 'underusing' ? 'Underusing' : 'No Plan'}</div>
@@ -391,15 +410,17 @@ export function renderDashboard(data: DashboardData): string {
     ` : ''}
 
     <div class="charts-grid">
+      ${data.byWindow.length > 0 ? `
       <div class="chart-card" style="grid-column: 1 / -1;">
-        <h2>Weekly API Value vs Plan Tiers</h2>
-        <canvas id="chart-weekly-plan"></canvas>
+        <h2>Window Limit Usage %</h2>
+        <canvas id="chart-window-limit-pct"></canvas>
+      </div>
+      ` : ''}
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h2>Weekly Activity</h2>
+        <canvas id="chart-weekly-activity"></canvas>
       </div>
       ${data.byWindow.length > 0 ? `
-      <div class="chart-card">
-        <h2>5-Hour Window Utilization</h2>
-        <canvas id="chart-window-util"></canvas>
-      </div>
       <div class="chart-card">
         <h2>Windows Per Week</h2>
         <canvas id="chart-windows-per-week"></canvas>
@@ -465,7 +486,10 @@ export function renderDashboard(data: DashboardData): string {
       <div class="chart-card">
         <h2>Compaction Events</h2>
         ${data.contextAnalysis.compactionEvents.length > 0 ? `
-        <canvas id="chart-compaction-events"></canvas>
+        <div style="text-align:center; padding:1.5rem 0;">
+          <div style="font-size:2.5rem; font-weight:700; color:#4e79a7;">${data.contextAnalysis.compactionEvents.length}</div>
+          <div style="font-size:0.75rem; color:#888; margin-top:0.25rem;">compactions detected across ${new Set(data.contextAnalysis.compactionEvents.map(e => e.sessionId)).size} sessions</div>
+        </div>
         ` : `<p style="color:#888; font-size:0.8rem; text-align:center; padding:2rem 0;">No compaction events detected. Consider using /compact in long conversations to reduce context size and cost.</p>`}
       </div>
     </div>
@@ -542,6 +566,73 @@ export function renderDashboard(data: DashboardData): string {
   </div>
   ` : ""}
 
+  <!-- ═══════════════ TAB: Settings ═══════════════ -->
+  <div class="tab-panel" id="tab-settings">
+    <div class="summary-bar" style="margin-bottom:1rem;">
+      <div class="summary-card" style="grid-column: 1 / -1; text-align: left; padding: 1rem;">
+        <h2 style="margin:0 0 0.75rem 0; font-size:1rem; color:#a0c4ff;">Configuration</h2>
+        <p style="font-size:0.75rem; color:#aaa; margin:0 0 1rem 0;">Settings are saved to <code style="background:#0f3460;padding:0.15rem 0.3rem;border-radius:3px;color:#ccc;">~/.claude-stats/config.json</code></p>
+
+        <form id="settings-form" style="display:flex; flex-direction:column; gap:1rem; max-width:400px;">
+          <div>
+            <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">Plan Type</label>
+            <select id="cfg-plan-type" style="width:100%; padding:0.4rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.8rem;">
+              <option value="">Not set (auto-detect)</option>
+              <option value="pro">Pro ($20/mo)</option>
+              <option value="max_5x">Max 5x ($100/mo)</option>
+              <option value="max_20x">Max 20x ($200/mo)</option>
+              <option value="team_standard">Team Standard ($25/mo)</option>
+              <option value="team_premium">Team Premium ($125/mo)</option>
+              <option value="custom">Custom</option>
+            </select>
+            <div style="font-size:0.6rem; color:#999; margin-top:0.2rem;">Auto-detect relies on intermittent telemetry data and is often unable to determine your plan. Setting this manually is recommended.</div>
+          </div>
+          <div>
+            <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">Monthly Fee (USD)</label>
+            <input id="cfg-monthly-fee" type="number" min="0" step="1" placeholder="Auto from plan type" style="width:100%; padding:0.4rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.8rem; box-sizing:border-box;">
+            <div style="font-size:0.6rem; color:#999; margin-top:0.2rem;">Override the default fee for your plan type, or set a custom amount.</div>
+          </div>
+
+          <div style="border-top:1px solid #2a2a4a; padding-top:1rem; margin-top:0.5rem;">
+            <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.5rem;">Cost Alert Thresholds (USD)</label>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem;">
+              <div>
+                <label style="display:block; font-size:0.65rem; color:#aaa; margin-bottom:0.2rem;">Daily</label>
+                <input id="cfg-threshold-day" type="number" min="0" step="0.01" placeholder="—" style="width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;">
+              </div>
+              <div>
+                <label style="display:block; font-size:0.65rem; color:#aaa; margin-bottom:0.2rem;">Weekly</label>
+                <input id="cfg-threshold-week" type="number" min="0" step="0.01" placeholder="—" style="width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;">
+              </div>
+              <div>
+                <label style="display:block; font-size:0.65rem; color:#aaa; margin-bottom:0.2rem;">Monthly</label>
+                <input id="cfg-threshold-month" type="number" min="0" step="0.01" placeholder="—" style="width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;">
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:0.75rem; margin-top:0.5rem;">
+            <button type="submit" style="padding:0.5rem 1.5rem; background:#4e79a7; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem;">Save</button>
+            <span id="settings-status" style="font-size:0.75rem; color:#59a14f; opacity:0;"></span>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="pricing-panel" id="pricing-panel">
+    <h3>Token Pricing (per 1M tokens)</h3>
+    <table>
+      <thead>
+        <tr><th>Model</th><th>Input</th><th>Output</th><th>Cache Read</th><th>Cache Write</th></tr>
+      </thead>
+      <tbody>
+        ${pricingRows}
+      </tbody>
+    </table>
+    <div class="pricing-source">Source: Anthropic API pricing &mdash; last updated ${PRICING_VERIFIED_DATE} (auto-refreshed weekly). Costs shown are equivalent API rates, not subscription charges.</div>
+  </div>
+
   <div class="footer">Generated ${data.generated} &bull; Timezone: ${data.timezone}</div>
 
   <script>window.__DASHBOARD__ = ${jsonData};</script>
@@ -591,13 +682,11 @@ export function renderDashboard(data: DashboardData): string {
       var tabBtns = document.querySelectorAll('.tab-btn');
       var tabPanels = document.querySelectorAll('.tab-panel');
 
-      var costTabs = { overview: true, sessions: true, plan: true, efficiency: true };
       var pricingPanel = document.getElementById('pricing-panel');
-
       function switchTab(tabId) {
         tabBtns.forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tab') === tabId); });
         tabPanels.forEach(function (p) { p.classList.toggle('active', p.id === 'tab-' + tabId); });
-        if (pricingPanel) pricingPanel.classList.toggle('visible', !!costTabs[tabId]);
+        if (pricingPanel) pricingPanel.classList.toggle('visible', tabId === 'overview');
         window.location.hash = tabId;
         if (!initialized[tabId]) {
           initialized[tabId] = true;
@@ -628,6 +717,7 @@ export function renderDashboard(data: DashboardData): string {
           case 'plan': initPlan(); break;
           case 'context': initContext(); break;
           case 'efficiency': initEfficiency(); break;
+          case 'settings': initSettings(); break;
         }
       }
 
@@ -783,26 +873,49 @@ export function renderDashboard(data: DashboardData): string {
 
       // ═══════════════ SESSIONS CHARTS ═══════════════
       function initSessions() {
-        // Usage windows
+        // Usage windows (stacked by model, showing tokens)
         (function () {
           var el = document.getElementById('chart-windows');
           if (!el || !d.byWindow || d.byWindow.length === 0) return;
           var ctx = el.getContext('2d');
           var windows = d.byWindow.slice(0, 30).reverse();
           var labels = windows.map(function (w) { return new Date(w.windowStart).toISOString().slice(0, 16).replace('T', ' '); });
-          var costs = windows.map(function (w) { return Math.round(w.totalCostEquivalent * 100) / 100; });
-          var bgColors = windows.map(function (w) { return w.throttled ? '#e15759' : '#4e79a7'; });
+          // Collect all unique model names across windows
+          var modelSet = {};
+          for (var i = 0; i < windows.length; i++) {
+            var tbm = windows[i].tokensByModel || {};
+            for (var m in tbm) { if (tbm.hasOwnProperty(m)) modelSet[m] = true; }
+          }
+          var models = Object.keys(modelSet).sort();
+          if (models.length === 0) {
+            // Fallback: no per-model data, show total tokens from prompt count estimate
+            return;
+          }
+          var datasets = [];
+          for (var mi = 0; mi < models.length; mi++) {
+            var model = models[mi];
+            // Shorten model name for legend (e.g. "claude-sonnet-4-20250514" -> "sonnet-4")
+            var short = model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
+            var data = windows.map(function (w) {
+              var tbm = w.tokensByModel || {};
+              return tbm[model] || 0;
+            });
+            datasets.push({
+              label: short,
+              data: data,
+              backgroundColor: COLORS[mi % COLORS.length]
+            });
+          }
           new Chart(ctx, {
             type: 'bar',
-            data: { labels: labels, datasets: [{ label: 'API Value ($)', data: costs, backgroundColor: bgColors }] },
+            data: { labels: labels, datasets: datasets },
             options: Object.assign({}, chartOpts, {
               plugins: Object.assign({}, chartOpts.plugins, {
-                legend: { display: false },
-                tooltip: { callbacks: { afterLabel: function(ctx) { var w = windows[ctx.dataIndex]; return w && w.throttled ? '⚠ Throttled' : ''; } } }
+                tooltip: { callbacks: { afterTitle: function(items) { var w = windows[items[0].dataIndex]; return w && w.throttled ? '⚠ Throttled' : ''; } } }
               }),
               scales: {
-                y: { title: { display: true, text: 'API Value ($)', color: '#888' }, ticks: { callback: function(v) { return '$' + v.toFixed(2); } } },
-                x: { ticks: { maxRotation: 45, font: { size: 9 } } }
+                x: { stacked: true, ticks: { maxRotation: 45, font: { size: 9 } } },
+                y: { stacked: true, title: { display: true, text: 'Tokens', color: '#888' }, ticks: { callback: function(v) { return v >= 1000000 ? (v / 1000000).toFixed(1) + 'M' : v >= 1000 ? (v / 1000).toFixed(0) + 'K' : v; } } }
               }
             })
           });
@@ -836,90 +949,73 @@ export function renderDashboard(data: DashboardData): string {
         if (!d.planUtilization || !d.byWeek || d.byWeek.length === 0) return;
         var pu = d.planUtilization;
 
-        // 1. Weekly API Value vs Plan Tiers
+        // 1. Weekly Activity (sessions + prompts)
         (function () {
-          var el = document.getElementById('chart-weekly-plan');
+          var el = document.getElementById('chart-weekly-activity');
           if (!el) return;
           var ctx = el.getContext('2d');
           var labels = d.byWeek.map(function (w) { return w.week; });
-          var costs = d.byWeek.map(function (w) { return w.estimatedCost; });
-          var datasets = [
-            { label: 'Weekly API Value ($)', data: costs, backgroundColor: '#4e79a7', borderColor: '#4e79a7', type: 'bar' }
-          ];
-          // Plan tier reference lines (weekly equivalent)
-          var tierLines = [
-            { name: 'Pro ($20/mo)', fee: 20, color: '#59a14f' },
-            { name: 'Team Std ($25/mo)', fee: 25, color: '#76b7b2' },
-            { name: 'Max 5x ($100/mo)', fee: 100, color: '#f28e2b' },
-            { name: 'Team Premium ($150/mo)', fee: 150, color: '#b07aa1' },
-            { name: 'Max 20x ($200/mo)', fee: 200, color: '#e15759' }
-          ];
-          for (var t = 0; t < tierLines.length; t++) {
-            var weeklyBudget = tierLines[t].fee / 4.33;
-            datasets.push({
-              label: tierLines[t].name + ' (~$' + weeklyBudget.toFixed(0) + '/wk)',
-              data: labels.map(function () { return Math.round(weeklyBudget * 100) / 100; }),
-              borderColor: tierLines[t].color,
-              backgroundColor: 'transparent',
-              type: 'line',
-              borderDash: [6, 3],
-              pointRadius: 0,
-              fill: false
-            });
-          }
+          var sessions = d.byWeek.map(function (w) { return w.sessions; });
+          var prompts = d.byWeek.map(function (w) { return w.prompts; });
           new Chart(ctx, {
-            type: 'bar', data: { labels: labels, datasets: datasets },
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [
+                { label: 'Sessions', data: sessions, backgroundColor: '#4e79a7', yAxisID: 'y' },
+                { label: 'Prompts', data: prompts, backgroundColor: '#76b7b2', yAxisID: 'y1' }
+              ]
+            },
             options: Object.assign({}, chartOpts, {
               scales: {
-                y: { title: { display: true, text: 'API Value ($)', color: '#888' }, ticks: { callback: function(v) { return '$' + v.toFixed(0); } } },
+                y: { position: 'left', title: { display: true, text: 'Sessions', color: '#888' }, beginAtZero: true },
+                y1: { position: 'right', title: { display: true, text: 'Prompts', color: '#888' }, beginAtZero: true, grid: { drawOnChartArea: false } },
                 x: { ticks: { maxRotation: 45, font: { size: 9 } } }
               }
             })
           });
         }());
 
-        // 2. 5-Hour Window Utilization (histogram of window costs)
+        // 1b. Window Limit Usage % (per-window usage as % of estimated limit)
         (function () {
-          var el = document.getElementById('chart-window-util');
+          var el = document.getElementById('chart-window-limit-pct');
           if (!el || !d.byWindow || d.byWindow.length === 0) return;
-          var ctx = el.getContext('2d');
-          var windowCosts = d.byWindow.map(function (w) { return w.totalCostEquivalent; }).sort(function (a, b) { return a - b; });
-          // Create histogram buckets
-          var maxCost = Math.max.apply(null, windowCosts);
-          var bucketSize = maxCost > 0 ? Math.max(0.5, Math.ceil(maxCost / 10 * 2) / 2) : 1;
-          var buckets = [];
-          var bucketLabels = [];
-          for (var b = 0; b < maxCost + bucketSize; b += bucketSize) {
-            var lo = b; var hi = b + bucketSize;
-            var count = 0;
-            for (var j = 0; j < windowCosts.length; j++) {
-              if (windowCosts[j] >= lo && windowCosts[j] < hi) count++;
+          var limit = pu.estimatedWindowLimit;
+          if (!limit || limit <= 0) {
+            // Fallback: use max observed window cost as 100%
+            var maxObs = 0;
+            for (var i = 0; i < d.byWindow.length; i++) {
+              if (d.byWindow[i].totalCostEquivalent > maxObs) maxObs = d.byWindow[i].totalCostEquivalent;
             }
-            if (count > 0 || buckets.length > 0) {
-              buckets.push(count);
-              bucketLabels.push('$' + lo.toFixed(2) + '-' + hi.toFixed(2));
-            }
+            limit = maxObs > 0 ? maxObs : 1;
           }
+          var ctx = el.getContext('2d');
+          // Sort windows chronologically (oldest first)
+          var sorted = d.byWindow.slice().sort(function (a, b) { return a.windowStart - b.windowStart; });
+          var labels = sorted.map(function (w) { return new Date(w.windowStart).toISOString().slice(5, 16).replace('T', ' '); });
+          var pcts = sorted.map(function (w) { return Math.round((w.totalCostEquivalent / limit) * 1000) / 10; });
+          var bgColors = sorted.map(function (w) { return w.throttled ? '#e15759' : pcts[sorted.indexOf(w)] >= 80 ? '#f28e2b' : '#4e79a7'; });
           new Chart(ctx, {
             type: 'bar',
             data: {
-              labels: bucketLabels,
-              datasets: [{ label: 'Windows', data: buckets, backgroundColor: '#76b7b2' }]
+              labels: labels,
+              datasets: [{ label: 'Usage %', data: pcts, backgroundColor: bgColors }]
             },
             options: Object.assign({}, chartOpts, {
               plugins: Object.assign({}, chartOpts.plugins, {
                 legend: { display: false },
-                title: { display: true, text: 'Distribution of cost per 5h window (avg: $' + pu.avgWindowCost.toFixed(2) + ')', color: '#888', font: { size: 11 } }
+                title: { display: true, text: limit === pu.estimatedWindowLimit ? 'Per-window usage vs estimated limit ($' + limit.toFixed(2) + ')' : 'Per-window usage (relative to peak)', color: '#888', font: { size: 10 } },
+                tooltip: { callbacks: { label: function(ctx) { return ctx.parsed.y.toFixed(1) + '% of window limit'; } } }
               }),
               scales: {
-                x: { title: { display: true, text: 'API Value per Window', color: '#888' }, ticks: { font: { size: 9 }, maxRotation: 45 } },
-                y: { title: { display: true, text: 'Window Count', color: '#888' } }
+                x: { ticks: { maxRotation: 45, font: { size: 9 } } },
+                y: { title: { display: true, text: 'Usage %', color: '#888' }, ticks: { callback: function(v) { return v + '%'; } } }
               }
             })
           });
         }());
 
-        // 3. Windows per week trend
+        // 2. Windows per week trend
         (function () {
           var el = document.getElementById('chart-windows-per-week');
           if (!el) return;
@@ -1101,50 +1197,6 @@ export function renderDashboard(data: DashboardData): string {
           });
         })();
 
-        // 4. Compaction Events scatter
-        (function () {
-          var el = document.getElementById('chart-compaction-events');
-          if (!el || ctx.compactionEvents.length === 0) return;
-          var c = el.getContext('2d');
-          new Chart(c, {
-            type: 'bar',
-            data: {
-              labels: ctx.compactionEvents.map(function (e, i) { return 'Event ' + (i + 1); }),
-              datasets: [
-                {
-                  label: 'Before Compaction',
-                  data: ctx.compactionEvents.map(function (e) { return e.tokensBefore; }),
-                  backgroundColor: '#e1575966',
-                  borderRadius: 3,
-                },
-                {
-                  label: 'After Compaction',
-                  data: ctx.compactionEvents.map(function (e) { return e.tokensAfter; }),
-                  backgroundColor: '#59a14f88',
-                  borderRadius: 3,
-                }
-              ]
-            },
-            options: {
-              responsive: true,
-              plugins: {
-                legend: { labels: { color: '#aaa', font: { size: 10 } } },
-                tooltip: {
-                  callbacks: {
-                    afterLabel: function (t) {
-                      var e = ctx.compactionEvents[t.dataIndex];
-                      return 'At prompt #' + e.promptPosition + ' (' + e.reductionPercent + '% reduction)';
-                    }
-                  }
-                }
-              },
-              scales: {
-                x: { ticks: { color: '#aaa' }, grid: { color: '#0f346040' } },
-                y: { title: { display: true, text: 'Input Tokens', color: '#888' }, ticks: { color: '#aaa', callback: function (v) { return (v / 1000).toFixed(0) + 'K'; } }, grid: { color: '#0f346040' }, beginAtZero: true }
-              }
-            }
-          });
-        })();
       }
 
       // ═══════════════ EFFICIENCY CHARTS ═══════════════
@@ -1239,6 +1291,111 @@ export function renderDashboard(data: DashboardData): string {
             })
           });
         }());
+      }
+
+      // ═══════════════ SETTINGS ═══════════════
+
+      // Config I/O abstraction: uses postMessage in VS Code webview, fetch in browser
+      var _configCallbacks = {};
+      var _configCallbackId = 0;
+
+      function loadConfigAsync(callback) {
+        if (typeof window.__vscodeApi !== 'undefined') {
+          var id = ++_configCallbackId;
+          _configCallbacks[id] = callback;
+          window.__vscodeApi.postMessage({ command: 'getConfig', callbackId: id });
+        } else {
+          fetch('/api/config')
+            .then(function (r) { return r.json(); })
+            .then(function (cfg) { callback(null, cfg); })
+            .catch(function (err) { callback(err); });
+        }
+      }
+
+      function saveConfigAsync(config, callback) {
+        if (typeof window.__vscodeApi !== 'undefined') {
+          var id = ++_configCallbackId;
+          _configCallbacks[id] = callback;
+          window.__vscodeApi.postMessage({ command: 'saveConfig', config: config, callbackId: id });
+        } else {
+          fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+          })
+          .then(function (r) { return r.json(); })
+          .then(function (result) { callback(null, result); })
+          .catch(function (err) { callback(err); });
+        }
+      }
+
+      // Handle responses from VS Code extension
+      window.addEventListener('message', function (event) {
+        var msg = event.data;
+        if (msg && msg.command === 'configResult' && msg.callbackId) {
+          var cb = _configCallbacks[msg.callbackId];
+          delete _configCallbacks[msg.callbackId];
+          if (cb) cb(msg.error || null, msg.data);
+        }
+      });
+
+      function populateSettingsForm(cfg) {
+        var planType = document.getElementById('cfg-plan-type');
+        var monthlyFee = document.getElementById('cfg-monthly-fee');
+        var threshDay = document.getElementById('cfg-threshold-day');
+        var threshWeek = document.getElementById('cfg-threshold-week');
+        var threshMonth = document.getElementById('cfg-threshold-month');
+
+        if (cfg.plan && cfg.plan.type) planType.value = cfg.plan.type;
+        if (cfg.plan && cfg.plan.monthly_fee != null) monthlyFee.value = cfg.plan.monthly_fee;
+        if (cfg.costThresholds) {
+          if (cfg.costThresholds.day != null) threshDay.value = cfg.costThresholds.day;
+          if (cfg.costThresholds.week != null) threshWeek.value = cfg.costThresholds.week;
+          if (cfg.costThresholds.month != null) threshMonth.value = cfg.costThresholds.month;
+        }
+      }
+
+      function initSettings() {
+        loadConfigAsync(function (err, cfg) {
+          if (!err && cfg) populateSettingsForm(cfg);
+        });
+
+        document.getElementById('settings-form').addEventListener('submit', function (e) {
+          e.preventDefault();
+          var planType = document.getElementById('cfg-plan-type').value;
+          var monthlyFee = document.getElementById('cfg-monthly-fee').value;
+          var threshDay = document.getElementById('cfg-threshold-day').value;
+          var threshWeek = document.getElementById('cfg-threshold-week').value;
+          var threshMonth = document.getElementById('cfg-threshold-month').value;
+
+          var config = {};
+          config.plan = {};
+          if (planType) config.plan.type = planType;
+          if (monthlyFee) config.plan.monthly_fee = parseFloat(monthlyFee);
+          config.costThresholds = {};
+          if (threshDay) config.costThresholds.day = parseFloat(threshDay);
+          if (threshWeek) config.costThresholds.week = parseFloat(threshWeek);
+          if (threshMonth) config.costThresholds.month = parseFloat(threshMonth);
+
+          var statusEl = document.getElementById('settings-status');
+          saveConfigAsync(config, function (err, result) {
+            if (err) {
+              statusEl.textContent = 'Network error.';
+              statusEl.style.color = '#e15759';
+              statusEl.style.opacity = '1';
+              return;
+            }
+            if (result && result.ok) {
+              statusEl.textContent = 'Saved! Reload to see updated dashboard.';
+              statusEl.style.color = '#59a14f';
+            } else {
+              statusEl.textContent = 'Error saving.';
+              statusEl.style.color = '#e15759';
+            }
+            statusEl.style.opacity = '1';
+            setTimeout(function () { statusEl.style.opacity = '0'; }, 3000);
+          });
+        });
       }
 
       // ── Initialize first tab + restore from hash ──────────────────────────

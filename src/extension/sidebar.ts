@@ -5,6 +5,7 @@
  * that updates based on the currently active dashboard tab.
  */
 import * as vscode from "vscode";
+import { getNonce, escapeHtml } from "./utils.js";
 
 /** Tab-specific help content displayed in the sidebar. */
 const TAB_HELP: Record<string, { title: string; sections: Array<{ heading: string; body: string }> }> = {
@@ -85,15 +86,15 @@ const TAB_HELP: Record<string, { title: string; sections: Array<{ heading: strin
       },
       {
         heading: "Suggested Plan",
-        body: "Based on your average weekly API-equivalent cost, extrapolated to monthly. Compares against Pro ($20), Team Standard ($25), Max 5x ($100), Team Premium ($150), and Max 20x ($200) tiers.",
+        body: "Based on your average weekly API-equivalent cost, extrapolated to monthly. Compares against Pro ($20), Team Standard ($25), Max 5x ($100), Team Premium ($125), and Max 20x ($200) tiers.",
       },
       {
-        heading: "Weekly API Value vs Plan Tiers",
-        body: "Bar chart of your weekly API-equivalent cost with dashed reference lines for each plan tier. If bars consistently fall below a tier line, that tier is more than your usage warrants.",
+        heading: "Weekly Activity",
+        body: "Bar chart showing sessions and prompts per week. Helps you see your usage patterns and whether your activity level justifies your current plan.",
       },
       {
-        heading: "5-Hour Window Utilization",
-        body: "Histogram showing how much API value you consume per 5-hour usage window. Helps you understand your usage intensity within Claude\u2019s rolling window system.",
+        heading: "Window Limit Usage %",
+        body: "Shows what percentage of your per-window usage limit was consumed in each 5-hour window. Derived from throttled windows (if any) or estimated from your plan fee. Red bars indicate throttled windows, orange means approaching the limit (>=80%).",
       },
       {
         heading: "Windows Per Week",
@@ -160,6 +161,23 @@ const TAB_HELP: Record<string, { title: string; sections: Array<{ heading: strin
       {
         heading: "Top Overuse",
         body: "The specific turns with the highest potential savings \u2014 cases where an expensive model was used for a task classified as simpler. Shows a preview of the prompt text and the dollar savings if the tier-appropriate model had been used.",
+      },
+    ],
+  },
+  settings: {
+    title: "Settings",
+    sections: [
+      {
+        heading: "What you can configure",
+        body: "Plan type (Pro, Max, Team, Custom) and monthly fee. These are used for plan utilization calculations on the Plan tab. If not set, the tool auto-detects from telemetry.",
+      },
+      {
+        heading: "Cost Alert Thresholds",
+        body: "Set daily, weekly, and monthly cost thresholds. When estimated API cost exceeds a threshold, alerts are shown after collection.",
+      },
+      {
+        heading: "Where settings are stored",
+        body: "All settings are saved to ~/.claude-stats/config.json. You can also edit this file directly.",
       },
     ],
   },
@@ -329,19 +347,3 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 }
 
-function getNonce(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let nonce = "";
-  for (let i = 0; i < 32; i++) {
-    nonce += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return nonce;
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}

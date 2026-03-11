@@ -8,8 +8,10 @@
  */
 import * as vscode from "vscode";
 import { Store } from "../store/index.js";
+import { getNonce } from "./utils.js";
 import { buildDashboard } from "../dashboard/index.js";
 import { renderDashboard } from "../server/template.js";
+import { loadConfig, saveConfig, getPlanConfig, type Config } from "../config.js";
 import type { ReportOptions } from "../reporter/index.js";
 import type { SidebarProvider } from "./sidebar.js";
 
@@ -71,7 +73,9 @@ export class DashboardPanel {
     // the latest committed data (safe with WAL + busy_timeout)
     const store = new Store();
     try {
-      const data = buildDashboard(store, { period: this.period });
+      const cfg = loadConfig();
+      const planCfg = getPlanConfig(cfg);
+      const data = buildDashboard(store, { period: this.period, planFee: planCfg?.monthlyFee, planType: planCfg?.type });
       const html = renderDashboard(data);
       this.panel.webview.html = patchForWebview(
         html,
@@ -84,7 +88,7 @@ export class DashboardPanel {
     }
   }
 
-  private handleMessage(msg: { command: string; period?: string; tab?: string }): void {
+  private handleMessage(msg: { command: string; period?: string; tab?: string; config?: Config; callbackId?: number }): void {
     if (msg.command === "changePeriod" && msg.period) {
       this.period = msg.period as ReportOptions["period"];
       this.refresh();
@@ -93,6 +97,33 @@ export class DashboardPanel {
     } else if (msg.command === "tabChanged" && msg.tab) {
       this.activeTab = msg.tab;
       this.sidebar?.setActiveTab(msg.tab);
+    } else if (msg.command === "getConfig" && msg.callbackId) {
+      try {
+        const cfg = loadConfig();
+        void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, data: cfg });
+      } catch {
+        void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, error: "Failed to load config" });
+      }
+    } else if (msg.command === "saveConfig" && msg.callbackId) {
+      try {
+        const incoming = msg.config ?? {};
+        const current = loadConfig();
+        const merged: Config = {
+          ...current,
+          ...incoming,
+          plan: incoming.plan !== undefined
+            ? { ...current.plan, ...incoming.plan }
+            : current.plan,
+          costThresholds: incoming.costThresholds !== undefined
+            ? { ...current.costThresholds, ...incoming.costThresholds }
+            : current.costThresholds,
+        };
+        saveConfig(merged);
+        void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, data: { ok: true, config: merged } });
+        this.refresh();
+      } catch {
+        void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, error: "Failed to save config" });
+      }
     }
   }
 
@@ -102,15 +133,6 @@ export class DashboardPanel {
   }
 }
 
-/** Generate a random nonce string for CSP script-src. */
-function getNonce(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let nonce = "";
-  for (let i = 0; i < 32; i++) {
-    nonce += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return nonce;
-}
 
 /**
  * Patch the HTML produced by renderDashboard() for use inside a VS Code webview:
@@ -148,18 +170,23 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
     `<head>\n  <meta http-equiv="Content-Security-Policy" content="${csp}">`,
   );
 
-  // 5. Set active tab so the main script restores the correct tab on refresh
-  if (activeTab) {
-    html = html.replace(
-      `<script nonce="${nonce}">window.__DASHBOARD__`,
-      `<script nonce="${nonce}">window.__ACTIVE_TAB__='${activeTab}';window.__DASHBOARD__`,
-    );
-  }
+  // 5. Set active tab so the main script restores the correct tab on refresh.
+  //    Also initialize __vscodeApi early so it is available when the main script
+  //    runs initSettings() (the bridge script runs later, after </body>).
+  const earlyInit = activeTab
+    ? `window.__ACTIVE_TAB__='${activeTab}';window.__vscodeApi=acquireVsCodeApi();`
+    : `window.__vscodeApi=acquireVsCodeApi();`;
+  html = html.replace(
+    `<script nonce="${nonce}">window.__DASHBOARD__`,
+    `<script nonce="${nonce}">${earlyInit}window.__DASHBOARD__`,
+  );
 
   // 6. Inject bridge script that wires up VS Code messaging and event handlers
   const bridgeScript = `<script nonce="${nonce}">
 (function() {
-  var vscode = acquireVsCodeApi();
+  // __vscodeApi is already set early (before the main script) so that
+  // initSettings() can use postMessage for config I/O on first render.
+  var vscode = window.__vscodeApi;
 
   // Wire up period selector
   var sel = document.getElementById('period-select');

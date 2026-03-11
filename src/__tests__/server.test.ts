@@ -85,4 +85,45 @@ describe("GET /", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
   });
+
+  it("renders a Settings tab button", async () => {
+    const res = await fetch(`${baseUrl}/`);
+    const html = await res.text();
+    expect(html).toContain('data-tab="settings"');
+    expect(html).toContain("Settings");
+  });
+});
+
+describe("GET /api/config", () => {
+  it("returns 200 with JSON config object", async () => {
+    const res = await fetch(`${baseUrl}/api/config`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    const body = await res.json();
+    expect(typeof body).toBe("object");
+  });
+});
+
+describe("POST /api/config", () => {
+  it("accepts POST and returns ok with merged config", async () => {
+    // Read current config first so we can restore it
+    const before = await (await fetch(`${baseUrl}/api/config`)).json() as Record<string, unknown>;
+
+    const res = await fetch(`${baseUrl}/api/config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan: { type: "pro", monthly_fee: 20 } }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body).toHaveProperty("ok", true);
+    expect(body).toHaveProperty("config");
+
+    // Restore original config
+    await fetch(`${baseUrl}/api/config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(before),
+    });
+  });
 });

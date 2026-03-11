@@ -190,7 +190,7 @@ export interface UsageWindow {
 
 // ─── Plan configuration ───────────────────────────────────────────────────────
 
-export type PlanType = "pro" | "max" | "team" | "custom";
+export type PlanType = "pro" | "max_5x" | "max_20x" | "team_standard" | "team_premium" | "custom";
 
 export interface PlanConfig {
   type: PlanType;

@@ -117,6 +117,16 @@ describe("patchForWebview", () => {
     expect(result).toContain("postMessage");
   });
 
+  it("exposes __vscodeApi early (before main script) for settings config bridge", () => {
+    const result = patchForWebview(sampleHtml, CSP_SOURCE, LOCAL_CHART_URI);
+    // __vscodeApi must be set in the same script block as __DASHBOARD__ so it
+    // is available when initSettings() runs during initial tab setup
+    expect(result).toContain("window.__vscodeApi=acquireVsCodeApi()");
+    const apiIdx = result.indexOf("window.__vscodeApi=acquireVsCodeApi()");
+    const dashboardIdx = result.indexOf("window.__DASHBOARD__");
+    expect(apiIdx).toBeLessThan(dashboardIdx);
+  });
+
   it("wires up event listeners in bridge script", () => {
     const result = patchForWebview(sampleHtml, CSP_SOURCE, LOCAL_CHART_URI);
     expect(result).toContain("addEventListener");

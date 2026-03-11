@@ -98,7 +98,7 @@ export const PLAN_FEES: Record<string, number> = {
   max_5x: 100,
   max_20x: 200,
   team_standard: 25,
-  team_premium: 150,
+  team_premium: 125,
   // Bare "team" prefix — conservative fallback to standard seat price
   team: 25,
 };

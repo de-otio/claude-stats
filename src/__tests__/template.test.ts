@@ -295,11 +295,13 @@ describe("renderDashboard", () => {
     expect(html).toContain("equivalent API rates");
   });
 
-  it("includes pricing panel visibility toggle in switchTab JS", () => {
+  it("includes pricing panel at the bottom of the page", () => {
     const html = renderDashboard(mockData);
-    expect(html).toContain("costTabs");
     expect(html).toContain("pricing-panel");
-    expect(html).toContain("pricingPanel");
+    // Pricing panel should appear after the last tab-panel and before the footer
+    const pricingIdx = html.indexOf("pricing-panel");
+    const footerIdx = html.indexOf('class="footer"');
+    expect(pricingIdx).toBeLessThan(footerIdx);
   });
 
   it("includes Plan tab button", () => {
@@ -333,7 +335,8 @@ describe("renderDashboard", () => {
         windowsPerWeek: 3.0,
         throttledWindowPercent: 0,
         totalWindows: 3,
-        recommendedPlan: "max5",
+        estimatedWindowLimit: 0.5,
+        recommendedPlan: "max_5x",
         currentPlanVerdict: "good-value",
         byAccount: [],
       },
@@ -344,7 +347,7 @@ describe("renderDashboard", () => {
     expect(html).toContain("Suggested Plan");
     expect(html).toContain("Max 5x");
     expect(html).toContain("Avg Weekly Value");
-    expect(html).toContain('id="chart-weekly-plan"');
+    expect(html).toContain('id="chart-weekly-activity"');
   });
 
   it("renders underusing verdict when utilization is low", () => {
@@ -366,6 +369,7 @@ describe("renderDashboard", () => {
         windowsPerWeek: 1.0,
         throttledWindowPercent: 0,
         totalWindows: 1,
+        estimatedWindowLimit: 0,
         recommendedPlan: "pro",
         currentPlanVerdict: "underusing",
         byAccount: [],
@@ -394,7 +398,8 @@ describe("renderDashboard", () => {
         windowsPerWeek: 5.0,
         throttledWindowPercent: 40.0,
         totalWindows: 5,
-        recommendedPlan: "max5",
+        estimatedWindowLimit: 6.0,
+        recommendedPlan: "max_5x",
         currentPlanVerdict: "good-value",
         byAccount: [],
       },
@@ -423,20 +428,22 @@ describe("renderDashboard", () => {
         windowsPerWeek: 3.0,
         throttledWindowPercent: 0,
         totalWindows: 3,
-        recommendedPlan: "max5",
+        estimatedWindowLimit: 0.5,
+        recommendedPlan: "max_5x",
         currentPlanVerdict: "good-value",
         byAccount: [
-          { accountId: "acct-wor...", subscriptionType: "max_5x", detectedPlanFee: 100, sessions: 7, estimatedCost: 20.0, planVerdict: "underusing" },
-          { accountId: "acct-per...", subscriptionType: "pro", detectedPlanFee: 20, sessions: 3, estimatedCost: 5.0, planVerdict: "underusing" },
+          { accountId: "acct-wor...", emailAddress: "work@example.com", subscriptionType: "max_5x", detectedPlanFee: 100, sessions: 7, estimatedCost: 20.0, planVerdict: "underusing" },
+          { accountId: "acct-per...", emailAddress: "personal@example.com", subscriptionType: "pro", detectedPlanFee: 20, sessions: 3, estimatedCost: 5.0, planVerdict: "underusing" },
         ],
       },
     };
     const html = renderDashboard(multiAcct);
     expect(html).toContain("2 accounts detected");
-    expect(html).toContain("acct-wor...");
-    expect(html).toContain("acct-per...");
+    // Should prefer email over truncated UUID
+    expect(html).toContain("work@example.com");
+    expect(html).toContain("personal@example.com");
     expect(html).toContain("max_5x");
-    expect(html).toContain("auto-detected");
+    expect(html).toContain("Max 5x");
   });
 
   it("shows auto-detected fee source when no manual planFee", () => {
@@ -458,14 +465,172 @@ describe("renderDashboard", () => {
         windowsPerWeek: 2.0,
         throttledWindowPercent: 0,
         totalWindows: 2,
+        estimatedWindowLimit: 0.17,
         recommendedPlan: "pro",
         currentPlanVerdict: "good-value",
-        byAccount: [{ accountId: "acct-111...", subscriptionType: "pro", detectedPlanFee: 20, sessions: 5, estimatedCost: 15.0, planVerdict: "good-value" }],
+        byAccount: [{ accountId: "acct-111...", emailAddress: null, subscriptionType: "pro", detectedPlanFee: 20, sessions: 5, estimatedCost: 15.0, planVerdict: "good-value" }],
       },
     };
     const html = renderDashboard(autoDetected);
-    expect(html).toContain("auto-detected");
+    expect(html).toContain("Account");
+    expect(html).toContain("acct-111...");  // Falls back to UUID when no email
+    expect(html).toContain("Pro");
     expect(html).toContain("$20/mo");
+  });
+
+  it("renders Current Plan card from subscriptionType telemetry", () => {
+    const withPlan: DashboardData = {
+      ...mockData,
+      summary: { ...mockData.summary, planFee: 0, planMultiplier: 0 },
+      byWeek: [
+        { week: "2026-01-13", sessions: 5, prompts: 20, estimatedCost: 15.0, activeHoursEstimate: 3.0, windowCount: 2, throttledWindows: 0 },
+      ],
+      planUtilization: {
+        weeklyPlanBudget: 4.62,
+        avgWeeklyCost: 15.0,
+        peakWeeklyCost: 15.0,
+        weeksBelowPlan: 0,
+        weeksAbovePlan: 1,
+        totalWeeks: 1,
+        avgWindowCost: 7.5,
+        medianWindowCost: 7.5,
+        windowsPerWeek: 2.0,
+        throttledWindowPercent: 0,
+        totalWindows: 2,
+        estimatedWindowLimit: 0.17,
+        recommendedPlan: "pro",
+        currentPlanVerdict: "good-value",
+        byAccount: [{ accountId: "acct-111...", emailAddress: "user@example.com", subscriptionType: "max_5x", detectedPlanFee: 100, sessions: 5, estimatedCost: 15.0, planVerdict: "good-value" }],
+      },
+    };
+    const html = renderDashboard(withPlan);
+    expect(html).toContain("Account");
+    expect(html).toContain("user@example.com");
+    expect(html).toContain("Max 5x");
+    expect(html).toContain("$100/mo");
+  });
+
+  it("renders Current Plan card from fee fallback when no accounts", () => {
+    const withPlan: DashboardData = {
+      ...mockData,
+      summary: { ...mockData.summary, planFee: 100, planMultiplier: 2.5 },
+      byWeek: [
+        { week: "2026-01-13", sessions: 10, prompts: 50, estimatedCost: 25.0, activeHoursEstimate: 5.0, windowCount: 3, throttledWindows: 0 },
+      ],
+      planUtilization: {
+        weeklyPlanBudget: 23.09,
+        avgWeeklyCost: 25.0,
+        peakWeeklyCost: 25.0,
+        weeksBelowPlan: 0,
+        weeksAbovePlan: 1,
+        totalWeeks: 1,
+        avgWindowCost: 8.33,
+        medianWindowCost: 8.33,
+        windowsPerWeek: 3.0,
+        throttledWindowPercent: 0,
+        totalWindows: 3,
+        estimatedWindowLimit: 0.5,
+        recommendedPlan: "max_5x",
+        currentPlanVerdict: "good-value",
+        byAccount: [],
+      },
+    };
+    const html = renderDashboard(withPlan);
+    expect(html).toContain("Current Plan");
+    expect(html).toContain("Max 5x ($100/mo)");
+  });
+
+  it("renders Window Limit Usage chart when byWindow is non-empty", () => {
+    const withWindows: DashboardData = {
+      ...mockData,
+      summary: { ...mockData.summary, planFee: 100, planMultiplier: 2.5 },
+      byWeek: [
+        { week: "2026-01-13", sessions: 5, prompts: 20, estimatedCost: 15.0, activeHoursEstimate: 3.0, windowCount: 2, throttledWindows: 0 },
+      ],
+      byWindow: [{
+        windowStart: 1_000_000,
+        windowEnd: 1_018_000,
+        accountUuid: null,
+        totalCostEquivalent: 1.5,
+        promptCount: 10,
+        tokensByModel: {},
+        throttled: false,
+      }],
+      planUtilization: {
+        weeklyPlanBudget: 23.09,
+        avgWeeklyCost: 15.0,
+        peakWeeklyCost: 15.0,
+        weeksBelowPlan: 0,
+        weeksAbovePlan: 1,
+        totalWeeks: 1,
+        avgWindowCost: 1.5,
+        medianWindowCost: 1.5,
+        windowsPerWeek: 2.0,
+        throttledWindowPercent: 0,
+        totalWindows: 1,
+        estimatedWindowLimit: 0.83,
+        recommendedPlan: "max_5x",
+        currentPlanVerdict: "good-value",
+        byAccount: [],
+      },
+    };
+    const html = renderDashboard(withWindows);
+    expect(html).toContain('id="chart-window-limit-pct"');
+  });
+
+  it("does not render 5-Hour Window Utilization histogram", () => {
+    const withWindows: DashboardData = {
+      ...mockData,
+      byWindow: [{
+        windowStart: 1_000_000,
+        windowEnd: 1_018_000,
+        accountUuid: null,
+        totalCostEquivalent: 1.5,
+        promptCount: 10,
+        tokensByModel: {},
+        throttled: false,
+      }],
+    };
+    const html = renderDashboard(withWindows);
+    expect(html).not.toContain('id="chart-window-util"');
+  });
+
+  it("renders compaction events as a count instead of a chart", () => {
+    const withContext: DashboardData = {
+      ...mockData,
+      contextAnalysis: {
+        avgPromptsPerSession: 10,
+        medianPromptsPerSession: 8,
+        compactionRate: 50,
+        avgPeakInputTokens: 100_000,
+        sessionsNeedingCompaction: 1,
+        lengthDistribution: [],
+        contextGrowthCurve: [],
+        longSessions: [],
+        cacheByLength: [],
+        compactionEvents: [
+          { sessionId: "s1", promptPosition: 5, tokensBefore: 80_000, tokensAfter: 30_000, reductionPercent: 62 },
+          { sessionId: "s2", promptPosition: 8, tokensBefore: 120_000, tokensAfter: 50_000, reductionPercent: 58 },
+        ],
+      },
+    };
+    const html = renderDashboard(withContext);
+    expect(html).toContain("Compaction Events");
+    // Should show the count, not a chart canvas
+    expect(html).not.toContain('id="chart-compaction-events"');
+    expect(html).toContain(">2<");
+    expect(html).toContain("2 sessions");
+  });
+
+  it("pricing panel starts hidden (visible only on overview tab via JS)", () => {
+    const html = renderDashboard(mockData);
+    // Panel should exist but not have the visible class in the initial HTML
+    expect(html).toContain('id="pricing-panel"');
+    expect(html).toContain('class="pricing-panel"');
+    expect(html).not.toContain('class="pricing-panel visible"');
+    // JS should toggle visibility based on tab
+    expect(html).toContain("pricingPanel");
+    expect(html).toContain("overview");
   });
 
   it("includes efficiency tab button when modelEfficiency is present", () => {
@@ -481,5 +646,27 @@ describe("renderDashboard", () => {
     const html = renderDashboard(withEff);
     expect(html).toContain('data-tab="efficiency"');
     expect(html).toContain("Potential Savings");
+  });
+
+  it("includes Settings tab with plan type select and monthly fee input", () => {
+    const html = renderDashboard(mockData);
+    expect(html).toContain('data-tab="settings"');
+    expect(html).toContain('id="tab-settings"');
+    expect(html).toContain('id="cfg-plan-type"');
+    expect(html).toContain('id="cfg-monthly-fee"');
+    expect(html).toContain('id="cfg-threshold-day"');
+    expect(html).toContain('id="settings-form"');
+    expect(html).toContain('/api/config');
+  });
+
+  it("settings config I/O uses webview postMessage bridge when __vscodeApi is present", () => {
+    const html = renderDashboard(mockData);
+    // Verify the environment detection and both transport paths are present
+    expect(html).toContain("window.__vscodeApi");
+    expect(html).toContain("postMessage({ command: 'getConfig'");
+    expect(html).toContain("postMessage({ command: 'saveConfig'");
+    expect(html).toContain("command === 'configResult'");
+    // Browser fallback path
+    expect(html).toContain("fetch('/api/config'");
   });
 });

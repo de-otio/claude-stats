@@ -8,6 +8,7 @@ import { discoverSessionFiles, getFileStats } from "../scanner/index.js";
 import { getGitRemoteUrl } from "../git.js";
 import { parseSessionFile, hashFirstKb } from "../parser/session.js";
 import { collectAccountMap } from "../parser/telemetry.js";
+import { readClaudeAccount } from "../account.js";
 import { checkSchema } from "../schema/monitor.js";
 import { estimateCost } from "../pricing.js";
 import type { Store } from "../store/index.js";
@@ -47,6 +48,12 @@ export async function collect(
 
   // Best-effort: build session → account mapping from telemetry
   const accountMap = collectAccountMap();
+
+  // Fallback: current logged-in account from ~/.claude.json
+  // Only used when telemetry doesn't provide account info for a session.
+  // Safe for reparse: the store uses COALESCE(sessions.account_uuid, excluded.account_uuid)
+  // so an existing DB value is never overwritten.
+  const currentAccount = readClaudeAccount();
 
   // Accumulate entries per version for schema fingerprinting
   const entriesByVersion = new Map<string, RawSessionEntry[]>();
@@ -120,6 +127,12 @@ export async function collect(
         parsed.session.accountUuid = acct.accountUuid;
         parsed.session.organizationUuid = acct.organizationUuid;
         parsed.session.subscriptionType = acct.subscriptionType;
+      } else if (currentAccount) {
+        // Fallback to currently logged-in account from ~/.claude.json.
+        // The store's COALESCE preserves existing DB values, so this
+        // won't overwrite accounts stamped by a previous parse.
+        parsed.session.accountUuid = currentAccount.accountUuid;
+        parsed.session.organizationUuid = currentAccount.organizationUuid;
       }
     }
 

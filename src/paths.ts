@@ -31,6 +31,9 @@ export const paths = {
 
   /** ~/.claude-stats/config.toml */
   configFile: path.join(home, ".claude-stats", "config.toml"),
+
+  /** ~/.claude.json — Claude Code's main config (account info, OAuth) */
+  claudeConfigFile: path.join(home, ".claude.json"),
 } as const;
 
 /** Decode a Claude Code project directory name back to a filesystem path.

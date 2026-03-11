@@ -22,8 +22,10 @@ export interface Config {
 /** Default monthly fees by plan type (USD). */
 const PLAN_FEES: Record<PlanType, number> = {
   pro: 20,
-  max: 100,
-  team: 200,
+  max_5x: 100,
+  max_20x: 200,
+  team_standard: 25,
+  team_premium: 125,
   custom: 0,
 };
 
@@ -31,10 +33,14 @@ const PLAN_FEES: Record<PlanType, number> = {
 const SUBSCRIPTION_TYPE_MAP: Record<string, PlanType> = {
   pro: "pro",
   claude_pro: "pro",
-  max: "max",
-  claude_max: "max",
-  team: "team",
-  claude_team: "team",
+  max_5x: "max_5x",
+  max_20x: "max_20x",
+  max: "max_5x",
+  claude_max: "max_5x",
+  team_standard: "team_standard",
+  team_premium: "team_premium",
+  team: "team_standard",
+  claude_team: "team_standard",
 };
 
 /**

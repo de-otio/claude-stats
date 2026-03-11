@@ -548,6 +548,71 @@ describe("buildDashboard — with sessions", () => {
     expect(data.planUtilization!.weeklyPlanBudget).toBeCloseTo(200 / 4.33, 1);
   });
 
+  it("estimatedWindowLimit derived from throttled windows", () => {
+    const now = Date.now();
+    store.upsertSession(makeSession({
+      sessionId: "s1",
+      firstTimestamp: now - 86_400_000,
+      lastTimestamp: now - 86_100_000,
+      accountUuid: "acct-1",
+      subscriptionType: "pro",
+    }));
+    store.upsertMessages([
+      makeMessage({ uuid: "m1", sessionId: "s1", model: "claude-sonnet-4", inputTokens: 5_000, outputTokens: 1_000 }),
+    ]);
+    store.upsertUsageWindow({
+      windowStart: now - 86_400_000,
+      windowEnd: now - 68_400_000,
+      accountUuid: "acct-1",
+      totalCostEquivalent: 0.8,
+      promptCount: 5,
+      tokensByModel: { "claude-sonnet-4": 6000 },
+      throttled: true,
+    });
+    store.upsertUsageWindow({
+      windowStart: now - 68_400_000,
+      windowEnd: now - 50_400_000,
+      accountUuid: "acct-1",
+      totalCostEquivalent: 0.5,
+      promptCount: 3,
+      tokensByModel: { "claude-sonnet-4": 3000 },
+      throttled: false,
+    });
+
+    const data = buildDashboard(store, { timezone: "UTC" });
+    expect(data.planUtilization).not.toBeNull();
+    // Should use min cost of throttled windows as limit
+    expect(data.planUtilization!.estimatedWindowLimit).toBe(0.8);
+  });
+
+  it("estimatedWindowLimit falls back to plan fee estimate when no throttled windows", () => {
+    const now = Date.now();
+    store.upsertSession(makeSession({
+      sessionId: "s1",
+      firstTimestamp: now - 86_400_000,
+      lastTimestamp: now - 86_100_000,
+      accountUuid: "acct-1",
+      subscriptionType: "pro",
+    }));
+    store.upsertMessages([
+      makeMessage({ uuid: "m1", sessionId: "s1", model: "claude-sonnet-4", inputTokens: 5_000, outputTokens: 1_000 }),
+    ]);
+    store.upsertUsageWindow({
+      windowStart: now - 86_400_000,
+      windowEnd: now - 68_400_000,
+      accountUuid: "acct-1",
+      totalCostEquivalent: 0.5,
+      promptCount: 3,
+      tokensByModel: { "claude-sonnet-4": 3000 },
+      throttled: false,
+    });
+
+    const data = buildDashboard(store, { timezone: "UTC" });
+    expect(data.planUtilization).not.toBeNull();
+    // No throttled windows, should estimate from planFee / 120
+    expect(data.planUtilization!.estimatedWindowLimit).toBeCloseTo(20 / 120, 2);
+  });
+
   it("modelEfficiency is null when no messages with prompt_text exist", () => {
     store.upsertSession(makeSession({ sessionId: "s1" }));
     store.upsertMessages([

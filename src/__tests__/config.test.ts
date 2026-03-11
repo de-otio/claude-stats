@@ -92,8 +92,10 @@ describe("getPlanConfig", () => {
 
   it("uses default fee for known plan types", () => {
     expect(getPlanConfig({ plan: { type: "pro" } })?.monthlyFee).toBe(20);
-    expect(getPlanConfig({ plan: { type: "max" } })?.monthlyFee).toBe(100);
-    expect(getPlanConfig({ plan: { type: "team" } })?.monthlyFee).toBe(200);
+    expect(getPlanConfig({ plan: { type: "max_5x" } })?.monthlyFee).toBe(100);
+    expect(getPlanConfig({ plan: { type: "max_20x" } })?.monthlyFee).toBe(200);
+    expect(getPlanConfig({ plan: { type: "team_standard" } })?.monthlyFee).toBe(25);
+    expect(getPlanConfig({ plan: { type: "team_premium" } })?.monthlyFee).toBe(125);
   });
 
   it("respects monthly_fee override", () => {
@@ -109,13 +111,15 @@ describe("getPlanConfig", () => {
   });
 
   it("auto-detects max plan from subscriptionType", () => {
-    expect(getPlanConfig({}, "max")?.type).toBe("max");
+    expect(getPlanConfig({}, "max")?.type).toBe("max_5x");
+    expect(getPlanConfig({}, "max_5x")?.type).toBe("max_5x");
+    expect(getPlanConfig({}, "max_20x")?.type).toBe("max_20x");
   });
 
   it("config plan type takes precedence over subscriptionType", () => {
-    const result = getPlanConfig({ plan: { type: "team" } }, "pro");
-    expect(result?.type).toBe("team");
-    expect(result?.monthlyFee).toBe(200);
+    const result = getPlanConfig({ plan: { type: "team_standard" } }, "pro");
+    expect(result?.type).toBe("team_standard");
+    expect(result?.monthlyFee).toBe(25);
   });
 
   it("returns null for unknown subscriptionType", () => {

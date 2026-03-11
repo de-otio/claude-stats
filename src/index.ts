@@ -2,4 +2,4 @@
 import { buildCli } from "./cli/index.js";
 
 const program = buildCli();
-program.parse(process.argv);
+await program.parseAsync(process.argv);

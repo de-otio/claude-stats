@@ -7,6 +7,7 @@ import type { ReportOptions } from "../reporter/index.js";
 import { periodStart } from "../reporter/index.js";
 import { estimateCost, lookupPlanFee } from "../pricing.js";
 import type { UsageWindow } from "../types.js";
+import { readClaudeAccount } from "../account.js";
 import {
   scoreComplexity,
   scoreToTier,
@@ -122,12 +123,15 @@ export interface DashboardData {
     windowsPerWeek: number;
     throttledWindowPercent: number;
     totalWindows: number;
+    // Window limit
+    estimatedWindowLimit: number;    // estimated per-window cost limit (from throttled windows or plan fee)
     // Recommendation
-    recommendedPlan: string | null;  // "pro", "max5", "max20", or null
+    recommendedPlan: string | null;  // "pro", "max_5x", "max_20x", "team_standard", "team_premium", or null
     currentPlanVerdict: string;      // "good-value" | "underusing" | "no-plan"
-    // Per-account breakdown (populated when multiple accounts detected)
+    // Per-account breakdown (always populated when planUtilization is present)
     byAccount: Array<{
       accountId: string;             // truncated UUID for display
+      emailAddress: string | null;   // from ~/.claude.json oauthAccount
       subscriptionType: string | null;
       detectedPlanFee: number | null;
       sessions: number;
@@ -175,6 +179,7 @@ export interface ContextAnalysis {
     reductionPercent: number;
   }>;
 }
+
 
 export function buildDashboard(store: Store, opts: ReportOptions): DashboardData {
   const tz = opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -556,16 +561,27 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     const throttledWindowPercent = byWindow.length > 0
       ? Math.round((throttledCount / byWindow.length) * 1000) / 10 : 0;
 
+    // Estimate per-window usage limit from throttled windows or plan fee
+    const throttledWindows = byWindow.filter(w => w.throttled);
+    let estimatedWindowLimit = 0;
+    if (throttledWindows.length > 0) {
+      // Use the minimum cost among throttled windows as the approximate limit
+      estimatedWindowLimit = Math.min(...throttledWindows.map(w => w.totalCostEquivalent));
+    } else if (windowCosts.length > 0 && effectivePlanFee > 0) {
+      // Estimate: plan fee spread across typical active windows per month (~120)
+      estimatedWindowLimit = effectivePlanFee / 120;
+    }
+
     // Plan recommendation based on weekly API-equivalent cost
     const monthlyEquiv = avgWeeklyCost * 4.33;
     let recommendedPlan: string | null = null;
     let currentPlanVerdict = "no-plan";
 
-    if (monthlyEquiv < 22) recommendedPlan = "pro";
-    else if (monthlyEquiv < 60) recommendedPlan = "team_standard";
-    else if (monthlyEquiv < 120) recommendedPlan = "max5";
-    else if (monthlyEquiv < 170) recommendedPlan = "team_premium";
-    else recommendedPlan = "max20";
+    if (monthlyEquiv < 22.5) recommendedPlan = "pro";
+    else if (monthlyEquiv < 62.5) recommendedPlan = "team_standard";
+    else if (monthlyEquiv < 112.5) recommendedPlan = "max_5x";
+    else if (monthlyEquiv < 162.5) recommendedPlan = "team_premium";
+    else recommendedPlan = "max_20x";
 
     if (effectivePlanFee > 0) {
       const utilRate = totalCost / effectivePlanFee;
@@ -574,11 +590,22 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     }
 
     // Build per-account breakdown
+    // Transitional: resolve "(unknown)" for sessions collected before the aggregator
+    // started stamping account_uuid from ~/.claude.json. Can be removed once all
+    // users have re-collected (e.g. via `backfill`).
+    const claudeAcct = readClaudeAccount();
+    if (claudeAcct && accountMap.has("(unknown)") && accountMap.size === 1) {
+      const unknown = accountMap.get("(unknown)")!;
+      accountMap.delete("(unknown)");
+      accountMap.set(claudeAcct.accountUuid, unknown);
+    }
     const byAccount: DashboardData["planUtilization"] extends { byAccount: infer T } | null ? T : never =
       Array.from(accountMap.entries())
         .sort(([, a], [, b]) => b.cost - a.cost)
         .map(([acctKey, acct]) => {
-          const detectedFee = lookupPlanFee(acct.subscriptionType);
+          // Fall back to configured plan type when telemetry subscription_type is absent
+          const subscriptionType = acct.subscriptionType ?? opts.planType ?? null;
+          const detectedFee = lookupPlanFee(subscriptionType);
           let verdict = "no-plan";
           if (detectedFee && detectedFee > 0) {
             verdict = acct.cost >= detectedFee ? "good-value" : "underusing";
@@ -587,9 +614,11 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
             const share = effectivePlanFee * (acct.sessions / rows.length);
             verdict = acct.cost >= share ? "good-value" : "underusing";
           }
+          const email = claudeAcct?.accountUuid === acctKey ? claudeAcct.emailAddress : null;
           return {
             accountId: acctKey === "(unknown)" ? "(unknown)" : acctKey.slice(0, 8) + "...",
-            subscriptionType: acct.subscriptionType,
+            emailAddress: email,
+            subscriptionType,
             detectedPlanFee: detectedFee,
             sessions: acct.sessions,
             estimatedCost: Math.round(acct.cost * 100) / 100,
@@ -609,6 +638,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       windowsPerWeek: Math.round(windowsPerWeek * 10) / 10,
       throttledWindowPercent,
       totalWindows: byWindow.length,
+      estimatedWindowLimit: Math.round(estimatedWindowLimit * 100) / 100,
       recommendedPlan,
       currentPlanVerdict,
       byAccount,

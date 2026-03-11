@@ -7,6 +7,7 @@ import { URL } from "node:url";
 import type { Store } from "../store/index.js";
 import { buildDashboard } from "../dashboard/index.js";
 import type { ReportOptions } from "../reporter/index.js";
+import { loadConfig, saveConfig, getPlanConfig, type Config } from "../config.js";
 
 function parseOpts(url: URL): ReportOptions {
   const p = url.searchParams;
@@ -47,6 +48,15 @@ async function tryRenderDashboard(data: unknown): Promise<string> {
   }
 }
 
+function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+    req.on("error", reject);
+  });
+}
+
 export function startServer(port: number, store: Store): http.Server {
   const server = http.createServer((req, res) => {
     void (async () => {
@@ -57,6 +67,9 @@ export function startServer(port: number, store: Store): http.Server {
 
         if (req.method === "GET" && pathname === "/") {
           const opts = parseOpts(url);
+          const planCfg = getPlanConfig(loadConfig());
+          if (planCfg && !opts.planFee) opts.planFee = planCfg.monthlyFee;
+          if (planCfg && !opts.planType) opts.planType = planCfg.type;
           const data = buildDashboard(store, opts);
           const html = await tryRenderDashboard(data);
           sendHtml(res, 200, html);
@@ -73,6 +86,31 @@ export function startServer(port: number, store: Store): http.Server {
         if (req.method === "GET" && pathname === "/api/status") {
           const status = store.getStatus();
           sendJson(res, 200, status);
+          return;
+        }
+
+        if (req.method === "GET" && pathname === "/api/config") {
+          sendJson(res, 200, loadConfig());
+          return;
+        }
+
+        if (req.method === "POST" && pathname === "/api/config") {
+          const body = await readBody(req);
+          const incoming = JSON.parse(body) as Config;
+          const current = loadConfig();
+          // Deep merge nested objects so partial updates don't drop sibling keys
+          const merged: Config = {
+            ...current,
+            ...incoming,
+            plan: incoming.plan !== undefined
+              ? { ...current.plan, ...incoming.plan }
+              : current.plan,
+            costThresholds: incoming.costThresholds !== undefined
+              ? { ...current.costThresholds, ...incoming.costThresholds }
+              : current.costThresholds,
+          };
+          saveConfig(merged);
+          sendJson(res, 200, { ok: true, config: merged });
           return;
         }
 
