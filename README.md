@@ -24,7 +24,7 @@ npm run package:ext
 code --install-extension extension/claude-stats-vscode-0.1.0.vsix
 ```
 
-Open the dashboard via the Command Palette: **Claude Stats: Open Dashboard**.
+Open the dashboard via the activity bar icon or the Command Palette: **Claude Stats: Open Dashboard**.
 
 ## Build
 
