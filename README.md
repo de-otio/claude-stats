@@ -9,6 +9,23 @@ Collect and visualize usage statistics from Claude Code sessions stored locally 
 - **Node.js 22.5+** (for the built-in `node:sqlite` module)
 - Claude Code installed and used at least once (`~/.claude/projects/` must exist)
 
+## VS Code Extension
+
+An optional extension embeds the dashboard inside VS Code with a status bar showing today's token usage. The extension is fully self-contained — all dependencies are bundled, no separate `claude-stats` install required.
+
+Download the extension from the latest build run under "Actions" or clone and build it yourself.
+
+```sh
+git clone <repo-url> claude-stats
+cd claude-stats
+npm install
+npm run build
+npm run package:ext
+code --install-extension extension/claude-stats-vscode-0.1.0.vsix
+```
+
+Open the dashboard via the Command Palette: **Claude Stats: Open Dashboard**.
+
 ## Build
 
 ```sh
@@ -18,7 +35,7 @@ npm install
 npm run build
 ```
 
-## Usage
+## Commandline Usage
 
 Link the command globally:
 
@@ -43,31 +60,20 @@ claude-stats report --html        # export a standalone HTML dashboard file
 
 ### All commands
 
-| Command | Description |
-|---|---|
-| `collect` | Incrementally import session data from `~/.claude/projects/` |
-| `report` | Print usage summary, per-session detail, or trend breakdown |
-| `serve` | Start a local web dashboard (`http://localhost:9120`) |
-| `status` | Show database size, session count, and last collection time |
-| `export` | Export sessions as JSON or CSV |
-| `search` | Search prompt history by keyword |
-| `dashboard` | Output pre-aggregated dashboard JSON to stdout |
-| `tag` / `tags` | Tag sessions and list tags |
-| `config` | View or set cost alert thresholds |
-| `diagnose` | Show quarantine counts and schema health |
+| Command        | Description                                                  |
+| -------------- | ------------------------------------------------------------ |
+| `collect`      | Incrementally import session data from `~/.claude/projects/` |
+| `report`       | Print usage summary, per-session detail, or trend breakdown  |
+| `serve`        | Start a local web dashboard (`http://localhost:9120`)        |
+| `status`       | Show database size, session count, and last collection time  |
+| `export`       | Export sessions as JSON or CSV                               |
+| `search`       | Search prompt history by keyword                             |
+| `dashboard`    | Output pre-aggregated dashboard JSON to stdout               |
+| `tag` / `tags` | Tag sessions and list tags                                   |
+| `config`       | View or set cost alert thresholds                            |
+| `diagnose`     | Show quarantine counts and schema health                     |
 
 Run `claude-stats --help` or `claude-stats <command> --help` for full option details.
-
-## VS Code Extension
-
-An optional extension embeds the dashboard inside VS Code with a status bar showing today's token usage. The extension is fully self-contained — all dependencies are bundled, no separate `claude-stats` install required.
-
-```sh
-npm run package:ext
-code --install-extension extension/claude-stats-vscode-0.1.0.vsix
-```
-
-Open the dashboard via the Command Palette: **Claude Stats: Open Dashboard**.
 
 ## Development
 
