@@ -98,7 +98,7 @@ Compare actual usage value to plan price.
 | **Cost per active hour** | `monthlyPlanFee / totalActiveHours` |
 | **Daily value rate** | `apiEquivalentCost / daysInPeriod` — "today you used $X of API value" |
 
-**Requires:** User-configurable plan fee (or auto-detect from `subscriptionType`). Default: Pro=$20, Max=$100, Team=$200.
+**Requires:** User-configurable plan fee (or auto-detect from `subscriptionType`). Default fees by plan type: Pro=$20, Max 5x=$100, Max 20x=$200, Team Standard=$25, Team Premium=$125.
 
 #### C. Token Velocity Metrics
 
@@ -269,13 +269,20 @@ CREATE TABLE usage_windows (
 );
 ```
 
-### New config: plan pricing
+### Config: plan pricing
 
-```toml
-[plan]
-type = "max"           # "pro" | "max" | "team" | "custom"
-monthly_fee = 100.00   # auto-set from type, or override
+Plan pricing is stored in `~/.claude-stats/config.json`:
+
+```json
+{
+  "plan": {
+    "type": "max_5x",
+    "monthly_fee": 100.00
+  }
+}
 ```
+
+Valid plan types: `pro`, `max_5x`, `max_20x`, `team_standard`, `team_premium`, `custom`. If `monthly_fee` is omitted, it is auto-derived from the plan type. The plan type can also be auto-detected from the `subscriptionType` telemetry field.
 
 ---
 

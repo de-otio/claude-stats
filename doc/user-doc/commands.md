@@ -332,6 +332,29 @@ claude-stats dashboard --period week | jq '.summary'
 
 ---
 
+## `backfill`
+
+Re-parse all session files from scratch to populate newly added fields (e.g. `prompt_text` added in schema v8). This resets all file checkpoints and runs a full collection.
+
+```
+claude-stats backfill [--verbose]
+```
+
+| Option | Description |
+|---|---|
+| `-v, --verbose` | Print one line per file as it is processed |
+
+**Example output:**
+
+```
+Reset 44 file checkpoints. Running full re-collection...
+Backfill complete. 44 files re-processed, 1876 messages updated.
+```
+
+Use this after upgrading `claude-stats` to a version that captures additional data from existing session files.
+
+---
+
 ## `diagnose`
 
 Show quarantine counts and schema health information.
@@ -348,7 +371,6 @@ Example output:
 ─── Diagnose ───
 
 Quarantined lines : 2
-  Run 'diagnose --show-quarantine' to inspect them.
 
 Use 'status' for database metrics.
 ```

@@ -2,6 +2,8 @@
 
 Collect and visualize usage statistics from Claude Code sessions stored locally on your machine. No API key or network access required.
 
+![claude-stats dashboard](doc/screenshot.png)
+
 ## Requirements
 
 - **Node.js 22.5+** (for the built-in `node:sqlite` module)

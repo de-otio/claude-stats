@@ -78,7 +78,7 @@ The extension requires Node.js 22.5+ for the `node:sqlite` module. VS Code's ext
 
 ### The database file is growing large
 
-`~/.claude-stats/stats.db` stores all session history. You can check its size with `claude-stats status`. There is no automatic compaction in v0.1 — you can delete the file and re-run `collect` to rebuild from scratch (no data from Claude Code's own files is lost).
+`~/.claude-stats/stats.db` stores all session history. You can check its size with `claude-stats status`. There is no automatic compaction yet — you can delete the file and re-run `collect` to rebuild from scratch (no data from Claude Code's own files is lost). Alternatively, use `claude-stats backfill` to re-parse everything while preserving the database.
 
 ---
 

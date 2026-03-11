@@ -224,9 +224,6 @@ export function buildCli(): Command {
         const status = store.getStatus();
         console.log(`\n─── Diagnose ───\n`);
         console.log(`Quarantined lines : ${status.quarantineCount}`);
-        if (status.quarantineCount > 0) {
-          console.log(`  Run 'diagnose --show-quarantine' to inspect them.`);
-        }
         console.log(`\nUse 'status' for database metrics.`);
       } finally {
         store.close();

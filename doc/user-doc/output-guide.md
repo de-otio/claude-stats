@@ -120,7 +120,7 @@ The dashboard presents the same data as the terminal report in graphical form. I
 
 ### Summary bar
 
-At the top of the page, six stats are always visible:
+At the top of the page, five stats are always visible:
 
 | Stat | Source |
 |---|---|

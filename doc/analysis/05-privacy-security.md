@@ -31,12 +31,12 @@ All raw data stays on the developer's machine. The tool reads from `~/.claude/` 
 - API keys or authentication tokens
 - Device identifiers from telemetry
 
-## Quarantine Files
+## Quarantine Table
 
-The resilience system (see [08-resilience.md](08-resilience.md)) stores unparseable JSONL lines in a quarantine file for later reprocessing. These raw lines may contain prompt content or code. The quarantine file must:
-- Have the same restrictive permissions as the SQLite database (`0600`)
-- Never be included in server sync
-- Be purged after successful reprocessing
+The resilience system (see [08-resilience.md](08-resilience.md)) stores unparseable JSONL lines in a `quarantine` table within the SQLite database for later reprocessing. These raw lines may contain prompt content or code. The quarantine table:
+- Inherits the same restrictive permissions as the SQLite database file (`0600`)
+- Is never included in server sync
+- Entries are marked as reprocessed after successful re-parsing
 
 ## Server Sync Rules (Future)
 
