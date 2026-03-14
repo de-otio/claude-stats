@@ -2,7 +2,7 @@
 /**
  * Bundle the VS Code extension into a single file with esbuild.
  *
- * - Entry: src/extension/extension.ts
+ * - Entry: packages/cli/src/extension/extension.ts
  * - Output: extension/dist/extension.js
  * - Externals: vscode (provided by VS Code runtime)
  * - All node: builtins are external (they ship with Node)
@@ -23,7 +23,7 @@ const watch = process.argv.includes("--watch");
 
 /** @type {import("esbuild").BuildOptions} */
 const options = {
-  entryPoints: ["src/extension/extension.ts"],
+  entryPoints: ["packages/cli/src/extension/extension.ts"],
   bundle: true,
   outfile: "extension/dist/extension.js",
   platform: "node",

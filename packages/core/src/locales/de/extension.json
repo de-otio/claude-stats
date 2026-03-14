@@ -1,0 +1,232 @@
+{
+  "statusBar": {
+    "idle": "$(graph) Claude Stats",
+    "withStats": "$(graph) {{tokens}} Token · ~${{cost}}",
+    "tooltip": "Claude Stats Dashboard öffnen"
+  },
+  "sidebar": {
+    "openDashboard": "Dashboard öffnen",
+    "tabTitle": "Tab {{title}}"
+  },
+  "tabHelp": {
+    "overview": {
+      "title": "Übersicht",
+      "sections": [
+        {
+          "heading": "Was Sie hier sehen",
+          "body": "Übergeordnete Nutzungsstatistiken für den gewählten Zeitraum: Sessions, Prompts, Token, Cache-Effizienz und geschätzte API-Kosten."
+        },
+        {
+          "heading": "Tägliche / Stündliche Token-Nutzung",
+          "body": "Gestapeltes Balkendiagramm mit Ausgabe-Token, nicht gecachtem Input, Cache-Lesevorgängen und Cache-Erstellung über die Zeit. Bei Zeitraum «Tag» wird eine stündliche Aufschlüsselung angezeigt."
+        },
+        {
+          "heading": "Token-Verteilung",
+          "body": "Ringdiagramm der gesamten Token-Verteilung über die vier Kategorien: Ausgabe, Eingabe, Cache-Lesen und Cache-Erstellung."
+        },
+        {
+          "heading": "Cache-Nutzung",
+          "body": "Zeigt, wie effektiv das Prompt-Caching funktioniert. Ein höherer Cache-Lese-Anteil bedeutet weniger redundante Token-Verarbeitung und geringere Kosten."
+        },
+        {
+          "heading": "Kumulativer API-Wert vs. Abogebühr",
+          "body": "Verfolgt, wie viel API-Wert Sie im Laufe der Zeit verbraucht haben, im Vergleich zu Ihrer monatlichen Abogebühr. Wenn die Linie die gestrichelte Abogebühr-Linie übersteigt, erhalten Sie mehr als den 1-fachen Wert aus Ihrem Abonnement."
+        }
+      ]
+    },
+    "models": {
+      "title": "Modelle",
+      "sections": [
+        {
+          "heading": "Token nach Modell",
+          "body": "Gestapelter Balken mit Eingabe- und Ausgabe-Token-Verbrauch pro Modell. Hilft Ihnen zu erkennen, welche Modelle Sie am intensivsten nutzen."
+        },
+        {
+          "heading": "Abbruchgründe",
+          "body": "Wie häufig jeder Abbruchgrund auftritt. «end_turn» bedeutet, das Modell hat regulär beendet, «tool_use» bedeutet, es hat ein Tool aufgerufen, «max_tokens» bedeutet, es hat das Ausgabelimit erreicht."
+        }
+      ]
+    },
+    "projects": {
+      "title": "Projekte",
+      "sections": [
+        {
+          "heading": "Top-Projekte",
+          "body": "Horizontales Balkendiagramm Ihrer Token-intensivsten Projekte. Nützlich, um zu verstehen, wo sich Ihre Nutzung konzentriert."
+        },
+        {
+          "heading": "Sessions nach Einstiegspunkt",
+          "body": "Kreisdiagramm, das zeigt, wie sich Sessions über Einstiegspunkte verteilen (CLI, VS Code-Erweiterung, API usw.)."
+        }
+      ]
+    },
+    "sessions": {
+      "title": "Sessions",
+      "sections": [
+        {
+          "heading": "5-Stunden-Nutzungsfenster",
+          "body": "Claude erfasst die Nutzung in rollierenden 5-Stunden-Fenstern. Jeder Balken zeigt den verbrauchten API-Wert in diesem Fenster. Rote Balken zeigen Fenster an, in denen eine Drosselung stattfand."
+        },
+        {
+          "heading": "Top-Gespräche nach API-Kosten",
+          "body": "Ihre teuersten einzelnen Gespräche. Hovern Sie für Details wie Prompt-Anzahl, vorherrschendes Modell und Prozentsatz der Abogebühr."
+        }
+      ]
+    },
+    "plan": {
+      "title": "Abo",
+      "sections": [
+        {
+          "heading": "Was dieser Tab misst",
+          "body": "Vergleicht den API-äquivalenten Wert Ihrer Claude-Nutzung mit Ihren Abonnementkosten. Hilft bei der Frage: «Sollte ich upgraden oder downgraden?»"
+        },
+        {
+          "heading": "Abo-Bewertung",
+          "body": "«Guter Wert» bedeutet, dass Ihre API-äquivalente Nutzung Ihre Abogebühr übersteigt (Sie erhalten mehr als Sie zahlen). «Unternutzung» bedeutet, dass Sie mehr zahlen als die entsprechenden API-Kosten."
+        },
+        {
+          "heading": "Empfohlenes Abo",
+          "body": "Basierend auf Ihren durchschnittlichen wöchentlichen API-äquivalenten Kosten, hochgerechnet auf den Monat. Vergleicht mit Pro ($20), Team Standard ($25), Max 5x ($100), Team Premium ($125) und Max 20x ($200)."
+        },
+        {
+          "heading": "Wöchentliche Aktivität",
+          "body": "Balkendiagramm mit Sessions und Prompts pro Woche. Hilft Ihnen, Ihre Nutzungsmuster zu erkennen und ob Ihr Aktivitätsniveau Ihr aktuelles Abo rechtfertigt."
+        },
+        {
+          "heading": "Fensterlimit-Auslastung %",
+          "body": "Zeigt, welcher Prozentsatz Ihres Nutzungslimits pro Fenster in jedem 5-Stunden-Fenster verbraucht wurde. Abgeleitet aus gedrosselten Fenstern (falls vorhanden) oder geschätzt anhand Ihrer Abogebühr. Rote Balken zeigen gedrosselte Fenster, orange bedeutet Annäherung an das Limit (>=80%)."
+        },
+        {
+          "heading": "Fenster pro Woche",
+          "body": "Gestapelter Balken mit normalen vs. gedrosselten Fenstern pro Woche. Mehr gedrosselte Fenster deutet darauf hin, dass Sie von einem höheren Abo profitieren könnten."
+        },
+        {
+          "heading": "Multi-Account-Unterstützung",
+          "body": "Wenn Sie mehrere Claude-Konten nutzen (z. B. Team-Arbeitskonto + privat), wird jedes Konto separat mit eigener Abo-Bewertung und Kostenaufschlüsselung erkannt."
+        }
+      ]
+    },
+    "context": {
+      "title": "Kontext",
+      "sections": [
+        {
+          "heading": "Was dieser Tab misst",
+          "body": "Analysiert Ihre Kontextmanagement-Gewohnheiten: Gesprächslänge, Kontextfenster-Wachstum, Kompaktierungsnutzung und Cache-Effizienz. Hilft Ihnen bei der Frage: «Verwalte ich meinen Kontext optimal?»"
+        },
+        {
+          "heading": "Gesprächslängenverteilung",
+          "body": "Histogramm der Prompt-Anzahl pro Session. Sehr lange Sessions (15+ Prompts) ohne Kompaktierung können zu höheren Kosten und langsameren Antworten führen, da sich das Kontextfenster füllt."
+        },
+        {
+          "heading": "Kontextwachstumskurve",
+          "body": "Zeigt, wie Eingabe-Token mit jedem weiteren Prompt in einem Gespräch wachsen. Eine steile Kurve bedeutet, dass sich Kontext schnell ansammelt – erwägen Sie /compact oder starten Sie neue Gespräche für unabhängige Aufgaben."
+        },
+        {
+          "heading": "Cache-Effizienz nach Länge",
+          "body": "Vergleicht Cache-Trefferquoten zwischen kurzen und langen Gesprächen. Wenn die Cache-Effizienz in längeren Sessions sinkt, kann dies darauf hindeuten, dass der Kontext zu oft neu aufgebaut wird oder /compact nützlichen gecachten Kontext verwirft."
+        },
+        {
+          "heading": "Kompaktierungsereignisse",
+          "body": "Erkannte Fälle, in denen Eingabe-Token zwischen Nachrichten deutlich gesunken sind (>40% Reduktion), was auf die Verwendung von /compact hinweist. Zeigt die Token-Zahlen vorher/nachher, um zu visualisieren, wie viel Kontext zurückgewonnen wurde."
+        },
+        {
+          "heading": "Lange Sessions – Tabelle",
+          "body": "Sessions mit 15+ Prompts, sortiert nach Spitzen-Eingabe-Token. Die Spalte «Kompaktiert?» zeigt, ob eine Kompaktierung erkannt wurde. Sessions mit «Nein» hätten möglicherweise von /compact profitiert, um Kontextgröße und Kosten zu reduzieren."
+        }
+      ]
+    },
+    "efficiency": {
+      "title": "Effizienz",
+      "sections": [
+        {
+          "heading": "Was dieser Tab misst",
+          "body": "Analysiert, ob Sie Prompts an ein teureres Modell senden als nötig. Jeder Benutzer-Prompt («Turn») wird nach Komplexität bewertet und dann einer empfohlenen Stufe zugeordnet: Haiku, Sonnet oder Opus."
+        },
+        {
+          "heading": "Mögliche Einsparungen",
+          "body": "Dollarbetrag, den Sie sparen könnten, wenn jeder Turn an das günstigste geeignete Modell geleitet worden wäre. Es werden nur Fälle gezählt, in denen ein teureres Modell als die klassifizierte Stufe verwendet wurde."
+        },
+        {
+          "heading": "Übernutzungsrate",
+          "body": "Prozentsatz der klassifizierten Turns, bei denen das tatsächlich genutzte Modell teurer war als die empfohlene Stufe. Eine hohe Übernutzungsrate deutet auf Möglichkeiten hin, günstigere Modelle für einfache Aufgaben zu verwenden."
+        },
+        {
+          "heading": "Modellnutzung nach Komplexitätsstufe",
+          "body": "Gestapelter Balken pro Modell, farblich nach klassifizierter Stufe (grün=Haiku, blau=Sonnet, rot=Opus). Wenn Opus einen großen grünen oder blauen Anteil hat, hätten diese Turns ein günstigeres Modell nutzen können."
+        },
+        {
+          "heading": "Opus-Komplexitätsverteilung",
+          "body": "Histogramm der Komplexitätswerte (0–100) für Turns, die an Opus gesendet wurden. Werte werden aus vier Signalen berechnet:\n\n• Ausgabe-Token (0–25 Pkt.) — längere Antworten deuten auf schwierigere Aufgaben hin\n• Denkblöcke (0–30 Pkt.) — erweitertes Denken ist das stärkste Komplexitätssignal\n• Tool-Komplexität (0–25 Pkt.) — Agent, Write, NotebookEdit erzielen die höchsten Werte\n• Prompt-Textanalyse (0–20 Pkt.) — Schlüsselwörter wie «refactor» oder «architect» geben Punkte; «fix typo» oder «rename» ziehen ab\n\nBalken sind nach Stufe gefärbt: grün (0–20, Haiku-Niveau), blau (20–40, Sonnet-Niveau), rot (40+, Opus-Niveau). Grüne und blaue Balken stellen Opus-Turns dar, die Opus möglicherweise nicht benötigt haben."
+        },
+        {
+          "heading": "Top-Übernutzung",
+          "body": "Die konkreten Turns mit dem höchsten Einsparpotenzial – Fälle, in denen ein teures Modell für eine als einfacher klassifizierte Aufgabe verwendet wurde. Zeigt eine Vorschau des Prompt-Texts und die Dollarersparnis, wenn das stufengerechte Modell verwendet worden wäre."
+        }
+      ]
+    },
+    "settings": {
+      "title": "Einstellungen",
+      "sections": [
+        {
+          "heading": "Was Sie konfigurieren können",
+          "body": "Abo-Typ (Pro, Max, Team, Benutzerdefiniert) und monatliche Gebühr. Diese werden für die Abo-Auslastungsberechnungen im Abo-Tab verwendet. Ohne Einstellung erkennt das Tool den Typ automatisch aus Telemetriedaten."
+        },
+        {
+          "heading": "Kostenwarnschwellen",
+          "body": "Legen Sie tägliche, wöchentliche und monatliche Kostenschwellen fest. Wenn die geschätzten API-Kosten einen Schwellenwert überschreiten, werden nach der Datenerfassung Warnungen angezeigt."
+        },
+        {
+          "heading": "Wo Einstellungen gespeichert werden",
+          "body": "Alle Einstellungen werden in ~/.claude-stats/config.json gespeichert. Sie können diese Datei auch direkt bearbeiten."
+        }
+      ]
+    }
+  },
+  "panel": {
+    "title": "Claude Stats",
+    "errors": {
+      "failedToLoadConfig": "Konfiguration konnte nicht geladen werden",
+      "failedToSaveConfig": "Konfiguration konnte nicht gespeichert werden"
+    }
+  },
+  "sync": {
+    "status": {
+      "connectedText": "$(cloud) Sync",
+      "connectedTooltip": "Claude Stats: Synchronisiert – Klicken, um jetzt zu synchronisieren",
+      "disconnectedText": "$(cloud-upload) Sync aus",
+      "disconnectedTooltip": "Claude Stats: Nicht verbunden – Klicken zum Synchronisieren",
+      "syncingText": "$(sync~spin) Synchronisiere...",
+      "syncingTooltip": "Claude Stats: Session-Daten werden synchronisiert...",
+      "errorText": "$(cloud-upload) Sync-Fehler",
+      "errorTooltip": "Claude Stats: Synchronisierungsfehler – Klicken zum Wiederholen"
+    },
+    "dialogs": {
+      "notConfigured": "Claude Stats Sync ist nicht konfiguriert. Möchten Sie eine Verbindung herstellen?",
+      "authExpired": "Claude Stats: Authentifizierung abgelaufen. Bitte erneut verbinden.",
+      "disconnectConfirm": "Verbindung zu Claude Stats Sync trennen? Dadurch werden Ihre Authentifizierungstoken entfernt.",
+      "enterBackendUrl": "Geben Sie die Claude Stats Backend-URL ein",
+      "backendUrlPlaceholder": "https://ihre-team-instanz.example.com",
+      "enterEmail": "Geben Sie Ihre E-Mail-Adresse zur Authentifizierung ein",
+      "emailPlaceholder": "sie@example.com",
+      "checkEmailOrBrowser": "Claude Stats: Prüfen Sie Ihre E-Mail oder Ihren Browser, um die Authentifizierung abzuschließen. Code: {{code}}",
+      "checkEmail": "Claude Stats: Prüfen Sie Ihre E-Mail für einen Anmeldelink."
+    },
+    "progress": {
+      "syncing": "Claude Stats: Sessions werden synchronisiert...",
+      "connecting": "Claude Stats: Verbindung wird hergestellt..."
+    },
+    "messages": {
+      "syncComplete": "Claude Stats: Synchronisierung abgeschlossen.",
+      "syncFailed": "Claude Stats Synchronisierung fehlgeschlagen: {{message}}",
+      "connectedSuccess": "Claude Stats: Erfolgreich verbunden!",
+      "connectionFailed": "Claude Stats: Verbindung fehlgeschlagen – {{message}}",
+      "disconnected": "Claude Stats: Verbindung getrennt.",
+      "noBackendUrl": "Claude Stats: Keine Backend-URL konfiguriert. Verbinden Sie sich zuerst, um das Team-Dashboard zu nutzen.",
+      "backendError": "Backend hat {{status}} zurückgegeben. Überprüfen Sie die URL und versuchen Sie es erneut."
+    }
+  },
+  "errors": {
+    "sqliteRequired": "Claude Stats benötigt Node.js 22.5+ mit node:sqlite-Unterstützung. {{message}}",
+    "generic": "Claude Stats: {{message}}"
+  }
+}

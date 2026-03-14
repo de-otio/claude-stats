@@ -1,0 +1,562 @@
+# Claude Stats — AppSync GraphQL Schema
+# Derived from doc/analysis/team-app/05-api-design.md
+
+# ── Enums ──────────────────────────────────────────────────────────────────
+
+enum TeamRole { ADMIN MEMBER }
+enum ShareLevel { FULL SUMMARY MINIMAL }
+enum ChallengeStatus { ACTIVE COMPLETED }
+enum InterTeamChallengeStatus { PENDING ACTIVE COMPLETED }
+enum CrossTeamVisibility { PRIVATE PUBLIC_STATS PUBLIC_DASHBOARD }
+enum AchievementCategory { PRODUCTIVITY EFFICIENCY TEAM MILESTONES FUN }
+
+# ── User types ─────────────────────────────────────────────────────────────
+
+type User {
+  userId: ID!
+  email: String!
+  displayName: String!
+  avatarUrl: String
+  accounts: [LinkedAccount!]!
+  preferences: UserPreferences!
+  personalityType: String
+  streak: StreakInfo!
+  achievements: [Achievement!]!
+}
+
+type UserPublicProfile {
+  userId: ID!
+  displayName: String!
+  avatarUrl: String
+  personalityType: String
+  streak: StreakInfo
+  recentAchievements: [Achievement!]
+}
+
+type LinkedAccount {
+  accountId: ID!
+  label: String!
+  shareWithTeams: Boolean!
+  sharePrompts: Boolean!
+}
+
+type UserPreferences {
+  timezone: String!
+  weekStartDay: Int!
+  defaultShareLevel: ShareLevel!
+  streakWeekendGrace: Boolean!
+}
+
+# ── Team types ─────────────────────────────────────────────────────────────
+
+type Team {
+  teamId: ID!
+  teamName: String!
+  teamSlug: String!
+  logoUrl: String
+  inviteCode: String
+  memberCount: Int!
+  settings: TeamSettings!
+  members: [TeamMember!]!
+  currentChallenge: Challenge
+}
+
+type TeamMember {
+  userId: ID!
+  displayName: String!
+  role: TeamRole!
+  shareLevel: ShareLevel!
+  joinedAt: AWSTimestamp!
+  stats(period: String!): MemberStats
+  streak: StreakInfo
+  recentAchievements: [Achievement!]
+}
+
+type TeamSettings {
+  leaderboardEnabled: Boolean!
+  leaderboardCategories: [String!]!
+  challengesEnabled: Boolean!
+  minMembersForAggregates: Int!
+  crossTeamVisibility: CrossTeamVisibility!
+}
+
+# ── Stats types ────────────────────────────────────────────────────────────
+
+type MemberStats {
+  sessions: Int!
+  prompts: Int!
+  inputTokens: Long
+  outputTokens: Long
+  estimatedCost: Float
+  activeMinutes: Int
+  modelsUsed: AWSJSON
+  topTools: [String!]
+  velocityTokensPerMin: Float
+  subagentRatio: Float
+  projectBreakdown: [ProjectStats!]
+}
+
+type ProjectStats {
+  projectId: String!
+  sessions: Int!
+  prompts: Int!
+  estimatedCost: Float
+}
+
+type ProjectInsights {
+  projectId: String!
+  period: String!
+  totalSessions: Int!
+  totalPrompts: Int!
+  totalTokens: Long!
+  estimatedCost: Float!
+  contributors: [ProjectContributor!]!
+  modelsUsed: AWSJSON
+  trend: [ProjectTrendPoint!]!
+}
+
+type ProjectContributor {
+  displayName: String!
+  sessions: Int!
+  prompts: Int!
+}
+
+type ProjectTrendPoint {
+  date: String!
+  sessions: Int!
+  prompts: Int!
+  estimatedCost: Float!
+}
+
+# ── Dashboard types ────────────────────────────────────────────────────────
+
+type TeamDashboard {
+  team: Team!
+  period: String!
+  aggregate: TeamAggregate
+  leaderboard: Leaderboard
+  memberCards: [MemberCard!]!
+  chemistry: TeamChemistry
+  superlatives: [Superlative!]!
+  projectSummary: [ProjectStats!]!
+  computedAt: AWSTimestamp!
+}
+
+type TeamAggregate {
+  totalSessions: Int!
+  totalPrompts: Int!
+  totalInputTokens: Long!
+  totalOutputTokens: Long!
+  totalEstimatedCost: Float!
+  activeMemberCount: Int!
+  avgSessionsPerMember: Float!
+  avgCostPerMember: Float!
+}
+
+type Leaderboard {
+  categories: [LeaderboardCategory!]!
+}
+
+type LeaderboardCategory {
+  name: String!
+  awardName: String!
+  rankings: [LeaderboardEntry!]!
+}
+
+type LeaderboardEntry {
+  rank: Int!
+  displayName: String!
+  value: Float!
+  formattedValue: String!
+}
+
+type MemberCard {
+  userId: ID!
+  displayName: String!
+  personalityType: String
+  streak: StreakInfo
+  stats: MemberStats
+  recentAchievements: [Achievement!]
+}
+
+type TeamChemistry {
+  score: Int!
+  breakdown: ChemistryBreakdown!
+}
+
+type ChemistryBreakdown {
+  diversityBonus: Int!
+  coverageBonus: Int!
+  syncBonus: Int!
+  streakBonus: Int!
+  challengeBonus: Int!
+  balancePenalty: Int!
+}
+
+type Superlative {
+  label: String!
+  displayName: String!
+  value: String!
+}
+
+# ── Gamification types ─────────────────────────────────────────────────────
+
+type StreakInfo {
+  currentStreak: Int!
+  longestStreak: Int!
+  weekendGraceEnabled: Boolean!
+  freezeTokensRemaining: Int!
+  lastActiveDate: String
+}
+
+type Achievement {
+  achievementId: ID!
+  name: String!
+  description: String!
+  category: AchievementCategory!
+  icon: String!
+  unlockedAt: AWSTimestamp!
+  shared: Boolean!
+  context: AWSJSON
+}
+
+type AchievementDefinition {
+  achievementId: ID!
+  name: String!
+  description: String!
+  category: AchievementCategory!
+  icon: String!
+  threshold: AWSJSON
+  hidden: Boolean!
+}
+
+type AchievementEvent {
+  userId: ID!
+  displayName: String!
+  achievement: Achievement!
+  teamId: ID!
+}
+
+type Challenge {
+  challengeId: ID!
+  name: String!
+  metric: String!
+  startTime: AWSTimestamp!
+  endTime: AWSTimestamp!
+  status: ChallengeStatus!
+  participants: [ChallengeParticipant!]!
+}
+
+type ChallengeParticipant {
+  userId: ID!
+  displayName: String!
+  score: Float!
+  rank: Int!
+}
+
+# ── Cross-team types ───────────────────────────────────────────────────────
+
+type TeamComparisonEntry {
+  teamId: ID!
+  teamName: String!
+  teamSlug: String!
+  logoUrl: String
+  memberCount: Int!
+  aggregate: TeamAggregate
+}
+
+type InterTeamChallenge {
+  challengeId: ID!
+  name: String!
+  metric: String!
+  startTime: AWSTimestamp!
+  endTime: AWSTimestamp!
+  status: InterTeamChallengeStatus!
+  creatingTeamId: ID!
+  inviteCode: String
+  teams: [InterTeamChallengeTeam!]!
+}
+
+type InterTeamChallengeTeam {
+  teamId: ID!
+  teamName: String!
+  teamSlug: String!
+  logoUrl: String
+  score: Float!
+  rank: Int!
+}
+
+# ── Sync types ─────────────────────────────────────────────────────────────
+
+type SyncedSession {
+  sessionId: ID!
+  projectId: String
+  firstTimestamp: AWSTimestamp!
+  lastTimestamp: AWSTimestamp!
+  claudeVersion: String!
+  entrypoint: String!
+  promptCount: Int!
+  inputTokens: Long!
+  outputTokens: Long!
+  cacheCreationTokens: Long
+  cacheReadTokens: Long
+  models: [String!]!
+  accountId: String!
+  isSubagent: Boolean!
+  parentSessionId: String
+  estimatedCost: Float!
+  updatedAt: AWSTimestamp!
+}
+
+type SyncedMessage {
+  uuid: ID!
+  sessionId: ID!
+  timestamp: AWSTimestamp!
+  model: String!
+  stopReason: String
+  inputTokens: Long!
+  outputTokens: Long!
+  tools: [String!]
+  thinkingBlocks: Int
+  promptText: String
+}
+
+type SyncResult {
+  itemsWritten: Int!
+  itemsSkipped: Int!
+  conflicts: [ConflictItem!]!
+}
+
+type ConflictItem {
+  key: String!
+  serverVersion: Int!
+  serverItem: AWSJSON
+}
+
+type LogoUploadUrl {
+  uploadUrl: String!
+  logoUrl: String!
+}
+
+type TeamStatsUpdate {
+  teamId: ID!
+  period: String!
+  computedAt: AWSTimestamp!
+}
+
+# ── Queries ────────────────────────────────────────────────────────────────
+
+type Query {
+  # User
+  me: User! @aws_cognito_user_pools
+  userProfile(userId: ID!): UserPublicProfile @aws_cognito_user_pools
+
+  # Teams
+  myTeams: [Team!]! @aws_cognito_user_pools
+  team(teamId: ID!): Team! @aws_cognito_user_pools
+  teamDashboard(teamId: ID!, period: String!): TeamDashboard! @aws_cognito_user_pools
+  teamMembers(teamId: ID!): [TeamMember!]! @aws_cognito_user_pools
+
+  # Stats (own data)
+  mySessions(from: AWSTimestamp, to: AWSTimestamp, limit: Int): [SyncedSession!]! @aws_cognito_user_pools
+  myStats(period: String!): MemberStats! @aws_cognito_user_pools
+  myProjects(period: String!): [ProjectStats!]! @aws_cognito_user_pools
+
+  # Project insights
+  teamProjectInsights(teamId: ID!, projectId: String!, period: String!): ProjectInsights! @aws_cognito_user_pools
+  teamProjects(teamId: ID!, period: String!): [ProjectStats!]! @aws_cognito_user_pools
+
+  # Session detail
+  sessionMessages(sessionId: ID!): [SyncedMessage!]! @aws_cognito_user_pools
+
+  # Achievements
+  myAchievements: [Achievement!]! @aws_cognito_user_pools
+  availableAchievements: [AchievementDefinition!]! @aws_cognito_user_pools
+
+  # Challenges
+  activeChallenge(teamId: ID!): Challenge @aws_cognito_user_pools
+  challengeHistory(teamId: ID!, limit: Int): [Challenge!]! @aws_cognito_user_pools
+
+  # Cross-team
+  teamsComparison(period: String!): [TeamComparisonEntry!]! @aws_cognito_user_pools
+  teamBySlug(slug: String!): Team @aws_cognito_user_pools
+  teamDashboardAsReader(teamId: ID!, period: String!): TeamDashboard @aws_cognito_user_pools
+
+  # Inter-team challenges
+  activeInterTeamChallenges: [InterTeamChallenge!]! @aws_cognito_user_pools
+  interTeamChallengeHistory(limit: Int): [InterTeamChallenge!]! @aws_cognito_user_pools
+
+  # Admin
+  allowedDomains: [String!]! @aws_cognito_user_pools
+  allTeams: [Team!]! @aws_cognito_user_pools
+}
+
+# ── Mutations ──────────────────────────────────────────────────────────────
+
+type Mutation {
+  # User
+  updateProfile(input: UpdateProfileInput!): User!
+  linkAccount(input: LinkAccountInput!): LinkedAccount!
+  unlinkAccount(accountId: ID!): Boolean!
+  updateAccountSharing(accountId: ID!, shareWithTeams: Boolean, sharePrompts: Boolean): LinkedAccount!
+
+  # Teams
+  createTeam(input: CreateTeamInput!): Team!
+  updateTeamSettings(teamId: ID!, input: TeamSettingsInput!): Team!
+  deleteTeam(teamId: ID!): Boolean!
+  regenerateInviteCode(teamId: ID!): String!
+
+  # Membership
+  joinTeam(inviteCode: String!): Team!
+  leaveTeam(teamId: ID!): Boolean!
+  updateMembership(teamId: ID!, input: MembershipInput!): TeamMember!
+  removeMember(teamId: ID!, userId: ID!): Boolean!
+  promoteMember(teamId: ID!, userId: ID!): TeamMember!
+
+  # Sync
+  syncSessions(input: [SyncSessionInput!]!): SyncResult!
+  syncMessages(input: [SyncMessageInput!]!): SyncResult!
+
+  # Stats (internal)
+  refreshTeamStats(teamId: ID!, period: String!): Boolean! @aws_iam
+
+  # Achievements
+  unlockAchievement(achievementId: ID!, context: AWSJSON): Achievement!
+  toggleAchievementVisibility(achievementId: ID!, shared: Boolean!): Achievement!
+
+  # Challenges
+  createChallenge(teamId: ID!, input: ChallengeInput!): Challenge!
+  joinChallenge(challengeId: ID!): Boolean!
+  completeChallenge(challengeId: ID!): Challenge!
+
+  # Team logos
+  requestTeamLogoUpload(teamId: ID!): LogoUploadUrl!
+  deleteTeamLogo(teamId: ID!): Boolean!
+
+  # Dashboard sharing
+  grantDashboardAccess(teamId: ID!, readerTeamId: ID!): Boolean!
+  revokeDashboardAccess(teamId: ID!, readerTeamId: ID!): Boolean!
+
+  # Inter-team challenges
+  createInterTeamChallenge(teamId: ID!, input: InterTeamChallengeInput!): InterTeamChallenge!
+  joinInterTeamChallenge(teamId: ID!, inviteCode: String!): InterTeamChallenge!
+  completeInterTeamChallenge(challengeId: ID!): InterTeamChallenge!
+
+  # Account management
+  deleteMyAccount: Boolean!
+
+  # Admin
+  updateAllowedDomains(domains: [String!]!): [String!]!
+}
+
+# ── Subscriptions ──────────────────────────────────────────────────────────
+
+type Subscription {
+  onTeamStatsUpdated(teamId: ID!): TeamStatsUpdate
+    @aws_subscribe(mutations: ["refreshTeamStats"])
+
+  onAchievementUnlocked(teamId: ID!): AchievementEvent
+    @aws_subscribe(mutations: ["unlockAchievement"])
+
+  onChallengeUpdated(teamId: ID!): Challenge
+    @aws_subscribe(mutations: ["createChallenge", "completeChallenge"])
+
+  onInterTeamChallengeUpdated(challengeId: ID!): InterTeamChallenge
+    @aws_subscribe(mutations: ["completeInterTeamChallenge"])
+
+  onSessionSynced(userId: ID!): SyncedSession
+    @aws_subscribe(mutations: ["syncSessions"])
+}
+
+# ── Input types ────────────────────────────────────────────────────────────
+
+input SyncSessionInput {
+  sessionId: ID!
+  projectId: String
+  projectPathHash: String
+  firstTimestamp: AWSTimestamp!
+  lastTimestamp: AWSTimestamp!
+  claudeVersion: String!
+  entrypoint: String!
+  promptCount: Int!
+  assistantMessageCount: Int!
+  inputTokens: Long!
+  outputTokens: Long!
+  cacheCreationTokens: Long
+  cacheReadTokens: Long
+  toolUseCounts: AWSJSON
+  models: [String!]!
+  accountId: String!
+  isSubagent: Boolean!
+  parentSessionId: String
+  thinkingBlocks: Int
+  estimatedCost: Float!
+  _version: Int!
+}
+
+input SyncMessageInput {
+  sessionId: ID!
+  uuid: ID!
+  timestamp: AWSTimestamp!
+  model: String!
+  stopReason: String!
+  inputTokens: Long!
+  outputTokens: Long!
+  cacheCreationTokens: Long
+  cacheReadTokens: Long
+  tools: [String!]
+  thinkingBlocks: Int
+  serviceTier: String
+  promptText: String
+  _version: Int!
+}
+
+input UpdateProfileInput {
+  displayName: String
+  avatarUrl: String
+  timezone: String
+  weekStartDay: Int
+  defaultShareLevel: ShareLevel
+  streakWeekendGrace: Boolean
+  personalityType: String
+}
+
+input LinkAccountInput {
+  accountId: String!
+  label: String!
+  shareWithTeams: Boolean!
+  sharePrompts: Boolean
+}
+
+input CreateTeamInput {
+  teamName: String!
+  logoUrl: String
+}
+
+input TeamSettingsInput {
+  leaderboardEnabled: Boolean
+  leaderboardCategories: [String!]
+  challengesEnabled: Boolean
+  minMembersForAggregates: Int
+  crossTeamVisibility: CrossTeamVisibility
+}
+
+input InterTeamChallengeInput {
+  name: String!
+  metric: String!
+  startTime: AWSTimestamp!
+  endTime: AWSTimestamp!
+}
+
+input MembershipInput {
+  displayName: String
+  shareLevel: ShareLevel
+  sharedAccounts: [String!]
+}
+
+input ChallengeInput {
+  name: String!
+  metric: String!
+  startTime: AWSTimestamp!
+  endTime: AWSTimestamp!
+}

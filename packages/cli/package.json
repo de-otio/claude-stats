@@ -1,0 +1,21 @@
+{
+  "name": "@claude-stats/cli",
+  "version": "0.1.0",
+  "description": "Claude Code usage statistics CLI",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "claude-stats": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@claude-stats/core": "*",
+    "commander": "^12.1.0",
+    "zod": "^3.23.8"
+  }
+}

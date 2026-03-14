@@ -1,0 +1,79 @@
+{
+  "metrics": {
+    "sessions": "Sitzungen",
+    "prompts": "Prompts",
+    "inputTokens": "Eingabe-Token",
+    "outputTokens": "Ausgabe-Token",
+    "input": "Eingabe",
+    "output": "Ausgabe",
+    "cache": "Cache",
+    "cacheEfficiency": "Cache-Effizienz",
+    "estCost": "Gesch. Kosten",
+    "planValue": "Plan-Wert",
+    "planROI": "Plan-ROI",
+    "activeHours": "Aktive Stunden",
+    "costPerPrompt": "Kosten / Prompt",
+    "tokPerMin": "Tok / Min",
+    "throttleEvents": "Drosselungs-Ereignisse",
+    "velocity": "Geschwindigkeit",
+    "cost": "Kosten",
+    "duration": "Dauer",
+    "thinking": "Denken"
+  },
+  "periods": {
+    "day": "Tag",
+    "week": "Woche",
+    "month": "Monat",
+    "all": "Alle",
+    "allTime": "Gesamtzeitraum"
+  },
+  "periodLabels": {
+    "daily": "Täglich",
+    "weekly": "Wöchentlich",
+    "monthly": "Monatlich",
+    "allTime": "Gesamtzeitraum"
+  },
+  "models": {
+    "opus4": "Opus 4",
+    "sonnet4": "Sonnet 4",
+    "haiku4": "Haiku 4"
+  },
+  "plans": {
+    "pro": "Pro",
+    "max5x": "Max 5x",
+    "max20x": "Max 20x",
+    "teamStandard": "Team Standard",
+    "teamPremium": "Team Premium"
+  },
+  "verdicts": {
+    "goodValue": "Gutes Preis-Leistungs-Verhältnis",
+    "underusing": "Unternutzung",
+    "noPlanDetected": "Kein Plan erkannt"
+  },
+  "tableHeaders": {
+    "session": "Sitzung",
+    "started": "Gestartet",
+    "model": "Modell",
+    "time": "Zeit",
+    "stop": "Stopp",
+    "tools": "Werkzeuge",
+    "total": "Gesamt",
+    "totals": "Summen"
+  },
+  "units": {
+    "tokens": "Token",
+    "session_one": "{{count}} Sitzung",
+    "session_other": "{{count}} Sitzungen",
+    "tokPerMin": "Tok/Min",
+    "promptsPerHr": "Prompts/Std",
+    "outputPerPrompt": "Ausgabe/Prompt"
+  },
+  "actions": {
+    "connect": "Verbinden",
+    "disconnect": "Trennen",
+    "cancel": "Abbrechen",
+    "refresh": "Aktualisieren",
+    "save": "Speichern",
+    "send": "Senden"
+  }
+}

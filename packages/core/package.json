@@ -1,0 +1,63 @@
+{
+  "name": "@claude-stats/core",
+  "version": "0.1.0",
+  "description": "Shared types, parser, and pricing logic for claude-stats",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    },
+    "./pricing": {
+      "types": "./dist/pricing.d.ts",
+      "default": "./dist/pricing.js"
+    },
+    "./paths": {
+      "types": "./dist/paths.d.ts",
+      "default": "./dist/paths.js"
+    },
+    "./parser/session": {
+      "types": "./dist/parser/session.d.ts",
+      "default": "./dist/parser/session.js"
+    },
+    "./parser/telemetry": {
+      "types": "./dist/parser/telemetry.d.ts",
+      "default": "./dist/parser/telemetry.js"
+    },
+    "./types/team": {
+      "types": "./dist/types/team.d.ts",
+      "default": "./dist/types/team.js"
+    },
+    "./types/auth": {
+      "types": "./dist/types/auth.d.ts",
+      "default": "./dist/types/auth.js"
+    },
+    "./types/api": {
+      "types": "./dist/types/api.d.ts",
+      "default": "./dist/types/api.js"
+    },
+    "./types/config": {
+      "types": "./dist/types/config.d.ts",
+      "default": "./dist/types/config.js"
+    },
+    "./i18n": {
+      "types": "./dist/i18n.d.ts",
+      "default": "./dist/i18n.js"
+    },
+    "./locales/en/*.json": "./dist/locales/en/*.json",
+    "./locales/de/*.json": "./dist/locales/de/*.json"
+  },
+  "scripts": {
+    "build": "tsc && mkdir -p dist/locales && cp -r src/locales/en src/locales/de dist/locales/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "i18next": "^25.8.18"
+  }
+}

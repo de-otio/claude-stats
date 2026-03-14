@@ -1,0 +1,21 @@
+{
+  "name": "@claude-stats/infra",
+  "version": "0.1.0",
+  "description": "AWS CDK infrastructure for claude-stats team app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "cdk": "cdk"
+  },
+  "dependencies": {
+    "@claude-stats/core": "*",
+    "aws-cdk-lib": "^2.175.0",
+    "constructs": "^10.4.2",
+    "source-map-support": "^0.5.21"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.175.0"
+  }
+}

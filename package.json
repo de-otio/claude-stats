@@ -7,26 +7,19 @@
     "url": "https://github.com/deotio/claude-stats"
   },
   "license": "MIT",
-  "type": "module",
-  "main": "dist/index.js",
-  "bin": {
-    "claude-stats": "dist/index.js"
-  },
+  "private": true,
+  "workspaces": ["packages/*"],
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build --workspaces",
     "build:ext": "node scripts/build-extension.mjs",
-    "build:all": "tsc && node scripts/build-extension.mjs",
+    "build:all": "npm run build && node scripts/build-extension.mjs",
     "package:ext": "npm run build:ext && cd extension && npx @vscode/vsce package --no-dependencies",
-    "dev": "tsx src/index.ts",
-    "start": "node --experimental-sqlite dist/index.js",
-    "typecheck": "tsc --noEmit",
+    "dev": "tsx packages/cli/src/index.ts",
+    "start": "node --experimental-sqlite packages/cli/dist/index.js",
+    "typecheck": "tsc --build",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage"
-  },
-  "dependencies": {
-    "commander": "^12.1.0",
-    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
