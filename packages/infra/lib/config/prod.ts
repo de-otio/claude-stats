@@ -9,15 +9,8 @@ export const prodConfig: EnvironmentConfig = {
   allowedEmailDomains: ["acme.com"],
   magicLinkTtlMinutes: 15,
   magicLinkMaxRequestsPerHour: 3,
-  cognitoAdvancedSecurity: true,
   cognitoAccessTokenTtlMinutes: 60,
   cognitoRefreshTokenTtlDays: 30,
-
-  // WAF — strict
-  wafRateLimitSignup: 5,
-  wafRateLimitAuth: 10,
-  wafRateLimitJoinTeam: 10,
-  wafGeoRestriction: [], // Configure if needed
 
   // Data — protected
   dynamoDbEncryption: "CUSTOMER_MANAGED",

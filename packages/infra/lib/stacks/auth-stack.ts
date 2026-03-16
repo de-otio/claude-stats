@@ -3,9 +3,10 @@ import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as lambda from "aws-cdk-lib/aws-lambda-nodejs";
 import * as lambdaRuntime from "aws-cdk-lib/aws-lambda";
 import * as kms from "aws-cdk-lib/aws-kms";
-import * as wafv2 from "aws-cdk-lib/aws-wafv2";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as ses from "aws-cdk-lib/aws-ses";
+import * as sns from "aws-cdk-lib/aws-sns";
 import { Construct } from "constructs";
 import type { EnvironmentConfig } from "../config/types.js";
 import { putParam, getParam } from "../ssm-params.js";
@@ -56,8 +57,58 @@ export class AuthStack extends cdk.Stack {
         config.envName === "prod"
           ? cdk.RemovalPolicy.RETAIN
           : cdk.RemovalPolicy.DESTROY,
-      alias: `alias/claude-stats-${config.envName}-magic-link-hmac`,
+      alias: `alias/${prefix}-magic-link-hmac`,
     });
+
+    // ---------- SES Configuration Set ----------
+
+    const configSet = new ses.ConfigurationSet(this, "SesConfigSet", {
+      configurationSetName: `${prefix}-email`,
+      reputationMetrics: true,
+      sendingEnabled: true,
+    });
+
+    // ---------- SES Email Identity ----------
+
+    const sesFromEmail = `noreply@${config.domainName ?? "claude-stats.dev"}`;
+    let emailIdentity: ses.EmailIdentity;
+
+    if (config.domainName) {
+      // Production: domain identity — enables sending from any address @domainName.
+      // DKIM DNS records must be added to the authoritative hosted zone for the domain.
+      emailIdentity = new ses.EmailIdentity(this, "SesDomainIdentity", {
+        identity: ses.Identity.domain(config.domainName),
+        configurationSet: configSet,
+      });
+    } else {
+      // Dev: email identity — sender address must be verified (click confirmation email).
+      // In SES sandbox mode, recipients must also be verified.
+      emailIdentity = new ses.EmailIdentity(this, "SesEmailIdentity", {
+        identity: ses.Identity.email(sesFromEmail),
+        configurationSet: configSet,
+      });
+    }
+
+    // ---------- SES Bounce & Complaint SNS Topic (prod) ----------
+
+    let sesNotificationTopic: sns.Topic | undefined;
+
+    if (config.envName === "prod") {
+      sesNotificationTopic = new sns.Topic(this, "SesNotificationTopic", {
+        topicName: `${prefix}-ses-notifications`,
+        displayName: `${prefix} SES Bounce & Complaint Notifications`,
+      });
+
+      configSet.addEventDestination("BounceComplaint", {
+        destination: ses.EventDestination.snsTopic(sesNotificationTopic),
+        events: [
+          ses.EmailSendingEvent.BOUNCE,
+          ses.EmailSendingEvent.COMPLAINT,
+          ses.EmailSendingEvent.REJECT,
+        ],
+        configurationSetEventDestinationName: `${prefix}-bounce-complaint`,
+      });
+    }
 
     // ---------- Shared Lambda configuration ----------
 
@@ -107,7 +158,8 @@ export class AuthStack extends cdk.Stack {
         environment: {
           TABLE_NAME: magicLinkTokensTableName,
           KMS_KEY_ID: hmacKey.keyId,
-          SES_FROM_EMAIL: `noreply@${config.domainName ?? "claude-stats.dev"}`,
+          SES_FROM_EMAIL: sesFromEmail,
+          SES_CONFIGURATION_SET: configSet.configurationSetName,
           APP_URL: appUrl,
           MAGIC_LINK_TTL_MINUTES: String(config.magicLinkTtlMinutes),
           MAX_REQUESTS_PER_HOUR: String(config.magicLinkMaxRequestsPerHour),
@@ -128,11 +180,14 @@ export class AuthStack extends cdk.Stack {
     // Grant KMS sign
     hmacKey.grant(createChallengeFn, "kms:GenerateMac");
 
-    // Grant SES send
+    // Grant SES send — scoped to the verified identity and configuration set
     createChallengeFn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["ses:SendEmail"],
-        resources: ["*"],
+        actions: ["ses:SendEmail", "ses:SendRawEmail"],
+        resources: [
+          emailIdentity.emailIdentityArn,
+          `arn:aws:ses:${this.region}:${this.account}:configuration-set/${configSet.configurationSetName}`,
+        ],
       }),
     );
 
@@ -238,9 +293,6 @@ export class AuthStack extends cdk.Stack {
         config.envName === "prod"
           ? cdk.RemovalPolicy.RETAIN
           : cdk.RemovalPolicy.DESTROY,
-      advancedSecurityMode: config.cognitoAdvancedSecurity
-        ? cognito.AdvancedSecurityMode.ENFORCED
-        : cognito.AdvancedSecurityMode.OFF,
       lambdaTriggers: {
         defineAuthChallenge: defineChallengeFn,
         createAuthChallenge: createChallengeFn,
@@ -305,122 +357,12 @@ export class AuthStack extends cdk.Stack {
 
     // ---------- Cognito Domain ----------
 
-    const cognitoDomainPrefix = `claude-stats-${config.envName}`;
+    // Cognito domain prefixes must be lowercase alphanumeric + hyphens
+    const cognitoDomainPrefix = prefix.toLowerCase();
     const cognitoDomain = userPool.addDomain("CognitoDomain", {
       cognitoDomain: {
         domainPrefix: cognitoDomainPrefix,
       },
-    });
-
-    // ---------- WAF WebACL ----------
-
-    const wafAcl = new wafv2.CfnWebACL(this, "AuthWafAcl", {
-      defaultAction: { allow: {} },
-      scope: "REGIONAL",
-      name: `${prefix}-AuthWaf`,
-      visibilityConfig: {
-        cloudWatchMetricsEnabled: true,
-        metricName: `${prefix}-AuthWaf`,
-        sampledRequestsEnabled: true,
-      },
-      rules: [
-        // Rate limit on SignUp
-        {
-          name: "RateLimitSignup",
-          priority: 1,
-          action: { block: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: `${prefix}-RateLimitSignup`,
-            sampledRequestsEnabled: true,
-          },
-          statement: {
-            rateBasedStatement: {
-              limit: config.wafRateLimitSignup,
-              aggregateKeyType: "IP",
-              evaluationWindowSec: 300,
-              scopeDownStatement: {
-                byteMatchStatement: {
-                  searchString: "SignUp",
-                  fieldToMatch: { body: { oversizeHandling: "MATCH" } },
-                  textTransformations: [
-                    { priority: 0, type: "NONE" },
-                  ],
-                  positionalConstraint: "CONTAINS",
-                },
-              },
-            },
-          },
-        },
-        // Rate limit on InitiateAuth
-        {
-          name: "RateLimitAuth",
-          priority: 2,
-          action: { block: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: `${prefix}-RateLimitAuth`,
-            sampledRequestsEnabled: true,
-          },
-          statement: {
-            rateBasedStatement: {
-              limit: config.wafRateLimitAuth,
-              aggregateKeyType: "IP",
-              evaluationWindowSec: 300,
-              scopeDownStatement: {
-                byteMatchStatement: {
-                  searchString: "InitiateAuth",
-                  fieldToMatch: { body: { oversizeHandling: "MATCH" } },
-                  textTransformations: [
-                    { priority: 0, type: "NONE" },
-                  ],
-                  positionalConstraint: "CONTAINS",
-                },
-              },
-            },
-          },
-        },
-        // AWS Managed IP reputation list
-        {
-          name: "AWSManagedIPReputation",
-          priority: 3,
-          overrideAction: { none: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: `${prefix}-IPReputation`,
-            sampledRequestsEnabled: true,
-          },
-          statement: {
-            managedRuleGroupStatement: {
-              vendorName: "AWS",
-              name: "AWSManagedRulesAmazonIpReputationList",
-            },
-          },
-        },
-        // AWS Managed known bots
-        {
-          name: "AWSManagedBotControl",
-          priority: 4,
-          overrideAction: { none: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: `${prefix}-BotControl`,
-            sampledRequestsEnabled: true,
-          },
-          statement: {
-            managedRuleGroupStatement: {
-              vendorName: "AWS",
-              name: "AWSManagedRulesBotControlRuleSet",
-            },
-          },
-        },
-      ],
-    });
-
-    // Associate WAF with Cognito User Pool
-    new wafv2.CfnWebACLAssociation(this, "WafCognitoAssociation", {
-      resourceArn: userPool.userPoolArn,
-      webAclArn: wafAcl.attrArn,
     });
 
     // ---------- SSM Parameters ----------
@@ -435,5 +377,34 @@ export class AuthStack extends cdk.Stack {
       "auth/cognito-domain",
       `${cognitoDomainPrefix}.auth.${this.region}.amazoncognito.com`,
     );
+    putParam(
+      this,
+      prefix,
+      "auth/ses-configuration-set",
+      configSet.configurationSetName,
+    );
+
+    if (sesNotificationTopic) {
+      putParam(
+        this,
+        prefix,
+        "auth/ses-notification-topic-arn",
+        sesNotificationTopic.topicArn,
+      );
+    }
+
+    // ---------- SES Outputs ----------
+
+    if (config.domainName) {
+      new cdk.CfnOutput(this, "SesDkimRecords", {
+        value: `Domain identity created for ${config.domainName}. Add DKIM CNAME records from the SES console to your DNS.`,
+        description: "SES DKIM setup instructions",
+      });
+    } else {
+      new cdk.CfnOutput(this, "SesVerificationRequired", {
+        value: `Email identity created for ${sesFromEmail}. Check your inbox to verify the sender address. In SES sandbox, also verify recipient addresses.`,
+        description: "SES email verification instructions",
+      });
+    }
   }
 }

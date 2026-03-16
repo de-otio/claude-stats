@@ -14,6 +14,7 @@ const ses = new SESClient({});
 const TABLE_NAME = process.env.TABLE_NAME!;
 const KMS_KEY_ID = process.env.KMS_KEY_ID!;
 const SES_FROM_EMAIL = process.env.SES_FROM_EMAIL!;
+const SES_CONFIGURATION_SET = process.env.SES_CONFIGURATION_SET;
 const APP_URL = process.env.APP_URL!;
 const MAGIC_LINK_TTL_MINUTES = Number(process.env.MAGIC_LINK_TTL_MINUTES ?? "15");
 const MAX_REQUESTS_PER_HOUR = Number(process.env.MAX_REQUESTS_PER_HOUR ?? "3");
@@ -70,6 +71,7 @@ export const handler: CreateAuthChallengeTriggerHandler = async (
     new SendEmailCommand({
       Source: SES_FROM_EMAIL,
       Destination: { ToAddresses: [email] },
+      ConfigurationSetName: SES_CONFIGURATION_SET,
       Message: {
         Subject: { Data: "Sign in to Claude Stats" },
         Body: {

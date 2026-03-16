@@ -72,7 +72,6 @@ graph TB
             end
             KMS["KMS HMAC Key"]
             SES["SES Email"]
-            WAF_AUTH["WAF WebACL"]
         end
 
         subgraph ApiStack
@@ -82,7 +81,6 @@ graph TB
             AGG["aggregate-stats"]
             DASH["team-dashboard"]
             SCORE["challenge-scoring"]
-            WAF_API["WAF WebACL"]
         end
 
         subgraph DataStack
@@ -118,7 +116,7 @@ graph TB
 
     SPA -->|HTTPS| CF
     CF --> S3
-    SPA -->|Auth| WAF_AUTH --> COGNITO
+    SPA -->|Auth| COGNITO
     COGNITO --> DEFINE --> CREATE --> VERIFY
     CREATE --> KMS
     CREATE --> SES
@@ -126,7 +124,7 @@ graph TB
     VERIFY --> KMS
     VERIFY --> TOKENS
 
-    SPA -->|GraphQL| WAF_API --> APPSYNC
+    SPA -->|GraphQL| APPSYNC
     CLI -->|GraphQL + Sync| APPSYNC
     MCP_CLIENT --> BEDROCK --> APPSYNC
 
@@ -280,9 +278,9 @@ The app uses **passwordless magic-link authentication**:
 4. User clicks link → frontend calls `VerifyAuthChallenge`
 5. Lambda validates HMAC, checks expiry + single-use → Cognito issues JWT
 
-Dev settings are relaxed: 60-minute token TTL, 20 requests/hour, no advanced security.
+Dev settings are relaxed: 60-minute token TTL, 20 requests/hour. Rate limiting is enforced at the Lambda level (DynamoDB sliding window per email).
 
-**SES setup required:** For magic links to send, you need a verified SES email identity in your dev account. In sandbox mode, both sender and recipient must be verified.
+**SES identity is created automatically** by the `AuthStack`. In **dev** (no `domainName`), an email identity for `noreply@claude-stats.dev` is created — check that inbox and click the verification link. In SES sandbox mode, you must also verify each recipient address. In **prod** (with `domainName`), a domain identity is created with DKIM — add the CNAME records shown in the SES console to your hosted zone. To move out of sandbox mode, request production access via the SES console.
 
 ## GraphQL API
 
@@ -374,6 +372,6 @@ The `doc/analysis/team-app/` directory contains 18 detailed design documents:
 
 **CDK deploy fails with "Resource already exists"** — Another developer may have deployed to the same account. Use a different `envName` or coordinate on a shared dev account.
 
-**Magic link email not received** — Check SES is configured and not in sandbox mode (or verify recipient email). Check CloudWatch logs for the `CreateAuthChallenge` Lambda.
+**Magic link email not received** — Verify the SES identity status in the AWS console (SES > Identities). In dev (sandbox mode), both the sender and recipient must be verified. For prod, ensure DKIM CNAME records are added to your DNS and the domain shows "Verified". Check the `CreateAuthChallenge` Lambda logs in CloudWatch and the SES dashboard for bounces/complaints.
 
 **Frontend shows blank page** — Ensure `config.js` has correct values from SSM. Check browser console for Amplify configuration errors.

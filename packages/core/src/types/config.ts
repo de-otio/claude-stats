@@ -19,15 +19,8 @@ export interface EnvironmentConfig {
   allowedEmailDomains: string[];
   magicLinkTtlMinutes: number;
   magicLinkMaxRequestsPerHour: number;
-  cognitoAdvancedSecurity: boolean;
   cognitoAccessTokenTtlMinutes: number;
   cognitoRefreshTokenTtlDays: number;
-
-  // WAF
-  wafRateLimitSignup: number;
-  wafRateLimitAuth: number;
-  wafRateLimitJoinTeam: number;
-  wafGeoRestriction: string[];
 
   // Data
   dynamoDbEncryption: "AWS_OWNED" | "CUSTOMER_MANAGED";

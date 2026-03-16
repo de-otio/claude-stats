@@ -5,7 +5,6 @@ import * as appsync from "aws-cdk-lib/aws-appsync";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as sqs from "aws-cdk-lib/aws-sqs";
-import * as wafv2 from "aws-cdk-lib/aws-wafv2";
 import { Construct } from "constructs";
 import type { EnvironmentConfig } from "../config/types.js";
 import { putParam, getParam } from "../ssm-params.js";
@@ -94,78 +93,6 @@ export class ApiStack extends cdk.Stack {
         table,
       );
     }
-
-    // ── WAF WebACL for AppSync ───────────────────────────────────────
-
-    const webAcl = new wafv2.CfnWebACL(this, "ApiWaf", {
-      name: `${prefix}-Api-WAF`,
-      scope: "REGIONAL",
-      defaultAction: { allow: {} },
-      visibilityConfig: {
-        cloudWatchMetricsEnabled: true,
-        metricName: `${prefix}-Api-WAF`,
-        sampledRequestsEnabled: true,
-      },
-      rules: [
-        // Blanket rate limit: 100 requests per IP per 5 min
-        {
-          name: "BlanketRateLimit",
-          priority: 1,
-          action: { block: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: `${prefix}-BlanketRateLimit`,
-            sampledRequestsEnabled: true,
-          },
-          statement: {
-            rateBasedStatement: {
-              limit: 100,
-              aggregateKeyType: "IP",
-            },
-          },
-        },
-        // AWS Managed Rules — IP reputation list
-        {
-          name: "AWSManagedRulesIPReputationList",
-          priority: 2,
-          overrideAction: { none: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: `${prefix}-IPReputation`,
-            sampledRequestsEnabled: true,
-          },
-          statement: {
-            managedRuleGroupStatement: {
-              vendorName: "AWS",
-              name: "AWSManagedRulesAmazonIpReputationList",
-            },
-          },
-        },
-        // AWS Managed Rules — known bad inputs
-        {
-          name: "AWSManagedRulesKnownBadInputs",
-          priority: 3,
-          overrideAction: { none: {} },
-          visibilityConfig: {
-            cloudWatchMetricsEnabled: true,
-            metricName: `${prefix}-KnownBadInputs`,
-            sampledRequestsEnabled: true,
-          },
-          statement: {
-            managedRuleGroupStatement: {
-              vendorName: "AWS",
-              name: "AWSManagedRulesKnownBadInputsRuleSet",
-            },
-          },
-        },
-      ],
-    });
-
-    // Associate WAF with AppSync API
-    new wafv2.CfnWebACLAssociation(this, "ApiWafAssociation", {
-      resourceArn: api.arn,
-      webAclArn: webAcl.attrArn,
-    });
 
     // ── Aggregate-stats DLQ (SQS) ────────────────────────────────────
 

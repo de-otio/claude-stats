@@ -1,29 +1,22 @@
-import type { EnvironmentConfig } from "./types.js";
+import type { EnvironmentConfig } from './types.js';
 
 export const devConfig: EnvironmentConfig = {
-  envName: "dev",
-  account: process.env.CDK_DEV_ACCOUNT ?? "123456789012",
-  region: process.env.CDK_DEV_REGION ?? "us-east-1",
+  envName: 'dev',
+  account: process.env.CDK_DEV_ACCOUNT ?? '123456789012',
+  region: process.env.CDK_DEV_REGION ?? 'us-east-1',
 
   // Auth — permissive for testing
-  allowedEmailDomains: ["acme.com", "acme.io", "example.com"],
+  allowedEmailDomains: ['acme.com', 'acme.io', 'example.com'],
   magicLinkTtlMinutes: 60, // Longer TTL for dev convenience
   magicLinkMaxRequestsPerHour: 20,
-  cognitoAdvancedSecurity: false, // Save cost in dev
   cognitoAccessTokenTtlMinutes: 60,
   cognitoRefreshTokenTtlDays: 30,
 
-  // WAF — relaxed
-  wafRateLimitSignup: 50,
-  wafRateLimitAuth: 100,
-  wafRateLimitJoinTeam: 50,
-  wafGeoRestriction: [],
-
   // Data — disposable in dev
-  dynamoDbEncryption: "AWS_OWNED",
+  dynamoDbEncryption: 'AWS_OWNED',
   dynamoDbPointInTimeRecovery: false,
   dynamoDbDeletionProtection: false,
-  dynamoDbRemovalPolicy: "DESTROY",
+  dynamoDbRemovalPolicy: 'DESTROY',
 
   // DNS & Frontend
   domainName: null, // Use CloudFront default URL
@@ -32,10 +25,10 @@ export const devConfig: EnvironmentConfig = {
 
   // Branding
   branding: {
-    primaryColor: "indigo",
-    accentColor: "emerald",
+    primaryColor: 'indigo',
+    accentColor: 'emerald',
     logoUrl: null,
-    appTitle: "Claude Stats (Dev)",
+    appTitle: 'Claude Stats (Dev)',
   },
 
   // MCP

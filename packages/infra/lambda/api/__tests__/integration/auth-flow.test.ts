@@ -9,6 +9,10 @@ const mockKmsSend = vi.hoisted(() => vi.fn());
 const mockSesSend = vi.hoisted(() => vi.fn());
 const mockSsmSend = vi.hoisted(() => vi.fn());
 
+vi.hoisted(() => {
+  process.env.SES_CONFIGURATION_SET = "ClaudeStats-dev-email";
+});
+
 vi.mock("@aws-sdk/client-dynamodb", () => ({
   DynamoDBClient: vi.fn(function () { return { send: mockDdbSend }; }),
   PutItemCommand: vi.fn(function(input: any) { return { _type: "PutItem", ...input }; }),
@@ -39,6 +43,7 @@ vi.mock("@aws-sdk/client-ssm", () => ({
 process.env.TABLE_NAME = "MagicLinkTokens";
 process.env.KMS_KEY_ID = "arn:aws:kms:us-east-1:123456789012:key/test-key-id";
 process.env.SES_FROM_EMAIL = "noreply@test.claude-stats.dev";
+process.env.SES_CONFIGURATION_SET = "ClaudeStats-dev-email";
 process.env.APP_URL = "http://localhost:5173";
 process.env.MAGIC_LINK_TTL_MINUTES = "15";
 process.env.MAX_REQUESTS_PER_HOUR = "3";
@@ -137,6 +142,16 @@ function makePreSignUpEvent(email: string): any {
 const MOCK_HMAC = Buffer.from("mock-hmac-bytes-for-testing-1234", "utf-8");
 const MOCK_HMAC_B64 = MOCK_HMAC.toString("base64");
 
+// AWS SES mailbox simulator addresses — safe for integration testing without
+// affecting sending quotas or sender reputation.
+// See: https://docs.aws.amazon.com/ses/latest/dg/send-an-email-from-console.html
+const SES_SIMULATOR = {
+  success: "success@simulator.amazonses.com",
+  bounce: "bounce@simulator.amazonses.com",
+  complaint: "complaint@simulator.amazonses.com",
+  suppressionList: "suppressionlist@simulator.amazonses.com",
+} as const;
+
 // ---------------------------------------------------------------------------
 // Tests: magic link request stores token in MagicLinkTokens table
 // ---------------------------------------------------------------------------
@@ -147,7 +162,7 @@ describe("auth-flow integration: create-challenge", () => {
   });
 
   it("stores token hash in MagicLinkTokens table after rate-limit check", async () => {
-    const email = "alice@example.com";
+    const email = SES_SIMULATOR.success;
     const event = makeCreateChallengeEvent(email);
 
     // Rate-limit GetItem: no existing record
@@ -173,10 +188,11 @@ describe("auth-flow integration: create-challenge", () => {
     // Check that KMS was invoked for HMAC
     expect(mockKmsSend).toHaveBeenCalledTimes(1);
 
-    // Check that SES was used to send the email
+    // Check that SES was used to send the email with the configuration set
     expect(mockSesSend).toHaveBeenCalledTimes(1);
     const sesCall = mockSesSend.mock.calls[0][0];
     expect(sesCall.Destination.ToAddresses).toContain(email);
+    expect(sesCall.ConfigurationSetName).toBe("ClaudeStats-dev-email");
 
     // Verify the response structure
     expect(result.response.publicChallengeParameters.email).toBe(email);
@@ -208,6 +224,82 @@ describe("auth-flow integration: create-challenge", () => {
     expect(mockKmsSend).not.toHaveBeenCalled();
     expect(mockSesSend).not.toHaveBeenCalled();
   });
+
+  it("sends to SES bounce simulator address and propagates SES errors", async () => {
+    const email = SES_SIMULATOR.bounce;
+    const event = makeCreateChallengeEvent(email);
+
+    // Rate-limit: no existing record
+    mockDdbSend.mockResolvedValueOnce({ Item: undefined });
+    // Rate-limit PutItem
+    mockDdbSend.mockResolvedValueOnce({});
+    // KMS
+    mockKmsSend.mockResolvedValueOnce({ Mac: MOCK_HMAC });
+    // Token PutItem
+    mockDdbSend.mockResolvedValueOnce({});
+
+    // SES rejects with MessageRejected (simulates bounce/reject at send time)
+    const sesError = new Error("Email address is on the suppression list");
+    sesError.name = "MessageRejected";
+    mockSesSend.mockRejectedValueOnce(sesError);
+
+    await expect(createChallengeHandler(event)).rejects.toThrow(
+      "Email address is on the suppression list",
+    );
+
+    // SES was called with the bounce simulator address
+    expect(mockSesSend).toHaveBeenCalledTimes(1);
+    const sesCall = mockSesSend.mock.calls[0][0];
+    expect(sesCall.Destination.ToAddresses).toContain(SES_SIMULATOR.bounce);
+  });
+
+  it("sends to SES complaint simulator address successfully", async () => {
+    const email = SES_SIMULATOR.complaint;
+    const event = makeCreateChallengeEvent(email);
+
+    // Rate-limit: no existing record
+    mockDdbSend.mockResolvedValueOnce({ Item: undefined });
+    // Rate-limit PutItem
+    mockDdbSend.mockResolvedValueOnce({});
+    // KMS
+    mockKmsSend.mockResolvedValueOnce({ Mac: MOCK_HMAC });
+    // Token PutItem
+    mockDdbSend.mockResolvedValueOnce({});
+
+    // SES accepts the email (complaint is async, not a send-time error)
+    mockSesSend.mockResolvedValueOnce({ MessageId: "msg-complaint-sim" });
+
+    const result = await createChallengeHandler(event);
+
+    expect(mockSesSend).toHaveBeenCalledTimes(1);
+    const sesCall = mockSesSend.mock.calls[0][0];
+    expect(sesCall.Destination.ToAddresses).toContain(SES_SIMULATOR.complaint);
+    expect(sesCall.ConfigurationSetName).toBe("ClaudeStats-dev-email");
+    expect(result.response.publicChallengeParameters.email).toBe(email);
+  });
+
+  it("propagates SES sending failure without leaking details to the caller", async () => {
+    const email = SES_SIMULATOR.success;
+    const event = makeCreateChallengeEvent(email);
+
+    mockDdbSend.mockResolvedValueOnce({ Item: undefined });
+    mockDdbSend.mockResolvedValueOnce({});
+    mockKmsSend.mockResolvedValueOnce({ Mac: MOCK_HMAC });
+    mockDdbSend.mockResolvedValueOnce({});
+
+    // SES service unavailable
+    const sesError = new Error("Service unavailable");
+    sesError.name = "ServiceUnavailableException";
+    mockSesSend.mockRejectedValueOnce(sesError);
+
+    await expect(createChallengeHandler(event)).rejects.toThrow(
+      "Service unavailable",
+    );
+
+    // Token was stored in DDB before SES failed — this is expected;
+    // the token will expire via TTL
+    expect(mockDdbSend).toHaveBeenCalledTimes(3);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -220,7 +312,7 @@ describe("auth-flow integration: verify-challenge", () => {
   });
 
   it("marks token as used and returns answerCorrect=true for a valid token", async () => {
-    const email = "alice@example.com";
+    const email = SES_SIMULATOR.success;
     const token = "valid-magic-link-token";
     const event = makeVerifyChallengeEvent(email, token);
 
@@ -251,7 +343,7 @@ describe("auth-flow integration: verify-challenge", () => {
   });
 
   it("returns answerCorrect=false when token has expired (TTL check)", async () => {
-    const email = "alice@example.com";
+    const email = SES_SIMULATOR.success;
     const event = makeVerifyChallengeEvent(email, "expired-token");
 
     const now = Math.floor(Date.now() / 1000);
@@ -278,7 +370,7 @@ describe("auth-flow integration: verify-challenge", () => {
   });
 
   it("returns answerCorrect=false when token has already been used", async () => {
-    const email = "alice@example.com";
+    const email = SES_SIMULATOR.success;
     const event = makeVerifyChallengeEvent(email, "used-token");
 
     const now = Math.floor(Date.now() / 1000);
@@ -303,7 +395,7 @@ describe("auth-flow integration: verify-challenge", () => {
   });
 
   it("returns answerCorrect=false when HMAC does not match", async () => {
-    const email = "alice@example.com";
+    const email = SES_SIMULATOR.success;
     const event = makeVerifyChallengeEvent(email, "tampered-token");
 
     const now = Math.floor(Date.now() / 1000);
@@ -331,7 +423,7 @@ describe("auth-flow integration: verify-challenge", () => {
   });
 
   it("handles replay attack (ConditionalCheckFailedException) gracefully", async () => {
-    const email = "alice@example.com";
+    const email = SES_SIMULATOR.success;
     const event = makeVerifyChallengeEvent(email, "replayed-token");
 
     const now = Math.floor(Date.now() / 1000);

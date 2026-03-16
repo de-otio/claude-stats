@@ -38,6 +38,7 @@ export class DataStack extends cdk.Stack {
 
     const userProfiles = new dynamodb.Table(this, "UserProfiles", {
       ...commonProps,
+      tableName: `${prefix}-userProfiles`,
       partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
     });
 
@@ -45,6 +46,7 @@ export class DataStack extends cdk.Stack {
 
     const teams = new dynamodb.Table(this, "Teams", {
       ...commonProps,
+      tableName: `${prefix}-teams`,
       partitionKey: { name: "teamId", type: dynamodb.AttributeType.STRING },
     });
 
@@ -69,6 +71,7 @@ export class DataStack extends cdk.Stack {
 
     const teamMemberships = new dynamodb.Table(this, "TeamMemberships", {
       ...commonProps,
+      tableName: `${prefix}-teamMemberships`,
       partitionKey: { name: "teamId", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "userId", type: dynamodb.AttributeType.STRING },
     });
@@ -85,6 +88,7 @@ export class DataStack extends cdk.Stack {
 
     const syncedSessions = new dynamodb.Table(this, "SyncedSessions", {
       ...commonProps,
+      tableName: `${prefix}-syncedSessions`,
       partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "sessionId", type: dynamodb.AttributeType.STRING },
       stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
@@ -149,6 +153,7 @@ export class DataStack extends cdk.Stack {
 
     const syncedMessages = new dynamodb.Table(this, "SyncedMessages", {
       ...commonProps,
+      tableName: `${prefix}-syncedMessages`,
       partitionKey: { name: "sessionId", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "uuid", type: dynamodb.AttributeType.STRING },
       timeToLiveAttribute: "expiresAt",
@@ -158,6 +163,7 @@ export class DataStack extends cdk.Stack {
 
     const teamStats = new dynamodb.Table(this, "TeamStats", {
       ...commonProps,
+      tableName: `${prefix}-teamStats`,
       partitionKey: { name: "teamId", type: dynamodb.AttributeType.STRING },
       sortKey: {
         name: "period#userId",
@@ -181,6 +187,7 @@ export class DataStack extends cdk.Stack {
 
     const achievements = new dynamodb.Table(this, "Achievements", {
       ...commonProps,
+      tableName: `${prefix}-achievements`,
       partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
       sortKey: {
         name: "achievementId",
@@ -192,6 +199,7 @@ export class DataStack extends cdk.Stack {
 
     const challenges = new dynamodb.Table(this, "Challenges", {
       ...commonProps,
+      tableName: `${prefix}-challenges`,
       partitionKey: { name: "teamId", type: dynamodb.AttributeType.STRING },
       sortKey: {
         name: "challengeId",
@@ -207,6 +215,7 @@ export class DataStack extends cdk.Stack {
       "InterTeamChallenges",
       {
         ...commonProps,
+        tableName: `${prefix}-interTeamChallenges`,
         partitionKey: {
           name: "challengeId",
           type: dynamodb.AttributeType.STRING,
@@ -227,6 +236,7 @@ export class DataStack extends cdk.Stack {
 
     const magicLinkTokens = new dynamodb.Table(this, "MagicLinkTokens", {
       ...commonProps,
+      tableName: `${prefix}-magicLinkTokens`,
       partitionKey: { name: "email", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
       timeToLiveAttribute: "expiresAt",

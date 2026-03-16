@@ -37,6 +37,11 @@ export class MonitoringStack extends cdk.Stack {
 
     const graphqlApiId = getParam(this, prefix, "api/graphql-api-id");
     const dlqUrl = getParam(this, prefix, "api/dlq-url");
+    const sesConfigSetName = getParam(
+      this,
+      prefix,
+      "auth/ses-configuration-set",
+    );
 
     const tableNames: Record<string, string> = {};
     for (const name of TABLE_NAMES) {
@@ -368,6 +373,79 @@ export class MonitoringStack extends cdk.Stack {
 
     dashboard.addWidgets(iteratorAgeWidget, dlqWidget, billingWidget);
 
+    // ── Row 5: SES Email Delivery ─────────────────────────────────────
+
+    const sesNamespace = "AWS/SES";
+    const sesConfigSetDimensions = { "ses:configuration-set": sesConfigSetName };
+
+    const sesDeliveryWidget = new cloudwatch.GraphWidget({
+      title: "SES Sends & Deliveries",
+      width: 8,
+      height: 6,
+      left: [
+        new cloudwatch.Metric({
+          namespace: sesNamespace,
+          metricName: "Send",
+          dimensionsMap: sesConfigSetDimensions,
+          statistic: "Sum",
+          label: "Sends",
+        }),
+        new cloudwatch.Metric({
+          namespace: sesNamespace,
+          metricName: "Delivery",
+          dimensionsMap: sesConfigSetDimensions,
+          statistic: "Sum",
+          label: "Deliveries",
+        }),
+      ],
+    });
+
+    const sesBounceWidget = new cloudwatch.GraphWidget({
+      title: "SES Bounces & Complaints",
+      width: 8,
+      height: 6,
+      left: [
+        new cloudwatch.Metric({
+          namespace: sesNamespace,
+          metricName: "Bounce",
+          dimensionsMap: sesConfigSetDimensions,
+          statistic: "Sum",
+          label: "Bounces",
+        }),
+        new cloudwatch.Metric({
+          namespace: sesNamespace,
+          metricName: "Complaint",
+          dimensionsMap: sesConfigSetDimensions,
+          statistic: "Sum",
+          label: "Complaints",
+        }),
+      ],
+    });
+
+    const sesReputationWidget = new cloudwatch.SingleValueWidget({
+      title: "SES Reputation",
+      width: 8,
+      height: 6,
+      metrics: [
+        new cloudwatch.Metric({
+          namespace: sesNamespace,
+          metricName: "Reputation.BounceRate",
+          dimensionsMap: sesConfigSetDimensions,
+          statistic: "Average",
+          label: "Bounce Rate",
+        }),
+        new cloudwatch.Metric({
+          namespace: sesNamespace,
+          metricName: "Reputation.ComplaintRate",
+          dimensionsMap: sesConfigSetDimensions,
+          statistic: "Average",
+          label: "Complaint Rate",
+        }),
+      ],
+    });
+
+    dashboard.addWidgets(sesDeliveryWidget, sesBounceWidget, sesReputationWidget);
+
     // ── Alarms (prod only) ────────────────────────────────────────────
 
     if (isProd) {
@@ -546,6 +624,56 @@ export class MonitoringStack extends cdk.Stack {
       });
       billingAlarm.addAlarmAction(alarmAction);
       billingAlarm.addOkAction(alarmAction);
+
+      // SES bounce rate > 5% (AWS suspends at 10%)
+      const sesBounceRateAlarm = new cloudwatch.Alarm(
+        this,
+        "SesBounceRateAlarm",
+        {
+          alarmName: `${prefix}-SES-BounceRate`,
+          alarmDescription:
+            "SES bounce rate exceeds 5% — review recipient list quality (AWS suspends at 10%)",
+          metric: new cloudwatch.Metric({
+            namespace: sesNamespace,
+            metricName: "Reputation.BounceRate",
+            dimensionsMap: sesConfigSetDimensions,
+            statistic: "Average",
+            period: cdk.Duration.minutes(15),
+          }),
+          threshold: 0.05,
+          evaluationPeriods: 2,
+          comparisonOperator:
+            cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+          treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+        },
+      );
+      sesBounceRateAlarm.addAlarmAction(alarmAction);
+      sesBounceRateAlarm.addOkAction(alarmAction);
+
+      // SES complaint rate > 0.1% (AWS suspends at 0.5%)
+      const sesComplaintRateAlarm = new cloudwatch.Alarm(
+        this,
+        "SesComplaintRateAlarm",
+        {
+          alarmName: `${prefix}-SES-ComplaintRate`,
+          alarmDescription:
+            "SES complaint rate exceeds 0.1% — review email content and opt-in (AWS suspends at 0.5%)",
+          metric: new cloudwatch.Metric({
+            namespace: sesNamespace,
+            metricName: "Reputation.ComplaintRate",
+            dimensionsMap: sesConfigSetDimensions,
+            statistic: "Average",
+            period: cdk.Duration.minutes(15),
+          }),
+          threshold: 0.001,
+          evaluationPeriods: 2,
+          comparisonOperator:
+            cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+          treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+        },
+      );
+      sesComplaintRateAlarm.addAlarmAction(alarmAction);
+      sesComplaintRateAlarm.addOkAction(alarmAction);
     }
 
     // ── Log Retention (informational output) ──────────────────────────

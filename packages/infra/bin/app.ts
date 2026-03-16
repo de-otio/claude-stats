@@ -44,3 +44,4 @@ mcp.addDependency(auth); // Needs auth/cognito-domain + auth/mcp-client-id from 
 const monitoring = new MonitoringStack(app, `${prefix}-Monitoring`, { env, config });
 monitoring.addDependency(api);   // Needs api/* SSM params
 monitoring.addDependency(data);  // Needs data/table-names/* for CloudWatch dimensions
+monitoring.addDependency(auth);  // Needs auth/ses-configuration-set for SES metrics

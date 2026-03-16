@@ -26,7 +26,8 @@ export class McpStack extends cdk.Stack {
     // ── ECR Repository ────────────────────────────────────────────────
 
     const repository = new ecr.Repository(this, "McpRepository", {
-      repositoryName: `claude-stats-${config.envName}-mcp`,
+      // ECR repository names must be lowercase
+      repositoryName: `${prefix.toLowerCase()}-mcp`,
       removalPolicy:
         config.envName === "prod"
           ? cdk.RemovalPolicy.RETAIN

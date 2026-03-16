@@ -27,8 +27,9 @@ export class TeamLogos extends Construct {
         : cdk.RemovalPolicy.DESTROY;
 
     // --- S3 Bucket for team logos ---
+    // S3 bucket names must be lowercase
     this.bucket = new s3.Bucket(this, "Bucket", {
-      bucketName: `${prefix}-team-logos`,
+      bucketName: `${prefix.toLowerCase()}-team-logos`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       removalPolicy,
