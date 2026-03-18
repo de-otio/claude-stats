@@ -30,8 +30,11 @@ const TABLE_NAMES = [
 ] as const;
 
 export class ApiStack extends cdk.Stack {
+  public readonly graphqlApi: appsync.GraphqlApi;
+  public readonly dlq: sqs.Queue;
+
   constructor(scope: Construct, id: string, props: ApiStackProps) {
-    super(scope, id, props);
+    super(scope, id, { ...props, description: "Claude Stats API — AppSync GraphQL, DynamoDB data sources, team logos CDN" });
     const { config } = props;
     const prefix = `ClaudeStats-${config.envName}`;
 
@@ -60,7 +63,7 @@ export class ApiStack extends cdk.Stack {
     const api = new appsync.GraphqlApi(this, "Api", {
       name: `${prefix}-Api`,
       definition: appsync.Definition.fromFile(
-        path.join(__dirname, "../../graphql/schema.graphql"),
+        path.join(__dirname, "../../../graphql/schema.graphql"),
       ),
       authorizationConfig: {
         defaultAuthorization: {
@@ -101,6 +104,9 @@ export class ApiStack extends cdk.Stack {
       retentionPeriod: cdk.Duration.days(14),
       encryption: sqs.QueueEncryption.SQS_MANAGED,
     });
+
+    this.graphqlApi = api;
+    this.dlq = dlq;
 
     // ── Team Logos construct ─────────────────────────────────────────
 

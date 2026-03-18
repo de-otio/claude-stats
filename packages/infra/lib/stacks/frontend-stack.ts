@@ -6,17 +6,24 @@ import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
 import * as route53 from "aws-cdk-lib/aws-route53";
 import * as route53targets from "aws-cdk-lib/aws-route53-targets";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
+import * as path from "path";
+import { fileURLToPath } from "url";
 import { Construct } from "constructs";
 import type { EnvironmentConfig } from "../config/types.js";
 import { getParam, putParam } from "../ssm-params.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface FrontendStackProps extends cdk.StackProps {
   config: EnvironmentConfig;
 }
 
 export class FrontendStack extends cdk.Stack {
+  public readonly siteBucket: s3.Bucket;
+  public readonly distribution: cloudfront.Distribution;
+
   constructor(scope: Construct, id: string, props: FrontendStackProps) {
-    super(scope, id, props);
+    super(scope, id, { ...props, description: "Claude Stats frontend — S3 SPA bucket, CloudFront distribution, security headers" });
 
     const { config } = props;
     const prefix = `ClaudeStats-${config.envName}`;
@@ -159,11 +166,14 @@ export class FrontendStack extends cdk.Stack {
       });
     }
 
+    this.siteBucket = siteBucket;
+    this.distribution = distribution;
+
     // ----------------------------------------------------------------
     // Deploy SPA assets to S3
     // ----------------------------------------------------------------
     new s3deploy.BucketDeployment(this, "DeploySite", {
-      sources: [s3deploy.Source.asset("../../frontend/dist")],
+      sources: [s3deploy.Source.asset(path.join(__dirname, "../../../../frontend/dist"))],
       destinationBucket: siteBucket,
       distribution,
       distributionPaths: ["/*"],

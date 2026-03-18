@@ -16,6 +16,7 @@ export interface EnvironmentConfig {
   region: string;
 
   // Auth
+  senderEmail: string;
   allowedEmailDomains: string[];
   magicLinkTtlMinutes: number;
   magicLinkMaxRequestsPerHour: number;

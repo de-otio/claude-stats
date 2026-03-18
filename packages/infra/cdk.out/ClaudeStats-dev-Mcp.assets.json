@@ -1,0 +1,21 @@
+{
+  "version": "52.0.0",
+  "files": {
+    "f9a44c91f25bfa1a56e5da882cbfaa7978dd0706c396af779c1ba9288e9da6dc": {
+      "displayName": "ClaudeStats-dev-Mcp Template",
+      "source": {
+        "path": "ClaudeStats-dev-Mcp.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "123456789012-us-east-1-bbe25e90": {
+          "bucketName": "cdk-hnb659fds-assets-123456789012-us-east-1",
+          "objectKey": "f9a44c91f25bfa1a56e5da882cbfaa7978dd0706c396af779c1ba9288e9da6dc.json",
+          "region": "us-east-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::123456789012:role/cdk-hnb659fds-file-publishing-role-123456789012-us-east-1"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

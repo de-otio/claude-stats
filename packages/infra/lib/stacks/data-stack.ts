@@ -9,8 +9,11 @@ interface DataStackProps extends cdk.StackProps {
 }
 
 export class DataStack extends cdk.Stack {
+  public readonly tables: Record<string, dynamodb.Table>;
+  public readonly syncedSessionsStreamArn: string;
+
   constructor(scope: Construct, id: string, props: DataStackProps) {
-    super(scope, id, props);
+    super(scope, id, { ...props, description: "Claude Stats data layer — DynamoDB tables, GSIs, and streams" });
     const { config } = props;
     const prefix = `ClaudeStats-${config.envName}`;
 
@@ -29,7 +32,7 @@ export class DataStack extends cdk.Stack {
     const commonProps = {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       encryption,
-      pointInTimeRecovery: config.dynamoDbPointInTimeRecovery,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: config.dynamoDbPointInTimeRecovery },
       deletionProtection: config.dynamoDbDeletionProtection,
       removalPolicy,
     };
@@ -256,6 +259,9 @@ export class DataStack extends cdk.Stack {
       interTeamChallenges,
       magicLinkTokens,
     };
+
+    this.tables = tables;
+    this.syncedSessionsStreamArn = syncedSessions.tableStreamArn!;
 
     for (const [name, table] of Object.entries(tables)) {
       putParam(this, prefix, `data/table-arns/${name}`, table.tableArn);

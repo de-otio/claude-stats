@@ -1,0 +1,128 @@
+{
+  "/ClaudeStats-dev-Monitoring/SsmParameterValue:--ClaudeStats-dev--api--graphql-api-id:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevapigraphqlapiidC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/SsmParameterValue:--ClaudeStats-dev--api--dlq-url:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevapidlqurlC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/SsmParameterValue:--ClaudeStats-dev--auth--ses-configuration-set:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevauthsesconfigurationsetC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/SsmParameterValue:--ClaudeStats-dev--data--table-names--userProfiles:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablenamesuserProfilesC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/SsmParameterValue:--ClaudeStats-dev--data--table-names--teams:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablenamesteamsC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/SsmParameterValue:--ClaudeStats-dev--data--table-names--teamMemberships:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablenamesteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/SsmParameterValue:--ClaudeStats-dev--data--table-names--syncedSessions:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablenamessyncedSessionsC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/SsmParameterValue:--ClaudeStats-dev--data--table-names--syncedMessages:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablenamessyncedMessagesC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/SsmParameterValue:--ClaudeStats-dev--data--table-names--teamStats:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablenamesteamStatsC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/SsmParameterValue:--ClaudeStats-dev--data--table-names--achievements:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablenamesachievementsC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/SsmParameterValue:--ClaudeStats-dev--data--table-names--challenges:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablenameschallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/SsmParameterValue:--ClaudeStats-dev--data--table-names--interTeamChallenges:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablenamesinterTeamChallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/SsmParameterValue:--ClaudeStats-dev--data--table-names--magicLinkTokens:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablenamesmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/LogRetentionDays": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "LogRetentionDays"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/DashboardUrl": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "DashboardUrl"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/AlarmTopicArn": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AlarmTopicArn"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/BootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "BootstrapVersion"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/CheckBootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CheckBootstrapVersion"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/AlarmTopic/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AlarmTopicD01E77F9"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/Dashboard/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Dashboard9E4231ED"
+    }
+  ],
+  "/ClaudeStats-dev-Monitoring/CDKMetadata/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadata"
+    }
+  ]
+}

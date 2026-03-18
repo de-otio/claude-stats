@@ -1,0 +1,960 @@
+{
+ "Description": "Claude Stats data layer — DynamoDB tables, GSIs, and streams",
+ "Resources": {
+  "UserProfiles32DFB678": {
+   "Type": "AWS::DynamoDB::Table",
+   "Properties": {
+    "AttributeDefinitions": [
+     {
+      "AttributeName": "userId",
+      "AttributeType": "S"
+     }
+    ],
+    "BillingMode": "PAY_PER_REQUEST",
+    "DeletionProtectionEnabled": false,
+    "KeySchema": [
+     {
+      "AttributeName": "userId",
+      "KeyType": "HASH"
+     }
+    ],
+    "PointInTimeRecoverySpecification": {
+     "PointInTimeRecoveryEnabled": false
+    },
+    "SSESpecification": {
+     "SSEEnabled": false
+    },
+    "TableName": "ClaudeStats-dev-userProfiles"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/UserProfiles/Resource"
+   }
+  },
+  "Teams577113D3": {
+   "Type": "AWS::DynamoDB::Table",
+   "Properties": {
+    "AttributeDefinitions": [
+     {
+      "AttributeName": "teamId",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "teamSlug",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "crossTeamVisibility",
+      "AttributeType": "S"
+     }
+    ],
+    "BillingMode": "PAY_PER_REQUEST",
+    "DeletionProtectionEnabled": false,
+    "GlobalSecondaryIndexes": [
+     {
+      "IndexName": "TeamsBySlug",
+      "KeySchema": [
+       {
+        "AttributeName": "teamSlug",
+        "KeyType": "HASH"
+       }
+      ],
+      "Projection": {
+       "ProjectionType": "KEYS_ONLY"
+      }
+     },
+     {
+      "IndexName": "TeamsByVisibility",
+      "KeySchema": [
+       {
+        "AttributeName": "crossTeamVisibility",
+        "KeyType": "HASH"
+       },
+       {
+        "AttributeName": "teamId",
+        "KeyType": "RANGE"
+       }
+      ],
+      "Projection": {
+       "NonKeyAttributes": [
+        "teamName",
+        "teamSlug",
+        "logoUrl",
+        "memberCount"
+       ],
+       "ProjectionType": "INCLUDE"
+      }
+     }
+    ],
+    "KeySchema": [
+     {
+      "AttributeName": "teamId",
+      "KeyType": "HASH"
+     }
+    ],
+    "PointInTimeRecoverySpecification": {
+     "PointInTimeRecoveryEnabled": false
+    },
+    "SSESpecification": {
+     "SSEEnabled": false
+    },
+    "TableName": "ClaudeStats-dev-teams"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Teams/Resource"
+   }
+  },
+  "TeamMembershipsFB021976": {
+   "Type": "AWS::DynamoDB::Table",
+   "Properties": {
+    "AttributeDefinitions": [
+     {
+      "AttributeName": "teamId",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "userId",
+      "AttributeType": "S"
+     }
+    ],
+    "BillingMode": "PAY_PER_REQUEST",
+    "DeletionProtectionEnabled": false,
+    "GlobalSecondaryIndexes": [
+     {
+      "IndexName": "MembershipsByUser",
+      "KeySchema": [
+       {
+        "AttributeName": "userId",
+        "KeyType": "HASH"
+       },
+       {
+        "AttributeName": "teamId",
+        "KeyType": "RANGE"
+       }
+      ],
+      "Projection": {
+       "NonKeyAttributes": [
+        "role",
+        "joinedAt",
+        "displayName"
+       ],
+       "ProjectionType": "INCLUDE"
+      }
+     }
+    ],
+    "KeySchema": [
+     {
+      "AttributeName": "teamId",
+      "KeyType": "HASH"
+     },
+     {
+      "AttributeName": "userId",
+      "KeyType": "RANGE"
+     }
+    ],
+    "PointInTimeRecoverySpecification": {
+     "PointInTimeRecoveryEnabled": false
+    },
+    "SSESpecification": {
+     "SSEEnabled": false
+    },
+    "TableName": "ClaudeStats-dev-teamMemberships"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/TeamMemberships/Resource"
+   }
+  },
+  "SyncedSessionsC1BE9270": {
+   "Type": "AWS::DynamoDB::Table",
+   "Properties": {
+    "AttributeDefinitions": [
+     {
+      "AttributeName": "userId",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "sessionId",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "firstTimestamp",
+      "AttributeType": "N"
+     },
+     {
+      "AttributeName": "accountId",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "projectId",
+      "AttributeType": "S"
+     }
+    ],
+    "BillingMode": "PAY_PER_REQUEST",
+    "DeletionProtectionEnabled": false,
+    "GlobalSecondaryIndexes": [
+     {
+      "IndexName": "SessionsByTimestamp",
+      "KeySchema": [
+       {
+        "AttributeName": "userId",
+        "KeyType": "HASH"
+       },
+       {
+        "AttributeName": "firstTimestamp",
+        "KeyType": "RANGE"
+       }
+      ],
+      "Projection": {
+       "NonKeyAttributes": [
+        "accountId",
+        "projectId",
+        "updatedAt",
+        "sessionId",
+        "promptCount",
+        "estimatedCost"
+       ],
+       "ProjectionType": "INCLUDE"
+      }
+     },
+     {
+      "IndexName": "SessionsByAccount",
+      "KeySchema": [
+       {
+        "AttributeName": "accountId",
+        "KeyType": "HASH"
+       },
+       {
+        "AttributeName": "firstTimestamp",
+        "KeyType": "RANGE"
+       }
+      ],
+      "Projection": {
+       "NonKeyAttributes": [
+        "userId",
+        "projectId",
+        "updatedAt",
+        "sessionId",
+        "promptCount",
+        "estimatedCost"
+       ],
+       "ProjectionType": "INCLUDE"
+      }
+     },
+     {
+      "IndexName": "SessionsByProject",
+      "KeySchema": [
+       {
+        "AttributeName": "projectId",
+        "KeyType": "HASH"
+       },
+       {
+        "AttributeName": "firstTimestamp",
+        "KeyType": "RANGE"
+       }
+      ],
+      "Projection": {
+       "NonKeyAttributes": [
+        "userId",
+        "accountId",
+        "sessionId",
+        "promptCount",
+        "inputTokens",
+        "outputTokens",
+        "estimatedCost"
+       ],
+       "ProjectionType": "INCLUDE"
+      }
+     }
+    ],
+    "KeySchema": [
+     {
+      "AttributeName": "userId",
+      "KeyType": "HASH"
+     },
+     {
+      "AttributeName": "sessionId",
+      "KeyType": "RANGE"
+     }
+    ],
+    "PointInTimeRecoverySpecification": {
+     "PointInTimeRecoveryEnabled": false
+    },
+    "SSESpecification": {
+     "SSEEnabled": false
+    },
+    "StreamSpecification": {
+     "StreamViewType": "NEW_AND_OLD_IMAGES"
+    },
+    "TableName": "ClaudeStats-dev-syncedSessions"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/SyncedSessions/Resource"
+   }
+  },
+  "SyncedMessages5D4324E9": {
+   "Type": "AWS::DynamoDB::Table",
+   "Properties": {
+    "AttributeDefinitions": [
+     {
+      "AttributeName": "sessionId",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "uuid",
+      "AttributeType": "S"
+     }
+    ],
+    "BillingMode": "PAY_PER_REQUEST",
+    "DeletionProtectionEnabled": false,
+    "KeySchema": [
+     {
+      "AttributeName": "sessionId",
+      "KeyType": "HASH"
+     },
+     {
+      "AttributeName": "uuid",
+      "KeyType": "RANGE"
+     }
+    ],
+    "PointInTimeRecoverySpecification": {
+     "PointInTimeRecoveryEnabled": false
+    },
+    "SSESpecification": {
+     "SSEEnabled": false
+    },
+    "TableName": "ClaudeStats-dev-syncedMessages",
+    "TimeToLiveSpecification": {
+     "AttributeName": "expiresAt",
+     "Enabled": true
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/SyncedMessages/Resource"
+   }
+  },
+  "TeamStats4E383A76": {
+   "Type": "AWS::DynamoDB::Table",
+   "Properties": {
+    "AttributeDefinitions": [
+     {
+      "AttributeName": "teamId",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "period#userId",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "period",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "teamId#userId",
+      "AttributeType": "S"
+     }
+    ],
+    "BillingMode": "PAY_PER_REQUEST",
+    "DeletionProtectionEnabled": false,
+    "GlobalSecondaryIndexes": [
+     {
+      "IndexName": "StatsByPeriod",
+      "KeySchema": [
+       {
+        "AttributeName": "period",
+        "KeyType": "HASH"
+       },
+       {
+        "AttributeName": "teamId#userId",
+        "KeyType": "RANGE"
+       }
+      ],
+      "Projection": {
+       "NonKeyAttributes": [
+        "stats",
+        "displayName",
+        "shareLevel"
+       ],
+       "ProjectionType": "INCLUDE"
+      }
+     }
+    ],
+    "KeySchema": [
+     {
+      "AttributeName": "teamId",
+      "KeyType": "HASH"
+     },
+     {
+      "AttributeName": "period#userId",
+      "KeyType": "RANGE"
+     }
+    ],
+    "PointInTimeRecoverySpecification": {
+     "PointInTimeRecoveryEnabled": false
+    },
+    "SSESpecification": {
+     "SSEEnabled": false
+    },
+    "TableName": "ClaudeStats-dev-teamStats",
+    "TimeToLiveSpecification": {
+     "AttributeName": "expiresAt",
+     "Enabled": true
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/TeamStats/Resource"
+   }
+  },
+  "Achievements5605DA53": {
+   "Type": "AWS::DynamoDB::Table",
+   "Properties": {
+    "AttributeDefinitions": [
+     {
+      "AttributeName": "userId",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "achievementId",
+      "AttributeType": "S"
+     }
+    ],
+    "BillingMode": "PAY_PER_REQUEST",
+    "DeletionProtectionEnabled": false,
+    "KeySchema": [
+     {
+      "AttributeName": "userId",
+      "KeyType": "HASH"
+     },
+     {
+      "AttributeName": "achievementId",
+      "KeyType": "RANGE"
+     }
+    ],
+    "PointInTimeRecoverySpecification": {
+     "PointInTimeRecoveryEnabled": false
+    },
+    "SSESpecification": {
+     "SSEEnabled": false
+    },
+    "TableName": "ClaudeStats-dev-achievements"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Achievements/Resource"
+   }
+  },
+  "Challenges261CFAA0": {
+   "Type": "AWS::DynamoDB::Table",
+   "Properties": {
+    "AttributeDefinitions": [
+     {
+      "AttributeName": "teamId",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "challengeId",
+      "AttributeType": "S"
+     }
+    ],
+    "BillingMode": "PAY_PER_REQUEST",
+    "DeletionProtectionEnabled": false,
+    "KeySchema": [
+     {
+      "AttributeName": "teamId",
+      "KeyType": "HASH"
+     },
+     {
+      "AttributeName": "challengeId",
+      "KeyType": "RANGE"
+     }
+    ],
+    "PointInTimeRecoverySpecification": {
+     "PointInTimeRecoveryEnabled": false
+    },
+    "SSESpecification": {
+     "SSEEnabled": false
+    },
+    "TableName": "ClaudeStats-dev-challenges",
+    "TimeToLiveSpecification": {
+     "AttributeName": "expiresAt",
+     "Enabled": true
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Challenges/Resource"
+   }
+  },
+  "InterTeamChallenges55D07B60": {
+   "Type": "AWS::DynamoDB::Table",
+   "Properties": {
+    "AttributeDefinitions": [
+     {
+      "AttributeName": "challengeId",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "status",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "endTime",
+      "AttributeType": "N"
+     }
+    ],
+    "BillingMode": "PAY_PER_REQUEST",
+    "DeletionProtectionEnabled": false,
+    "GlobalSecondaryIndexes": [
+     {
+      "IndexName": "InterTeamChallengesByStatus",
+      "KeySchema": [
+       {
+        "AttributeName": "status",
+        "KeyType": "HASH"
+       },
+       {
+        "AttributeName": "endTime",
+        "KeyType": "RANGE"
+       }
+      ],
+      "Projection": {
+       "NonKeyAttributes": [
+        "name",
+        "metric",
+        "teams",
+        "creatingTeamId"
+       ],
+       "ProjectionType": "INCLUDE"
+      }
+     }
+    ],
+    "KeySchema": [
+     {
+      "AttributeName": "challengeId",
+      "KeyType": "HASH"
+     }
+    ],
+    "PointInTimeRecoverySpecification": {
+     "PointInTimeRecoveryEnabled": false
+    },
+    "SSESpecification": {
+     "SSEEnabled": false
+    },
+    "TableName": "ClaudeStats-dev-interTeamChallenges",
+    "TimeToLiveSpecification": {
+     "AttributeName": "expiresAt",
+     "Enabled": true
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/InterTeamChallenges/Resource"
+   }
+  },
+  "MagicLinkTokens24BC7868": {
+   "Type": "AWS::DynamoDB::Table",
+   "Properties": {
+    "AttributeDefinitions": [
+     {
+      "AttributeName": "email",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "sk",
+      "AttributeType": "S"
+     }
+    ],
+    "BillingMode": "PAY_PER_REQUEST",
+    "DeletionProtectionEnabled": false,
+    "KeySchema": [
+     {
+      "AttributeName": "email",
+      "KeyType": "HASH"
+     },
+     {
+      "AttributeName": "sk",
+      "KeyType": "RANGE"
+     }
+    ],
+    "PointInTimeRecoverySpecification": {
+     "PointInTimeRecoveryEnabled": false
+    },
+    "SSESpecification": {
+     "SSEEnabled": false
+    },
+    "TableName": "ClaudeStats-dev-magicLinkTokens",
+    "TimeToLiveSpecification": {
+     "AttributeName": "expiresAt",
+     "Enabled": true
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/MagicLinkTokens/Resource"
+   }
+  },
+  "ParamdatatablearnsuserProfiles79EC0D8A": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-arns/userProfiles",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "UserProfiles32DFB678",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-arns-userProfiles/Resource"
+   }
+  },
+  "ParamdatatablenamesuserProfilesBD0946CC": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-names/userProfiles",
+    "Type": "String",
+    "Value": {
+     "Ref": "UserProfiles32DFB678"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-names-userProfiles/Resource"
+   }
+  },
+  "Paramdatatablearnsteams19801EB0": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-arns/teams",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "Teams577113D3",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-arns-teams/Resource"
+   }
+  },
+  "Paramdatatablenamesteams994E51F7": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-names/teams",
+    "Type": "String",
+    "Value": {
+     "Ref": "Teams577113D3"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-names-teams/Resource"
+   }
+  },
+  "ParamdatatablearnsteamMembershipsF55A7F35": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-arns/teamMemberships",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "TeamMembershipsFB021976",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-arns-teamMemberships/Resource"
+   }
+  },
+  "ParamdatatablenamesteamMemberships9895EFD2": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-names/teamMemberships",
+    "Type": "String",
+    "Value": {
+     "Ref": "TeamMembershipsFB021976"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-names-teamMemberships/Resource"
+   }
+  },
+  "ParamdatatablearnssyncedSessions9DB51C99": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-arns/syncedSessions",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "SyncedSessionsC1BE9270",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-arns-syncedSessions/Resource"
+   }
+  },
+  "ParamdatatablenamessyncedSessions83908C02": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-names/syncedSessions",
+    "Type": "String",
+    "Value": {
+     "Ref": "SyncedSessionsC1BE9270"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-names-syncedSessions/Resource"
+   }
+  },
+  "ParamdatatablearnssyncedMessages466B2FBC": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-arns/syncedMessages",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "SyncedMessages5D4324E9",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-arns-syncedMessages/Resource"
+   }
+  },
+  "ParamdatatablenamessyncedMessagesFAFE6C66": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-names/syncedMessages",
+    "Type": "String",
+    "Value": {
+     "Ref": "SyncedMessages5D4324E9"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-names-syncedMessages/Resource"
+   }
+  },
+  "ParamdatatablearnsteamStats62118074": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-arns/teamStats",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "TeamStats4E383A76",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-arns-teamStats/Resource"
+   }
+  },
+  "ParamdatatablenamesteamStats85D8A199": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-names/teamStats",
+    "Type": "String",
+    "Value": {
+     "Ref": "TeamStats4E383A76"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-names-teamStats/Resource"
+   }
+  },
+  "Paramdatatablearnsachievements8842DAF6": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-arns/achievements",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "Achievements5605DA53",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-arns-achievements/Resource"
+   }
+  },
+  "ParamdatatablenamesachievementsC58D536F": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-names/achievements",
+    "Type": "String",
+    "Value": {
+     "Ref": "Achievements5605DA53"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-names-achievements/Resource"
+   }
+  },
+  "ParamdatatablearnschallengesC92BB3B4": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-arns/challenges",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "Challenges261CFAA0",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-arns-challenges/Resource"
+   }
+  },
+  "Paramdatatablenameschallenges5769C6C6": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-names/challenges",
+    "Type": "String",
+    "Value": {
+     "Ref": "Challenges261CFAA0"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-names-challenges/Resource"
+   }
+  },
+  "ParamdatatablearnsinterTeamChallengesBF57E71C": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-arns/interTeamChallenges",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "InterTeamChallenges55D07B60",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-arns-interTeamChallenges/Resource"
+   }
+  },
+  "ParamdatatablenamesinterTeamChallengesF01910FC": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-names/interTeamChallenges",
+    "Type": "String",
+    "Value": {
+     "Ref": "InterTeamChallenges55D07B60"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-names-interTeamChallenges/Resource"
+   }
+  },
+  "ParamdatatablearnsmagicLinkTokens18D1BF03": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-arns/magicLinkTokens",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "MagicLinkTokens24BC7868",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-arns-magicLinkTokens/Resource"
+   }
+  },
+  "ParamdatatablenamesmagicLinkTokensD90B255E": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/table-names/magicLinkTokens",
+    "Type": "String",
+    "Value": {
+     "Ref": "MagicLinkTokens24BC7868"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-table-names-magicLinkTokens/Resource"
+   }
+  },
+  "ParamdatasyncedsessionsstreamarnF74649D2": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/data/synced-sessions-stream-arn",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "SyncedSessionsC1BE9270",
+      "StreamArn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/Param-data-synced-sessions-stream-arn/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/z2KXQ7CIBCEz9J3WBV/LuAFTOu72cJqaMuSsFRjGu4u1cSnmfnmM2AOe9g2+BJt3agn38PSZbSjqui2uDdjiK7CK/YTqfOdv6UokbCayfPjggkDZUrr/R+lqJYkzslWm6MjGGTzNEc4wa4ZxHudZs4+ELS//AC4eaYBjAAAAA=="
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Data/CDKMetadata/Default"
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

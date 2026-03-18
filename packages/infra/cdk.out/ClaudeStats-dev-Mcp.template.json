@@ -1,0 +1,360 @@
+{
+ "Description": "Claude Stats MCP — ECR repository, Docker Lambda gateway, function URL",
+ "Parameters": {
+  "SsmParameterValueClaudeStatsdevapigraphqlendpointC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/api/graphql-endpoint"
+  },
+  "SsmParameterValueClaudeStatsdevapigraphqlapiarnC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/api/graphql-api-arn"
+  },
+  "SsmParameterValueClaudeStatsdevauthcognitodomainC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/auth/cognito-domain"
+  },
+  "SsmParameterValueClaudeStatsdevauthmcpclientidC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/auth/mcp-client-id"
+  },
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Resources": {
+  "McpRepository598C0493": {
+   "Type": "AWS::ECR::Repository",
+   "Properties": {
+    "LifecyclePolicy": {
+     "LifecyclePolicyText": "{\"rules\":[{\"rulePriority\":1,\"description\":\"Keep last 10 images\",\"selection\":{\"tagStatus\":\"any\",\"countType\":\"imageCountMoreThan\",\"countNumber\":10},\"action\":{\"type\":\"expire\"}}]}"
+    },
+    "RepositoryName": "claudestats-dev-mcp",
+    "RepositoryPolicyText": {
+     "Statement": [
+      {
+       "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage"
+       ],
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Mcp/McpRepository/Resource"
+   }
+  },
+  "McpRoleA027B6FA": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ],
+    "RoleName": "ClaudeStats-dev-McpRole"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Mcp/McpRole/Resource"
+   }
+  },
+  "McpRoleDefaultPolicy08B34C48": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "appsync:GraphQL",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          {
+           "Ref": "SsmParameterValueClaudeStatsdevapigraphqlapiarnC96584B6F00A464EAD1953AFF4B05118Parameter"
+          },
+          "/*"
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "McpRoleDefaultPolicy08B34C48",
+    "Roles": [
+     {
+      "Ref": "McpRoleA027B6FA"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Mcp/McpRole/DefaultPolicy/Resource"
+   }
+  },
+  "McpFunctionF370A1F8": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Architectures": [
+     "arm64"
+    ],
+    "Code": {
+     "ImageUri": {
+      "Fn::Join": [
+       "",
+       [
+        {
+         "Fn::Select": [
+          4,
+          {
+           "Fn::Split": [
+            ":",
+            {
+             "Fn::GetAtt": [
+              "McpRepository598C0493",
+              "Arn"
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        ".dkr.ecr.",
+        {
+         "Fn::Select": [
+          3,
+          {
+           "Fn::Split": [
+            ":",
+            {
+             "Fn::GetAtt": [
+              "McpRepository598C0493",
+              "Arn"
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        ".",
+        {
+         "Ref": "AWS::URLSuffix"
+        },
+        "/",
+        {
+         "Ref": "McpRepository598C0493"
+        },
+        ":latest"
+       ]
+      ]
+     }
+    },
+    "Description": "MCP server gateway — exposes Claude Stats GraphQL via MCP protocol",
+    "Environment": {
+     "Variables": {
+      "GRAPHQL_ENDPOINT": {
+       "Ref": "SsmParameterValueClaudeStatsdevapigraphqlendpointC96584B6F00A464EAD1953AFF4B05118Parameter"
+      },
+      "COGNITO_DOMAIN": {
+       "Ref": "SsmParameterValueClaudeStatsdevauthcognitodomainC96584B6F00A464EAD1953AFF4B05118Parameter"
+      },
+      "MCP_CLIENT_ID": {
+       "Ref": "SsmParameterValueClaudeStatsdevauthmcpclientidC96584B6F00A464EAD1953AFF4B05118Parameter"
+      },
+      "AWS_NODEJS_CONNECTION_REUSE_ENABLED": "1"
+     }
+    },
+    "FunctionName": "ClaudeStats-dev-McpGateway",
+    "MemorySize": 512,
+    "PackageType": "Image",
+    "Role": {
+     "Fn::GetAtt": [
+      "McpRoleA027B6FA",
+      "Arn"
+     ]
+    },
+    "Timeout": 30
+   },
+   "DependsOn": [
+    "McpRoleDefaultPolicy08B34C48",
+    "McpRoleA027B6FA"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Mcp/McpFunction/Resource"
+   }
+  },
+  "McpFunctionFunctionUrl5385C13A": {
+   "Type": "AWS::Lambda::Url",
+   "Properties": {
+    "AuthType": "AWS_IAM",
+    "Cors": {
+     "AllowCredentials": false,
+     "AllowHeaders": [
+      "*"
+     ],
+     "AllowMethods": [
+      "*"
+     ],
+     "AllowOrigins": [
+      "*"
+     ],
+     "MaxAge": 3600
+    },
+    "TargetFunctionArn": {
+     "Fn::GetAtt": [
+      "McpFunctionF370A1F8",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Mcp/McpFunction/FunctionUrl/Resource"
+   }
+  },
+  "Parammcpgatewayurl3CD9FD2E": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/mcp/gateway-url",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "McpFunctionFunctionUrl5385C13A",
+      "FunctionUrl"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Mcp/Param-mcp-gateway-url/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/02OyQrCMBCGn8V7OmpdXkARPCkVz5Kmo4zNIpNEkZJ3t6m4nP7tO/wllPMZTEby4QvVtIWmGrpDkKoVq7PdS5YGA7Ko0LvICkUPnjpUDF2FN+cpOH5m9JeSIGn62Wkchqx7p0kN3NsloaWpGwnd2qkWeWvkBTfRqkDOZuzrP+bIOve9JOG9ySeZ7OX38P9uSjnuYrjFkIR1DcLVj+/lApYwHV09UcHRBjII1VtfBDzsKAgBAAA="
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Mcp/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "McpGatewayUrl": {
+   "Description": "MCP Gateway Lambda Function URL",
+   "Value": {
+    "Fn::GetAtt": [
+     "McpFunctionFunctionUrl5385C13A",
+     "FunctionUrl"
+    ]
+   }
+  },
+  "McpEcrRepository": {
+   "Description": "ECR repository URI for the MCP server Docker image",
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      {
+       "Fn::Select": [
+        4,
+        {
+         "Fn::Split": [
+          ":",
+          {
+           "Fn::GetAtt": [
+            "McpRepository598C0493",
+            "Arn"
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      ".dkr.ecr.",
+      {
+       "Fn::Select": [
+        3,
+        {
+         "Fn::Split": [
+          ":",
+          {
+           "Fn::GetAtt": [
+            "McpRepository598C0493",
+            "Arn"
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      ".",
+      {
+       "Ref": "AWS::URLSuffix"
+      },
+      "/",
+      {
+       "Ref": "McpRepository598C0493"
+      }
+     ]
+    ]
+   }
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

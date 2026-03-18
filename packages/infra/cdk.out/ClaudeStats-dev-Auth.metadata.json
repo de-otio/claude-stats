@@ -1,0 +1,260 @@
+{
+  "/ClaudeStats-dev-Auth/SsmParameterValue:--ClaudeStats-dev--data--table-arns--magicLinkTokens:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablearnsmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/SsmParameterValue:--ClaudeStats-dev--data--table-names--magicLinkTokens:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablenamesmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/SsmParameterValue:--ClaudeStats-dev--data--table-names--teamMemberships:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablenamesteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/SsmParameterValue:--ClaudeStats-dev--data--table-arns--teamMemberships:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablearnsteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/SesSenderEmail": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SesSenderEmail"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/SesVerificationRequired": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SesVerificationRequired"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/BootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "BootstrapVersion"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/CheckBootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CheckBootstrapVersion"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/MagicLinkHmacKey/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "MagicLinkHmacKeyF0C6A870"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/SesConfigSet/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SesConfigSetECAFDFF8"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/SesEmailIdentity/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SesEmailIdentity7B3E04D2"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/DefineChallengeFn/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "DefineChallengeFn2812EBAC"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/CreateChallengeFn/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CreateChallengeFnA1D0EAB7"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/VerifyChallengeFn/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "VerifyChallengeFn3CDC22A7"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/PreSignUpFn/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PreSignUpFn7227C88E"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/Param-auth-allowed-domains/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Paramauthalloweddomains7F82E204"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/PreTokenGenerationFn/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PreTokenGenerationFnAE0DA59F"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/UserPool/DefineAuthChallengeCognito": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "UserPoolDefineAuthChallengeCognitoD6D10D9D"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/UserPool/CreateAuthChallengeCognito": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "UserPoolCreateAuthChallengeCognito07327B9A"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/UserPool/VerifyAuthChallengeResponseCognito": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "UserPoolVerifyAuthChallengeResponseCognito338D71F3"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/UserPool/PreSignUpCognito": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "UserPoolPreSignUpCognito3AFF8F1F"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/UserPool/PreTokenGenerationCognito": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "UserPoolPreTokenGenerationCognito84D0CADA"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/UserPool/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "UserPool6BA7E5F2"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/Param-auth-user-pool-id/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Paramauthuserpoolid9B3F6963"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/Param-auth-user-pool-arn/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamauthuserpoolarnCD72D2E5"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/Param-auth-spa-client-id/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Paramauthspaclientid91BF3A02"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/Param-auth-mcp-client-id/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamauthmcpclientidAEC24BC1"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/Param-auth-cognito-domain/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Paramauthcognitodomain9D44E916"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/Param-auth-ses-configuration-set/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamauthsesconfigurationsetAD663BE2"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/CDKMetadata/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadata"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/MagicLinkHmacKey/Alias/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "MagicLinkHmacKeyAliasB49CFFDE"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/DefineChallengeFn/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "DefineChallengeFnServiceRoleF159E792"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/CreateChallengeFn/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CreateChallengeFnServiceRole5DF03897"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/VerifyChallengeFn/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "VerifyChallengeFnServiceRole47513340"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/PreSignUpFn/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PreSignUpFnServiceRoleC270C061"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/PreTokenGenerationFn/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PreTokenGenerationFnServiceRole5BC76271"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/UserPool/SpaClient/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "UserPoolSpaClient6B560FFA"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/UserPool/McpClient/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "UserPoolMcpClient2D19DB87"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/UserPool/CognitoDomain/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "UserPoolCognitoDomainD6C7F9FA"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/CreateChallengeFn/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CreateChallengeFnServiceRoleDefaultPolicy10B8FD96"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/VerifyChallengeFn/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "VerifyChallengeFnServiceRoleDefaultPolicy5FD1BD69"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/PreSignUpFn/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PreSignUpFnServiceRoleDefaultPolicy21B404FA"
+    }
+  ],
+  "/ClaudeStats-dev-Auth/PreTokenGenerationFn/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "PreTokenGenerationFnServiceRoleDefaultPolicy2600C3F9"
+    }
+  ]
+}

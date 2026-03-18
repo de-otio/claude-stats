@@ -11,14 +11,21 @@ import { Construct } from "constructs";
 import type { EnvironmentConfig } from "../config/types.js";
 import { putParam, getParam } from "../ssm-params.js";
 import * as path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface AuthStackProps extends cdk.StackProps {
   config: EnvironmentConfig;
 }
 
 export class AuthStack extends cdk.Stack {
+  public readonly userPool: cognito.UserPool;
+  public readonly spaClient: cognito.UserPoolClient;
+  public readonly mcpClient: cognito.UserPoolClient;
+
   constructor(scope: Construct, id: string, props: AuthStackProps) {
-    super(scope, id, props);
+    super(scope, id, { ...props, description: "Claude Stats auth — Cognito user pool, magic-link Lambdas, SES email identity" });
 
     const { config } = props;
     const prefix = `ClaudeStats-${config.envName}`;
@@ -52,7 +59,7 @@ export class AuthStack extends cdk.Stack {
       description: `Magic link HMAC signing key (${config.envName})`,
       keySpec: kms.KeySpec.HMAC_256,
       keyUsage: kms.KeyUsage.GENERATE_VERIFY_MAC,
-      enableKeyRotation: true,
+      enableKeyRotation: false,
       removalPolicy:
         config.envName === "prod"
           ? cdk.RemovalPolicy.RETAIN
@@ -70,24 +77,16 @@ export class AuthStack extends cdk.Stack {
 
     // ---------- SES Email Identity ----------
 
-    const sesFromEmail = `noreply@${config.domainName ?? "claude-stats.dev"}`;
-    let emailIdentity: ses.EmailIdentity;
+    const sesFromEmail = config.senderEmail;
 
-    if (config.domainName) {
-      // Production: domain identity — enables sending from any address @domainName.
-      // DKIM DNS records must be added to the authoritative hosted zone for the domain.
-      emailIdentity = new ses.EmailIdentity(this, "SesDomainIdentity", {
-        identity: ses.Identity.domain(config.domainName),
-        configurationSet: configSet,
-      });
-    } else {
-      // Dev: email identity — sender address must be verified (click confirmation email).
-      // In SES sandbox mode, recipients must also be verified.
-      emailIdentity = new ses.EmailIdentity(this, "SesEmailIdentity", {
-        identity: ses.Identity.email(sesFromEmail),
-        configurationSet: configSet,
-      });
-    }
+    // Always create an email identity. If it doesn't exist in SES yet, SES will
+    // automatically send a verification email to the address. The identity must
+    // be verified (by clicking the link in that email) before magic-link emails
+    // can be sent.
+    const emailIdentity = new ses.EmailIdentity(this, "SesEmailIdentity", {
+      identity: ses.Identity.email(sesFromEmail),
+      configurationSet: configSet,
+    });
 
     // ---------- SES Bounce & Complaint SNS Topic (prod) ----------
 
@@ -112,7 +111,7 @@ export class AuthStack extends cdk.Stack {
 
     // ---------- Shared Lambda configuration ----------
 
-    const lambdaDir = path.join(__dirname, "../../lambda/auth");
+    const lambdaDir = path.join(__dirname, "../../../lambda/auth");
 
     const commonLambdaProps: Partial<lambda.NodejsFunctionProps> = {
       runtime: lambdaRuntime.Runtime.NODEJS_20_X,
@@ -365,6 +364,10 @@ export class AuthStack extends cdk.Stack {
       },
     });
 
+    this.userPool = userPool;
+    this.spaClient = spaClient;
+    this.mcpClient = mcpClient;
+
     // ---------- SSM Parameters ----------
 
     putParam(this, prefix, "auth/user-pool-id", userPool.userPoolId);
@@ -395,16 +398,21 @@ export class AuthStack extends cdk.Stack {
 
     // ---------- SES Outputs ----------
 
-    if (config.domainName) {
-      new cdk.CfnOutput(this, "SesDkimRecords", {
-        value: `Domain identity created for ${config.domainName}. Add DKIM CNAME records from the SES console to your DNS.`,
-        description: "SES DKIM setup instructions",
-      });
-    } else {
-      new cdk.CfnOutput(this, "SesVerificationRequired", {
-        value: `Email identity created for ${sesFromEmail}. Check your inbox to verify the sender address. In SES sandbox, also verify recipient addresses.`,
-        description: "SES email verification instructions",
-      });
-    }
+    new cdk.CfnOutput(this, "SesSenderEmail", {
+      value: sesFromEmail,
+      description: "Sender email address for magic-link emails",
+    });
+
+    new cdk.CfnOutput(this, "SesVerificationRequired", {
+      value: [
+        `Email identity created for ${sesFromEmail}.`,
+        `If this is the first deployment, SES has sent a verification email to ${sesFromEmail} — click the link to confirm.`,
+        `Emails will not be delivered until the identity is verified.`,
+        `NOTE: If your users' email domain is managed by Microsoft Exchange Online / Microsoft 365,`,
+        `ensure the sender address is on a DIFFERENT domain than the users' email domain.`,
+        `Exchange may silently drop or quarantine emails that appear to come from within its own domain.`,
+      ].join(" "),
+      description: "SES email verification instructions",
+    });
   }
 }

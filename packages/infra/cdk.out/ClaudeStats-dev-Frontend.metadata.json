@@ -1,0 +1,192 @@
+{
+  "/ClaudeStats-dev-Frontend/SsmParameterValue:--ClaudeStats-dev--api--graphql-endpoint:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevapigraphqlendpointC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/SsmParameterValue:--ClaudeStats-dev--auth--user-pool-id:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevauthuserpoolidC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/SsmParameterValue:--ClaudeStats-dev--auth--spa-client-id:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevauthspaclientidC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/Custom::S3AutoDeleteObjectsCustomResourceProvider": [
+    {
+      "type": "aws:cdk:is-custom-resource-handler-customResourceProvider",
+      "data": true
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/OAC": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "OAC"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/Custom::CDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756C": [
+    {
+      "type": "aws:cdk:is-custom-resource-handler-singleton",
+      "data": true
+    },
+    {
+      "type": "aws:cdk:is-custom-resource-handler-runtime-family",
+      "data": 2
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/DistributionUrl": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "DistributionUrl"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/DistributionId": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "DistributionId"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/GraphqlEndpoint": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "GraphqlEndpoint"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/UserPoolId": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "UserPoolId"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/SpaClientId": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SpaClientId"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/BootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "BootstrapVersion"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/CheckBootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CheckBootstrapVersion"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/SiteBucket/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SiteBucket397A1860"
+    },
+    {
+      "type": "aws:cdk:analytics:mixin",
+      "data": {
+        "mixin": "aws-cdk-lib.aws_s3.mixins.BucketAutoDeleteObjects"
+      }
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/SecurityHeaders/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SecurityHeadersE66B69D3"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/Distribution/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Distribution830FAC52"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/Custom::CDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756C/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756C81C01536"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/Param-frontend-distribution-url/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Paramfrontenddistributionurl6ED2CB33"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/Param-frontend-distribution-id/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Paramfrontenddistributionid87A83062"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/CDKMetadata/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadata"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/SiteBucket/Policy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SiteBucketPolicy3AC1D0F8"
+    },
+    {
+      "type": "aws:cdk:analytics:mixin",
+      "data": {
+        "mixin": "aws-cdk-lib.aws_s3.mixins.BucketPolicyStatements"
+      }
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/SiteBucket/AutoDeleteObjectsCustomResource/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SiteBucketAutoDeleteObjectsCustomResource9585E968"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/DeploySite/AwsCliLayer/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "DeploySiteAwsCliLayer88B0EBE2"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/DeploySite/CustomResource/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "DeploySiteCustomResourceE47C9748"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/Custom::CDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756C/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756CServiceRole89A01265"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/Distribution/Origin1/S3OriginAccessControl/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "DistributionOrigin1S3OriginAccessControlEB606076"
+    }
+  ],
+  "/ClaudeStats-dev-Frontend/Custom::CDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756C/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756CServiceRoleDefaultPolicy88902FDF"
+    }
+  ]
+}

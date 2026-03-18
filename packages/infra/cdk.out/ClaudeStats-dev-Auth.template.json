@@ -1,0 +1,1128 @@
+{
+ "Description": "Claude Stats auth — Cognito user pool, magic-link Lambdas, SES email identity",
+ "Parameters": {
+  "SsmParameterValueClaudeStatsdevdatatablearnsmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-arns/magicLinkTokens"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablenamesmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-names/magicLinkTokens"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablenamesteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-names/teamMemberships"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablearnsteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-arns/teamMemberships"
+  },
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Resources": {
+  "MagicLinkHmacKeyF0C6A870": {
+   "Type": "AWS::KMS::Key",
+   "Properties": {
+    "Description": "Magic link HMAC signing key (dev)",
+    "EnableKeyRotation": false,
+    "KeyPolicy": {
+     "Statement": [
+      {
+       "Action": "kms:*",
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":iam::123456789012:root"
+          ]
+         ]
+        }
+       },
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "KeySpec": "HMAC_256",
+    "KeyUsage": "GENERATE_VERIFY_MAC"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/MagicLinkHmacKey/Resource"
+   }
+  },
+  "MagicLinkHmacKeyAliasB49CFFDE": {
+   "Type": "AWS::KMS::Alias",
+   "Properties": {
+    "AliasName": "alias/ClaudeStats-dev-magic-link-hmac",
+    "TargetKeyId": {
+     "Fn::GetAtt": [
+      "MagicLinkHmacKeyF0C6A870",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/MagicLinkHmacKey/Alias/Resource"
+   }
+  },
+  "SesConfigSetECAFDFF8": {
+   "Type": "AWS::SES::ConfigurationSet",
+   "Properties": {
+    "Name": "ClaudeStats-dev-email",
+    "ReputationOptions": {
+     "ReputationMetricsEnabled": true
+    },
+    "SendingOptions": {
+     "SendingEnabled": true
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/SesConfigSet/Resource"
+   }
+  },
+  "SesEmailIdentity7B3E04D2": {
+   "Type": "AWS::SES::EmailIdentity",
+   "Properties": {
+    "ConfigurationSetAttributes": {
+     "ConfigurationSetName": {
+      "Ref": "SesConfigSetECAFDFF8"
+     }
+    },
+    "EmailIdentity": "noreply@acme-dev.com"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/SesEmailIdentity/Resource"
+   }
+  },
+  "DefineChallengeFnServiceRoleF159E792": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/DefineChallengeFn/ServiceRole/Resource"
+   }
+  },
+  "DefineChallengeFn2812EBAC": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
+     "S3Key": "7eda2b52fee4bf956bdee2aba9e6caa5496fa44acf223f58816530cfd26e9c96.zip"
+    },
+    "Description": "Orchestrates Cognito custom auth challenge sequence",
+    "FunctionName": "ClaudeStats-dev-DefineAuthChallenge",
+    "Handler": "index.handler",
+    "MemorySize": 256,
+    "Role": {
+     "Fn::GetAtt": [
+      "DefineChallengeFnServiceRoleF159E792",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs20.x",
+    "Timeout": 10
+   },
+   "DependsOn": [
+    "DefineChallengeFnServiceRoleF159E792"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/DefineChallengeFn/Resource",
+    "aws:asset:path": "asset.7eda2b52fee4bf956bdee2aba9e6caa5496fa44acf223f58816530cfd26e9c96",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "CreateChallengeFnServiceRole5DF03897": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/CreateChallengeFn/ServiceRole/Resource"
+   }
+  },
+  "CreateChallengeFnServiceRoleDefaultPolicy10B8FD96": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      },
+      {
+       "Action": "kms:GenerateMac",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "MagicLinkHmacKeyF0C6A870",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "ses:SendEmail",
+        "ses:SendRawEmail"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":ses:us-east-1:123456789012:identity/",
+           {
+            "Ref": "SesEmailIdentity7B3E04D2"
+           }
+          ]
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:aws:ses:us-east-1:123456789012:configuration-set/",
+           {
+            "Ref": "SesConfigSetECAFDFF8"
+           }
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "CreateChallengeFnServiceRoleDefaultPolicy10B8FD96",
+    "Roles": [
+     {
+      "Ref": "CreateChallengeFnServiceRole5DF03897"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/CreateChallengeFn/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "CreateChallengeFnA1D0EAB7": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
+     "S3Key": "8243edb18452617860babd315263a8ba1cadf27020fb07d0f9f24a0d282e0924.zip"
+    },
+    "Description": "Generates magic link token, rate-limits, sends email via SES",
+    "Environment": {
+     "Variables": {
+      "TABLE_NAME": {
+       "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter"
+      },
+      "KMS_KEY_ID": {
+       "Ref": "MagicLinkHmacKeyF0C6A870"
+      },
+      "SES_FROM_EMAIL": "noreply@acme-dev.com",
+      "SES_CONFIGURATION_SET": {
+       "Ref": "SesConfigSetECAFDFF8"
+      },
+      "APP_URL": "http://localhost:5173",
+      "MAGIC_LINK_TTL_MINUTES": "60",
+      "MAX_REQUESTS_PER_HOUR": "20"
+     }
+    },
+    "FunctionName": "ClaudeStats-dev-CreateAuthChallenge",
+    "Handler": "index.handler",
+    "MemorySize": 256,
+    "Role": {
+     "Fn::GetAtt": [
+      "CreateChallengeFnServiceRole5DF03897",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs20.x",
+    "Timeout": 10
+   },
+   "DependsOn": [
+    "CreateChallengeFnServiceRoleDefaultPolicy10B8FD96",
+    "CreateChallengeFnServiceRole5DF03897"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/CreateChallengeFn/Resource",
+    "aws:asset:path": "asset.8243edb18452617860babd315263a8ba1cadf27020fb07d0f9f24a0d282e0924",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "VerifyChallengeFnServiceRole47513340": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/VerifyChallengeFn/ServiceRole/Resource"
+   }
+  },
+  "VerifyChallengeFnServiceRoleDefaultPolicy5FD1BD69": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      },
+      {
+       "Action": "kms:VerifyMac",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "MagicLinkHmacKeyF0C6A870",
+         "Arn"
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "VerifyChallengeFnServiceRoleDefaultPolicy5FD1BD69",
+    "Roles": [
+     {
+      "Ref": "VerifyChallengeFnServiceRole47513340"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/VerifyChallengeFn/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "VerifyChallengeFn3CDC22A7": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
+     "S3Key": "a9030d668847009917ad49be658183855819fe014a00d7abf09e365698b34193.zip"
+    },
+    "Description": "Validates magic link token via HMAC, checks expiry, marks used",
+    "Environment": {
+     "Variables": {
+      "TABLE_NAME": {
+       "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter"
+      },
+      "KMS_KEY_ID": {
+       "Ref": "MagicLinkHmacKeyF0C6A870"
+      }
+     }
+    },
+    "FunctionName": "ClaudeStats-dev-VerifyAuthChallenge",
+    "Handler": "index.handler",
+    "MemorySize": 256,
+    "Role": {
+     "Fn::GetAtt": [
+      "VerifyChallengeFnServiceRole47513340",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs20.x",
+    "Timeout": 10
+   },
+   "DependsOn": [
+    "VerifyChallengeFnServiceRoleDefaultPolicy5FD1BD69",
+    "VerifyChallengeFnServiceRole47513340"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/VerifyChallengeFn/Resource",
+    "aws:asset:path": "asset.a9030d668847009917ad49be658183855819fe014a00d7abf09e365698b34193",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "PreSignUpFnServiceRoleC270C061": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/PreSignUpFn/ServiceRole/Resource"
+   }
+  },
+  "PreSignUpFnServiceRoleDefaultPolicy21B404FA": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "ssm:GetParameter",
+       "Effect": "Allow",
+       "Resource": "arn:aws:ssm:us-east-1:123456789012:parameter/ClaudeStats-dev/auth/allowed-domains"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "PreSignUpFnServiceRoleDefaultPolicy21B404FA",
+    "Roles": [
+     {
+      "Ref": "PreSignUpFnServiceRoleC270C061"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/PreSignUpFn/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "PreSignUpFn7227C88E": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
+     "S3Key": "0d528965357c99dc8d3128c0aa6b50958d72c1781349f6e1f86fa38abac8573d.zip"
+    },
+    "Description": "Enforces allowed email domain restriction on signup",
+    "Environment": {
+     "Variables": {
+      "SSM_ALLOWED_DOMAINS_PATH": "/ClaudeStats-dev/auth/allowed-domains"
+     }
+    },
+    "FunctionName": "ClaudeStats-dev-PreSignUp",
+    "Handler": "index.handler",
+    "MemorySize": 256,
+    "Role": {
+     "Fn::GetAtt": [
+      "PreSignUpFnServiceRoleC270C061",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs20.x",
+    "Timeout": 10
+   },
+   "DependsOn": [
+    "PreSignUpFnServiceRoleDefaultPolicy21B404FA",
+    "PreSignUpFnServiceRoleC270C061"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/PreSignUpFn/Resource",
+    "aws:asset:path": "asset.0d528965357c99dc8d3128c0aa6b50958d72c1781349f6e1f86fa38abac8573d",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "Paramauthalloweddomains7F82E204": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/auth/allowed-domains",
+    "Type": "String",
+    "Value": "acme.com,acme.io,example.com"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/Param-auth-allowed-domains/Resource"
+   }
+  },
+  "PreTokenGenerationFnServiceRole5BC76271": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/PreTokenGenerationFn/ServiceRole/Resource"
+   }
+  },
+  "PreTokenGenerationFnServiceRoleDefaultPolicy2600C3F9": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "PreTokenGenerationFnServiceRoleDefaultPolicy2600C3F9",
+    "Roles": [
+     {
+      "Ref": "PreTokenGenerationFnServiceRole5BC76271"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/PreTokenGenerationFn/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "PreTokenGenerationFnAE0DA59F": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
+     "S3Key": "030b4ae3946c8d7264dfecc509db9d9275a4d17c0669e4f08c05d5a6414c6431.zip"
+    },
+    "Description": "Injects team membership group claims into JWT",
+    "Environment": {
+     "Variables": {
+      "TABLE_NAME": {
+       "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter"
+      }
+     }
+    },
+    "FunctionName": "ClaudeStats-dev-PreTokenGeneration",
+    "Handler": "index.handler",
+    "MemorySize": 256,
+    "Role": {
+     "Fn::GetAtt": [
+      "PreTokenGenerationFnServiceRole5BC76271",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs20.x",
+    "Timeout": 10
+   },
+   "DependsOn": [
+    "PreTokenGenerationFnServiceRoleDefaultPolicy2600C3F9",
+    "PreTokenGenerationFnServiceRole5BC76271"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/PreTokenGenerationFn/Resource",
+    "aws:asset:path": "asset.030b4ae3946c8d7264dfecc509db9d9275a4d17c0669e4f08c05d5a6414c6431",
+    "aws:asset:is-bundled": true,
+    "aws:asset:property": "Code"
+   }
+  },
+  "UserPoolDefineAuthChallengeCognitoD6D10D9D": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "DefineChallengeFn2812EBAC",
+      "Arn"
+     ]
+    },
+    "Principal": "cognito-idp.amazonaws.com",
+    "SourceArn": {
+     "Fn::GetAtt": [
+      "UserPool6BA7E5F2",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/UserPool/DefineAuthChallengeCognito"
+   }
+  },
+  "UserPoolCreateAuthChallengeCognito07327B9A": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "CreateChallengeFnA1D0EAB7",
+      "Arn"
+     ]
+    },
+    "Principal": "cognito-idp.amazonaws.com",
+    "SourceArn": {
+     "Fn::GetAtt": [
+      "UserPool6BA7E5F2",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/UserPool/CreateAuthChallengeCognito"
+   }
+  },
+  "UserPoolVerifyAuthChallengeResponseCognito338D71F3": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "VerifyChallengeFn3CDC22A7",
+      "Arn"
+     ]
+    },
+    "Principal": "cognito-idp.amazonaws.com",
+    "SourceArn": {
+     "Fn::GetAtt": [
+      "UserPool6BA7E5F2",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/UserPool/VerifyAuthChallengeResponseCognito"
+   }
+  },
+  "UserPoolPreSignUpCognito3AFF8F1F": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "PreSignUpFn7227C88E",
+      "Arn"
+     ]
+    },
+    "Principal": "cognito-idp.amazonaws.com",
+    "SourceArn": {
+     "Fn::GetAtt": [
+      "UserPool6BA7E5F2",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/UserPool/PreSignUpCognito"
+   }
+  },
+  "UserPoolPreTokenGenerationCognito84D0CADA": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "PreTokenGenerationFnAE0DA59F",
+      "Arn"
+     ]
+    },
+    "Principal": "cognito-idp.amazonaws.com",
+    "SourceArn": {
+     "Fn::GetAtt": [
+      "UserPool6BA7E5F2",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/UserPool/PreTokenGenerationCognito"
+   }
+  },
+  "UserPool6BA7E5F2": {
+   "Type": "AWS::Cognito::UserPool",
+   "Properties": {
+    "AccountRecoverySetting": {
+     "RecoveryMechanisms": [
+      {
+       "Name": "admin_only",
+       "Priority": 1
+      }
+     ]
+    },
+    "AdminCreateUserConfig": {
+     "AllowAdminCreateUserOnly": false
+    },
+    "AutoVerifiedAttributes": [
+     "email"
+    ],
+    "EmailVerificationMessage": "The verification code to your new account is {####}",
+    "EmailVerificationSubject": "Verify your new account",
+    "LambdaConfig": {
+     "CreateAuthChallenge": {
+      "Fn::GetAtt": [
+       "CreateChallengeFnA1D0EAB7",
+       "Arn"
+      ]
+     },
+     "DefineAuthChallenge": {
+      "Fn::GetAtt": [
+       "DefineChallengeFn2812EBAC",
+       "Arn"
+      ]
+     },
+     "PreSignUp": {
+      "Fn::GetAtt": [
+       "PreSignUpFn7227C88E",
+       "Arn"
+      ]
+     },
+     "PreTokenGeneration": {
+      "Fn::GetAtt": [
+       "PreTokenGenerationFnAE0DA59F",
+       "Arn"
+      ]
+     },
+     "VerifyAuthChallengeResponse": {
+      "Fn::GetAtt": [
+       "VerifyChallengeFn3CDC22A7",
+       "Arn"
+      ]
+     }
+    },
+    "Policies": {
+     "PasswordPolicy": {
+      "MinimumLength": 99,
+      "RequireLowercase": false,
+      "RequireNumbers": false,
+      "RequireSymbols": false,
+      "RequireUppercase": false
+     }
+    },
+    "Schema": [
+     {
+      "Mutable": false,
+      "Name": "email",
+      "Required": true
+     }
+    ],
+    "SmsVerificationMessage": "The verification code to your new account is {####}",
+    "UserPoolName": "ClaudeStats-dev-UserPool",
+    "UsernameAttributes": [
+     "email"
+    ],
+    "VerificationMessageTemplate": {
+     "DefaultEmailOption": "CONFIRM_WITH_CODE",
+     "EmailMessage": "The verification code to your new account is {####}",
+     "EmailSubject": "Verify your new account",
+     "SmsMessage": "The verification code to your new account is {####}"
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/UserPool/Resource"
+   }
+  },
+  "UserPoolSpaClient6B560FFA": {
+   "Type": "AWS::Cognito::UserPoolClient",
+   "Properties": {
+    "AccessTokenValidity": 60,
+    "AllowedOAuthFlows": [
+     "implicit",
+     "code"
+    ],
+    "AllowedOAuthFlowsUserPoolClient": true,
+    "AllowedOAuthScopes": [
+     "profile",
+     "phone",
+     "email",
+     "openid",
+     "aws.cognito.signin.user.admin"
+    ],
+    "CallbackURLs": [
+     "https://example.com"
+    ],
+    "ClientName": "ClaudeStats-dev-SpaClient",
+    "ExplicitAuthFlows": [
+     "ALLOW_CUSTOM_AUTH",
+     "ALLOW_REFRESH_TOKEN_AUTH"
+    ],
+    "GenerateSecret": false,
+    "IdTokenValidity": 60,
+    "PreventUserExistenceErrors": "ENABLED",
+    "RefreshTokenValidity": 43200,
+    "SupportedIdentityProviders": [
+     "COGNITO"
+    ],
+    "TokenValidityUnits": {
+     "AccessToken": "minutes",
+     "IdToken": "minutes",
+     "RefreshToken": "minutes"
+    },
+    "UserPoolId": {
+     "Ref": "UserPool6BA7E5F2"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/UserPool/SpaClient/Resource"
+   }
+  },
+  "UserPoolMcpClient2D19DB87": {
+   "Type": "AWS::Cognito::UserPoolClient",
+   "Properties": {
+    "AccessTokenValidity": 60,
+    "AllowedOAuthFlows": [
+     "code"
+    ],
+    "AllowedOAuthFlowsUserPoolClient": true,
+    "AllowedOAuthScopes": [
+     "openid",
+     "profile"
+    ],
+    "CallbackURLs": [
+     "http://localhost:5173/mcp/callback"
+    ],
+    "ClientName": "ClaudeStats-dev-McpClient",
+    "ExplicitAuthFlows": [
+     "ALLOW_CUSTOM_AUTH",
+     "ALLOW_REFRESH_TOKEN_AUTH"
+    ],
+    "GenerateSecret": true,
+    "IdTokenValidity": 60,
+    "PreventUserExistenceErrors": "ENABLED",
+    "RefreshTokenValidity": 43200,
+    "SupportedIdentityProviders": [
+     "COGNITO"
+    ],
+    "TokenValidityUnits": {
+     "AccessToken": "minutes",
+     "IdToken": "minutes",
+     "RefreshToken": "minutes"
+    },
+    "UserPoolId": {
+     "Ref": "UserPool6BA7E5F2"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/UserPool/McpClient/Resource"
+   }
+  },
+  "UserPoolCognitoDomainD6C7F9FA": {
+   "Type": "AWS::Cognito::UserPoolDomain",
+   "Properties": {
+    "Domain": "claudestats-dev",
+    "UserPoolId": {
+     "Ref": "UserPool6BA7E5F2"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/UserPool/CognitoDomain/Resource"
+   }
+  },
+  "Paramauthuserpoolid9B3F6963": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/auth/user-pool-id",
+    "Type": "String",
+    "Value": {
+     "Ref": "UserPool6BA7E5F2"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/Param-auth-user-pool-id/Resource"
+   }
+  },
+  "ParamauthuserpoolarnCD72D2E5": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/auth/user-pool-arn",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "UserPool6BA7E5F2",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/Param-auth-user-pool-arn/Resource"
+   }
+  },
+  "Paramauthspaclientid91BF3A02": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/auth/spa-client-id",
+    "Type": "String",
+    "Value": {
+     "Ref": "UserPoolSpaClient6B560FFA"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/Param-auth-spa-client-id/Resource"
+   }
+  },
+  "ParamauthmcpclientidAEC24BC1": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/auth/mcp-client-id",
+    "Type": "String",
+    "Value": {
+     "Ref": "UserPoolMcpClient2D19DB87"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/Param-auth-mcp-client-id/Resource"
+   }
+  },
+  "Paramauthcognitodomain9D44E916": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/auth/cognito-domain",
+    "Type": "String",
+    "Value": "claudestats-dev.auth.us-east-1.amazoncognito.com"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/Param-auth-cognito-domain/Resource"
+   }
+  },
+  "ParamauthsesconfigurationsetAD663BE2": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/auth/ses-configuration-set",
+    "Type": "String",
+    "Value": {
+     "Ref": "SesConfigSetECAFDFF8"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/Param-auth-ses-configuration-set/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/2VRy04DMQz8lt5TAy1wbwtICAmqFs6VN+uu0s0DxQmoWuXfSdIHRZxmPLZHzmQCk9spXI/wm8ey7cdaNTCsA8peLLZ2iR4NBfJiReyilyTy4GboDcPwQvsyU2CmFXIpKkmCKfcXzm5VFz0G5eyaQun/0x4NKv3ckg0qVLs/QhIaTdPixrqWdgyvFZ6ilWVfKDQwrJymslhx6bSS1efA8inTDTJTYJgVyDXMo+wpzJHpaJ9v3dqza1kmbxRzrpJo9xaNaxt4x0ZT3WI2JSSvbPeb0GVcSUjXWRUcDB9MfumcLv0zP5GFVvmhl62jciofXI7DXg4clJREfU7+qS5fUQbeYviMIYkSFez46mtyB/dwM9qxUmMfc56GYHXAH+alYd/2AQAA"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Auth/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "SesSenderEmail": {
+   "Description": "Sender email address for magic-link emails",
+   "Value": "noreply@acme-dev.com"
+  },
+  "SesVerificationRequired": {
+   "Description": "SES email verification instructions",
+   "Value": "Email identity created for noreply@acme-dev.com. If this is the first deployment, SES has sent a verification email to noreply@acme-dev.com — click the link to confirm. Emails will not be delivered until the identity is verified. NOTE: If your users' email domain is managed by Microsoft Exchange Online / Microsoft 365, ensure the sender address is on a DIFFERENT domain than the users' email domain. Exchange may silently drop or quarantine emails that appear to come from within its own domain."
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

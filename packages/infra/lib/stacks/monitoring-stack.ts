@@ -27,8 +27,11 @@ const TABLE_NAMES = [
 ] as const;
 
 export class MonitoringStack extends cdk.Stack {
+  public readonly dashboard: cloudwatch.Dashboard;
+  public readonly alarmTopic: sns.Topic;
+
   constructor(scope: Construct, id: string, props: MonitoringStackProps) {
-    super(scope, id, props);
+    super(scope, id, { ...props, description: "Claude Stats monitoring — CloudWatch dashboard, alarms, SNS notifications" });
     const { config } = props;
     const prefix = `ClaudeStats-${config.envName}`;
     const isProd = config.envName === "prod";
@@ -64,6 +67,8 @@ export class MonitoringStack extends cdk.Stack {
         new snsSubscriptions.EmailSubscription(email),
       );
     }
+
+    this.alarmTopic = alarmTopic;
 
     const alarmAction = new cloudwatchActions.SnsAction(alarmTopic);
 
@@ -675,6 +680,8 @@ export class MonitoringStack extends cdk.Stack {
       sesComplaintRateAlarm.addAlarmAction(alarmAction);
       sesComplaintRateAlarm.addOkAction(alarmAction);
     }
+
+    this.dashboard = dashboard;
 
     // ── Log Retention (informational output) ──────────────────────────
 

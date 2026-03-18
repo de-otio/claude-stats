@@ -6,6 +6,7 @@ export const prodConfig: EnvironmentConfig = {
   region: process.env.CDK_PROD_REGION ?? "us-east-1",
 
   // Auth — strict
+  senderEmail: "noreply@stats.acme.com",
   allowedEmailDomains: ["acme.com"],
   magicLinkTtlMinutes: 15,
   magicLinkMaxRequestsPerHour: 3,

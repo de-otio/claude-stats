@@ -418,7 +418,7 @@ type Mutation {
   syncMessages(input: [SyncMessageInput!]!): SyncResult!
 
   # Stats (internal)
-  refreshTeamStats(teamId: ID!, period: String!): Boolean! @aws_iam
+  refreshTeamStats(teamId: ID!, period: String!): TeamStatsUpdate! @aws_iam
 
   # Achievements
   unlockAchievement(achievementId: ID!, context: AWSJSON): Achievement!
@@ -455,7 +455,7 @@ type Subscription {
   onTeamStatsUpdated(teamId: ID!): TeamStatsUpdate
     @aws_subscribe(mutations: ["refreshTeamStats"])
 
-  onAchievementUnlocked(teamId: ID!): AchievementEvent
+  onAchievementUnlocked(teamId: ID!): Achievement
     @aws_subscribe(mutations: ["unlockAchievement"])
 
   onChallengeUpdated(teamId: ID!): Challenge
@@ -464,7 +464,7 @@ type Subscription {
   onInterTeamChallengeUpdated(challengeId: ID!): InterTeamChallenge
     @aws_subscribe(mutations: ["completeInterTeamChallenge"])
 
-  onSessionSynced(userId: ID!): SyncedSession
+  onSessionSynced(userId: ID!): SyncResult
     @aws_subscribe(mutations: ["syncSessions"])
 }
 

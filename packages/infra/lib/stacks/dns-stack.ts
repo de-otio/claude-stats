@@ -10,8 +10,11 @@ interface DnsStackProps extends cdk.StackProps {
 }
 
 export class DnsStack extends cdk.Stack {
+  public readonly hostedZone?: route53.PublicHostedZone;
+  public readonly certificate?: acm.Certificate;
+
   constructor(scope: Construct, id: string, props: DnsStackProps) {
-    super(scope, id, props);
+    super(scope, id, { ...props, description: "Claude Stats DNS — Route53 hosted zone, NS delegation, ACM certificate" });
 
     const { config } = props;
     const prefix = `ClaudeStats-${config.envName}`;
@@ -43,11 +46,15 @@ export class DnsStack extends cdk.Stack {
       ttl: cdk.Duration.hours(48),
     });
 
+    this.hostedZone = hostedZone;
+
     // ACM certificate (DNS-validated, must be in us-east-1 for CloudFront)
     const certificate = new acm.Certificate(this, "Certificate", {
       domainName: config.domainName,
       validation: acm.CertificateValidation.fromDns(hostedZone),
     });
+
+    this.certificate = certificate;
 
     // SSM parameters
     putParam(this, prefix, "dns/hosted-zone-id", hostedZone.hostedZoneId);

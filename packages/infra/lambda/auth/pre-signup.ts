@@ -24,20 +24,32 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
  *
  * Auto-confirms the user and verifies their email (magic link already
  * proves email ownership).
+ *
+ * Email extraction:
+ * - For existing users: extracted from userAttributes.email (Cognito populates this)
+ * - For new users: passed via clientMetadata.email (client must provide this)
  */
 export const handler: PreSignUpTriggerHandler = async (
   event: PreSignUpTriggerEvent,
 ) => {
-  const domains = await getAllowedDomains();
+  // Extract email: first try userAttributes (existing users), then clientMetadata (new users)
+  const email = (
+    event.request.userAttributes?.email ||
+    (event.request.clientMetadata as Record<string, string> | undefined)?.email
+  )
+    ?.toLowerCase()
+    .trim();
 
-  const email = event.request.userAttributes.email?.toLowerCase().trim();
   if (!email) {
-    throw new Error("Email is required");
+    throw new Error(
+      "Email is required. Pass email in userAttributes (existing users) or clientMetadata.email (new users)"
+    );
   }
 
+  const domains = await getAllowedDomains();
   const domain = email.split("@")[1];
   if (!domain || !domains.includes(domain)) {
-    throw new Error("Signup not allowed for this email domain");
+    throw new Error(`Signup not allowed for domain '${domain}'. Allowed: ${domains.join(", ")}`);
   }
 
   // Auto-confirm user and email — the magic link flow already verified

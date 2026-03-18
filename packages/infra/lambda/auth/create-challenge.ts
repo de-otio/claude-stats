@@ -24,13 +24,32 @@ const MAX_REQUESTS_PER_HOUR = Number(process.env.MAX_REQUESTS_PER_HOUR ?? "3");
  *
  * Generates a magic link token, checks rate limits, and sends email via SES.
  * The token is stored as an HMAC-SHA-256 hash in DynamoDB.
+ *
+ * Email extraction:
+ * - For existing users: extracted from userAttributes.email (Cognito populates this)
+ * - For new users: passed via clientMetadata.email (client must provide this)
  */
 export const handler: CreateAuthChallengeTriggerHandler = async (
   event: CreateAuthChallengeTriggerEvent,
 ) => {
-  const email = event.request.userAttributes.email?.toLowerCase().trim();
+  console.log("Event:", JSON.stringify({
+    userAttributes: event.request.userAttributes,
+    clientMetadata: (event.request as any).clientMetadata,
+    userNotFound: (event.request as any).userNotFound
+  }, null, 2));
+
+  // Extract email: first try userAttributes (existing users), then clientMetadata (new users)
+  const email = (
+    event.request.userAttributes?.email ||
+    ((event.request as any).clientMetadata as Record<string, string> | undefined)?.email
+  )
+    ?.toLowerCase()
+    .trim();
+
   if (!email) {
-    throw new Error("Email is required");
+    throw new Error(
+      "Email is required. Pass email in userAttributes (existing users) or clientMetadata.email (new users)"
+    );
   }
 
   // ---------- Rate limiting ----------

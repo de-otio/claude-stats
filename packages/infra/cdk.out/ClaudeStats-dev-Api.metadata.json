@@ -1,0 +1,392 @@
+{
+  "/ClaudeStats-dev-Api/SsmParameterValue:--ClaudeStats-dev--auth--user-pool-id:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevauthuserpoolidC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Api/SsmParameterValue:--ClaudeStats-dev--data--synced-sessions-stream-arn:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatasyncedsessionsstreamarnC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Api/SsmParameterValue:--ClaudeStats-dev--data--table-arns--userProfiles:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablearnsuserProfilesC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Api/SsmParameterValue:--ClaudeStats-dev--data--table-arns--teams:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablearnsteamsC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Api/SsmParameterValue:--ClaudeStats-dev--data--table-arns--teamMemberships:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablearnsteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Api/SsmParameterValue:--ClaudeStats-dev--data--table-arns--syncedSessions:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablearnssyncedSessionsC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Api/SsmParameterValue:--ClaudeStats-dev--data--table-arns--syncedMessages:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablearnssyncedMessagesC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Api/SsmParameterValue:--ClaudeStats-dev--data--table-arns--teamStats:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablearnsteamStatsC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Api/SsmParameterValue:--ClaudeStats-dev--data--table-arns--achievements:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablearnsachievementsC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Api/SsmParameterValue:--ClaudeStats-dev--data--table-arns--challenges:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablearnschallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Api/SsmParameterValue:--ClaudeStats-dev--data--table-arns--interTeamChallenges:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevdatatablearnsinterTeamChallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Custom::S3AutoDeleteObjectsCustomResourceProvider": [
+    {
+      "type": "aws:cdk:is-custom-resource-handler-customResourceProvider",
+      "data": true
+    }
+  ],
+  "/ClaudeStats-dev-Api/BootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "BootstrapVersion"
+    }
+  ],
+  "/ClaudeStats-dev-Api/CheckBootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CheckBootstrapVersion"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiF70053CD"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/Schema": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiSchema510EECD7"
+    }
+  ],
+  "/ClaudeStats-dev-Api/LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A"
+    }
+  ],
+  "/ClaudeStats-dev-Api/AggregateStatsDLQ/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "AggregateStatsDLQ901DB878"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Param-api-team-logos-bucket/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Paramapiteamlogosbucket7BE19461"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Param-api-team-logos-cdn-url/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Paramapiteamlogoscdnurl74ADA063"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Param-api-graphql-endpoint/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamapigraphqlendpointA14B7C21"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Param-api-graphql-api-id/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamapigraphqlapiidB525753F"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Param-api-graphql-api-arn/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamapigraphqlapiarnB715969C"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Param-api-dlq-url/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Paramapidlqurl63E60744"
+    }
+  ],
+  "/ClaudeStats-dev-Api/CDKMetadata/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadata"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/ApiLogsRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiApiLogsRole90293F72"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/LogRetention/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiLogRetention94272E33"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/userProfilesDS/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiuserProfilesDSE47EA9E4"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/teamsDS/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiteamsDSA4C04B9F"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/teamMembershipsDS/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiteamMembershipsDSCC525499"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/syncedSessionsDS/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApisyncedSessionsDSD2995407"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/syncedMessagesDS/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApisyncedMessagesDS81EEA122"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/teamStatsDS/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiteamStatsDSDA61EDA9"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/achievementsDS/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiachievementsDS9054DC48"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/challengesDS/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApichallengesDSD72E861A"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/interTeamChallengesDS/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiinterTeamChallengesDSF1BE9851"
+    }
+  ],
+  "/ClaudeStats-dev-Api/LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB"
+    }
+  ],
+  "/ClaudeStats-dev-Api/TeamLogos/Bucket/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "TeamLogosBucket686A7328"
+    },
+    {
+      "type": "aws:cdk:analytics:mixin",
+      "data": {
+        "mixin": "aws-cdk-lib.aws_s3.mixins.BucketAutoDeleteObjects"
+      }
+    }
+  ],
+  "/ClaudeStats-dev-Api/TeamLogos/OAC/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "TeamLogosOAC3FAD017F"
+    }
+  ],
+  "/ClaudeStats-dev-Api/TeamLogos/Distribution/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "TeamLogosDistribution38EB236E"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/userProfilesDS/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiuserProfilesDSServiceRoleAF8F824F"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/teamsDS/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiteamsDSServiceRoleC8DD9B35"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/teamMembershipsDS/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiteamMembershipsDSServiceRole42EAF474"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/syncedSessionsDS/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApisyncedSessionsDSServiceRoleE4C790CA"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/syncedMessagesDS/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApisyncedMessagesDSServiceRole80E0D729"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/teamStatsDS/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiteamStatsDSServiceRoleAB95F12D"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/achievementsDS/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiachievementsDSServiceRoleC009FD30"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/challengesDS/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApichallengesDSServiceRole292F6CC4"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/interTeamChallengesDS/ServiceRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiinterTeamChallengesDSServiceRole5E32F659"
+    }
+  ],
+  "/ClaudeStats-dev-Api/LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRoleDefaultPolicyADDA7DEB"
+    }
+  ],
+  "/ClaudeStats-dev-Api/TeamLogos/Bucket/Policy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "TeamLogosBucketPolicy7CFAC91C"
+    },
+    {
+      "type": "aws:cdk:analytics:mixin",
+      "data": {
+        "mixin": "aws-cdk-lib.aws_s3.mixins.BucketPolicyStatements"
+      }
+    }
+  ],
+  "/ClaudeStats-dev-Api/TeamLogos/Bucket/AutoDeleteObjectsCustomResource/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "TeamLogosBucketAutoDeleteObjectsCustomResourceD8433E69"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/userProfilesDS/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiuserProfilesDSServiceRoleDefaultPolicyBB1FD189"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/teamsDS/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiteamsDSServiceRoleDefaultPolicy4F1AB530"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/teamMembershipsDS/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiteamMembershipsDSServiceRoleDefaultPolicyA2B3753A"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/syncedSessionsDS/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApisyncedSessionsDSServiceRoleDefaultPolicy8D7C4EF7"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/syncedMessagesDS/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApisyncedMessagesDSServiceRoleDefaultPolicyEC5038BB"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/teamStatsDS/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiteamStatsDSServiceRoleDefaultPolicy8CFEC177"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/achievementsDS/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiachievementsDSServiceRoleDefaultPolicy4576BF7D"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/challengesDS/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApichallengesDSServiceRoleDefaultPolicyC02D0FA7"
+    }
+  ],
+  "/ClaudeStats-dev-Api/Api/interTeamChallengesDS/ServiceRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ApiinterTeamChallengesDSServiceRoleDefaultPolicy274C0004"
+    }
+  ]
+}

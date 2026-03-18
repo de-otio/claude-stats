@@ -1,0 +1,1760 @@
+{
+ "Description": "Claude Stats API — AppSync GraphQL, DynamoDB data sources, team logos CDN",
+ "Parameters": {
+  "SsmParameterValueClaudeStatsdevauthuserpoolidC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/auth/user-pool-id"
+  },
+  "SsmParameterValueClaudeStatsdevdatasyncedsessionsstreamarnC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/synced-sessions-stream-arn"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablearnsuserProfilesC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-arns/userProfiles"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablearnsteamsC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-arns/teams"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablearnsteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-arns/teamMemberships"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablearnssyncedSessionsC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-arns/syncedSessions"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablearnssyncedMessagesC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-arns/syncedMessages"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablearnsteamStatsC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-arns/teamStats"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablearnsachievementsC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-arns/achievements"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablearnschallengesC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-arns/challenges"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablearnsinterTeamChallengesC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-arns/interTeamChallenges"
+  },
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Resources": {
+  "ApiApiLogsRole90293F72": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "appsync.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSAppSyncPushToCloudWatchLogs"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/ApiLogsRole/Resource"
+   }
+  },
+  "ApiF70053CD": {
+   "Type": "AWS::AppSync::GraphQLApi",
+   "Properties": {
+    "AdditionalAuthenticationProviders": [
+     {
+      "AuthenticationType": "AWS_IAM"
+     }
+    ],
+    "AuthenticationType": "AMAZON_COGNITO_USER_POOLS",
+    "LogConfig": {
+     "CloudWatchLogsRoleArn": {
+      "Fn::GetAtt": [
+       "ApiApiLogsRole90293F72",
+       "Arn"
+      ]
+     },
+     "FieldLogLevel": "ERROR"
+    },
+    "Name": "ClaudeStats-dev-Api",
+    "UserPoolConfig": {
+     "AwsRegion": "us-east-1",
+     "DefaultAction": "ALLOW",
+     "UserPoolId": {
+      "Ref": "SsmParameterValueClaudeStatsdevauthuserpoolidC96584B6F00A464EAD1953AFF4B05118Parameter"
+     }
+    },
+    "XrayEnabled": true
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/Resource"
+   }
+  },
+  "ApiSchema510EECD7": {
+   "Type": "AWS::AppSync::GraphQLSchema",
+   "Properties": {
+    "ApiId": {
+     "Fn::GetAtt": [
+      "ApiF70053CD",
+      "ApiId"
+     ]
+    },
+    "Definition": "# Claude Stats — AppSync GraphQL Schema\n# Derived from doc/analysis/team-app/05-api-design.md\n\n# ── Enums ──────────────────────────────────────────────────────────────────\n\nenum TeamRole { ADMIN MEMBER }\nenum ShareLevel { FULL SUMMARY MINIMAL }\nenum ChallengeStatus { ACTIVE COMPLETED }\nenum InterTeamChallengeStatus { PENDING ACTIVE COMPLETED }\nenum CrossTeamVisibility { PRIVATE PUBLIC_STATS PUBLIC_DASHBOARD }\nenum AchievementCategory { PRODUCTIVITY EFFICIENCY TEAM MILESTONES FUN }\n\n# ── User types ─────────────────────────────────────────────────────────────\n\ntype User {\n  userId: ID!\n  email: String!\n  displayName: String!\n  avatarUrl: String\n  accounts: [LinkedAccount!]!\n  preferences: UserPreferences!\n  personalityType: String\n  streak: StreakInfo!\n  achievements: [Achievement!]!\n}\n\ntype UserPublicProfile {\n  userId: ID!\n  displayName: String!\n  avatarUrl: String\n  personalityType: String\n  streak: StreakInfo\n  recentAchievements: [Achievement!]\n}\n\ntype LinkedAccount {\n  accountId: ID!\n  label: String!\n  shareWithTeams: Boolean!\n  sharePrompts: Boolean!\n}\n\ntype UserPreferences {\n  timezone: String!\n  weekStartDay: Int!\n  defaultShareLevel: ShareLevel!\n  streakWeekendGrace: Boolean!\n}\n\n# ── Team types ─────────────────────────────────────────────────────────────\n\ntype Team {\n  teamId: ID!\n  teamName: String!\n  teamSlug: String!\n  logoUrl: String\n  inviteCode: String\n  memberCount: Int!\n  settings: TeamSettings!\n  members: [TeamMember!]!\n  currentChallenge: Challenge\n}\n\ntype TeamMember {\n  userId: ID!\n  displayName: String!\n  role: TeamRole!\n  shareLevel: ShareLevel!\n  joinedAt: AWSTimestamp!\n  stats(period: String!): MemberStats\n  streak: StreakInfo\n  recentAchievements: [Achievement!]\n}\n\ntype TeamSettings {\n  leaderboardEnabled: Boolean!\n  leaderboardCategories: [String!]!\n  challengesEnabled: Boolean!\n  minMembersForAggregates: Int!\n  crossTeamVisibility: CrossTeamVisibility!\n}\n\n# ── Stats types ────────────────────────────────────────────────────────────\n\ntype MemberStats {\n  sessions: Int!\n  prompts: Int!\n  inputTokens: Long\n  outputTokens: Long\n  estimatedCost: Float\n  activeMinutes: Int\n  modelsUsed: AWSJSON\n  topTools: [String!]\n  velocityTokensPerMin: Float\n  subagentRatio: Float\n  projectBreakdown: [ProjectStats!]\n}\n\ntype ProjectStats {\n  projectId: String!\n  sessions: Int!\n  prompts: Int!\n  estimatedCost: Float\n}\n\ntype ProjectInsights {\n  projectId: String!\n  period: String!\n  totalSessions: Int!\n  totalPrompts: Int!\n  totalTokens: Long!\n  estimatedCost: Float!\n  contributors: [ProjectContributor!]!\n  modelsUsed: AWSJSON\n  trend: [ProjectTrendPoint!]!\n}\n\ntype ProjectContributor {\n  displayName: String!\n  sessions: Int!\n  prompts: Int!\n}\n\ntype ProjectTrendPoint {\n  date: String!\n  sessions: Int!\n  prompts: Int!\n  estimatedCost: Float!\n}\n\n# ── Dashboard types ────────────────────────────────────────────────────────\n\ntype TeamDashboard {\n  team: Team!\n  period: String!\n  aggregate: TeamAggregate\n  leaderboard: Leaderboard\n  memberCards: [MemberCard!]!\n  chemistry: TeamChemistry\n  superlatives: [Superlative!]!\n  projectSummary: [ProjectStats!]!\n  computedAt: AWSTimestamp!\n}\n\ntype TeamAggregate {\n  totalSessions: Int!\n  totalPrompts: Int!\n  totalInputTokens: Long!\n  totalOutputTokens: Long!\n  totalEstimatedCost: Float!\n  activeMemberCount: Int!\n  avgSessionsPerMember: Float!\n  avgCostPerMember: Float!\n}\n\ntype Leaderboard {\n  categories: [LeaderboardCategory!]!\n}\n\ntype LeaderboardCategory {\n  name: String!\n  awardName: String!\n  rankings: [LeaderboardEntry!]!\n}\n\ntype LeaderboardEntry {\n  rank: Int!\n  displayName: String!\n  value: Float!\n  formattedValue: String!\n}\n\ntype MemberCard {\n  userId: ID!\n  displayName: String!\n  personalityType: String\n  streak: StreakInfo\n  stats: MemberStats\n  recentAchievements: [Achievement!]\n}\n\ntype TeamChemistry {\n  score: Int!\n  breakdown: ChemistryBreakdown!\n}\n\ntype ChemistryBreakdown {\n  diversityBonus: Int!\n  coverageBonus: Int!\n  syncBonus: Int!\n  streakBonus: Int!\n  challengeBonus: Int!\n  balancePenalty: Int!\n}\n\ntype Superlative {\n  label: String!\n  displayName: String!\n  value: String!\n}\n\n# ── Gamification types ─────────────────────────────────────────────────────\n\ntype StreakInfo {\n  currentStreak: Int!\n  longestStreak: Int!\n  weekendGraceEnabled: Boolean!\n  freezeTokensRemaining: Int!\n  lastActiveDate: String\n}\n\ntype Achievement {\n  achievementId: ID!\n  name: String!\n  description: String!\n  category: AchievementCategory!\n  icon: String!\n  unlockedAt: AWSTimestamp!\n  shared: Boolean!\n  context: AWSJSON\n}\n\ntype AchievementDefinition {\n  achievementId: ID!\n  name: String!\n  description: String!\n  category: AchievementCategory!\n  icon: String!\n  threshold: AWSJSON\n  hidden: Boolean!\n}\n\ntype AchievementEvent {\n  userId: ID!\n  displayName: String!\n  achievement: Achievement!\n  teamId: ID!\n}\n\ntype Challenge {\n  challengeId: ID!\n  name: String!\n  metric: String!\n  startTime: AWSTimestamp!\n  endTime: AWSTimestamp!\n  status: ChallengeStatus!\n  participants: [ChallengeParticipant!]!\n}\n\ntype ChallengeParticipant {\n  userId: ID!\n  displayName: String!\n  score: Float!\n  rank: Int!\n}\n\n# ── Cross-team types ───────────────────────────────────────────────────────\n\ntype TeamComparisonEntry {\n  teamId: ID!\n  teamName: String!\n  teamSlug: String!\n  logoUrl: String\n  memberCount: Int!\n  aggregate: TeamAggregate\n}\n\ntype InterTeamChallenge {\n  challengeId: ID!\n  name: String!\n  metric: String!\n  startTime: AWSTimestamp!\n  endTime: AWSTimestamp!\n  status: InterTeamChallengeStatus!\n  creatingTeamId: ID!\n  inviteCode: String\n  teams: [InterTeamChallengeTeam!]!\n}\n\ntype InterTeamChallengeTeam {\n  teamId: ID!\n  teamName: String!\n  teamSlug: String!\n  logoUrl: String\n  score: Float!\n  rank: Int!\n}\n\n# ── Sync types ─────────────────────────────────────────────────────────────\n\ntype SyncedSession {\n  sessionId: ID!\n  projectId: String\n  firstTimestamp: AWSTimestamp!\n  lastTimestamp: AWSTimestamp!\n  claudeVersion: String!\n  entrypoint: String!\n  promptCount: Int!\n  inputTokens: Long!\n  outputTokens: Long!\n  cacheCreationTokens: Long\n  cacheReadTokens: Long\n  models: [String!]!\n  accountId: String!\n  isSubagent: Boolean!\n  parentSessionId: String\n  estimatedCost: Float!\n  updatedAt: AWSTimestamp!\n}\n\ntype SyncedMessage {\n  uuid: ID!\n  sessionId: ID!\n  timestamp: AWSTimestamp!\n  model: String!\n  stopReason: String\n  inputTokens: Long!\n  outputTokens: Long!\n  tools: [String!]\n  thinkingBlocks: Int\n  promptText: String\n}\n\ntype SyncResult {\n  itemsWritten: Int!\n  itemsSkipped: Int!\n  conflicts: [ConflictItem!]!\n}\n\ntype ConflictItem {\n  key: String!\n  serverVersion: Int!\n  serverItem: AWSJSON\n}\n\ntype LogoUploadUrl {\n  uploadUrl: String!\n  logoUrl: String!\n}\n\ntype TeamStatsUpdate {\n  teamId: ID!\n  period: String!\n  computedAt: AWSTimestamp!\n}\n\n# ── Queries ────────────────────────────────────────────────────────────────\n\ntype Query {\n  # User\n  me: User! @aws_cognito_user_pools\n  userProfile(userId: ID!): UserPublicProfile @aws_cognito_user_pools\n\n  # Teams\n  myTeams: [Team!]! @aws_cognito_user_pools\n  team(teamId: ID!): Team! @aws_cognito_user_pools\n  teamDashboard(teamId: ID!, period: String!): TeamDashboard! @aws_cognito_user_pools\n  teamMembers(teamId: ID!): [TeamMember!]! @aws_cognito_user_pools\n\n  # Stats (own data)\n  mySessions(from: AWSTimestamp, to: AWSTimestamp, limit: Int): [SyncedSession!]! @aws_cognito_user_pools\n  myStats(period: String!): MemberStats! @aws_cognito_user_pools\n  myProjects(period: String!): [ProjectStats!]! @aws_cognito_user_pools\n\n  # Project insights\n  teamProjectInsights(teamId: ID!, projectId: String!, period: String!): ProjectInsights! @aws_cognito_user_pools\n  teamProjects(teamId: ID!, period: String!): [ProjectStats!]! @aws_cognito_user_pools\n\n  # Session detail\n  sessionMessages(sessionId: ID!): [SyncedMessage!]! @aws_cognito_user_pools\n\n  # Achievements\n  myAchievements: [Achievement!]! @aws_cognito_user_pools\n  availableAchievements: [AchievementDefinition!]! @aws_cognito_user_pools\n\n  # Challenges\n  activeChallenge(teamId: ID!): Challenge @aws_cognito_user_pools\n  challengeHistory(teamId: ID!, limit: Int): [Challenge!]! @aws_cognito_user_pools\n\n  # Cross-team\n  teamsComparison(period: String!): [TeamComparisonEntry!]! @aws_cognito_user_pools\n  teamBySlug(slug: String!): Team @aws_cognito_user_pools\n  teamDashboardAsReader(teamId: ID!, period: String!): TeamDashboard @aws_cognito_user_pools\n\n  # Inter-team challenges\n  activeInterTeamChallenges: [InterTeamChallenge!]! @aws_cognito_user_pools\n  interTeamChallengeHistory(limit: Int): [InterTeamChallenge!]! @aws_cognito_user_pools\n\n  # Admin\n  allowedDomains: [String!]! @aws_cognito_user_pools\n  allTeams: [Team!]! @aws_cognito_user_pools\n}\n\n# ── Mutations ──────────────────────────────────────────────────────────────\n\ntype Mutation {\n  # User\n  updateProfile(input: UpdateProfileInput!): User!\n  linkAccount(input: LinkAccountInput!): LinkedAccount!\n  unlinkAccount(accountId: ID!): Boolean!\n  updateAccountSharing(accountId: ID!, shareWithTeams: Boolean, sharePrompts: Boolean): LinkedAccount!\n\n  # Teams\n  createTeam(input: CreateTeamInput!): Team!\n  updateTeamSettings(teamId: ID!, input: TeamSettingsInput!): Team!\n  deleteTeam(teamId: ID!): Boolean!\n  regenerateInviteCode(teamId: ID!): String!\n\n  # Membership\n  joinTeam(inviteCode: String!): Team!\n  leaveTeam(teamId: ID!): Boolean!\n  updateMembership(teamId: ID!, input: MembershipInput!): TeamMember!\n  removeMember(teamId: ID!, userId: ID!): Boolean!\n  promoteMember(teamId: ID!, userId: ID!): TeamMember!\n\n  # Sync\n  syncSessions(input: [SyncSessionInput!]!): SyncResult!\n  syncMessages(input: [SyncMessageInput!]!): SyncResult!\n\n  # Stats (internal)\n  refreshTeamStats(teamId: ID!, period: String!): TeamStatsUpdate! @aws_iam\n\n  # Achievements\n  unlockAchievement(achievementId: ID!, context: AWSJSON): Achievement!\n  toggleAchievementVisibility(achievementId: ID!, shared: Boolean!): Achievement!\n\n  # Challenges\n  createChallenge(teamId: ID!, input: ChallengeInput!): Challenge!\n  joinChallenge(challengeId: ID!): Boolean!\n  completeChallenge(challengeId: ID!): Challenge!\n\n  # Team logos\n  requestTeamLogoUpload(teamId: ID!): LogoUploadUrl!\n  deleteTeamLogo(teamId: ID!): Boolean!\n\n  # Dashboard sharing\n  grantDashboardAccess(teamId: ID!, readerTeamId: ID!): Boolean!\n  revokeDashboardAccess(teamId: ID!, readerTeamId: ID!): Boolean!\n\n  # Inter-team challenges\n  createInterTeamChallenge(teamId: ID!, input: InterTeamChallengeInput!): InterTeamChallenge!\n  joinInterTeamChallenge(teamId: ID!, inviteCode: String!): InterTeamChallenge!\n  completeInterTeamChallenge(challengeId: ID!): InterTeamChallenge!\n\n  # Account management\n  deleteMyAccount: Boolean!\n\n  # Admin\n  updateAllowedDomains(domains: [String!]!): [String!]!\n}\n\n# ── Subscriptions ──────────────────────────────────────────────────────────\n\ntype Subscription {\n  onTeamStatsUpdated(teamId: ID!): TeamStatsUpdate\n    @aws_subscribe(mutations: [\"refreshTeamStats\"])\n\n  onAchievementUnlocked(teamId: ID!): Achievement\n    @aws_subscribe(mutations: [\"unlockAchievement\"])\n\n  onChallengeUpdated(teamId: ID!): Challenge\n    @aws_subscribe(mutations: [\"createChallenge\", \"completeChallenge\"])\n\n  onInterTeamChallengeUpdated(challengeId: ID!): InterTeamChallenge\n    @aws_subscribe(mutations: [\"completeInterTeamChallenge\"])\n\n  onSessionSynced(userId: ID!): SyncResult\n    @aws_subscribe(mutations: [\"syncSessions\"])\n}\n\n# ── Input types ────────────────────────────────────────────────────────────\n\ninput SyncSessionInput {\n  sessionId: ID!\n  projectId: String\n  projectPathHash: String\n  firstTimestamp: AWSTimestamp!\n  lastTimestamp: AWSTimestamp!\n  claudeVersion: String!\n  entrypoint: String!\n  promptCount: Int!\n  assistantMessageCount: Int!\n  inputTokens: Long!\n  outputTokens: Long!\n  cacheCreationTokens: Long\n  cacheReadTokens: Long\n  toolUseCounts: AWSJSON\n  models: [String!]!\n  accountId: String!\n  isSubagent: Boolean!\n  parentSessionId: String\n  thinkingBlocks: Int\n  estimatedCost: Float!\n  _version: Int!\n}\n\ninput SyncMessageInput {\n  sessionId: ID!\n  uuid: ID!\n  timestamp: AWSTimestamp!\n  model: String!\n  stopReason: String!\n  inputTokens: Long!\n  outputTokens: Long!\n  cacheCreationTokens: Long\n  cacheReadTokens: Long\n  tools: [String!]\n  thinkingBlocks: Int\n  serviceTier: String\n  promptText: String\n  _version: Int!\n}\n\ninput UpdateProfileInput {\n  displayName: String\n  avatarUrl: String\n  timezone: String\n  weekStartDay: Int\n  defaultShareLevel: ShareLevel\n  streakWeekendGrace: Boolean\n  personalityType: String\n}\n\ninput LinkAccountInput {\n  accountId: String!\n  label: String!\n  shareWithTeams: Boolean!\n  sharePrompts: Boolean\n}\n\ninput CreateTeamInput {\n  teamName: String!\n  logoUrl: String\n}\n\ninput TeamSettingsInput {\n  leaderboardEnabled: Boolean\n  leaderboardCategories: [String!]\n  challengesEnabled: Boolean\n  minMembersForAggregates: Int\n  crossTeamVisibility: CrossTeamVisibility\n}\n\ninput InterTeamChallengeInput {\n  name: String!\n  metric: String!\n  startTime: AWSTimestamp!\n  endTime: AWSTimestamp!\n}\n\ninput MembershipInput {\n  displayName: String\n  shareLevel: ShareLevel\n  sharedAccounts: [String!]\n}\n\ninput ChallengeInput {\n  name: String!\n  metric: String!\n  startTime: AWSTimestamp!\n  endTime: AWSTimestamp!\n}\n"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/Schema"
+   }
+  },
+  "ApiLogRetention94272E33": {
+   "Type": "Custom::LogRetention",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A",
+      "Arn"
+     ]
+    },
+    "LogGroupName": {
+     "Fn::Join": [
+      "",
+      [
+       "/aws/appsync/apis/",
+       {
+        "Fn::GetAtt": [
+         "ApiF70053CD",
+         "ApiId"
+        ]
+       }
+      ]
+     ]
+    },
+    "RetentionInDays": 7
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/LogRetention/Resource"
+   }
+  },
+  "ApiuserProfilesDSServiceRoleAF8F824F": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "appsync.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/userProfilesDS/ServiceRole/Resource"
+   }
+  },
+  "ApiuserProfilesDSServiceRoleDefaultPolicyBB1FD189": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsuserProfilesC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsuserProfilesC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApiuserProfilesDSServiceRoleDefaultPolicyBB1FD189",
+    "Roles": [
+     {
+      "Ref": "ApiuserProfilesDSServiceRoleAF8F824F"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/userProfilesDS/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "ApiuserProfilesDSE47EA9E4": {
+   "Type": "AWS::AppSync::DataSource",
+   "Properties": {
+    "ApiId": {
+     "Fn::GetAtt": [
+      "ApiF70053CD",
+      "ApiId"
+     ]
+    },
+    "DynamoDBConfig": {
+     "AwsRegion": "us-east-1",
+     "TableName": {
+      "Fn::Select": [
+       1,
+       {
+        "Fn::Split": [
+         "/",
+         {
+          "Fn::Select": [
+           5,
+           {
+            "Fn::Split": [
+             ":",
+             {
+              "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsuserProfilesC96584B6F00A464EAD1953AFF4B05118Parameter"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Name": "userProfilesDS",
+    "ServiceRoleArn": {
+     "Fn::GetAtt": [
+      "ApiuserProfilesDSServiceRoleAF8F824F",
+      "Arn"
+     ]
+    },
+    "Type": "AMAZON_DYNAMODB"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/userProfilesDS/Resource"
+   }
+  },
+  "ApiteamsDSServiceRoleC8DD9B35": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "appsync.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/teamsDS/ServiceRole/Resource"
+   }
+  },
+  "ApiteamsDSServiceRoleDefaultPolicy4F1AB530": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsteamsC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsteamsC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApiteamsDSServiceRoleDefaultPolicy4F1AB530",
+    "Roles": [
+     {
+      "Ref": "ApiteamsDSServiceRoleC8DD9B35"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/teamsDS/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "ApiteamsDSA4C04B9F": {
+   "Type": "AWS::AppSync::DataSource",
+   "Properties": {
+    "ApiId": {
+     "Fn::GetAtt": [
+      "ApiF70053CD",
+      "ApiId"
+     ]
+    },
+    "DynamoDBConfig": {
+     "AwsRegion": "us-east-1",
+     "TableName": {
+      "Fn::Select": [
+       1,
+       {
+        "Fn::Split": [
+         "/",
+         {
+          "Fn::Select": [
+           5,
+           {
+            "Fn::Split": [
+             ":",
+             {
+              "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsteamsC96584B6F00A464EAD1953AFF4B05118Parameter"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Name": "teamsDS",
+    "ServiceRoleArn": {
+     "Fn::GetAtt": [
+      "ApiteamsDSServiceRoleC8DD9B35",
+      "Arn"
+     ]
+    },
+    "Type": "AMAZON_DYNAMODB"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/teamsDS/Resource"
+   }
+  },
+  "ApiteamMembershipsDSServiceRole42EAF474": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "appsync.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/teamMembershipsDS/ServiceRole/Resource"
+   }
+  },
+  "ApiteamMembershipsDSServiceRoleDefaultPolicyA2B3753A": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApiteamMembershipsDSServiceRoleDefaultPolicyA2B3753A",
+    "Roles": [
+     {
+      "Ref": "ApiteamMembershipsDSServiceRole42EAF474"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/teamMembershipsDS/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "ApiteamMembershipsDSCC525499": {
+   "Type": "AWS::AppSync::DataSource",
+   "Properties": {
+    "ApiId": {
+     "Fn::GetAtt": [
+      "ApiF70053CD",
+      "ApiId"
+     ]
+    },
+    "DynamoDBConfig": {
+     "AwsRegion": "us-east-1",
+     "TableName": {
+      "Fn::Select": [
+       1,
+       {
+        "Fn::Split": [
+         "/",
+         {
+          "Fn::Select": [
+           5,
+           {
+            "Fn::Split": [
+             ":",
+             {
+              "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Name": "teamMembershipsDS",
+    "ServiceRoleArn": {
+     "Fn::GetAtt": [
+      "ApiteamMembershipsDSServiceRole42EAF474",
+      "Arn"
+     ]
+    },
+    "Type": "AMAZON_DYNAMODB"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/teamMembershipsDS/Resource"
+   }
+  },
+  "ApisyncedSessionsDSServiceRoleE4C790CA": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "appsync.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/syncedSessionsDS/ServiceRole/Resource"
+   }
+  },
+  "ApisyncedSessionsDSServiceRoleDefaultPolicy8D7C4EF7": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnssyncedSessionsC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnssyncedSessionsC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApisyncedSessionsDSServiceRoleDefaultPolicy8D7C4EF7",
+    "Roles": [
+     {
+      "Ref": "ApisyncedSessionsDSServiceRoleE4C790CA"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/syncedSessionsDS/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "ApisyncedSessionsDSD2995407": {
+   "Type": "AWS::AppSync::DataSource",
+   "Properties": {
+    "ApiId": {
+     "Fn::GetAtt": [
+      "ApiF70053CD",
+      "ApiId"
+     ]
+    },
+    "DynamoDBConfig": {
+     "AwsRegion": "us-east-1",
+     "TableName": {
+      "Fn::Select": [
+       1,
+       {
+        "Fn::Split": [
+         "/",
+         {
+          "Fn::Select": [
+           5,
+           {
+            "Fn::Split": [
+             ":",
+             {
+              "Ref": "SsmParameterValueClaudeStatsdevdatatablearnssyncedSessionsC96584B6F00A464EAD1953AFF4B05118Parameter"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Name": "syncedSessionsDS",
+    "ServiceRoleArn": {
+     "Fn::GetAtt": [
+      "ApisyncedSessionsDSServiceRoleE4C790CA",
+      "Arn"
+     ]
+    },
+    "Type": "AMAZON_DYNAMODB"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/syncedSessionsDS/Resource"
+   }
+  },
+  "ApisyncedMessagesDSServiceRole80E0D729": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "appsync.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/syncedMessagesDS/ServiceRole/Resource"
+   }
+  },
+  "ApisyncedMessagesDSServiceRoleDefaultPolicyEC5038BB": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnssyncedMessagesC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnssyncedMessagesC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApisyncedMessagesDSServiceRoleDefaultPolicyEC5038BB",
+    "Roles": [
+     {
+      "Ref": "ApisyncedMessagesDSServiceRole80E0D729"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/syncedMessagesDS/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "ApisyncedMessagesDS81EEA122": {
+   "Type": "AWS::AppSync::DataSource",
+   "Properties": {
+    "ApiId": {
+     "Fn::GetAtt": [
+      "ApiF70053CD",
+      "ApiId"
+     ]
+    },
+    "DynamoDBConfig": {
+     "AwsRegion": "us-east-1",
+     "TableName": {
+      "Fn::Select": [
+       1,
+       {
+        "Fn::Split": [
+         "/",
+         {
+          "Fn::Select": [
+           5,
+           {
+            "Fn::Split": [
+             ":",
+             {
+              "Ref": "SsmParameterValueClaudeStatsdevdatatablearnssyncedMessagesC96584B6F00A464EAD1953AFF4B05118Parameter"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Name": "syncedMessagesDS",
+    "ServiceRoleArn": {
+     "Fn::GetAtt": [
+      "ApisyncedMessagesDSServiceRole80E0D729",
+      "Arn"
+     ]
+    },
+    "Type": "AMAZON_DYNAMODB"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/syncedMessagesDS/Resource"
+   }
+  },
+  "ApiteamStatsDSServiceRoleAB95F12D": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "appsync.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/teamStatsDS/ServiceRole/Resource"
+   }
+  },
+  "ApiteamStatsDSServiceRoleDefaultPolicy8CFEC177": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsteamStatsC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsteamStatsC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApiteamStatsDSServiceRoleDefaultPolicy8CFEC177",
+    "Roles": [
+     {
+      "Ref": "ApiteamStatsDSServiceRoleAB95F12D"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/teamStatsDS/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "ApiteamStatsDSDA61EDA9": {
+   "Type": "AWS::AppSync::DataSource",
+   "Properties": {
+    "ApiId": {
+     "Fn::GetAtt": [
+      "ApiF70053CD",
+      "ApiId"
+     ]
+    },
+    "DynamoDBConfig": {
+     "AwsRegion": "us-east-1",
+     "TableName": {
+      "Fn::Select": [
+       1,
+       {
+        "Fn::Split": [
+         "/",
+         {
+          "Fn::Select": [
+           5,
+           {
+            "Fn::Split": [
+             ":",
+             {
+              "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsteamStatsC96584B6F00A464EAD1953AFF4B05118Parameter"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Name": "teamStatsDS",
+    "ServiceRoleArn": {
+     "Fn::GetAtt": [
+      "ApiteamStatsDSServiceRoleAB95F12D",
+      "Arn"
+     ]
+    },
+    "Type": "AMAZON_DYNAMODB"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/teamStatsDS/Resource"
+   }
+  },
+  "ApiachievementsDSServiceRoleC009FD30": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "appsync.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/achievementsDS/ServiceRole/Resource"
+   }
+  },
+  "ApiachievementsDSServiceRoleDefaultPolicy4576BF7D": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsachievementsC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsachievementsC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApiachievementsDSServiceRoleDefaultPolicy4576BF7D",
+    "Roles": [
+     {
+      "Ref": "ApiachievementsDSServiceRoleC009FD30"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/achievementsDS/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "ApiachievementsDS9054DC48": {
+   "Type": "AWS::AppSync::DataSource",
+   "Properties": {
+    "ApiId": {
+     "Fn::GetAtt": [
+      "ApiF70053CD",
+      "ApiId"
+     ]
+    },
+    "DynamoDBConfig": {
+     "AwsRegion": "us-east-1",
+     "TableName": {
+      "Fn::Select": [
+       1,
+       {
+        "Fn::Split": [
+         "/",
+         {
+          "Fn::Select": [
+           5,
+           {
+            "Fn::Split": [
+             ":",
+             {
+              "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsachievementsC96584B6F00A464EAD1953AFF4B05118Parameter"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Name": "achievementsDS",
+    "ServiceRoleArn": {
+     "Fn::GetAtt": [
+      "ApiachievementsDSServiceRoleC009FD30",
+      "Arn"
+     ]
+    },
+    "Type": "AMAZON_DYNAMODB"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/achievementsDS/Resource"
+   }
+  },
+  "ApichallengesDSServiceRole292F6CC4": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "appsync.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/challengesDS/ServiceRole/Resource"
+   }
+  },
+  "ApichallengesDSServiceRoleDefaultPolicyC02D0FA7": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnschallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnschallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApichallengesDSServiceRoleDefaultPolicyC02D0FA7",
+    "Roles": [
+     {
+      "Ref": "ApichallengesDSServiceRole292F6CC4"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/challengesDS/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "ApichallengesDSD72E861A": {
+   "Type": "AWS::AppSync::DataSource",
+   "Properties": {
+    "ApiId": {
+     "Fn::GetAtt": [
+      "ApiF70053CD",
+      "ApiId"
+     ]
+    },
+    "DynamoDBConfig": {
+     "AwsRegion": "us-east-1",
+     "TableName": {
+      "Fn::Select": [
+       1,
+       {
+        "Fn::Split": [
+         "/",
+         {
+          "Fn::Select": [
+           5,
+           {
+            "Fn::Split": [
+             ":",
+             {
+              "Ref": "SsmParameterValueClaudeStatsdevdatatablearnschallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Name": "challengesDS",
+    "ServiceRoleArn": {
+     "Fn::GetAtt": [
+      "ApichallengesDSServiceRole292F6CC4",
+      "Arn"
+     ]
+    },
+    "Type": "AMAZON_DYNAMODB"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/challengesDS/Resource"
+   }
+  },
+  "ApiinterTeamChallengesDSServiceRole5E32F659": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "appsync.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/interTeamChallengesDS/ServiceRole/Resource"
+   }
+  },
+  "ApiinterTeamChallengesDSServiceRoleDefaultPolicy274C0004": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsinterTeamChallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsinterTeamChallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "ApiinterTeamChallengesDSServiceRoleDefaultPolicy274C0004",
+    "Roles": [
+     {
+      "Ref": "ApiinterTeamChallengesDSServiceRole5E32F659"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/interTeamChallengesDS/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "ApiinterTeamChallengesDSF1BE9851": {
+   "Type": "AWS::AppSync::DataSource",
+   "Properties": {
+    "ApiId": {
+     "Fn::GetAtt": [
+      "ApiF70053CD",
+      "ApiId"
+     ]
+    },
+    "DynamoDBConfig": {
+     "AwsRegion": "us-east-1",
+     "TableName": {
+      "Fn::Select": [
+       1,
+       {
+        "Fn::Split": [
+         "/",
+         {
+          "Fn::Select": [
+           5,
+           {
+            "Fn::Split": [
+             ":",
+             {
+              "Ref": "SsmParameterValueClaudeStatsdevdatatablearnsinterTeamChallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Name": "interTeamChallengesDS",
+    "ServiceRoleArn": {
+     "Fn::GetAtt": [
+      "ApiinterTeamChallengesDSServiceRole5E32F659",
+      "Arn"
+     ]
+    },
+    "Type": "AMAZON_DYNAMODB"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Api/interTeamChallengesDS/Resource"
+   }
+  },
+  "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/ServiceRole/Resource"
+   }
+  },
+  "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRoleDefaultPolicyADDA7DEB": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "logs:PutRetentionPolicy",
+        "logs:DeleteRetentionPolicy"
+       ],
+       "Effect": "Allow",
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRoleDefaultPolicyADDA7DEB",
+    "Roles": [
+     {
+      "Ref": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/ServiceRole/DefaultPolicy/Resource"
+   }
+  },
+  "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Handler": "index.handler",
+    "Runtime": "nodejs22.x",
+    "Timeout": 900,
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
+     "S3Key": "2819175352ad1ce0dae768e83fc328fb70fb5f10b4a8ff0ccbcb791f02b0716d.zip"
+    },
+    "Role": {
+     "Fn::GetAtt": [
+      "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB",
+      "Arn"
+     ]
+    }
+   },
+   "DependsOn": [
+    "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRoleDefaultPolicyADDA7DEB",
+    "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8a/Resource",
+    "aws:asset:path": "asset.2819175352ad1ce0dae768e83fc328fb70fb5f10b4a8ff0ccbcb791f02b0716d",
+    "aws:asset:is-bundled": false,
+    "aws:asset:property": "Code"
+   }
+  },
+  "AggregateStatsDLQ901DB878": {
+   "Type": "AWS::SQS::Queue",
+   "Properties": {
+    "MessageRetentionPeriod": 1209600,
+    "QueueName": "ClaudeStats-dev-aggregate-stats-dlq",
+    "SqsManagedSseEnabled": true
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/AggregateStatsDLQ/Resource"
+   }
+  },
+  "TeamLogosBucket686A7328": {
+   "Type": "AWS::S3::Bucket",
+   "Properties": {
+    "BucketEncryption": {
+     "ServerSideEncryptionConfiguration": [
+      {
+       "ServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+       }
+      }
+     ]
+    },
+    "BucketName": "claudestats-dev-team-logos",
+    "LifecycleConfiguration": {
+     "Rules": [
+      {
+       "ExpirationInDays": 365,
+       "Id": "expire-orphan-logos",
+       "Status": "Enabled"
+      }
+     ]
+    },
+    "PublicAccessBlockConfiguration": {
+     "BlockPublicAcls": true,
+     "BlockPublicPolicy": true,
+     "IgnorePublicAcls": true,
+     "RestrictPublicBuckets": true
+    },
+    "Tags": [
+     {
+      "Key": "aws-cdk:auto-delete-objects",
+      "Value": "true"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/TeamLogos/Bucket/Resource"
+   }
+  },
+  "TeamLogosBucketPolicy7CFAC91C": {
+   "Type": "AWS::S3::BucketPolicy",
+   "Properties": {
+    "Bucket": {
+     "Ref": "TeamLogosBucket686A7328"
+    },
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "s3:PutBucketPolicy",
+        "s3:GetBucket*",
+        "s3:List*",
+        "s3:DeleteObject*"
+       ],
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::GetAtt": [
+          "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+          "Arn"
+         ]
+        }
+       },
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "TeamLogosBucket686A7328",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "TeamLogosBucket686A7328",
+             "Arn"
+            ]
+           },
+           "/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": "s3:GetObject",
+       "Condition": {
+        "StringEquals": {
+         "AWS:SourceArn": {
+          "Fn::Join": [
+           "",
+           [
+            "arn:",
+            {
+             "Ref": "AWS::Partition"
+            },
+            ":cloudfront::",
+            {
+             "Ref": "AWS::AccountId"
+            },
+            ":distribution/",
+            {
+             "Ref": "TeamLogosDistribution38EB236E"
+            }
+           ]
+          ]
+         }
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "cloudfront.amazonaws.com"
+       },
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          {
+           "Fn::GetAtt": [
+            "TeamLogosBucket686A7328",
+            "Arn"
+           ]
+          },
+          "/*"
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/TeamLogos/Bucket/Policy/Resource"
+   }
+  },
+  "TeamLogosBucketAutoDeleteObjectsCustomResourceD8433E69": {
+   "Type": "Custom::S3AutoDeleteObjects",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F",
+      "Arn"
+     ]
+    },
+    "BucketName": {
+     "Ref": "TeamLogosBucket686A7328"
+    }
+   },
+   "DependsOn": [
+    "TeamLogosBucketPolicy7CFAC91C"
+   ],
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/TeamLogos/Bucket/AutoDeleteObjectsCustomResource/Default"
+   }
+  },
+  "TeamLogosOAC3FAD017F": {
+   "Type": "AWS::CloudFront::OriginAccessControl",
+   "Properties": {
+    "OriginAccessControlConfig": {
+     "Name": "ClaudeStatsdevApiTeamLogosOACFA01C556",
+     "OriginAccessControlOriginType": "s3",
+     "SigningBehavior": "no-override",
+     "SigningProtocol": "sigv4"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/TeamLogos/OAC/Resource"
+   }
+  },
+  "TeamLogosDistribution38EB236E": {
+   "Type": "AWS::CloudFront::Distribution",
+   "Properties": {
+    "DistributionConfig": {
+     "DefaultCacheBehavior": {
+      "AllowedMethods": [
+       "GET",
+       "HEAD"
+      ],
+      "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+      "CachedMethods": [
+       "GET",
+       "HEAD"
+      ],
+      "Compress": true,
+      "TargetOriginId": "ClaudeStatsdevApiTeamLogosDistributionOrigin151183777",
+      "ViewerProtocolPolicy": "https-only"
+     },
+     "Enabled": true,
+     "HttpVersion": "http2",
+     "IPV6Enabled": true,
+     "Origins": [
+      {
+       "DomainName": {
+        "Fn::GetAtt": [
+         "TeamLogosBucket686A7328",
+         "RegionalDomainName"
+        ]
+       },
+       "Id": "ClaudeStatsdevApiTeamLogosDistributionOrigin151183777",
+       "OriginAccessControlId": {
+        "Fn::GetAtt": [
+         "TeamLogosOAC3FAD017F",
+         "Id"
+        ]
+       },
+       "S3OriginConfig": {
+        "OriginAccessIdentity": ""
+       }
+      }
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/TeamLogos/Distribution/Resource"
+   }
+  },
+  "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Version": "2012-10-17",
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ]
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role"
+   }
+  },
+  "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
+     "S3Key": "faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6.zip"
+    },
+    "Timeout": 900,
+    "MemorySize": 128,
+    "Handler": "index.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs22.x",
+    "Description": {
+     "Fn::Join": [
+      "",
+      [
+       "Lambda function for auto-deleting objects in ",
+       {
+        "Ref": "TeamLogosBucket686A7328"
+       },
+       " S3 bucket."
+      ]
+     ]
+    }
+   },
+   "DependsOn": [
+    "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler",
+    "aws:asset:path": "asset.faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6",
+    "aws:asset:property": "Code"
+   }
+  },
+  "Paramapiteamlogosbucket7BE19461": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/api/team-logos-bucket",
+    "Type": "String",
+    "Value": {
+     "Ref": "TeamLogosBucket686A7328"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Param-api-team-logos-bucket/Resource"
+   }
+  },
+  "Paramapiteamlogoscdnurl74ADA063": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/api/team-logos-cdn-url",
+    "Type": "String",
+    "Value": {
+     "Fn::Join": [
+      "",
+      [
+       "https://",
+       {
+        "Fn::GetAtt": [
+         "TeamLogosDistribution38EB236E",
+         "DomainName"
+        ]
+       }
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Param-api-team-logos-cdn-url/Resource"
+   }
+  },
+  "ParamapigraphqlendpointA14B7C21": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/api/graphql-endpoint",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "ApiF70053CD",
+      "GraphQLUrl"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Param-api-graphql-endpoint/Resource"
+   }
+  },
+  "ParamapigraphqlapiidB525753F": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/api/graphql-api-id",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "ApiF70053CD",
+      "ApiId"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Param-api-graphql-api-id/Resource"
+   }
+  },
+  "ParamapigraphqlapiarnB715969C": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/api/graphql-api-arn",
+    "Type": "String",
+    "Value": {
+     "Fn::GetAtt": [
+      "ApiF70053CD",
+      "Arn"
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Param-api-graphql-api-arn/Resource"
+   }
+  },
+  "Paramapidlqurl63E60744": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Name": "/ClaudeStats-dev/api/dlq-url",
+    "Type": "String",
+    "Value": {
+     "Ref": "AggregateStatsDLQ901DB878"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/Param-api-dlq-url/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/5VSTU8CMRD9LXIuVUE9eAM28ULClzdjSLc7LIV+LJ0WJZv+d9uuCiRePM28zut05r0O6OBhSO9u2Af2ebXvS1HSduUY35PJRs+ZZQocWLIENN5yIJG4blnT4Elz2r5Y1mwPctSIRM9oMb1GK74FxUhx0kyZoiyYY6uuVeScUSCCKdoujcyFHOdGCn7Kg+QsEGlqpFNTL+NQ2gmjCQ7XDBEc0lEKEdN27Pke3JghkC5NLbrsre0p8Sl077l3uXLaKt7MJaQddeSdKUDGl2blDrjDXnj/7nce7BL/o3d3IersQMVFUutAqixRVdJXVkrI4+MBabvw4LMoOQmES+OrjTXaRauGMytqoUecA+IknlkjE/ev40Kgs6L0Wbik/gUOBFEl663Q9dn3y08QQnbm5ydkveMK8ZmaTDw6o35r13BuzVFUYNNKgWhTAd3h7XHwSJ/o/c0OhehbH+1UQJdd/AJWez+elwIAAA=="
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Api/CDKMetadata/Default"
+   }
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

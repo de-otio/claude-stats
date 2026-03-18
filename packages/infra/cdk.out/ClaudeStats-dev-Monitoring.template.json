@@ -1,0 +1,375 @@
+{
+ "Description": "Claude Stats monitoring — CloudWatch dashboard, alarms, SNS notifications",
+ "Parameters": {
+  "SsmParameterValueClaudeStatsdevapigraphqlapiidC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/api/graphql-api-id"
+  },
+  "SsmParameterValueClaudeStatsdevapidlqurlC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/api/dlq-url"
+  },
+  "SsmParameterValueClaudeStatsdevauthsesconfigurationsetC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/auth/ses-configuration-set"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablenamesuserProfilesC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-names/userProfiles"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablenamesteamsC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-names/teams"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablenamesteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-names/teamMemberships"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablenamessyncedSessionsC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-names/syncedSessions"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablenamessyncedMessagesC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-names/syncedMessages"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablenamesteamStatsC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-names/teamStats"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablenamesachievementsC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-names/achievements"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablenameschallengesC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-names/challenges"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablenamesinterTeamChallengesC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-names/interTeamChallenges"
+  },
+  "SsmParameterValueClaudeStatsdevdatatablenamesmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/ClaudeStats-dev/data/table-names/magicLinkTokens"
+  },
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Resources": {
+  "AlarmTopicD01E77F9": {
+   "Type": "AWS::SNS::Topic",
+   "Properties": {
+    "DisplayName": "ClaudeStats-dev CloudWatch Alarms",
+    "TopicName": "ClaudeStats-dev-Alarms"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Monitoring/AlarmTopic/Resource"
+   }
+  },
+  "Dashboard9E4231ED": {
+   "Type": "AWS::CloudWatch::Dashboard",
+   "Properties": {
+    "DashboardBody": {
+     "Fn::Join": [
+      "",
+      [
+       "{\"periodOverride\":\"auto\",\"widgets\":[{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":0,\"y\":0,\"properties\":{\"view\":\"timeSeries\",\"title\":\"AppSync Latency\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/AppSync\",\"Latency\",\"GraphQLAPIId\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevapigraphqlapiidC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"p50\",\"stat\":\"p50\"}],[\"AWS/AppSync\",\"Latency\",\"GraphQLAPIId\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevapigraphqlapiidC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"p90\",\"stat\":\"p90\"}],[\"AWS/AppSync\",\"Latency\",\"GraphQLAPIId\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevapigraphqlapiidC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"p99\",\"stat\":\"p99\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":8,\"y\":0,\"properties\":{\"view\":\"timeSeries\",\"title\":\"AppSync Errors\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/AppSync\",\"4XXError\",\"GraphQLAPIId\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevapigraphqlapiidC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"4XX Errors\",\"stat\":\"Sum\"}],[\"AWS/AppSync\",\"5XXError\",\"GraphQLAPIId\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevapigraphqlapiidC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"5XX Errors\",\"stat\":\"Sum\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":16,\"y\":0,\"properties\":{\"view\":\"timeSeries\",\"title\":\"AppSync Requests\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/AppSync\",\"4XXError\",\"GraphQLAPIId\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevapigraphqlapiidC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"4XX\",\"stat\":\"Sum\"}],[\"AWS/AppSync\",\"5XXError\",\"GraphQLAPIId\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevapigraphqlapiidC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"5XX\",\"stat\":\"Sum\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":0,\"y\":6,\"properties\":{\"view\":\"timeSeries\",\"title\":\"Lambda Duration\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/Lambda\",\"Duration\",\"FunctionName\",\"ClaudeStats-dev-aggregate-stats\",{\"label\":\"aggregate-stats p90\",\"stat\":\"p90\"}],[\"AWS/Lambda\",\"Duration\",\"FunctionName\",\"ClaudeStats-dev-team-dashboard\",{\"label\":\"team-dashboard p90\",\"stat\":\"p90\"}],[\"AWS/Lambda\",\"Duration\",\"FunctionName\",\"ClaudeStats-dev-inter-team-scoring\",{\"label\":\"inter-team-scoring p90\",\"stat\":\"p90\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":8,\"y\":6,\"properties\":{\"view\":\"timeSeries\",\"title\":\"Lambda Errors\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/Lambda\",\"Errors\",\"FunctionName\",\"ClaudeStats-dev-aggregate-stats\",{\"label\":\"aggregate-stats\",\"stat\":\"Sum\"}],[\"AWS/Lambda\",\"Errors\",\"FunctionName\",\"ClaudeStats-dev-team-dashboard\",{\"label\":\"team-dashboard\",\"stat\":\"Sum\"}],[\"AWS/Lambda\",\"Errors\",\"FunctionName\",\"ClaudeStats-dev-inter-team-scoring\",{\"label\":\"inter-team-scoring\",\"stat\":\"Sum\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":16,\"y\":6,\"properties\":{\"view\":\"timeSeries\",\"title\":\"Lambda Concurrent Executions\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/Lambda\",\"ConcurrentExecutions\",\"FunctionName\",\"ClaudeStats-dev-aggregate-stats\",{\"label\":\"aggregate-stats\",\"stat\":\"Maximum\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":0,\"y\":12,\"properties\":{\"view\":\"timeSeries\",\"title\":\"DynamoDB Read Capacity\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/DynamoDB\",\"ConsumedReadCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesuserProfilesC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"userProfiles\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedReadCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesteamsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"teams\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedReadCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"teamMemberships\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedReadCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamessyncedSessionsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"syncedSessions\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedReadCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamessyncedMessagesC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"syncedMessages\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedReadCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesteamStatsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"teamStats\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedReadCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesachievementsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"achievements\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedReadCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenameschallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"challenges\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedReadCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesinterTeamChallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"interTeamChallenges\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedReadCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"magicLinkTokens\",\"stat\":\"Sum\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":8,\"y\":12,\"properties\":{\"view\":\"timeSeries\",\"title\":\"DynamoDB Write Capacity\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/DynamoDB\",\"ConsumedWriteCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesuserProfilesC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"userProfiles\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedWriteCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesteamsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"teams\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedWriteCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"teamMemberships\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedWriteCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamessyncedSessionsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"syncedSessions\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedWriteCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamessyncedMessagesC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"syncedMessages\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedWriteCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesteamStatsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"teamStats\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedWriteCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesachievementsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"achievements\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedWriteCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenameschallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"challenges\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedWriteCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesinterTeamChallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"interTeamChallenges\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ConsumedWriteCapacityUnits\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"magicLinkTokens\",\"stat\":\"Sum\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":16,\"y\":12,\"properties\":{\"view\":\"timeSeries\",\"title\":\"DynamoDB Throttled Requests\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/DynamoDB\",\"ThrottledRequests\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesuserProfilesC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"userProfiles\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ThrottledRequests\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesteamsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"teams\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ThrottledRequests\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesteamMembershipsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"teamMemberships\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ThrottledRequests\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamessyncedSessionsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"syncedSessions\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ThrottledRequests\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamessyncedMessagesC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"syncedMessages\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ThrottledRequests\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesteamStatsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"teamStats\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ThrottledRequests\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesachievementsC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"achievements\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ThrottledRequests\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenameschallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"challenges\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ThrottledRequests\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesinterTeamChallengesC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"interTeamChallenges\",\"stat\":\"Sum\"}],[\"AWS/DynamoDB\",\"ThrottledRequests\",\"TableName\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevdatatablenamesmagicLinkTokensC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"magicLinkTokens\",\"stat\":\"Sum\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":0,\"y\":18,\"properties\":{\"view\":\"timeSeries\",\"title\":\"DynamoDB Streams Iterator Age\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/Lambda\",\"IteratorAge\",\"FunctionName\",\"ClaudeStats-dev-aggregate-stats\",{\"label\":\"Iterator Age (ms)\",\"stat\":\"Maximum\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":8,\"y\":18,\"properties\":{\"view\":\"singleValue\",\"title\":\"DLQ Messages\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/SQS\",\"ApproximateNumberOfMessagesVisible\",\"QueueName\",\"ClaudeStats-dev-aggregate-stats-dlq\",{\"label\":\"Visible Messages\",\"stat\":\"Maximum\"}]]}},{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":16,\"y\":18,\"properties\":{\"view\":\"timeSeries\",\"title\":\"Estimated Monthly Charges\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/Billing\",\"EstimatedCharges\",\"Currency\",\"USD\",{\"label\":\"Estimated Charges (USD)\",\"period\":21600,\"stat\":\"Maximum\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":0,\"y\":24,\"properties\":{\"view\":\"timeSeries\",\"title\":\"SES Sends & Deliveries\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/SES\",\"Send\",\"ses:configuration-set\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevauthsesconfigurationsetC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"Sends\",\"stat\":\"Sum\"}],[\"AWS/SES\",\"Delivery\",\"ses:configuration-set\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevauthsesconfigurationsetC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"Deliveries\",\"stat\":\"Sum\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":8,\"y\":24,\"properties\":{\"view\":\"timeSeries\",\"title\":\"SES Bounces & Complaints\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/SES\",\"Bounce\",\"ses:configuration-set\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevauthsesconfigurationsetC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"Bounces\",\"stat\":\"Sum\"}],[\"AWS/SES\",\"Complaint\",\"ses:configuration-set\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevauthsesconfigurationsetC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"Complaints\",\"stat\":\"Sum\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":8,\"height\":6,\"x\":16,\"y\":24,\"properties\":{\"view\":\"singleValue\",\"title\":\"SES Reputation\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/SES\",\"Reputation.BounceRate\",\"ses:configuration-set\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevauthsesconfigurationsetC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"Bounce Rate\"}],[\"AWS/SES\",\"Reputation.ComplaintRate\",\"ses:configuration-set\",\"",
+       {
+        "Ref": "SsmParameterValueClaudeStatsdevauthsesconfigurationsetC96584B6F00A464EAD1953AFF4B05118Parameter"
+       },
+       "\",{\"label\":\"Complaint Rate\"}]]}}]}"
+      ]
+     ]
+    },
+    "DashboardName": "ClaudeStats-dev-Dashboard"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Monitoring/Dashboard/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/z2Kyw7CIBBFv6V7Oio+fkD3NtW9mQKm9AENM9gF4d8VTVzde3KOBHnYw7bClWqlx3qyHaQboxrF+ekaDDgbNkG0hnwMyohP+EjkCNLdL1aV6nuyUJOPekVWPaQLUt95DLr4P+Rc8Bp5iZyF89rAQJuXPMIJdtVA1tYhOrazgfa3b/W8mzGfAAAA"
+   },
+   "Metadata": {
+    "aws:cdk:path": "ClaudeStats-dev-Monitoring/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "LogRetentionDays": {
+   "Description": "Log retention period for this environment",
+   "Value": "7"
+  },
+  "DashboardUrl": {
+   "Description": "CloudWatch Dashboard URL",
+   "Value": "https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=ClaudeStats-dev-Dashboard"
+  },
+  "AlarmTopicArn": {
+   "Description": "SNS topic ARN for alarm notifications",
+   "Value": {
+    "Ref": "AlarmTopicD01E77F9"
+   }
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

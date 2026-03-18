@@ -11,8 +11,12 @@ interface McpStackProps extends cdk.StackProps {
 }
 
 export class McpStack extends cdk.Stack {
+  public readonly mcpFunction: lambda.DockerImageFunction;
+  public readonly mcpFunctionUrl: lambda.FunctionUrl;
+  public readonly ecrRepository: ecr.Repository;
+
   constructor(scope: Construct, id: string, props: McpStackProps) {
-    super(scope, id, props);
+    super(scope, id, { ...props, description: "Claude Stats MCP — ECR repository, Docker Lambda gateway, function URL" });
     const { config } = props;
     const prefix = `ClaudeStats-${config.envName}`;
 
@@ -68,7 +72,7 @@ export class McpStack extends cdk.Stack {
       functionName: `${prefix}-McpGateway`,
       description: "MCP server gateway — exposes Claude Stats GraphQL via MCP protocol",
       code: lambda.DockerImageCode.fromEcr(repository, {
-        tag: "latest",
+        tagOrDigest: "latest",
       }),
       role: mcpRole,
       architecture: lambda.Architecture.ARM_64,
@@ -94,6 +98,10 @@ export class McpStack extends cdk.Stack {
         maxAge: cdk.Duration.hours(1),
       },
     });
+
+    this.mcpFunction = mcpFn;
+    this.mcpFunctionUrl = fnUrl;
+    this.ecrRepository = repository;
 
     // ── SSM Parameters ────────────────────────────────────────────────
 
