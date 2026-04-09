@@ -4,7 +4,7 @@
  * See doc/analysis/09-token-spending-analysis.md for design.
  */
 import { estimateCost } from "@claude-stats/core/pricing";
-import type { SpendingMessageRow } from "./store/index.js";
+import type { SpendingMessageRow, McpMessageRow } from "./store/index.js";
 
 export interface ToolCostEntry {
   tool: string;
@@ -164,4 +164,88 @@ export function detectAnomalies(
   return anomalies
     .sort((a, b) => b.totalTokens - a.totalTokens)
     .slice(0, 10);
+}
+
+// ── MCP server usage from all messages ────────────────────────────────────
+
+export interface McpServerUsage {
+  server: string;
+  estimatedCost: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  messageCount: number;
+  callCount: number;
+  tools: Array<{ method: string; calls: number }>;
+  projects: string[];
+}
+
+/**
+ * Aggregate MCP server token usage from all MCP-bearing messages.
+ * Each message's full token cost is attributed to every MCP tool it contains.
+ */
+export function aggregateMcpServerUsage(rows: McpMessageRow[]): McpServerUsage[] {
+  const serverMap = new Map<string, McpServerUsage>();
+
+  for (const row of rows) {
+    let tools: string[];
+    try {
+      tools = JSON.parse(row.tools) as string[];
+    } catch {
+      continue;
+    }
+
+    const mcpTools = tools.filter(t => t.startsWith("mcp__"));
+    if (mcpTools.length === 0) continue;
+
+    const { cost } = estimateCost(
+      row.model ?? "unknown",
+      row.input_tokens, row.output_tokens,
+      row.cache_read_tokens, row.cache_creation_tokens,
+    );
+
+    for (const tool of mcpTools) {
+      const server = parseMcpServer(tool);
+      if (!server) continue;
+      const method = tool.split("__").slice(2).join("__");
+
+      const existing = serverMap.get(server);
+      if (existing) {
+        existing.estimatedCost += cost;
+        existing.inputTokens += row.input_tokens;
+        existing.outputTokens += row.output_tokens;
+        existing.cacheReadTokens += row.cache_read_tokens;
+        existing.cacheCreationTokens += row.cache_creation_tokens;
+        existing.messageCount++;
+        existing.callCount++;
+        if (!existing.projects.includes(row.project_path)) {
+          existing.projects.push(row.project_path);
+        }
+        const existingTool = existing.tools.find(t => t.method === method);
+        if (existingTool) existingTool.calls++;
+        else existing.tools.push({ method, calls: 1 });
+      } else {
+        serverMap.set(server, {
+          server,
+          estimatedCost: cost,
+          inputTokens: row.input_tokens,
+          outputTokens: row.output_tokens,
+          cacheReadTokens: row.cache_read_tokens,
+          cacheCreationTokens: row.cache_creation_tokens,
+          messageCount: 1,
+          callCount: 1,
+          tools: [{ method, calls: 1 }],
+          projects: [row.project_path],
+        });
+      }
+    }
+  }
+
+  // Sort tools within each server by calls desc
+  for (const entry of serverMap.values()) {
+    entry.tools.sort((a, b) => b.calls - a.calls);
+  }
+
+  return Array.from(serverMap.values()).sort((a, b) => b.estimatedCost - a.estimatedCost);
 }

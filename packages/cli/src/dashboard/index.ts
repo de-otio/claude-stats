@@ -15,7 +15,7 @@ import {
   type ComplexityTier,
   type ModelEfficiencyData,
 } from "../classifier.js";
-import { attributeToolCosts, groupByMcpServer, detectAnomalies } from "../spending.js";
+import { attributeToolCosts, groupByMcpServer, detectAnomalies, aggregateMcpServerUsage } from "../spending.js";
 
 export interface DashboardSummary {
   sessions: number;
@@ -192,6 +192,19 @@ export interface DashboardSpending {
     estimatedCost: number;
     totalCalls: number;
     avgTokensPerCall: number;
+  }>;
+  /** Full MCP server breakdown from all messages (not just top N). */
+  mcpServerUsage: Array<{
+    server: string;
+    estimatedCost: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+    messageCount: number;
+    callCount: number;
+    tools: Array<{ method: string; calls: number }>;
+    projects: string[];
   }>;
   subagentOverhead: {
     totalCost: number;
@@ -893,6 +906,18 @@ function buildSpendingSection(
     subagentCount += sc.subagent_count;
   }
 
+  // Full MCP server breakdown from all messages
+  const mcpMessages = store.getMcpMessages({
+    projectPath: filters.projectPath,
+    repoUrl: filters.repoUrl,
+    accountUuid: filters.accountUuid,
+    since: filters.since,
+  });
+  const mcpServerUsage = aggregateMcpServerUsage(mcpMessages).map(s => ({
+    ...s,
+    estimatedCost: Math.round(s.estimatedCost * 100) / 100,
+  }));
+
   return {
     topSessionsByCost,
     topToolsByCost,
@@ -903,6 +928,7 @@ function buildSpendingSection(
       estimatedSavings: Math.round(estimatedSavings * 100) / 100,
     },
     mcpServers,
+    mcpServerUsage,
     subagentOverhead: {
       totalCost: Math.round(subagentTotalCost * 100) / 100,
       agentCount: subagentCount,

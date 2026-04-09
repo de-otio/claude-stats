@@ -1062,6 +1062,42 @@ export class Store {
 
     return { topSessions, topMessages, byModel, byProject, cacheEfficiency, subagentCosts };
   }
+
+  // ─── MCP server token breakdown ─────────────────────────────────────────────
+
+  /**
+   * Get all messages that used MCP tools, with their token counts and tool lists.
+   * Uses LIKE '%mcp__%' on the tools JSON column for efficient filtering.
+   */
+  getMcpMessages(filters: {
+    projectPath?: string;
+    repoUrl?: string;
+    accountUuid?: string;
+    since?: number;
+    until?: number;
+  } = {}): McpMessageRow[] {
+    const conditions: string[] = [
+      "s.is_interactive = 1",
+      "s.source_deleted = 0",
+      "m.tools LIKE '%mcp__%'",
+    ];
+    const params: unknown[] = [];
+    if (filters.projectPath) { conditions.push("s.project_path = ?"); params.push(filters.projectPath); }
+    if (filters.repoUrl) { conditions.push("s.repo_url = ?"); params.push(filters.repoUrl); }
+    if (filters.accountUuid) { conditions.push("s.account_uuid = ?"); params.push(filters.accountUuid); }
+    if (filters.since !== undefined) { conditions.push("s.first_timestamp >= ?"); params.push(filters.since); }
+    if (filters.until !== undefined) { conditions.push("s.first_timestamp < ?"); params.push(filters.until); }
+
+    const where = `WHERE ${conditions.join(" AND ")}`;
+    const sql = `SELECT m.uuid, m.session_id, m.model, m.input_tokens, m.output_tokens,
+        m.cache_read_tokens, m.cache_creation_tokens, m.tools, s.project_path
+      FROM messages m JOIN sessions s ON m.session_id = s.session_id
+      ${where}
+      ORDER BY (m.input_tokens + m.output_tokens) DESC`;
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(...params) as McpMessageRow[];
+  }
 }
 
 export function validateTag(tag: string): string {
@@ -1222,4 +1258,16 @@ export interface SpendingReport {
   byProject: SpendingProjectRow[];
   cacheEfficiency: CacheEfficiencyRow[];
   subagentCosts: SubagentCostRow[];
+}
+
+export interface McpMessageRow {
+  uuid: string;
+  session_id: string;
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  tools: string;
+  project_path: string;
 }

@@ -6,9 +6,16 @@
 import i18next, { type TFunction, type i18n as I18nInstance } from "i18next";
 import { createRequire } from "node:module";
 
-const require = createRequire(import.meta.url);
-const enCommon = require("./locales/en/common.json") as Record<string, unknown>;
-const deCommon = require("./locales/de/common.json") as Record<string, unknown>;
+// Build a require() that works in both ESM (import.meta.url) and CJS (esbuild
+// bundles where import.meta is empty). Falls back to __filename for CJS.
+const _url = typeof import.meta?.url === "string"
+  ? import.meta.url
+  : typeof __filename === "string"
+    ? "file://" + __filename
+    : "file:///placeholder.js";
+const _require = createRequire(_url);
+const enCommon = _require("./locales/en/common.json") as Record<string, unknown>;
+const deCommon = _require("./locales/de/common.json") as Record<string, unknown>;
 
 export type { TFunction, I18nInstance };
 

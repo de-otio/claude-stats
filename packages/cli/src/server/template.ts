@@ -182,13 +182,13 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
 
   <div class="tab-bar">
     <button class="tab-btn active" data-tab="overview">${t("dashboard:tabs.overview")}</button>
+    ${data.spending ? `<button class="tab-btn" data-tab="spending">Spending</button>` : ""}
     <button class="tab-btn" data-tab="models">${t("dashboard:tabs.models")}</button>
     <button class="tab-btn" data-tab="projects">${t("dashboard:tabs.projects")}</button>
     <button class="tab-btn" data-tab="sessions">${t("dashboard:tabs.sessions")}</button>
     <button class="tab-btn" data-tab="plan">${t("dashboard:tabs.plan")}</button>
     ${data.contextAnalysis ? `<button class="tab-btn" data-tab="context">${t("dashboard:tabs.context")}</button>` : ""}
     ${data.modelEfficiency ? `<button class="tab-btn" data-tab="efficiency">${t("dashboard:tabs.efficiency")}</button>` : ""}
-    ${data.spending ? `<button class="tab-btn" data-tab="spending">Spending</button>` : ""}
     <button class="tab-btn" data-tab="settings">${t("dashboard:tabs.settings")}</button>
   </div>
 
@@ -619,7 +619,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           <tbody>
             ${data.spending.topSessionsByCost.map(s => `
             <tr style="border-bottom:1px solid #222;">
-              <td style="padding:0.4rem;">${s.projectPath.split("/").pop()}</td>
+              <td style="padding:0.4rem;" title="${s.projectPath}">${s.projectPath}</td>
               <td style="text-align:right;padding:0.4rem;color:#59a14f;">$${s.estimatedCost.toFixed(2)}</td>
               <td style="text-align:right;padding:0.4rem;">${s.promptCount}</td>
               <td style="padding:0.4rem;font-size:0.6rem;color:#888;">${s.dominantModel.replace("claude-", "")}</td>
@@ -655,24 +655,31 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       </div>
     </div>` : ""}
 
-    ${data.spending.mcpServers.length > 0 ? `
+    ${data.spending.mcpServerUsage && data.spending.mcpServerUsage.length > 0 ? `
     <div class="chart-card" style="margin-top:1rem;">
-      <h2>MCP Server Costs</h2>
+      <h2>MCP Server Token Usage</h2>
+      <canvas id="chart-mcp-servers" style="margin-bottom:1rem;"></canvas>
       <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:0.7rem;">
           <thead><tr style="border-bottom:1px solid #333;">
             <th style="text-align:left;padding:0.4rem;">Server</th>
             <th style="text-align:right;padding:0.4rem;">Cost</th>
+            <th style="text-align:right;padding:0.4rem;">Input</th>
+            <th style="text-align:right;padding:0.4rem;">Output</th>
             <th style="text-align:right;padding:0.4rem;">Calls</th>
-            <th style="text-align:right;padding:0.4rem;">Avg Tokens/Call</th>
+            <th style="text-align:right;padding:0.4rem;">Messages</th>
+            <th style="text-align:left;padding:0.4rem;">Top Methods</th>
           </tr></thead>
           <tbody>
-            ${data.spending.mcpServers.map(s => `
+            ${data.spending.mcpServerUsage.map(s => `
             <tr style="border-bottom:1px solid #222;">
-              <td style="padding:0.4rem;">${s.server}</td>
+              <td style="padding:0.4rem;font-weight:600;">${s.server}</td>
               <td style="text-align:right;padding:0.4rem;color:#59a14f;">$${s.estimatedCost.toFixed(2)}</td>
-              <td style="text-align:right;padding:0.4rem;">${s.totalCalls}</td>
-              <td style="text-align:right;padding:0.4rem;">${(s.avgTokensPerCall / 1000).toFixed(0)}K</td>
+              <td style="text-align:right;padding:0.4rem;">${s.inputTokens >= 1000000 ? (s.inputTokens/1000000).toFixed(1)+'M' : s.inputTokens >= 1000 ? Math.round(s.inputTokens/1000)+'K' : s.inputTokens}</td>
+              <td style="text-align:right;padding:0.4rem;">${s.outputTokens >= 1000000 ? (s.outputTokens/1000000).toFixed(1)+'M' : s.outputTokens >= 1000 ? Math.round(s.outputTokens/1000)+'K' : s.outputTokens}</td>
+              <td style="text-align:right;padding:0.4rem;">${s.callCount}</td>
+              <td style="text-align:right;padding:0.4rem;">${s.messageCount}</td>
+              <td style="padding:0.4rem;font-size:0.6rem;color:#aaa;">${s.tools.slice(0, 3).map(t => t.method + '(' + t.calls + ')').join(', ')}</td>
             </tr>`).join("")}
           </tbody>
         </table>
@@ -1526,6 +1533,48 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
               scales: {
                 x: { title: { display: true, text: 'Estimated Cost ($)', color: '#888' } },
                 y: { ticks: { font: { size: 9 }, color: '#ccc' } }
+              }
+            })
+          });
+        }());
+
+        // MCP Server Usage — stacked horizontal bar chart (tokens per server)
+        (function () {
+          var el = document.getElementById('chart-mcp-servers');
+          if (!el || !sp.mcpServerUsage || !sp.mcpServerUsage.length) return;
+          var ctx = el.getContext('2d');
+          var servers = sp.mcpServerUsage;
+          new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: servers.map(function(s) { return s.server; }),
+              datasets: [
+                {
+                  label: 'Input',
+                  data: servers.map(function(s) { return Math.round(s.inputTokens / 1000); }),
+                  backgroundColor: '#4e79a7'
+                },
+                {
+                  label: 'Output',
+                  data: servers.map(function(s) { return Math.round(s.outputTokens / 1000); }),
+                  backgroundColor: '#f28e2b'
+                },
+                {
+                  label: 'Cache Read',
+                  data: servers.map(function(s) { return Math.round(s.cacheReadTokens / 1000); }),
+                  backgroundColor: '#59a14f'
+                }
+              ]
+            },
+            options: Object.assign({}, chartOpts, {
+              indexAxis: 'y',
+              plugins: Object.assign({}, chartOpts.plugins, {
+                legend: { labels: { color: '#ccc', font: { size: 10 } } },
+                tooltip: { callbacks: { label: function(c) { return c.dataset.label + ': ' + c.parsed.x.toLocaleString() + 'K tokens ($' + servers[c.dataIndex].estimatedCost.toFixed(2) + ' total)'; } } }
+              }),
+              scales: {
+                x: { stacked: true, title: { display: true, text: 'Tokens (K)', color: '#888' } },
+                y: { stacked: true, ticks: { font: { size: 10 }, color: '#ccc' } }
               }
             })
           });

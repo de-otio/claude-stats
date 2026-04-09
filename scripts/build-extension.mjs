@@ -21,6 +21,55 @@ copyFileSync(
 
 const watch = process.argv.includes("--watch");
 
+/**
+ * Plugin to intercept createRequire() calls for JSON locale files and replace
+ * them with static requires that esbuild can resolve and inline.
+ *
+ * The i18n modules use createRequire(import.meta.url) which is opaque to
+ * esbuild in CJS mode. This plugin rewrites those imports at the source level.
+ * @type {import("esbuild").Plugin}
+ */
+const inlineLocalesPlugin = {
+  name: "inline-locales",
+  setup(build) {
+    // Intercept files that use createRequire for JSON locale loading and
+    // strip the createRequire wrapper so esbuild can resolve requires natively.
+    build.onLoad({ filter: /\.(ts|js)$/ }, async (args) => {
+      const fs = await import("fs");
+      let contents = fs.readFileSync(args.path, "utf-8");
+
+      // Skip files that don't use createRequire
+      if (!contents.includes("createRequire")) return undefined;
+
+      // Remove `import { createRequire } from "node:module"`
+      contents = contents.replace(
+        /import\s*\{\s*createRequire\s*\}\s*from\s*["']node:module["'];?\s*/g,
+        "",
+      );
+      // Remove ES compiled form: `const { createRequire } = require("node:module")`
+      contents = contents.replace(
+        /(?:const|var)\s*\{\s*createRequire\s*\}\s*=\s*require\(["']node:module["']\);?\s*/g,
+        "",
+      );
+      // Remove the _url + _require block (multi-line)
+      contents = contents.replace(
+        /(?:\/\/.*?\n)*(?:const|var)\s+_url\s*=[\s\S]*?(?:const|var)\s+_require\s*=\s*createRequire\([^)]+\);?\s*/g,
+        "",
+      );
+      // Remove old-style: const require = createRequire(import.meta.url);
+      contents = contents.replace(
+        /(?:const|var)\s+require\s*=\s*createRequire\([^)]+\);?\s*/g,
+        "",
+      );
+      // Replace _require("...") with require("...") so esbuild can resolve them
+      contents = contents.replace(/_require\(/g, "require(");
+
+      const loader = args.path.endsWith(".ts") ? "ts" : "js";
+      return { contents, loader };
+    });
+  },
+};
+
 /** @type {import("esbuild").BuildOptions} */
 const options = {
   entryPoints: ["packages/cli/src/extension/extension.ts"],
@@ -31,6 +80,7 @@ const options = {
   format: "cjs",
   sourcemap: true,
   external: ["vscode"],
+  plugins: [inlineLocalesPlugin],
   // Keep the output readable for debugging
   minify: false,
   logLevel: "info",

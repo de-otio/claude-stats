@@ -6,9 +6,16 @@ import { initI18n, detectLocaleFromEnv } from "@claude-stats/core/i18n";
 import type { TFunction, I18nInstance } from "@claude-stats/core/i18n";
 import { createRequire } from "node:module";
 
-const require = createRequire(import.meta.url);
-const enCli = require("@claude-stats/core/locales/en/cli.json") as Record<string, unknown>;
-const deCli = require("@claude-stats/core/locales/de/cli.json") as Record<string, unknown>;
+// Build a require() that works in both ESM (import.meta.url) and CJS (esbuild
+// bundles where import.meta is empty). Falls back to __filename for CJS.
+const _url = typeof import.meta?.url === "string"
+  ? import.meta.url
+  : typeof __filename === "string"
+    ? "file://" + __filename
+    : "file:///placeholder.js";
+const _require = createRequire(_url);
+const enCli = _require("@claude-stats/core/locales/en/cli.json") as Record<string, unknown>;
+const deCli = _require("@claude-stats/core/locales/de/cli.json") as Record<string, unknown>;
 
 let _t: TFunction;
 let _instance: I18nInstance;

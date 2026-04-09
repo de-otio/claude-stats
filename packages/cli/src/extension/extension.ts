@@ -14,14 +14,20 @@ import { initPricingCache } from "../pricing-cache.js";
 import { initI18n } from "@claude-stats/core/i18n";
 import { setT, t } from "./i18n.js";
 
-const require = createRequire(import.meta.url);
+// Build a require() that works in both ESM and CJS (esbuild bundles).
+const _url = typeof import.meta?.url === "string"
+  ? import.meta.url
+  : typeof __filename === "string"
+    ? "file://" + __filename
+    : "file:///placeholder.js";
+const _require = createRequire(_url);
 
 export function activate(context: vscode.ExtensionContext): void {
   // Initialize i18n with extension and dashboard namespaces
-  const enExt = require("@claude-stats/core/locales/en/extension.json") as Record<string, unknown>;
-  const enDash = require("@claude-stats/core/locales/en/dashboard.json") as Record<string, unknown>;
-  const deExt = require("@claude-stats/core/locales/de/extension.json") as Record<string, unknown>;
-  const deDash = require("@claude-stats/core/locales/de/dashboard.json") as Record<string, unknown>;
+  const enExt = _require("@claude-stats/core/locales/en/extension.json") as Record<string, unknown>;
+  const enDash = _require("@claude-stats/core/locales/en/dashboard.json") as Record<string, unknown>;
+  const deExt = _require("@claude-stats/core/locales/de/extension.json") as Record<string, unknown>;
+  const deDash = _require("@claude-stats/core/locales/de/dashboard.json") as Record<string, unknown>;
 
   void initI18n({
     lng: vscode.env.language.split("-")[0],
