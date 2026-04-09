@@ -25,7 +25,7 @@ jobs:
         run: npm ci
 
       - name: Typecheck all packages
-        run: npx tsc --build
+        run: npx tsc --build --force
 
       - name: Run tests
         run: npx vitest run --coverage
