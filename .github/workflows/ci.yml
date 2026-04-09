@@ -117,6 +117,9 @@ jobs:
       - name: Build core package
         run: npm run build -w packages/core
 
+      - name: Build frontend
+        run: npm run build -w packages/frontend
+
       - name: Build infra package
         run: npm run build -w packages/infra
 
