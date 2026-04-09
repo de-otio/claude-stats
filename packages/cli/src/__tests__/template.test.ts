@@ -13,7 +13,7 @@ const i18nInstance = await initI18n({
   ns: ["dashboard"],
   resources: { en: { dashboard: enDashboard as unknown as object } },
 });
-const t: TranslateFn = (key, opts) => i18nInstance.t(key, opts as never) as string;
+const t: TranslateFn = (key, opts) => i18nInstance.t(key, opts as never) as unknown as string;
 
 const mockData: DashboardData = {
   generated: "2026-01-15T10:00:00.000Z",
@@ -109,6 +109,7 @@ const mockData: DashboardData = {
   planUtilization: null,
   modelEfficiency: null,
   contextAnalysis: null,
+  spending: null,
 };
 
 describe("renderDashboard", () => {

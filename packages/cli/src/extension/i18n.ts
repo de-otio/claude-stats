@@ -6,7 +6,7 @@
  */
 import type { TFunction } from "@claude-stats/core/i18n";
 
-let _t: TFunction = (key: string) => key;
+let _t: TFunction = ((key: string) => key) as unknown as TFunction;
 
 export function setT(t: TFunction): void {
   _t = t;

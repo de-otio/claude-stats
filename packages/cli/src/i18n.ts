@@ -43,7 +43,7 @@ export async function initCliI18n(locale?: string): Promise<void> {
  */
 export function t(key: string, options?: Record<string, unknown>): string {
   if (!_t) throw new Error("i18n not initialized — call initCliI18n() first");
-  return _t(key, options as never);
+  return _t(key, options as never) as unknown as string;
 }
 
 export type { TFunction };

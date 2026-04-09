@@ -4,14 +4,16 @@
  * See doc/analysis/team-app/17-client-setup.md
  */
 import { Command } from "commander";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as os from "node:os";
 import * as readline from "node:readline/promises";
 import { Store } from "../store/index.js";
 import {
   type SyncConfig,
-  type AuthTokens,
+  type PersistedSyncConfig,
+  loadSyncConfig,
+  loadPersistedConfig,
+  savePersistedConfig,
+  removeSyncConfig,
+  discoverConfig,
   initiateAuth,
   pollForTokens,
   ensureValidTokens,
@@ -21,46 +23,6 @@ import {
   deriveAccountId,
   redactSecrets,
 } from "../sync/index.js";
-
-// ── Sync config persistence ─────────────────────────────────────────────────
-
-const SYNC_CONFIG_DIR = path.join(os.homedir(), ".claude-stats");
-const SYNC_CONFIG_FILE = path.join(SYNC_CONFIG_DIR, "sync-config.json");
-
-export function loadSyncConfig(): SyncConfig | null {
-  try {
-    const data = fs.readFileSync(SYNC_CONFIG_FILE, "utf-8");
-    const parsed = JSON.parse(data) as Partial<SyncConfig>;
-    if (
-      typeof parsed.region === "string" &&
-      typeof parsed.clientId === "string" &&
-      typeof parsed.graphqlEndpoint === "string" &&
-      typeof parsed.userSalt === "string" &&
-      typeof parsed.autoSync === "boolean"
-    ) {
-      return parsed as SyncConfig;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-export function saveSyncConfig(config: SyncConfig): void {
-  fs.mkdirSync(SYNC_CONFIG_DIR, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(SYNC_CONFIG_FILE, JSON.stringify(config, null, 2) + "\n", {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
-}
-
-export function removeSyncConfig(): void {
-  try {
-    fs.unlinkSync(SYNC_CONFIG_FILE);
-  } catch {
-    // File may not exist -- that's fine.
-  }
-}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -119,33 +81,16 @@ export function registerSyncCommands(program: Command): void {
         return;
       }
 
-      // 3. Fetch backend configuration
-      let backendConfig: {
-        region: string;
-        clientId: string;
-        graphqlEndpoint: string;
-      };
-      try {
-        const configUrl = backendUrl.replace(/\/+$/, "") + "/config";
-        const resp = await fetch(configUrl);
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
-        }
-        backendConfig = (await resp.json()) as typeof backendConfig;
-      } catch (err) {
-        console.error(`Failed to fetch backend configuration: ${(err as Error).message}`);
+      // 3. Fetch backend configuration via well-known discovery
+      const discoveredConfig = await discoverConfig(backendUrl);
+      if (!discoveredConfig) {
+        console.error("Failed to discover backend configuration from " + backendUrl);
         process.exitCode = 1;
         return;
       }
 
-      // 4. Build a temporary SyncConfig for the auth flow
-      const tempConfig: SyncConfig = {
-        region: backendConfig.region,
-        clientId: backendConfig.clientId,
-        graphqlEndpoint: backendConfig.graphqlEndpoint,
-        userSalt: "", // will be generated after auth
-        autoSync: false,
-      };
+      // 4. Build a SyncConfig for the auth flow
+      const tempConfig: SyncConfig = discoveredConfig;
 
       // 5. Initiate auth (magic link)
       try {
@@ -166,16 +111,14 @@ export function registerSyncCommands(program: Command): void {
         // 7. Save tokens
         saveTokens(tokens);
 
-        // 8. Generate user salt and save sync config
+        // 8. Generate user salt and save persisted config
         const userSalt = generateUserSalt();
-        const syncConfig: SyncConfig = {
-          region: backendConfig.region,
-          clientId: backendConfig.clientId,
-          graphqlEndpoint: backendConfig.graphqlEndpoint,
+        const persistedConfig: PersistedSyncConfig = {
+          ...tempConfig,
           userSalt,
-          autoSync: true,
+          enabled: true,
         };
-        saveSyncConfig(syncConfig);
+        savePersistedConfig(persistedConfig);
 
         console.log(`\nSetup complete. Linked to ${email}.`);
         console.log("Run 'claude-stats sync' to sync your sessions.");
@@ -192,13 +135,19 @@ export function registerSyncCommands(program: Command): void {
     .description("Sync local sessions to the cloud backend")
     .option("--dry-run", "Show what would be synced without sending")
     .action(async (opts: { dryRun?: boolean }) => {
-      // 1. Load sync config
-      const syncConfig = loadSyncConfig();
-      if (!syncConfig) {
+      // 1. Load persisted config (has userSalt for account ID derivation)
+      const persistedConfig = loadPersistedConfig();
+      if (!persistedConfig) {
         console.error("Not configured. Run 'claude-stats setup' first.");
         process.exitCode = 1;
         return;
       }
+      const syncConfig: SyncConfig = {
+        endpoint: persistedConfig.endpoint,
+        userPoolId: persistedConfig.userPoolId,
+        clientId: persistedConfig.clientId,
+        region: persistedConfig.region,
+      };
 
       // 2. Ensure valid tokens
       const tokens = await ensureValidTokens(syncConfig);
@@ -238,7 +187,7 @@ export function registerSyncCommands(program: Command): void {
         const syncPayload = batch.map((s) => ({
           sessionId: s.session_id,
           accountId: s.account_uuid
-            ? deriveAccountId(s.account_uuid, syncConfig.userSalt)
+            ? deriveAccountId(s.account_uuid, persistedConfig.userSalt ?? "")
             : null,
           projectPath: redactSecrets(s.project_path),
           firstTimestamp: s.first_timestamp,
@@ -254,7 +203,7 @@ export function registerSyncCommands(program: Command): void {
 
         // 5. POST to AppSync graphqlEndpoint
         try {
-          const response = await fetch(syncConfig.graphqlEndpoint, {
+          const response = await fetch(syncConfig.endpoint, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

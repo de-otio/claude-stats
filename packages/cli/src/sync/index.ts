@@ -372,7 +372,7 @@ function sessionToSyncInput(
     isSubagent: row.is_subagent === 1,
     parentSessionId: row.parent_session_id ?? undefined,
     thinkingBlocks: row.thinking_blocks || undefined,
-    estimatedCost: cost,
+    estimatedCost: cost.cost,
     _version: version,
   };
 }

@@ -233,7 +233,7 @@ export class SyncManager implements vscode.Disposable {
 
     const store = new Store();
     try {
-      const data = buildDashboard(store, { period: "week" }) as Record<string, unknown>;
+      const data = buildDashboard(store, { period: "week" }) as unknown as Record<string, unknown>;
 
       const payload = {
         query: `mutation SyncSessions($input: SyncInput!) {
