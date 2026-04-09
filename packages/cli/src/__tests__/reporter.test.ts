@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { formatTokens, formatBytes, formatDuration, periodStart, printSummary, printStatus, formatEntrypoint, printSessionList, printSessionDetail, buildBuckets, printTrend } from "../reporter/index.js";
+import { formatTokens, formatBytes, formatDuration, periodStart, printSummary, printStatus, formatEntrypoint, printSessionList, printSessionDetail, buildBuckets, printTrend, printSpendingReport } from "../reporter/index.js";
 import { Store } from "../store/index.js";
 import os from "os";
 import path from "path";
@@ -600,6 +600,52 @@ describe("printSessionList", () => {
     expect(calls.some((s) => s.includes("list-s"))).toBe(true); // truncated session ID
     expect(calls.some((s) => s.includes("1 session"))).toBe(true); // totals row
   });
+
+  it("shows cost column and plan value when sessions have messages and planFee is set", () => {
+    store.upsertSession({
+      sessionId: "list-cost-1",
+      projectPath: "/proj/list-cost",
+      sourceFile: "/proj/list-cost/list-cost-1.jsonl",
+      firstTimestamp: 1_700_000_000_000,
+      lastTimestamp: 1_700_000_300_000,
+      claudeVersion: "2.1.70",
+      entrypoint: "claude",
+      gitBranch: null,
+      permissionMode: null,
+      isInteractive: true,
+      promptCount: 5,
+      assistantMessageCount: 5,
+      inputTokens: 50_000,
+      outputTokens: 20_000,
+      cacheCreationTokens: 1_000,
+      cacheReadTokens: 10_000,
+      webSearchRequests: 0,
+      webFetchRequests: 0,
+      toolUseCounts: [],
+      models: ["claude-opus-4-6"],
+      repoUrl: null,
+      accountUuid: null,
+      organizationUuid: null,
+      subscriptionType: null,
+      thinkingBlocks: 0,
+      parentSessionId: null,
+      isSubagent: false,
+      sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: null,
+      medianResponseTimeMs: null,
+    });
+    store.upsertMessages([
+      { uuid: "lc-m1", sessionId: "list-cost-1", timestamp: 1_700_000_000_000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 50_000, outputTokens: 20_000, cacheCreationTokens: 1_000, cacheReadTokens: 10_000, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0, promptText: null },
+    ]);
+
+    printSessionList(store, { timezone: "UTC", planFee: 20 });
+    const calls = (consoleSpy.mock.calls as unknown[][]).flatMap(c => typeof c[0] === "string" && c[0].length > 0 ? [c[0] as string] : []);
+    // Cost column should appear
+    expect(calls.some((s) => s.includes("$"))).toBe(true);
+    // Plan value message should appear
+    expect(calls.some((s) => s.includes("plan value used"))).toBe(true);
+  });
 });
 
 // ── printSessionDetail ──────────────────────────────────────────────────────
@@ -624,6 +670,46 @@ describe("printSessionDetail", () => {
   it("prints 'No session found' for unknown session", () => {
     printSessionDetail(store, "nonexistent", {});
     expect(consoleSpy).toHaveBeenCalledWith('No session found matching "nonexistent".');
+  });
+
+  it("prints 'No messages' when session has no messages", () => {
+    store.upsertSession({
+      sessionId: "detail-empty-msgs",
+      projectPath: "/proj/detail",
+      sourceFile: "/proj/detail/detail-empty-msgs.jsonl",
+      firstTimestamp: 1_700_000_000_000,
+      lastTimestamp: 1_700_000_300_000,
+      claudeVersion: "2.1.70",
+      entrypoint: "claude",
+      gitBranch: null,
+      permissionMode: null,
+      isInteractive: true,
+      promptCount: 0,
+      assistantMessageCount: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      webSearchRequests: 0,
+      webFetchRequests: 0,
+      toolUseCounts: [],
+      models: [],
+      repoUrl: null,
+      accountUuid: null,
+      organizationUuid: null,
+      subscriptionType: null,
+      thinkingBlocks: 0,
+      parentSessionId: null,
+      isSubagent: false,
+      sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: null,
+      medianResponseTimeMs: null,
+    });
+
+    printSessionDetail(store, "detail-empty-msgs", {});
+    const calls = (consoleSpy.mock.calls as unknown[][]).flatMap(c => typeof c[0] === "string" && c[0].length > 0 ? [c[0]] : []);
+    expect(calls.some((s) => s.includes("No messages"))).toBe(true);
   });
 
   it("prints session header and message table for valid session", () => {
@@ -900,5 +986,293 @@ describe("printTrend", () => {
       typeof c[0] === "string" && c[0].length > 0 ? [c[0]] : []
     );
     expect(calls.some((s) => s.includes("Monthly Trend"))).toBe(true);
+  });
+});
+
+// ── printSpendingReport ─────────────────────────────────────────────────────
+
+describe("printSpendingReport", () => {
+  let store: Store;
+  let dbPath: string;
+  let consoleSpy: ReturnType<typeof vi.spyOn>;
+
+  function makeSpendingSession(id: string, overrides: Record<string, unknown> = {}) {
+    return {
+      sessionId: id,
+      projectPath: "/proj/myapp",
+      sourceFile: `/proj/myapp/${id}.jsonl`,
+      firstTimestamp: Date.now() - 3600_000,
+      lastTimestamp: Date.now(),
+      claudeVersion: "2.1.70",
+      entrypoint: "claude",
+      gitBranch: "main",
+      permissionMode: "default",
+      isInteractive: true,
+      promptCount: 10,
+      assistantMessageCount: 10,
+      inputTokens: 50_000,
+      outputTokens: 20_000,
+      cacheCreationTokens: 2_000,
+      cacheReadTokens: 30_000,
+      webSearchRequests: 0,
+      webFetchRequests: 0,
+      toolUseCounts: [{ name: "Read", count: 5 }, { name: "Edit", count: 3 }],
+      models: ["claude-opus-4-6"],
+      repoUrl: null,
+      accountUuid: null,
+      organizationUuid: null,
+      subscriptionType: null,
+      thinkingBlocks: 0,
+      parentSessionId: null,
+      isSubagent: false,
+      sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: 1_800_000,
+      medianResponseTimeMs: null,
+      ...overrides,
+    };
+  }
+
+  function makeSpendingMessage(uuid: string, sessionId: string, overrides: Record<string, unknown> = {}) {
+    return {
+      uuid,
+      sessionId,
+      timestamp: Date.now() - 1800_000,
+      claudeVersion: "2.1.70",
+      model: "claude-opus-4-6",
+      stopReason: "end_turn",
+      inputTokens: 10_000,
+      outputTokens: 4_000,
+      cacheCreationTokens: 500,
+      cacheReadTokens: 8_000,
+      tools: ["Read", "Edit"],
+      thinkingBlocks: 0,
+      serviceTier: null,
+      inferenceGeo: null,
+      ephemeral5mCacheTokens: 0,
+      ephemeral1hCacheTokens: 0,
+      promptText: "Refactor the auth middleware to use JWT",
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    dbPath = path.join(os.tmpdir(), `cs-spending-${Date.now()}.db`);
+    store = new Store(dbPath);
+    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  function getOutput(): string[] {
+    return (consoleSpy.mock.calls as unknown[][]).flatMap(c =>
+      typeof c[0] === "string" && c[0].length > 0 ? [c[0] as string] : []
+    );
+  }
+
+  it("prints 'No sessions found' when store is empty", () => {
+    printSpendingReport(store, { period: "all", timezone: "UTC" });
+    expect(consoleSpy).toHaveBeenCalledWith("No sessions found for the given filters.");
+  });
+
+  it("prints spending header and total cost", () => {
+    store.upsertSession(makeSpendingSession("sp-1"));
+    store.upsertMessages([makeSpendingMessage("m-1", "sp-1")]);
+
+    printSpendingReport(store, { period: "all", timezone: "UTC" });
+
+    const output = getOutput();
+    expect(output.some(s => s.includes("Token Spending"))).toBe(true);
+    expect(output.some(s => s.includes("Total cost"))).toBe(true);
+    expect(output.some(s => s.includes("$"))).toBe(true);
+  });
+
+  it("shows top sessions by cost section", () => {
+    store.upsertSession(makeSpendingSession("sp-sess-1", { inputTokens: 100_000, outputTokens: 50_000 }));
+    store.upsertSession(makeSpendingSession("sp-sess-2", { inputTokens: 10_000, outputTokens: 5_000 }));
+    store.upsertMessages([
+      makeSpendingMessage("m-ss-1", "sp-sess-1", { inputTokens: 100_000, outputTokens: 50_000 }),
+      makeSpendingMessage("m-ss-2", "sp-sess-2", { inputTokens: 10_000, outputTokens: 5_000 }),
+    ]);
+
+    printSpendingReport(store, { period: "all", timezone: "UTC" });
+
+    const output = getOutput();
+    expect(output.some(s => s.includes("Top sessions by cost"))).toBe(true);
+    expect(output.some(s => s.includes("#1"))).toBe(true);
+  });
+
+  it("shows top tools by cost section when tools are present", () => {
+    store.upsertSession(makeSpendingSession("sp-tools-1"));
+    store.upsertMessages([
+      makeSpendingMessage("m-t1", "sp-tools-1", { tools: ["Read", "Edit", "Bash"] }),
+      makeSpendingMessage("m-t2", "sp-tools-1", { tools: ["Read"] }),
+    ]);
+
+    printSpendingReport(store, { period: "all", timezone: "UTC" });
+
+    const output = getOutput();
+    expect(output.some(s => s.includes("Top tools by cost"))).toBe(true);
+    expect(output.some(s => s.includes("Read"))).toBe(true);
+  });
+
+  it("shows MCP server costs when MCP tools are present", () => {
+    store.upsertSession(makeSpendingSession("sp-mcp-1"));
+    store.upsertMessages([
+      makeSpendingMessage("m-mcp1", "sp-mcp-1", { tools: ["mcp__github__list_issues"], inputTokens: 20_000 }),
+      makeSpendingMessage("m-mcp2", "sp-mcp-1", { tools: ["mcp__github__get_issue"], inputTokens: 15_000 }),
+    ]);
+
+    printSpendingReport(store, { period: "all", timezone: "UTC" });
+
+    const output = getOutput();
+    expect(output.some(s => s.includes("MCP server costs"))).toBe(true);
+    expect(output.some(s => s.includes("github"))).toBe(true);
+  });
+
+  it("omits MCP section when no MCP tools", () => {
+    store.upsertSession(makeSpendingSession("sp-nomcp"));
+    store.upsertMessages([makeSpendingMessage("m-nomcp", "sp-nomcp", { tools: ["Read"] })]);
+
+    printSpendingReport(store, { period: "all", timezone: "UTC" });
+
+    const output = getOutput();
+    expect(output.some(s => s.includes("MCP server costs"))).toBe(false);
+  });
+
+  it("shows cache efficiency", () => {
+    store.upsertSession(makeSpendingSession("sp-cache", { cacheReadTokens: 40_000, inputTokens: 10_000 }));
+    store.upsertMessages([
+      makeSpendingMessage("m-c1", "sp-cache", { cacheReadTokens: 40_000, inputTokens: 10_000 }),
+    ]);
+
+    printSpendingReport(store, { period: "all", timezone: "UTC" });
+
+    const output = getOutput();
+    expect(output.some(s => s.includes("Cache efficiency"))).toBe(true);
+    expect(output.some(s => s.includes("hit rate"))).toBe(true);
+  });
+
+  it("shows subagent overhead when subagents exist", () => {
+    store.upsertSession(makeSpendingSession("sp-parent", { firstTimestamp: 1000 }));
+    store.upsertSession(makeSpendingSession("sp-child", {
+      parentSessionId: "sp-parent",
+      isSubagent: true,
+      firstTimestamp: 2000,
+      inputTokens: 20_000,
+      outputTokens: 10_000,
+      cacheCreationTokens: 1_000,
+    }));
+    store.upsertMessages([
+      makeSpendingMessage("m-p", "sp-parent"),
+      makeSpendingMessage("m-c", "sp-child"),
+    ]);
+
+    printSpendingReport(store, { period: "all", timezone: "UTC" });
+
+    const output = getOutput();
+    expect(output.some(s => s.includes("Subagent overhead"))).toBe(true);
+  });
+
+  it("omits subagent section when no subagents", () => {
+    store.upsertSession(makeSpendingSession("sp-nosub"));
+    store.upsertMessages([makeSpendingMessage("m-nosub", "sp-nosub")]);
+
+    printSpendingReport(store, { period: "all", timezone: "UTC" });
+
+    const output = getOutput();
+    expect(output.some(s => s.includes("Subagent overhead"))).toBe(false);
+  });
+
+  it("outputs valid JSON when --json flag is set", () => {
+    store.upsertSession(makeSpendingSession("sp-json"));
+    store.upsertMessages([makeSpendingMessage("m-json", "sp-json")]);
+
+    printSpendingReport(store, { period: "all", timezone: "UTC", json: true });
+
+    // JSON output is a single call with the full JSON string
+    const jsonCalls = consoleSpy.mock.calls.filter(
+      (c: unknown[]) => typeof c[0] === "string" && c[0].startsWith("{")
+    );
+    expect(jsonCalls.length).toBe(1);
+    const parsed = JSON.parse(jsonCalls[0]![0] as string);
+    expect(parsed).toHaveProperty("topSessions");
+    expect(parsed).toHaveProperty("topMessages");
+    expect(parsed).toHaveProperty("byModel");
+    expect(parsed).toHaveProperty("toolCosts");
+    expect(parsed).toHaveProperty("mcpServers");
+    expect(parsed).toHaveProperty("anomalies");
+  });
+
+  it("respects --top flag", () => {
+    for (let i = 0; i < 10; i++) {
+      store.upsertSession(makeSpendingSession(`sp-top-${i}`, { inputTokens: (i + 1) * 10_000 }));
+      store.upsertMessages([makeSpendingMessage(`m-top-${i}`, `sp-top-${i}`, { inputTokens: (i + 1) * 10_000 })]);
+    }
+
+    printSpendingReport(store, { period: "all", timezone: "UTC", top: 3 });
+
+    const output = getOutput();
+    // Should have #1, #2, #3 but not #4
+    expect(output.some(s => s.includes("#1"))).toBe(true);
+    expect(output.some(s => s.includes("#3"))).toBe(true);
+    expect(output.some(s => s.includes("#4"))).toBe(false);
+  });
+
+  it("supports --sort tokens mode", () => {
+    store.upsertSession(makeSpendingSession("sp-sort1", { inputTokens: 100_000, outputTokens: 50_000, promptCount: 2 }));
+    store.upsertSession(makeSpendingSession("sp-sort2", { inputTokens: 10_000, outputTokens: 5_000, promptCount: 50 }));
+    store.upsertMessages([
+      makeSpendingMessage("m-sort1", "sp-sort1", { inputTokens: 100_000, outputTokens: 50_000 }),
+      makeSpendingMessage("m-sort2", "sp-sort2", { inputTokens: 10_000, outputTokens: 5_000 }),
+    ]);
+
+    printSpendingReport(store, { period: "all", timezone: "UTC", sort: "tokens" });
+
+    const output = getOutput();
+    // #1 should have the higher token session
+    const line1 = output.find(s => s.includes("#1"));
+    expect(line1).toBeDefined();
+  });
+
+  it("shows expensive prompts section when anomalies detected", () => {
+    store.upsertSession(makeSpendingSession("sp-anom"));
+    // Many normal messages + one huge outlier
+    const msgs = [];
+    for (let i = 0; i < 10; i++) {
+      msgs.push(makeSpendingMessage(`m-norm-${i}`, "sp-anom", { inputTokens: 1000, outputTokens: 500 }));
+    }
+    msgs.push(makeSpendingMessage("m-outlier", "sp-anom", {
+      inputTokens: 200_000,
+      outputTokens: 100_000,
+      promptText: "Refactor the entire authentication system",
+    }));
+    store.upsertMessages(msgs);
+
+    printSpendingReport(store, { period: "all", timezone: "UTC" });
+
+    const output = getOutput();
+    expect(output.some(s => s.includes("Expensive prompts"))).toBe(true);
+    expect(output.some(s => s.includes("Refactor the entire authentication"))).toBe(true);
+  });
+
+  it("shows model breakdown with percentages", () => {
+    store.upsertSession(makeSpendingSession("sp-model1", { models: ["claude-opus-4-6"] }));
+    store.upsertSession(makeSpendingSession("sp-model2", { models: ["claude-sonnet-4-6"] }));
+    store.upsertMessages([
+      makeSpendingMessage("m-mod1", "sp-model1", { model: "claude-opus-4-6", inputTokens: 50_000, outputTokens: 20_000 }),
+      makeSpendingMessage("m-mod2", "sp-model2", { model: "claude-sonnet-4-6", inputTokens: 30_000, outputTokens: 10_000 }),
+    ]);
+
+    printSpendingReport(store, { period: "all", timezone: "UTC" });
+
+    const output = getOutput();
+    // Should show both models with percentages
+    expect(output.some(s => s.includes("opus") && s.includes("%"))).toBe(true);
+    expect(output.some(s => s.includes("sonnet") && s.includes("%"))).toBe(true);
   });
 });

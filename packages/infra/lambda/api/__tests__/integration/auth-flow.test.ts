@@ -586,7 +586,7 @@ describe("auth-flow integration: pre-signup", () => {
     });
 
     await expect(preSignUpHandler(event)).rejects.toThrow(
-      "Signup not allowed for this email domain",
+      "Signup not allowed for domain 'evil.org'. Allowed: example.com, corp.io",
     );
   });
 
@@ -626,7 +626,7 @@ describe("auth-flow integration: pre-signup", () => {
     });
 
     await expect(preSignUpHandler(event)).rejects.toThrow(
-      "Signup not allowed for this email domain",
+      "Signup not allowed for domain 'sub.example.com'. Allowed: example.com",
     );
   });
 });

@@ -22,6 +22,7 @@ Claude Code stores rich session data locally in `~/.claude/projects/`. Every mes
 | 06 | [06-limitations.md](06-limitations.md) | Known gaps and constraints |
 | 07 | [07-schema-reference.md](07-schema-reference.md) | Exact field-level schemas for parser implementation |
 | 08 | [08-resilience.md](08-resilience.md) | Handling Claude Code updates and schema changes |
+| 09 | [09-token-spending-analysis.md](09-token-spending-analysis.md) | Token spending breakdown: where did my tokens go? |
 
 Read in order for full context, or jump to 07 and 02 to start implementing.
 

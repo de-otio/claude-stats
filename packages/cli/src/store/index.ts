@@ -952,6 +952,116 @@ export class Store {
 
     return { dbSize, sessionCount, messageCount, quarantineCount, lastCollected: lastRow.t };
   }
+
+  // ─── Spending report ────────────────────────────────────────────────────────
+
+  getSpendingReport(filters: {
+    projectPath?: string;
+    repoUrl?: string;
+    accountUuid?: string;
+    since?: number;
+    until?: number;
+    limit?: number;
+  } = {}): SpendingReport {
+    const limit = filters.limit ?? 20;
+
+    // Shared WHERE clause builder for session-based queries
+    const sessionConditions: string[] = ["s.is_interactive = 1", "s.source_deleted = 0"];
+    const sessionParams: unknown[] = [];
+    if (filters.projectPath) { sessionConditions.push("s.project_path = ?"); sessionParams.push(filters.projectPath); }
+    if (filters.repoUrl) { sessionConditions.push("s.repo_url = ?"); sessionParams.push(filters.repoUrl); }
+    if (filters.accountUuid) { sessionConditions.push("s.account_uuid = ?"); sessionParams.push(filters.accountUuid); }
+    if (filters.since !== undefined) { sessionConditions.push("s.first_timestamp >= ?"); sessionParams.push(filters.since); }
+    if (filters.until !== undefined) { sessionConditions.push("s.first_timestamp < ?"); sessionParams.push(filters.until); }
+    const sessionWhere = `WHERE ${sessionConditions.join(" AND ")}`;
+
+    // 1. Top sessions by token cost
+    const topSessions = (() => {
+      const sql = `SELECT * FROM sessions s ${sessionWhere}
+        ORDER BY (s.input_tokens + s.output_tokens + s.cache_creation_tokens) DESC LIMIT ?`;
+      const stmt = this.db.prepare(sql);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (stmt.all as (...args: any[]) => unknown[])(...sessionParams, limit) as SessionRow[];
+    })();
+
+    // 2. Top messages by token cost
+    const topMessages = (() => {
+      const sql = `SELECT m.uuid, m.session_id, m.model, m.input_tokens, m.output_tokens,
+          m.cache_read_tokens, m.cache_creation_tokens, m.thinking_blocks, m.tools,
+          m.prompt_text, m.timestamp, m.stop_reason
+        FROM messages m JOIN sessions s ON m.session_id = s.session_id
+        ${sessionWhere}
+        ORDER BY (m.input_tokens + m.output_tokens + m.cache_creation_tokens) DESC LIMIT ?`;
+      const stmt = this.db.prepare(sql);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (stmt.all as (...args: any[]) => unknown[])(...sessionParams, limit) as SpendingMessageRow[];
+    })();
+
+    // 3. By model — reuse getMessageTotals
+    const byModel = this.getMessageTotals({
+      projectPath: filters.projectPath,
+      repoUrl: filters.repoUrl,
+      since: filters.since,
+      until: filters.until,
+    });
+
+    // 4. By project
+    const byProject = (() => {
+      const sql = `SELECT s.project_path,
+          SUM(s.input_tokens) AS input_tokens,
+          SUM(s.output_tokens) AS output_tokens,
+          SUM(s.cache_read_tokens) AS cache_read_tokens,
+          SUM(s.cache_creation_tokens) AS cache_creation_tokens,
+          SUM(s.prompt_count) AS prompt_count,
+          COUNT(*) AS session_count
+        FROM sessions s ${sessionWhere}
+        GROUP BY s.project_path
+        ORDER BY (input_tokens + output_tokens + cache_creation_tokens) DESC`;
+      const stmt = this.db.prepare(sql);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (stmt.all as (...args: any[]) => unknown[])(...sessionParams) as SpendingProjectRow[];
+    })();
+
+    // 5. Cache efficiency per session
+    const cacheEfficiency = (() => {
+      const sql = `SELECT m.session_id,
+          SUM(m.cache_read_tokens) AS cache_hits,
+          SUM(m.input_tokens) AS uncached_input,
+          SUM(m.cache_creation_tokens) AS cache_writes,
+          ROUND(
+            CAST(SUM(m.cache_read_tokens) AS REAL) /
+            NULLIF(SUM(m.cache_read_tokens) + SUM(m.input_tokens), 0) * 100,
+            1
+          ) AS cache_hit_pct
+        FROM messages m JOIN sessions s ON m.session_id = s.session_id
+        ${sessionWhere}
+        GROUP BY m.session_id
+        ORDER BY cache_hit_pct ASC`;
+      const stmt = this.db.prepare(sql);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (stmt.all as (...args: any[]) => unknown[])(...sessionParams) as CacheEfficiencyRow[];
+    })();
+
+    // 6. Subagent cost attribution
+    const subagentCosts = (() => {
+      const sql = `SELECT
+          parent.session_id AS parent_session_id,
+          parent.project_path,
+          SUM(child.input_tokens + child.output_tokens + child.cache_creation_tokens) AS subagent_tokens,
+          COUNT(child.session_id) AS subagent_count,
+          parent.input_tokens + parent.output_tokens + parent.cache_creation_tokens AS parent_tokens
+        FROM sessions parent
+        JOIN sessions child ON child.parent_session_id = parent.session_id
+        WHERE parent.first_timestamp >= COALESCE(?, 0)
+        GROUP BY parent.session_id
+        ORDER BY subagent_tokens DESC`;
+      const stmt = this.db.prepare(sql);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (stmt.all as (...args: any[]) => unknown[])(filters.since ?? 0) as SubagentCostRow[];
+    })();
+
+    return { topSessions, topMessages, byModel, byProject, cacheEfficiency, subagentCosts };
+  }
 }
 
 export function validateTag(tag: string): string {
@@ -1060,4 +1170,56 @@ export interface StatusInfo {
   messageCount: number;
   quarantineCount: number;
   lastCollected: number | null;
+}
+
+// ─── Spending report types ──────────────────────────────────────────────────
+
+export interface SpendingMessageRow {
+  uuid: string;
+  session_id: string;
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  thinking_blocks: number;
+  tools: string;
+  prompt_text: string | null;
+  timestamp: number | null;
+  stop_reason: string | null;
+}
+
+export interface SpendingProjectRow {
+  project_path: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  prompt_count: number;
+  session_count: number;
+}
+
+export interface CacheEfficiencyRow {
+  session_id: string;
+  cache_hits: number;
+  uncached_input: number;
+  cache_writes: number;
+  cache_hit_pct: number;
+}
+
+export interface SubagentCostRow {
+  parent_session_id: string;
+  project_path: string;
+  subagent_tokens: number;
+  subagent_count: number;
+  parent_tokens: number;
+}
+
+export interface SpendingReport {
+  topSessions: SessionRow[];
+  topMessages: SpendingMessageRow[];
+  byModel: MessageTotalRow[];
+  byProject: SpendingProjectRow[];
+  cacheEfficiency: CacheEfficiencyRow[];
+  subagentCosts: SubagentCostRow[];
 }

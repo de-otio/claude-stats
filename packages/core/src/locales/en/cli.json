@@ -45,7 +45,13 @@
     "serve": "Start a local web dashboard",
     "servePort": "Port to listen on",
     "serveOpen": "Open in default browser after starting",
-    "locale": "Set display language (e.g. en, de)"
+    "locale": "Set display language (e.g. en, de)",
+    "spending": "Token spending breakdown — where did my tokens go?",
+    "spendingPeriod": "Time range: day, week, month, all (default: day)",
+    "spendingModel": "Filter to one model (e.g. claude-opus-4)",
+    "spendingTop": "Number of top items to show (default: 5)",
+    "spendingJson": "Machine-readable JSON output",
+    "spendingSort": "Sort order: cost, tokens, prompts (default: cost)"
   },
   "collection": {
     "collecting": "Collecting...",
@@ -114,7 +120,15 @@
     "tableTotals": "Totals",
     "unknownTime": "unknown",
     "sessionSummary_one": "{{count}} session",
-    "sessionSummary_other": "{{count}} sessions"
+    "sessionSummary_other": "{{count}} sessions",
+    "spendingTitle": "Token Spending — {{period}} ({{date}})",
+    "spendingTotalCost": "Total cost (API-equivalent)",
+    "spendingTopSessions": "Top sessions by cost",
+    "spendingTopTools": "Top tools by cost",
+    "spendingMcpServers": "MCP server costs",
+    "spendingAnomalies": "Expensive prompts (> 2x average)",
+    "spendingCacheEfficiency": "Cache efficiency",
+    "spendingSubagents": "Subagent overhead"
   },
   "status": {
     "databaseSize": "Database size",

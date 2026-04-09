@@ -1,5 +1,19 @@
-import { describe, it, expect } from "vitest";
-import { displayNameToApiPrefix, parsePricingTable } from "../pricing-cache.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { displayNameToApiPrefix, parsePricingTable, loadCachedPricing, isCacheStale } from "../pricing-cache.js";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      existsSync: vi.fn(actual.existsSync),
+      readFileSync: vi.fn(actual.readFileSync),
+    },
+  };
+});
+
+import fs from "node:fs";
 
 describe("displayNameToApiPrefix", () => {
   it("converts modern model names (4.x+)", () => {
@@ -183,5 +197,75 @@ describe("parsePricingTable", () => {
     const models = parsePricingTable(html);
     expect(models["claude-opus-4-6"]).toBeUndefined();
     expect(models["claude-sonnet-4-6"]).toBeDefined();
+  });
+});
+
+describe("loadCachedPricing", () => {
+  afterEach(() => {
+    vi.mocked(fs.existsSync).mockRestore();
+    vi.mocked(fs.readFileSync).mockRestore();
+  });
+
+  it("returns false when cache file does not exist", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    expect(loadCachedPricing()).toBe(false);
+  });
+
+  it("returns true and applies cache when file is valid", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+      fetchedAt: "2026-04-01",
+      models: { "claude-opus-4-6": { inputPerMillion: 5, outputPerMillion: 25, cacheReadPerMillion: 0.5, cacheWritePerMillion: 6.25 } },
+    }));
+    expect(loadCachedPricing()).toBe(true);
+  });
+
+  it("returns false when cache data is missing models", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ fetchedAt: "2026-04-01", models: {} }));
+    expect(loadCachedPricing()).toBe(false);
+  });
+
+  it("returns false when cache data is missing fetchedAt", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ models: { "x": {} } }));
+    expect(loadCachedPricing()).toBe(false);
+  });
+
+  it("returns false when file read throws", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockImplementation(() => { throw new Error("EACCES"); });
+    expect(loadCachedPricing()).toBe(false);
+  });
+});
+
+describe("isCacheStale", () => {
+  afterEach(() => {
+    vi.mocked(fs.existsSync).mockRestore();
+    vi.mocked(fs.readFileSync).mockRestore();
+  });
+
+  it("returns true when cache file does not exist", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    expect(isCacheStale()).toBe(true);
+  });
+
+  it("returns false when cache is fresh (within 7 days)", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ fetchedAt: new Date().toISOString() }));
+    expect(isCacheStale()).toBe(false);
+  });
+
+  it("returns true when cache is older than 7 days", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ fetchedAt: old }));
+    expect(isCacheStale()).toBe(true);
+  });
+
+  it("returns true when file read throws", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockImplementation(() => { throw new Error("EACCES"); });
+    expect(isCacheStale()).toBe(true);
   });
 });

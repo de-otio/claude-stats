@@ -116,4 +116,33 @@ describe("searchHistory", () => {
       fs.unlinkSync(fp);
     }
   });
+
+  it("skips entries where display is not a string", () => {
+    const fp = makeTempHistory([
+      { display: 12345, timestamp: 1000, project: "/p", sessionId: "a1" },
+      { display: null, timestamp: 2000, project: "/p", sessionId: "a2" },
+      { display: "valid query here", timestamp: 3000, project: "/p", sessionId: "a3" },
+    ]);
+    try {
+      const results = searchHistory({ query: "query", historyPath: fp });
+      expect(results).toHaveLength(1);
+      expect(results[0]!.entry.sessionId).toBe("a3");
+    } finally {
+      fs.unlinkSync(fp);
+    }
+  });
+
+  it("excludes entries that match query but not project filter", () => {
+    const fp = makeTempHistory([
+      { display: "terraform plan", timestamp: 1000, project: "/proj/alpha", sessionId: "a1" },
+      { display: "terraform apply", timestamp: 2000, project: "/proj/beta", sessionId: "a2" },
+    ]);
+    try {
+      const results = searchHistory({ query: "terraform", historyPath: fp, project: "/proj/beta" });
+      expect(results).toHaveLength(1);
+      expect(results[0]!.entry.project).toBe("/proj/beta");
+    } finally {
+      fs.unlinkSync(fp);
+    }
+  });
 });

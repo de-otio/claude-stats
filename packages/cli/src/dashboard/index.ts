@@ -15,6 +15,7 @@ import {
   type ComplexityTier,
   type ModelEfficiencyData,
 } from "../classifier.js";
+import { attributeToolCosts, groupByMcpServer, detectAnomalies } from "../spending.js";
 
 export interface DashboardSummary {
   sessions: number;
@@ -146,6 +147,56 @@ export interface DashboardData {
   } | null;
   modelEfficiency: ModelEfficiencyData | null;
   contextAnalysis: ContextAnalysis | null;
+  spending: DashboardSpending | null;
+}
+
+export interface DashboardSpending {
+  topSessionsByCost: Array<{
+    sessionId: string;
+    projectPath: string;
+    estimatedCost: number;
+    promptCount: number;
+    durationMs: number;
+    dominantModel: string;
+  }>;
+  topToolsByCost: Array<{
+    tool: string;
+    estimatedCost: number;
+    invocationCount: number;
+    isMcp: boolean;
+    mcpServer: string | null;
+  }>;
+  costByModel: Array<{
+    model: string;
+    estimatedCost: number;
+    inputTokens: number;
+    outputTokens: number;
+    percentage: number;
+  }>;
+  expensivePrompts: Array<{
+    uuid: string;
+    sessionId: string;
+    model: string;
+    totalTokens: number;
+    estimatedCost: number;
+    promptPreview: string;
+    timesAvg: number;
+    flags: string[];
+  }>;
+  cacheEfficiency: {
+    overallHitRate: number;
+    estimatedSavings: number;
+  };
+  mcpServers: Array<{
+    server: string;
+    estimatedCost: number;
+    totalCalls: number;
+    avgTokensPerCall: number;
+  }>;
+  subagentOverhead: {
+    totalCost: number;
+    agentCount: number;
+  };
 }
 
 export interface ContextAnalysis {
@@ -667,6 +718,14 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     since: since > 0 ? since : undefined,
   });
 
+  // ── Spending breakdown ──────────────────────────────────────────────────
+  const spending = buildSpendingSection(store, rows, sessionCostMap, {
+    projectPath: opts.projectPath,
+    repoUrl: opts.repoUrl,
+    accountUuid: opts.accountUuid,
+    since: since > 0 ? since : undefined,
+  });
+
   return {
     generated: new Date().toISOString(),
     period: opts.period ?? "all",
@@ -713,6 +772,141 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     planUtilization,
     modelEfficiency,
     contextAnalysis,
+    spending,
+  };
+}
+
+function buildSpendingSection(
+  store: Store,
+  rows: SessionRow[],
+  sessionCostMap: Map<string, { cost: number; topModel: string; topModelTokens: number }>,
+  filters: { projectPath?: string; repoUrl?: string; accountUuid?: string; since?: number },
+): DashboardSpending | null {
+  if (rows.length === 0) return null;
+
+  const report = store.getSpendingReport({
+    projectPath: filters.projectPath,
+    repoUrl: filters.repoUrl,
+    accountUuid: filters.accountUuid,
+    since: filters.since,
+    limit: 20,
+  });
+
+  // Top sessions by cost
+  const topSessionsByCost = report.topSessions.slice(0, 10).map(s => {
+    const costs = sessionCostMap.get(s.session_id);
+    const dur = s.active_duration_ms ?? (s.last_timestamp && s.first_timestamp ? s.last_timestamp - s.first_timestamp : 0);
+    const models: string[] = JSON.parse(s.models) as string[];
+    return {
+      sessionId: s.session_id,
+      projectPath: s.project_path,
+      estimatedCost: Math.round((costs?.cost ?? 0) * 100) / 100,
+      promptCount: s.prompt_count,
+      durationMs: dur ?? 0,
+      dominantModel: costs?.topModel ?? models[0] ?? "unknown",
+    };
+  }).sort((a, b) => b.estimatedCost - a.estimatedCost);
+
+  // Tool costs
+  const toolCosts = attributeToolCosts(report.topMessages);
+  const topToolsByCost = toolCosts.slice(0, 10).map(tc => ({
+    tool: tc.tool,
+    estimatedCost: Math.round(tc.estimatedCost * 100) / 100,
+    invocationCount: tc.invocationCount,
+    isMcp: tc.isMcp,
+    mcpServer: tc.mcpServer,
+  }));
+
+  // Cost by model
+  let grandTotal = 0;
+  const modelCosts: Array<{ model: string; cost: number; input: number; output: number }> = [];
+  for (const row of report.byModel) {
+    const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens);
+    grandTotal += cost;
+    modelCosts.push({ model: row.model, cost, input: row.input_tokens, output: row.output_tokens });
+  }
+  const costByModel = modelCosts.map(mc => ({
+    model: mc.model,
+    estimatedCost: Math.round(mc.cost * 100) / 100,
+    inputTokens: mc.input,
+    outputTokens: mc.output,
+    percentage: grandTotal > 0 ? Math.round((mc.cost / grandTotal) * 1000) / 10 : 0,
+  })).sort((a, b) => b.estimatedCost - a.estimatedCost);
+
+  // Expensive prompts (anomalies)
+  const anomalies = detectAnomalies(report.topMessages);
+  const expensivePrompts = anomalies.map(a => {
+    const { cost } = estimateCost(
+      a.message.model ?? "unknown",
+      a.message.input_tokens, a.message.output_tokens,
+      a.message.cache_read_tokens, a.message.cache_creation_tokens,
+    );
+    const flags: string[] = [];
+    if (a.timesAvg > 2) flags.push("OUTLIER");
+    if (a.message.stop_reason === "max_tokens") flags.push("TRUNCATED");
+    if (a.message.thinking_blocks > 0) {
+      // Approximate: if thinking blocks exist and output is large, flag it
+      flags.push("HIGH_THINKING");
+    }
+    const msgTools: string[] = JSON.parse(a.message.tools) as string[];
+    if (msgTools.some(t => t.startsWith("mcp__"))) flags.push("MCP_HEAVY");
+
+    return {
+      uuid: a.message.uuid,
+      sessionId: a.message.session_id,
+      model: a.message.model ?? "unknown",
+      totalTokens: a.totalTokens,
+      estimatedCost: Math.round(cost * 100) / 100,
+      promptPreview: a.message.prompt_text?.slice(0, 120) ?? "",
+      timesAvg: Math.round(a.timesAvg * 10) / 10,
+      flags,
+    };
+  });
+
+  // Cache efficiency
+  let totalHits = 0, totalInput = 0;
+  for (const ce of report.cacheEfficiency) {
+    totalHits += ce.cache_hits;
+    totalInput += ce.uncached_input;
+  }
+  const overallHitRate = (totalHits + totalInput) > 0
+    ? Math.round((totalHits / (totalHits + totalInput)) * 1000) / 10
+    : 0;
+  let estimatedSavings = 0;
+  for (const ce of report.cacheEfficiency) {
+    estimatedSavings += (ce.cache_hits / 1_000_000) * 4.50;
+  }
+
+  // MCP servers
+  const mcpServers = groupByMcpServer(toolCosts).map(s => ({
+    server: s.server,
+    estimatedCost: Math.round(s.estimatedCost * 100) / 100,
+    totalCalls: s.totalCalls,
+    avgTokensPerCall: s.avgTokensPerCall,
+  }));
+
+  // Subagent overhead
+  let subagentTotalCost = 0, subagentCount = 0;
+  for (const sc of report.subagentCosts) {
+    // Rough cost estimate from tokens
+    subagentTotalCost += (sc.subagent_tokens / 1_000_000) * 10; // avg model price
+    subagentCount += sc.subagent_count;
+  }
+
+  return {
+    topSessionsByCost,
+    topToolsByCost,
+    costByModel,
+    expensivePrompts,
+    cacheEfficiency: {
+      overallHitRate,
+      estimatedSavings: Math.round(estimatedSavings * 100) / 100,
+    },
+    mcpServers,
+    subagentOverhead: {
+      totalCost: Math.round(subagentTotalCost * 100) / 100,
+      agentCount: subagentCount,
+    },
   };
 }
 

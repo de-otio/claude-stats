@@ -45,7 +45,13 @@
     "serve": "Lokales Web-Dashboard starten",
     "servePort": "Port, auf dem gelauscht wird",
     "serveOpen": "Nach dem Start im Standardbrowser öffnen",
-    "locale": "Anzeigesprache festlegen (z.\u00a0B. en, de)"
+    "locale": "Anzeigesprache festlegen (z.\u00a0B. en, de)",
+    "spending": "Token-Ausgabenübersicht — wohin gingen meine Token?",
+    "spendingPeriod": "Zeitraum: day, week, month, all (Standard: day)",
+    "spendingModel": "Nach einem Modell filtern (z.\u00a0B. claude-opus-4)",
+    "spendingTop": "Anzahl der Top-Einträge (Standard: 5)",
+    "spendingJson": "Maschinenlesbare JSON-Ausgabe",
+    "spendingSort": "Sortierung: cost, tokens, prompts (Standard: cost)"
   },
   "collection": {
     "collecting": "Erfassung läuft...",
@@ -114,7 +120,15 @@
     "tableTotals": "Gesamt",
     "unknownTime": "unbekannt",
     "sessionSummary_one": "{{count}} Sitzung",
-    "sessionSummary_other": "{{count}} Sitzungen"
+    "sessionSummary_other": "{{count}} Sitzungen",
+    "spendingTitle": "Token-Ausgaben — {{period}} ({{date}})",
+    "spendingTotalCost": "Gesamtkosten (API-Äquivalent)",
+    "spendingTopSessions": "Top-Sitzungen nach Kosten",
+    "spendingTopTools": "Top-Tools nach Kosten",
+    "spendingMcpServers": "MCP-Server-Kosten",
+    "spendingAnomalies": "Teure Prompts (> 2x Durchschnitt)",
+    "spendingCacheEfficiency": "Cache-Effizienz",
+    "spendingSubagents": "Subagent-Overhead"
   },
   "status": {
     "databaseSize": "Datenbankgröße",

@@ -835,3 +835,83 @@ describe("Store — subagent linking", () => {
     s2.close();
   });
 });
+
+describe("Store — getSpendingReport", () => {
+  let store: Store;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  it("returns empty report on empty DB", () => {
+    const report = store.getSpendingReport();
+    expect(report.topSessions).toEqual([]);
+    expect(report.topMessages).toEqual([]);
+    expect(report.byModel).toEqual([]);
+    expect(report.byProject).toEqual([]);
+    expect(report.cacheEfficiency).toEqual([]);
+    expect(report.subagentCosts).toEqual([]);
+  });
+
+  it("returns sessions ordered by token cost descending", () => {
+    store.upsertSession(makeSession({ sessionId: "cheap", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0 }));
+    store.upsertSession(makeSession({ sessionId: "expensive", inputTokens: 100_000, outputTokens: 50_000, cacheCreationTokens: 5_000 }));
+    store.upsertMessages([
+      { uuid: "m-cheap", sessionId: "cheap", timestamp: 1000, claudeVersion: "2.1.70", model: "claude-sonnet-4-6", stopReason: "end_turn", inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0, promptText: null },
+      { uuid: "m-expensive", sessionId: "expensive", timestamp: 2000, claudeVersion: "2.1.70", model: "claude-opus-4-6", stopReason: "end_turn", inputTokens: 100_000, outputTokens: 50_000, cacheCreationTokens: 5_000, cacheReadTokens: 0, tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0, promptText: null },
+    ]);
+
+    const report = store.getSpendingReport();
+    expect(report.topSessions.length).toBe(2);
+    expect(report.topSessions[0]!.session_id).toBe("expensive");
+    expect(report.topMessages[0]!.uuid).toBe("m-expensive");
+  });
+
+  it("respects since filter", () => {
+    store.upsertSession(makeSession({ sessionId: "old", firstTimestamp: 1000 }));
+    store.upsertSession(makeSession({ sessionId: "new", firstTimestamp: 5000 }));
+
+    const report = store.getSpendingReport({ since: 3000 });
+    expect(report.topSessions.length).toBe(1);
+    expect(report.topSessions[0]!.session_id).toBe("new");
+  });
+
+  it("respects limit", () => {
+    for (let i = 0; i < 10; i++) {
+      store.upsertSession(makeSession({ sessionId: `s-${i}`, inputTokens: i * 1000 }));
+    }
+    const report = store.getSpendingReport({ limit: 3 });
+    expect(report.topSessions.length).toBe(3);
+  });
+
+  it("computes by-project aggregation", () => {
+    store.upsertSession(makeSession({ sessionId: "s1", projectPath: "/project-a", inputTokens: 10_000, outputTokens: 5_000 }));
+    store.upsertSession(makeSession({ sessionId: "s2", projectPath: "/project-a", inputTokens: 20_000, outputTokens: 10_000 }));
+    store.upsertSession(makeSession({ sessionId: "s3", projectPath: "/project-b", inputTokens: 5_000, outputTokens: 2_000 }));
+
+    const report = store.getSpendingReport();
+    expect(report.byProject.length).toBe(2);
+    expect(report.byProject[0]!.project_path).toBe("/project-a"); // higher total
+    expect(report.byProject[0]!.session_count).toBe(2);
+    expect(report.byProject[0]!.input_tokens).toBe(30_000);
+  });
+
+  it("includes subagent cost attribution", () => {
+    store.upsertSession(makeSession({ sessionId: "parent-1", inputTokens: 50_000, outputTokens: 20_000, cacheCreationTokens: 1000, firstTimestamp: 1000 }));
+    store.upsertSession(makeSession({ sessionId: "child-1", parentSessionId: "parent-1", isSubagent: true, inputTokens: 10_000, outputTokens: 5_000, cacheCreationTokens: 500, firstTimestamp: 2000 }));
+    store.upsertSession(makeSession({ sessionId: "child-2", parentSessionId: "parent-1", isSubagent: true, inputTokens: 8_000, outputTokens: 3_000, cacheCreationTokens: 200, firstTimestamp: 3000 }));
+
+    const report = store.getSpendingReport({ since: 0 });
+    expect(report.subagentCosts.length).toBe(1);
+    expect(report.subagentCosts[0]!.parent_session_id).toBe("parent-1");
+    expect(report.subagentCosts[0]!.subagent_count).toBe(2);
+    expect(report.subagentCosts[0]!.subagent_tokens).toBe(10_000 + 5_000 + 500 + 8_000 + 3_000 + 200);
+  });
+});

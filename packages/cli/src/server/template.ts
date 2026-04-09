@@ -188,6 +188,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     <button class="tab-btn" data-tab="plan">${t("dashboard:tabs.plan")}</button>
     ${data.contextAnalysis ? `<button class="tab-btn" data-tab="context">${t("dashboard:tabs.context")}</button>` : ""}
     ${data.modelEfficiency ? `<button class="tab-btn" data-tab="efficiency">${t("dashboard:tabs.efficiency")}</button>` : ""}
+    ${data.spending ? `<button class="tab-btn" data-tab="spending">Spending</button>` : ""}
     <button class="tab-btn" data-tab="settings">${t("dashboard:tabs.settings")}</button>
   </div>
 
@@ -573,6 +574,113 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   </div>
   ` : ""}
 
+  <!-- ═══════════════ TAB: Spending ═══════════════ -->
+  ${data.spending ? `
+  <div class="tab-panel" id="tab-spending">
+    <div class="summary-bar" style="margin-bottom:1rem;">
+      <div class="summary-card" style="border-color:#e15759;">
+        <div class="label">Cache Hit Rate</div>
+        <div class="value">${data.spending.cacheEfficiency.overallHitRate}%</div>
+      </div>
+      <div class="summary-card" style="border-color:#59a14f;">
+        <div class="label">Cache Savings</div>
+        <div class="value" style="color:#59a14f;">$${data.spending.cacheEfficiency.estimatedSavings.toFixed(2)}</div>
+      </div>
+      ${data.spending.subagentOverhead.agentCount > 0 ? `
+      <div class="summary-card" style="border-color:#f28e2b;">
+        <div class="label">Subagent Overhead</div>
+        <div class="value">${data.spending.subagentOverhead.agentCount} agents</div>
+        <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">~$${data.spending.subagentOverhead.totalCost.toFixed(2)}</div>
+      </div>` : ""}
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-card">
+        <h2>Cost by Model</h2>
+        <canvas id="chart-spending-models"></canvas>
+      </div>
+      <div class="chart-card">
+        <h2>Top Tools by Cost</h2>
+        <canvas id="chart-spending-tools"></canvas>
+      </div>
+    </div>
+
+    ${data.spending.topSessionsByCost.length > 0 ? `
+    <div class="chart-card" style="margin-top:1rem;">
+      <h2>Top Sessions by Cost</h2>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.7rem;">
+          <thead><tr style="border-bottom:1px solid #333;">
+            <th style="text-align:left;padding:0.4rem;">Project</th>
+            <th style="text-align:right;padding:0.4rem;">Cost</th>
+            <th style="text-align:right;padding:0.4rem;">Prompts</th>
+            <th style="text-align:left;padding:0.4rem;">Model</th>
+          </tr></thead>
+          <tbody>
+            ${data.spending.topSessionsByCost.map(s => `
+            <tr style="border-bottom:1px solid #222;">
+              <td style="padding:0.4rem;">${s.projectPath.split("/").pop()}</td>
+              <td style="text-align:right;padding:0.4rem;color:#59a14f;">$${s.estimatedCost.toFixed(2)}</td>
+              <td style="text-align:right;padding:0.4rem;">${s.promptCount}</td>
+              <td style="padding:0.4rem;font-size:0.6rem;color:#888;">${s.dominantModel.replace("claude-", "")}</td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>` : ""}
+
+    ${data.spending.expensivePrompts.length > 0 ? `
+    <div class="chart-card" style="margin-top:1rem;">
+      <h2>Expensive Prompts</h2>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.7rem;">
+          <thead><tr style="border-bottom:1px solid #333;">
+            <th style="text-align:left;padding:0.4rem;">Prompt</th>
+            <th style="text-align:right;padding:0.4rem;">Tokens</th>
+            <th style="text-align:right;padding:0.4rem;">Cost</th>
+            <th style="text-align:right;padding:0.4rem;">x Avg</th>
+            <th style="text-align:left;padding:0.4rem;">Flags</th>
+          </tr></thead>
+          <tbody>
+            ${data.spending.expensivePrompts.map(p => `
+            <tr style="border-bottom:1px solid #222;">
+              <td style="padding:0.4rem;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.promptPreview || "(no text)"}</td>
+              <td style="text-align:right;padding:0.4rem;">${(p.totalTokens / 1000).toFixed(0)}K</td>
+              <td style="text-align:right;padding:0.4rem;color:#59a14f;">$${p.estimatedCost.toFixed(2)}</td>
+              <td style="text-align:right;padding:0.4rem;color:#e15759;">${p.timesAvg}x</td>
+              <td style="padding:0.4rem;">${p.flags.map(f => `<span style="background:#333;padding:0.1rem 0.3rem;border-radius:3px;font-size:0.6rem;margin-right:0.2rem;">${f}</span>`).join("")}</td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>` : ""}
+
+    ${data.spending.mcpServers.length > 0 ? `
+    <div class="chart-card" style="margin-top:1rem;">
+      <h2>MCP Server Costs</h2>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.7rem;">
+          <thead><tr style="border-bottom:1px solid #333;">
+            <th style="text-align:left;padding:0.4rem;">Server</th>
+            <th style="text-align:right;padding:0.4rem;">Cost</th>
+            <th style="text-align:right;padding:0.4rem;">Calls</th>
+            <th style="text-align:right;padding:0.4rem;">Avg Tokens/Call</th>
+          </tr></thead>
+          <tbody>
+            ${data.spending.mcpServers.map(s => `
+            <tr style="border-bottom:1px solid #222;">
+              <td style="padding:0.4rem;">${s.server}</td>
+              <td style="text-align:right;padding:0.4rem;color:#59a14f;">$${s.estimatedCost.toFixed(2)}</td>
+              <td style="text-align:right;padding:0.4rem;">${s.totalCalls}</td>
+              <td style="text-align:right;padding:0.4rem;">${(s.avgTokensPerCall / 1000).toFixed(0)}K</td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>` : ""}
+  </div>
+  ` : ""}
+
   <!-- ═══════════════ TAB: Settings ═══════════════ -->
   <div class="tab-panel" id="tab-settings">
     <div class="summary-bar" style="margin-bottom:1rem;">
@@ -724,6 +832,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           case 'plan': initPlan(); break;
           case 'context': initContext(); break;
           case 'efficiency': initEfficiency(); break;
+          case 'spending': initSpending(); break;
           case 'settings': initSettings(); break;
         }
       }
@@ -1360,6 +1469,67 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           if (cfg.costThresholds.week != null) threshWeek.value = cfg.costThresholds.week;
           if (cfg.costThresholds.month != null) threshMonth.value = cfg.costThresholds.month;
         }
+      }
+
+      // ═══════════════ SPENDING CHARTS ═══════════════
+      function initSpending() {
+        if (!d.spending) return;
+        var sp = d.spending;
+
+        // Cost by Model — donut chart
+        (function () {
+          var el = document.getElementById('chart-spending-models');
+          if (!el || !sp.costByModel.length) return;
+          var ctx = el.getContext('2d');
+          var palette = ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc948','#b07aa1','#ff9da7'];
+          new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+              labels: sp.costByModel.map(function(m) { return m.model.replace('claude-',''); }),
+              datasets: [{
+                data: sp.costByModel.map(function(m) { return m.estimatedCost; }),
+                backgroundColor: palette.slice(0, sp.costByModel.length)
+              }]
+            },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: { position: 'right', labels: { color: '#ccc', font: { size: 11 } } },
+                tooltip: { callbacks: { label: function(ctx) { return ctx.label + ': $' + ctx.parsed.toFixed(2) + ' (' + sp.costByModel[ctx.dataIndex].percentage + '%)'; } } }
+              }
+            }
+          });
+        }());
+
+        // Top Tools — horizontal bar chart
+        (function () {
+          var el = document.getElementById('chart-spending-tools');
+          if (!el || !sp.topToolsByCost.length) return;
+          var ctx = el.getContext('2d');
+          var items = sp.topToolsByCost.slice(0, 8);
+          new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: items.map(function(t) { return t.tool; }),
+              datasets: [{
+                label: 'Cost ($)',
+                data: items.map(function(t) { return t.estimatedCost; }),
+                backgroundColor: items.map(function(t) { return t.isMcp ? '#f28e2b' : '#4e79a7'; })
+              }]
+            },
+            options: Object.assign({}, chartOpts, {
+              indexAxis: 'y',
+              plugins: Object.assign({}, chartOpts.plugins, {
+                legend: { display: false },
+                tooltip: { callbacks: { label: function(ctx) { return '$' + ctx.parsed.x.toFixed(2) + ' (' + items[ctx.dataIndex].invocationCount + ' calls)'; } } }
+              }),
+              scales: {
+                x: { title: { display: true, text: 'Estimated Cost ($)', color: '#888' } },
+                y: { ticks: { font: { size: 9 }, color: '#ccc' } }
+              }
+            })
+          });
+        }());
       }
 
       function initSettings() {

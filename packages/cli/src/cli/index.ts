@@ -5,7 +5,7 @@
 import { Command } from "commander";
 import { collect } from "../aggregator/index.js";
 import { Store, validateTag } from "../store/index.js";
-import { printSummary, printStatus, printSearchResults, printSessionList, printSessionDetail, printTrend } from "../reporter/index.js";
+import { printSummary, printStatus, printSearchResults, printSessionList, printSessionDetail, printTrend, printSpendingReport } from "../reporter/index.js";
 import { searchHistory } from "../history/index.js";
 import { loadConfig, saveConfig } from "../config.js";
 import { checkThresholds } from "../alerts.js";
@@ -198,6 +198,45 @@ export async function buildCli(): Promise<Command> {
         }
       }
     );
+
+  program
+    .command("spending")
+    .description(t("cli:commands.spending"))
+    .option("--period <period>", t("cli:commands.spendingPeriod"), "day")
+    .option("--project <path>", t("cli:commands.reportProject"))
+    .option("--model <name>", t("cli:commands.spendingModel"))
+    .option("--top <n>", t("cli:commands.spendingTop"), "5")
+    .option("--json", t("cli:commands.spendingJson"))
+    .option("--sort <key>", t("cli:commands.spendingSort"), "cost")
+    .option("--timezone <tz>", t("cli:commands.reportTimezone"))
+    .option("--account <uuid>", t("cli:commands.reportAccount"))
+    .action((opts: {
+      period?: string;
+      project?: string;
+      model?: string;
+      top?: string;
+      json?: boolean;
+      sort?: string;
+      timezone?: string;
+      account?: string;
+    }) => {
+      loadCachedPricing();
+      const store = new Store();
+      try {
+        printSpendingReport(store, {
+          period: opts.period as "day" | "week" | "month" | "all" | undefined,
+          projectPath: opts.project,
+          model: opts.model,
+          top: opts.top ? parseInt(opts.top, 10) : 5,
+          json: opts.json,
+          sort: (opts.sort as "cost" | "tokens" | "prompts") ?? "cost",
+          timezone: opts.timezone,
+          accountUuid: opts.account,
+        });
+      } finally {
+        store.close();
+      }
+    });
 
   program
     .command("status")

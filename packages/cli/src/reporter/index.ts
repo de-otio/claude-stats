@@ -3,9 +3,10 @@
  * Timestamps are stored as UTC; timezone conversion happens here at report time.
  * See doc/analysis/02-collection-strategy.md — Timezone Handling.
  */
-import type { Store, SessionRow, MessageRow, StatusInfo } from "../store/index.js";
+import type { Store, SessionRow, MessageRow, StatusInfo, SpendingReport } from "../store/index.js";
 import type { SearchResult } from "../history/index.js";
 import { estimateCost, formatCost } from "@claude-stats/core/pricing";
+import { attributeToolCosts, groupByMcpServer, detectAnomalies } from "../spending.js";
 import { t } from "../i18n.js";
 
 export interface ReportOptions {
@@ -528,6 +529,173 @@ export function printSummary(store: Store, opts: ReportOptions = {}): void {
   if (!opts.projectPath && projectTotals.size > 1) {
     const sorted = Array.from(projectTotals.entries()).sort((a, b) => b[1].input - a[1].input);
     printTable(t("cli:report.titleByProject"), sorted, 40);
+  }
+
+  console.log();
+}
+
+// ── Token Spending Breakdown ──────────────────────────────────────────────
+
+export interface SpendingOptions extends ReportOptions {
+  top?: number;
+  sort?: "cost" | "tokens" | "prompts";
+  json?: boolean;
+  model?: string;
+}
+
+export function printSpendingReport(store: Store, opts: SpendingOptions = {}): void {
+  const tz = opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const since = periodStart(opts.period ?? "day", tz);
+  const top = opts.top ?? 5;
+
+  const report = store.getSpendingReport({
+    projectPath: opts.projectPath,
+    repoUrl: opts.repoUrl,
+    accountUuid: opts.accountUuid,
+    since: since > 0 ? since : undefined,
+    limit: Math.max(top, 20), // fetch enough for tool/anomaly analysis
+  });
+
+  if (report.topSessions.length === 0) {
+    console.log(t("cli:report.noSessionsFiltered"));
+    return;
+  }
+
+  // JSON output mode
+  if (opts.json) {
+    const toolCosts = attributeToolCosts(report.topMessages);
+    const mcpServers = groupByMcpServer(toolCosts);
+    const anomalies = detectAnomalies(report.topMessages);
+    console.log(JSON.stringify({
+      ...report,
+      toolCosts,
+      mcpServers,
+      anomalies: anomalies.map(a => ({
+        uuid: a.message.uuid,
+        model: a.message.model,
+        totalTokens: a.totalTokens,
+        timesAvg: Math.round(a.timesAvg * 10) / 10,
+        promptPreview: a.message.prompt_text?.slice(0, 120) ?? null,
+      })),
+    }, null, 2));
+    return;
+  }
+
+  const periodLabel = opts.period === "day" ? "Today" : opts.period ?? "day";
+  const dateStr = new Date().toLocaleDateString("en-US", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+  console.log(`\n\u2500\u2500\u2500 ${t("cli:report.spendingTitle", { period: periodLabel, date: dateStr })} \u2500\u2500\u2500\n`);
+
+  // 1. Total cost by model
+  let grandTotal = 0;
+  const modelCosts: Array<{ model: string; cost: number; input: number; output: number }> = [];
+  for (const row of report.byModel) {
+    if (opts.model && !row.model.startsWith(opts.model)) continue;
+    const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens);
+    grandTotal += cost;
+    modelCosts.push({ model: row.model, cost, input: row.input_tokens, output: row.output_tokens });
+  }
+  modelCosts.sort((a, b) => b.cost - a.cost);
+
+  console.log(`${t("cli:report.spendingTotalCost")}: ${formatCost(grandTotal)}`);
+  for (const mc of modelCosts) {
+    const pct = grandTotal > 0 ? ((mc.cost / grandTotal) * 100).toFixed(1) : "0.0";
+    const name = mc.model.replace(/^claude-/, "").replace(/-\d+$/, m => m);
+    console.log(`  ${name.padEnd(14)} ${formatCost(mc.cost).padStart(8)} (${pct}%)  \u2014 ${formatTokens(mc.input)} input, ${formatTokens(mc.output)} output`);
+  }
+
+  // 2. Top sessions by cost
+  console.log(`\n${t("cli:report.spendingTopSessions")}:`);
+  const sessionMsgTotals = store.getMessageTotalsBySession(report.topSessions.map(s => s.session_id));
+  const sessionCostMap = new Map<string, number>();
+  for (const mt of sessionMsgTotals) {
+    const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens);
+    sessionCostMap.set(mt.session_id, (sessionCostMap.get(mt.session_id) ?? 0) + cost);
+  }
+
+  const sortedSessions = [...report.topSessions]
+    .map(s => ({ session: s, cost: sessionCostMap.get(s.session_id) ?? 0 }))
+    .sort((a, b) => {
+      if (opts.sort === "tokens") return (b.session.input_tokens + b.session.output_tokens) - (a.session.input_tokens + a.session.output_tokens);
+      if (opts.sort === "prompts") return b.session.prompt_count - a.session.prompt_count;
+      return b.cost - a.cost;
+    })
+    .slice(0, top);
+
+  for (let i = 0; i < sortedSessions.length; i++) {
+    const { session: s, cost } = sortedSessions[i]!;
+    const project = s.project_path.split("/").pop() ?? s.project_path;
+    const dur = s.active_duration_ms ?? (s.last_timestamp && s.first_timestamp ? s.last_timestamp - s.first_timestamp : 0);
+    const durStr = dur > 0 ? formatDuration(dur) : "";
+    const models: string[] = JSON.parse(s.models) as string[];
+    const modelShort = models[0]?.replace("claude-", "").replace(/-\d+-\d+$/, "") ?? "";
+    console.log(`  #${i + 1}  ${formatCost(cost).padStart(7)}  ${project.padEnd(20).slice(0, 20)} (${s.prompt_count} prompts${durStr ? ", " + durStr : ""})  ${modelShort}`);
+  }
+
+  // 3. Top tools by cost
+  const toolCosts = attributeToolCosts(report.topMessages);
+  if (toolCosts.length > 0) {
+    console.log(`\n${t("cli:report.spendingTopTools")}:`);
+    for (const tc of toolCosts.slice(0, top)) {
+      const label = tc.isMcp ? tc.tool : tc.tool;
+      console.log(`  ${label.padEnd(30).slice(0, 30)} ${formatCost(tc.estimatedCost).padStart(7)} (${tc.invocationCount.toLocaleString()} calls)`);
+    }
+  }
+
+  // 4. MCP server card
+  const mcpServers = groupByMcpServer(toolCosts);
+  if (mcpServers.length > 0) {
+    console.log(`\n${t("cli:report.spendingMcpServers")}:`);
+    for (const s of mcpServers) {
+      console.log(`  ${s.server.padEnd(20).slice(0, 20)} ${formatCost(s.estimatedCost).padStart(7)}  (${s.totalCalls} calls, avg ${formatTokens(s.avgTokensPerCall)} tokens/call)`);
+    }
+  }
+
+  // 5. Expensive prompts (anomalies)
+  const anomalies = detectAnomalies(report.topMessages);
+  if (anomalies.length > 0) {
+    console.log(`\n${t("cli:report.spendingAnomalies")}:`);
+    for (let i = 0; i < Math.min(anomalies.length, top); i++) {
+      const a = anomalies[i]!;
+      const preview = a.message.prompt_text?.slice(0, 60)?.replace(/\n/g, " ") ?? "(no prompt text)";
+      const { cost } = estimateCost(
+        a.message.model ?? "unknown",
+        a.message.input_tokens, a.message.output_tokens,
+        a.message.cache_read_tokens, a.message.cache_creation_tokens,
+      );
+      const modelShort = a.message.model?.replace("claude-", "") ?? "unknown";
+      console.log(`  ${i + 1}. "${preview}${a.message.prompt_text && a.message.prompt_text.length > 60 ? "\u2026" : ""}"  \u2014 ${formatTokens(a.totalTokens)} tokens (${formatCost(cost)})  ${modelShort}`);
+    }
+  }
+
+  // 6. Cache efficiency summary
+  if (report.cacheEfficiency.length > 0) {
+    let totalHits = 0, totalInput = 0;
+    for (const ce of report.cacheEfficiency) {
+      totalHits += ce.cache_hits;
+      totalInput += ce.uncached_input;
+    }
+    const hitRate = (totalHits + totalInput) > 0
+      ? ((totalHits / (totalHits + totalInput)) * 100).toFixed(1)
+      : "0.0";
+    // Estimate savings: cache reads are 10% of input cost, so saving is 90%
+    let savedEstimate = 0;
+    for (const ce of report.cacheEfficiency) {
+      // Rough estimate: assume most common model for cache savings
+      savedEstimate += (ce.cache_hits / 1_000_000) * 4.50; // avg saving of $4.50/M vs full input
+    }
+    console.log(`\n${t("cli:report.spendingCacheEfficiency")}: ${hitRate}% hit rate${savedEstimate > 0.01 ? ` (saved ~${formatCost(savedEstimate)})` : ""}`);
+  }
+
+  // 7. Subagent overhead
+  if (report.subagentCosts.length > 0) {
+    let totalSubagentTokens = 0, totalAgents = 0;
+    for (const sc of report.subagentCosts) {
+      totalSubagentTokens += sc.subagent_tokens;
+      totalAgents += sc.subagent_count;
+    }
+    if (totalAgents > 0) {
+      console.log(`${t("cli:report.spendingSubagents")}: ${formatTokens(totalSubagentTokens)} tokens across ${totalAgents} spawned agents`);
+    }
   }
 
   console.log();
