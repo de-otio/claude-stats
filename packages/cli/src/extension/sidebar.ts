@@ -9,7 +9,7 @@ import { getNonce, escapeHtml } from "./utils.js";
 import { t } from "./i18n.js";
 
 /** Known tab IDs for help content lookup. */
-const TAB_IDS = ["overview", "models", "projects", "sessions", "plan", "context", "efficiency", "settings"] as const;
+const TAB_IDS = ["overview", "models", "projects", "sessions", "plan", "context", "efficiency", "energy", "settings"] as const;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = "claude-stats.dashboardView";

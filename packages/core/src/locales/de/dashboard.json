@@ -8,6 +8,7 @@
     "plan": "Abo",
     "context": "Kontext",
     "efficiency": "Effizienz",
+    "energy": "Energie",
     "settings": "Einstellungen"
   },
   "toolbar": {
@@ -117,6 +118,30 @@
     "overuseDescription": "Turns an teureres Modell als nötig gesendet",
     "turnsAnalyzed": "Analysierte Turns",
     "ofTotalMessages": "von {{count}} Nachrichten gesamt"
+  },
+  "energy": {
+    "totalEnergy": "Gesamtenergie",
+    "totalCO2": "CO₂-Emissionen",
+    "co2Range": "±55% Unsicherheit: {{low}} – {{high}}",
+    "region": "Stromregion",
+    "gridIntensity": "Netzintensität",
+    "gCO2perKWh": "gCO₂/kWh",
+    "cacheSaved": "Cache gespart",
+    "energySavedLabel": "vs. Neuberechnung der Eingaben",
+    "thinkingSessions": "Thinking-Sessions",
+    "thinkingEnergyPct": "{{pct}}% der Energie",
+    "geoCoverage": "Geo-Abdeckung",
+    "geoCoverageHint": "% der Nachrichten mit erkannter Inferenzregion",
+    "equivalents": "Umweltkontext",
+    "searches": "Google-Suchen",
+    "smartphones": "Smartphone-Ladungen",
+    "ledHours": "LED-Lampenstunden",
+    "netflixHours": "Netflix-Stunden",
+    "disclaimer": "Nur Schätzungen — ±55% Unsicherheit. Anthropic veröffentlicht keine anforderungsbezogenen Energiedaten. Nicht für regulatorische Zwecke.",
+    "byModel": "Energie nach Modell",
+    "byDay": "Tägliche Energie & CO₂",
+    "byProject": "Energie nach Projekt",
+    "noData": "Keine Energiedaten für diesen Zeitraum verfügbar."
   },
   "settings": {
     "configuration": "Konfiguration",

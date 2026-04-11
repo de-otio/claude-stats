@@ -16,6 +16,7 @@ import {
   type ModelEfficiencyData,
 } from "../classifier.js";
 import { attributeToolCosts, groupByMcpServer, detectAnomalies, aggregateMcpServerUsage } from "../spending.js";
+import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY } from "@claude-stats/core/energy";
 
 export interface DashboardSummary {
   sessions: number;
@@ -148,6 +149,7 @@ export interface DashboardData {
   modelEfficiency: ModelEfficiencyData | null;
   contextAnalysis: ContextAnalysis | null;
   spending: DashboardSpending | null;
+  energy: DashboardEnergy | null;
 }
 
 export interface DashboardSpending {
@@ -210,6 +212,43 @@ export interface DashboardSpending {
     totalCost: number;
     agentCount: number;
   };
+}
+
+export interface DashboardEnergy {
+  /** Total energy including PUE overhead, in Wh. */
+  totalEnergyWh: number;
+  /** Total CO₂ emissions, in grams. */
+  totalCO2Grams: number;
+  /** Low end of ±55% confidence interval. */
+  co2GramsLow: number;
+  /** High end of ±55% confidence interval. */
+  co2GramsHigh: number;
+  /** Environmental equivalents for the total. */
+  equivalents: {
+    treesYears: number;
+    carKm: number;
+    smartphoneCharges: number;
+    ledBulbHours: number;
+    googleSearches: number;
+    netflixHours: number;
+    trainKm: number;
+  };
+  /** Energy and CO₂ per calendar day. */
+  byDay: Array<{ date: string; energyWh: number; co2Grams: number }>;
+  /** Energy and CO₂ per model (sorted by energyWh desc). */
+  byModel: Array<{ model: string; energyWh: number; co2Grams: number; pct: number }>;
+  /** Energy and CO₂ per project (sorted by energyWh desc). */
+  byProject: Array<{ project: string; energyWh: number; co2Grams: number }>;
+  /** Energy saved through cache read tokens (vs re-computing). */
+  cacheImpact: { energySavedWh: number; co2SavedGrams: number; cacheEfficiencyPct: number };
+  /** Sessions and energy fraction attributed to extended thinking. */
+  thinkingImpact: { sessionsWithThinking: number; pctEnergyFromThinking: number };
+  /** Distribution of detected inference regions. */
+  inferenceGeo: { detected: Record<string, number>; coveragePct: number };
+  /** Region key used for the carbon intensity calculation. */
+  region: string;
+  /** Grid carbon intensity used (gCO₂eq/kWh). */
+  gridIntensity: number;
 }
 
 export interface ContextAnalysis {
@@ -739,6 +778,14 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     since: since > 0 ? since : undefined,
   });
 
+  // ── Energy dashboard ────────────────────────────────────────────────────
+  const energy = buildEnergySection(store, {
+    projectPath: opts.projectPath,
+    repoUrl: opts.repoUrl,
+    since: since > 0 ? since : undefined,
+    timezone: tz,
+  });
+
   return {
     generated: new Date().toISOString(),
     period: opts.period ?? "all",
@@ -786,6 +833,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     modelEfficiency,
     contextAnalysis,
     spending,
+    energy,
   };
 }
 
@@ -1308,5 +1356,208 @@ function buildContextAnalysis(
     longSessions,
     cacheByLength,
     compactionEvents,
+  };
+}
+
+// ── Energy section builder ────────────────────────────────────────────────────
+
+function buildEnergySection(
+  store: Store,
+  filters: { projectPath?: string; repoUrl?: string; since?: number; timezone: string },
+): DashboardEnergy | null {
+  const messages = store.getMessagesForEnergy({
+    projectPath: filters.projectPath,
+    repoUrl: filters.repoUrl,
+    since: filters.since,
+  });
+
+  if (messages.length === 0) return null;
+
+  // Determine grid region: prefer most common detected inferenceGeo, fall back to locale
+  const geoCount: Record<string, number> = {};
+  let geoMessages = 0;
+  for (const m of messages) {
+    if (m.inference_geo) {
+      geoCount[m.inference_geo] = (geoCount[m.inference_geo] ?? 0) + 1;
+      geoMessages++;
+    }
+  }
+  const coveragePct = messages.length > 0 ? (geoMessages / messages.length) * 100 : 0;
+
+  // Find dominant inferenceGeo for region detection
+  let dominantGeo: string | null = null;
+  let maxCount = 0;
+  for (const [geo, cnt] of Object.entries(geoCount)) {
+    if (cnt > maxCount) { maxCount = cnt; dominantGeo = geo; }
+  }
+
+  // Determine user locale-based region as fallback
+  const localeRegion = localeToRegion(
+    new Intl.DateTimeFormat().resolvedOptions().locale ?? "en-US",
+  );
+  const regionKey = (() => {
+    if (dominantGeo) {
+      const probe = estimateEnergy({
+        model: "claude-sonnet",
+        inputTokens: 0, outputTokens: 0,
+        cacheCreationTokens: 0, cacheReadTokens: 0,
+        ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0,
+        inferenceGeo: dominantGeo,
+      });
+      return probe.detectedRegion ?? localeRegion;
+    }
+    return localeRegion;
+  })();
+
+  const regionInfo = REGIONS[regionKey];
+  const gridIntensity = regionInfo?.gridIntensity ?? 436;
+
+  // Per-day and per-model accumulators
+  const dayFmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: filters.timezone,
+    year: "numeric", month: "2-digit", day: "2-digit",
+  });
+
+  const dayEnergyMap = new Map<string, { energyWh: number; co2Grams: number }>();
+  const modelEnergyMap = new Map<string, { energyWh: number; co2Grams: number }>();
+  const projectEnergyMap = new Map<string, { energyWh: number; co2Grams: number }>();
+
+  const allEstimates = [];
+  let thinkingEnergy = 0;
+  let sessionsWithThinking = new Set<string>();
+
+  // Cache impact: estimate energy saved by cache reads vs re-computing as input
+  let cacheEnergySavedWh = 0;
+  let cacheCO2SavedGrams = 0;
+  let totalCacheReadTokens = 0;
+  let totalInputTokens = 0;
+
+  for (const m of messages) {
+    const estimate = estimateEnergy({
+      model: m.model,
+      inputTokens: m.input_tokens,
+      outputTokens: m.output_tokens,
+      cacheCreationTokens: m.cache_creation_tokens,
+      cacheReadTokens: m.cache_read_tokens,
+      ephemeral5mCacheTokens: m.ephemeral_5m_cache_tokens,
+      ephemeral1hCacheTokens: m.ephemeral_1h_cache_tokens,
+      inferenceGeo: m.inference_geo,
+    }, { region: regionKey, gridIntensity });
+
+    allEstimates.push(estimate);
+
+    // byDay
+    const dateStr = m.timestamp != null
+      ? dayFmt.format(new Date(m.timestamp))
+      : "unknown";
+    const dayEntry = dayEnergyMap.get(dateStr) ?? { energyWh: 0, co2Grams: 0 };
+    dayEntry.energyWh += estimate.totalEnergyWh;
+    dayEntry.co2Grams += estimate.co2Grams;
+    dayEnergyMap.set(dateStr, dayEntry);
+
+    // byModel
+    const modelEntry = modelEnergyMap.get(m.model) ?? { energyWh: 0, co2Grams: 0 };
+    modelEntry.energyWh += estimate.totalEnergyWh;
+    modelEntry.co2Grams += estimate.co2Grams;
+    modelEnergyMap.set(m.model, modelEntry);
+
+    // byProject
+    const projEntry = projectEnergyMap.get(m.project_path) ?? { energyWh: 0, co2Grams: 0 };
+    projEntry.energyWh += estimate.totalEnergyWh;
+    projEntry.co2Grams += estimate.co2Grams;
+    projectEnergyMap.set(m.project_path, projEntry);
+
+    // Thinking impact
+    if (m.thinking_blocks > 0) {
+      sessionsWithThinking.add(m.session_id);
+      // Thinking tokens are output tokens — estimate their energy fraction
+      thinkingEnergy += estimate.totalEnergyWh * 0.3; // approximate thinking fraction
+    }
+
+    // Cache impact: energy cost of cache reads is ~3% of output rate.
+    // Without cache, those tokens would be input (full input rate).
+    // Saved = (cache_read / 1K) * (inputRate - outputRate * 0.03) * pue
+    totalCacheReadTokens += m.cache_read_tokens;
+    totalInputTokens += m.input_tokens;
+  }
+
+  const aggregated = aggregateEnergy(allEstimates);
+  const totalEnergyWh = aggregated.totalEnergyWh;
+
+  // Compute cache savings: each 1K cache-read token saved ~inputRate vs charged ~outputRate*0.03
+  {
+    // Use sonnet rates as representative for the aggregate cache savings estimate
+    const { inputWhPer1K, outputWhPer1K } = MODEL_ENERGY.sonnet;
+    const pue = 1.2;
+    cacheEnergySavedWh = (totalCacheReadTokens / 1000) * (inputWhPer1K - outputWhPer1K * 0.03) * pue;
+    cacheCO2SavedGrams = (cacheEnergySavedWh / 1000) * gridIntensity;
+  }
+
+  const logicalInput = totalInputTokens + totalCacheReadTokens;
+  const cacheEfficiencyPct = logicalInput > 0
+    ? Math.round((totalCacheReadTokens / logicalInput) * 1000) / 10
+    : 0;
+
+  const pctEnergyFromThinking = totalEnergyWh > 0
+    ? Math.round((thinkingEnergy / totalEnergyWh) * 1000) / 10
+    : 0;
+
+  const byDay: DashboardEnergy["byDay"] = Array.from(dayEnergyMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, e]) => ({
+      date,
+      energyWh: Math.round(e.energyWh * 10000) / 10000,
+      co2Grams: Math.round(e.co2Grams * 1000) / 1000,
+    }));
+
+  const byModel: DashboardEnergy["byModel"] = Array.from(modelEnergyMap.entries())
+    .sort(([, a], [, b]) => b.energyWh - a.energyWh)
+    .map(([model, e]) => ({
+      model,
+      energyWh: Math.round(e.energyWh * 10000) / 10000,
+      co2Grams: Math.round(e.co2Grams * 1000) / 1000,
+      pct: totalEnergyWh > 0 ? Math.round((e.energyWh / totalEnergyWh) * 1000) / 10 : 0,
+    }));
+
+  const byProject: DashboardEnergy["byProject"] = Array.from(projectEnergyMap.entries())
+    .sort(([, a], [, b]) => b.energyWh - a.energyWh)
+    .map(([project, e]) => ({
+      project,
+      energyWh: Math.round(e.energyWh * 10000) / 10000,
+      co2Grams: Math.round(e.co2Grams * 1000) / 1000,
+    }));
+
+  return {
+    totalEnergyWh: Math.round(aggregated.totalEnergyWh * 10000) / 10000,
+    totalCO2Grams: Math.round(aggregated.co2Grams * 1000) / 1000,
+    co2GramsLow: Math.round(aggregated.co2GramsLow * 1000) / 1000,
+    co2GramsHigh: Math.round(aggregated.co2GramsHigh * 1000) / 1000,
+    equivalents: {
+      treesYears: Math.round(aggregated.equivalents.treesYears * 10000) / 10000,
+      carKm: Math.round(aggregated.equivalents.carKm * 100) / 100,
+      smartphoneCharges: Math.round(aggregated.equivalents.smartphoneCharges * 10) / 10,
+      ledBulbHours: Math.round(aggregated.equivalents.ledBulbHours * 10) / 10,
+      googleSearches: Math.round(aggregated.equivalents.googleSearches * 10) / 10,
+      netflixHours: Math.round(aggregated.equivalents.netflixHours * 100) / 100,
+      trainKm: Math.round(aggregated.equivalents.trainKm * 100) / 100,
+    },
+    byDay,
+    byModel,
+    byProject,
+    cacheImpact: {
+      energySavedWh: Math.round(cacheEnergySavedWh * 10000) / 10000,
+      co2SavedGrams: Math.round(cacheCO2SavedGrams * 1000) / 1000,
+      cacheEfficiencyPct,
+    },
+    thinkingImpact: {
+      sessionsWithThinking: sessionsWithThinking.size,
+      pctEnergyFromThinking,
+    },
+    inferenceGeo: {
+      detected: geoCount,
+      coveragePct: Math.round(coveragePct * 10) / 10,
+    },
+    region: regionKey,
+    gridIntensity,
   };
 }

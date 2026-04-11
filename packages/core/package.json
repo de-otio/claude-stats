@@ -46,6 +46,10 @@
       "types": "./dist/types/config.d.ts",
       "default": "./dist/types/config.js"
     },
+    "./energy": {
+      "types": "./dist/energy.d.ts",
+      "default": "./dist/energy.js"
+    },
     "./i18n": {
       "types": "./dist/i18n.d.ts",
       "default": "./dist/i18n.js"

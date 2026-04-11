@@ -110,6 +110,7 @@ const mockData: DashboardData = {
   modelEfficiency: null,
   contextAnalysis: null,
   spending: null,
+  energy: null,
 };
 
 describe("renderDashboard", () => {

@@ -922,6 +922,46 @@ export class Store {
     return (stmt.all as (...args: any[]) => unknown[])(...params) as ContextMessageRow[];
   }
 
+  getMessagesForEnergy(filters: {
+    projectPath?: string;
+    repoUrl?: string;
+    since?: number;
+  } = {}): EnergyMessageRow[] {
+    const conditions: string[] = ["m.model IS NOT NULL"];
+    const params: unknown[] = [];
+
+    if (filters.projectPath) {
+      conditions.push("s.project_path = ?");
+      params.push(filters.projectPath);
+    }
+    if (filters.repoUrl) {
+      conditions.push("s.repo_url = ?");
+      params.push(filters.repoUrl);
+    }
+    if (filters.since !== undefined) {
+      conditions.push("s.first_timestamp >= ?");
+      params.push(filters.since);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const sql = `
+      SELECT
+        m.session_id, m.timestamp, m.model,
+        m.input_tokens, m.output_tokens,
+        m.cache_read_tokens, m.cache_creation_tokens,
+        m.ephemeral_5m_cache_tokens, m.ephemeral_1h_cache_tokens,
+        m.thinking_blocks, m.inference_geo,
+        s.project_path
+      FROM messages m
+      JOIN sessions s ON m.session_id = s.session_id
+      ${where}
+      ORDER BY m.timestamp ASC
+    `;
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(...params) as EnergyMessageRow[];
+  }
+
   // ─── Subagent queries ─────────────────────────────────────────────────────
 
   /** Resolve a message UUID (parentUuid from JSONL) to its owning session ID. */
@@ -1198,6 +1238,21 @@ export interface ContextMessageRow {
   input_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+}
+
+export interface EnergyMessageRow {
+  session_id: string;
+  timestamp: number | null;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  ephemeral_5m_cache_tokens: number;
+  ephemeral_1h_cache_tokens: number;
+  thinking_blocks: number;
+  inference_geo: string | null;
+  project_path: string;
 }
 
 export interface StatusInfo {

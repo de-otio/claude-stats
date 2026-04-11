@@ -9,6 +9,7 @@ export default defineConfig({
       "@claude-stats/core/pricing": path.resolve(__dirname, "packages/core/src/pricing.ts"),
       "@claude-stats/core/parser/session": path.resolve(__dirname, "packages/core/src/parser/session.ts"),
       "@claude-stats/core/parser/telemetry": path.resolve(__dirname, "packages/core/src/parser/telemetry.ts"),
+      "@claude-stats/core/energy": path.resolve(__dirname, "packages/core/src/energy.ts"),
       "@claude-stats/core/i18n": path.resolve(__dirname, "packages/core/src/i18n.ts"),
       "@claude-stats/core/types/team": path.resolve(__dirname, "packages/core/src/types/team.ts"),
       "@claude-stats/core/types/auth": path.resolve(__dirname, "packages/core/src/types/auth.ts"),

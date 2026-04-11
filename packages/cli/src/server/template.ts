@@ -5,6 +5,7 @@
  */
 import type { DashboardData } from "../dashboard/index.js";
 import { PRICING, PRICING_VERIFIED_DATE } from "@claude-stats/core/pricing";
+import { formatEnergy, formatCO2 } from "@claude-stats/core/energy";
 
 export { DashboardData };
 
@@ -189,6 +190,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     <button class="tab-btn" data-tab="plan">${t("dashboard:tabs.plan")}</button>
     ${data.contextAnalysis ? `<button class="tab-btn" data-tab="context">${t("dashboard:tabs.context")}</button>` : ""}
     ${data.modelEfficiency ? `<button class="tab-btn" data-tab="efficiency">${t("dashboard:tabs.efficiency")}</button>` : ""}
+    ${data.energy ? `<button class="tab-btn" data-tab="energy">${t("dashboard:tabs.energy")}</button>` : ""}
     <button class="tab-btn" data-tab="settings">${t("dashboard:tabs.settings")}</button>
   </div>
 
@@ -688,6 +690,97 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   </div>
   ` : ""}
 
+  <!-- ═══════════════ TAB: Energy ═══════════════ -->
+  ${data.energy ? `
+  <div class="tab-panel" id="tab-energy">
+    <div class="summary-bar">
+      <div class="summary-card">
+        <div class="label">${t("dashboard:energy.totalEnergy")}</div>
+        <div class="value">${formatEnergy(data.energy.totalEnergyWh)}</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">${t("dashboard:energy.totalCO2")}</div>
+        <div class="value">${formatCO2(data.energy.totalCO2Grams)}</div>
+        <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${t("dashboard:energy.co2Range", { low: formatCO2(data.energy.co2GramsLow), high: formatCO2(data.energy.co2GramsHigh) })}</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">${t("dashboard:energy.region")}</div>
+        <div class="value" style="font-size:0.75rem;">${data.energy.region}</div>
+        <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${data.energy.gridIntensity} ${t("dashboard:energy.gCO2perKWh")}</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">${t("dashboard:energy.cacheSaved")}</div>
+        <div class="value" style="color:#59a14f;">${formatEnergy(data.energy.cacheImpact.energySavedWh)}</div>
+        <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${t("dashboard:energy.energySavedLabel")}</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">${t("dashboard:energy.geoCoverage")}</div>
+        <div class="value">${data.energy.inferenceGeo.coveragePct.toFixed(1)}%</div>
+        <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${t("dashboard:energy.geoCoverageHint")}</div>
+      </div>
+    </div>
+
+    <!-- Environmental equivalents -->
+    <div style="background:#1a1f3a;border-radius:6px;padding:1rem;margin-bottom:1rem;">
+      <h2 style="margin:0 0 0.75rem 0;font-size:0.85rem;color:#a0c4ff;">${t("dashboard:energy.equivalents")}</h2>
+      <div style="display:flex;flex-wrap:wrap;gap:1rem;">
+        <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.googleSearches.toFixed(0)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.searches")}</div>
+        </div>
+        <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.smartphoneCharges.toFixed(1)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.smartphones")}</div>
+        </div>
+        <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.ledBulbHours.toFixed(1)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.ledHours")}</div>
+        </div>
+        <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.netflixHours.toFixed(2)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.netflixHours")}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts: daily energy + energy by model -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:1rem;margin-bottom:1rem;">
+      <div style="background:#1a1f3a;border-radius:6px;padding:1rem;">
+        <h2 style="margin:0 0 0.5rem 0;font-size:0.85rem;color:#a0c4ff;">${t("dashboard:energy.byDay")}</h2>
+        <canvas id="energy-day-chart" height="180"></canvas>
+      </div>
+      <div style="background:#1a1f3a;border-radius:6px;padding:1rem;">
+        <h2 style="margin:0 0 0.5rem 0;font-size:0.85rem;color:#a0c4ff;">${t("dashboard:energy.byModel")}</h2>
+        <canvas id="energy-model-chart" height="180"></canvas>
+      </div>
+    </div>
+
+    <!-- By project table -->
+    ${data.energy.byProject.length > 0 ? `
+    <div style="background:#1a1f3a;border-radius:6px;padding:1rem;margin-bottom:1rem;">
+      <h2 style="margin:0 0 0.75rem 0;font-size:0.85rem;color:#a0c4ff;">${t("dashboard:energy.byProject")}</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:0.75rem;">
+        <thead><tr>
+          <th style="text-align:left;padding:0.4rem;color:#888;">Project</th>
+          <th style="text-align:right;padding:0.4rem;color:#888;">Energy</th>
+          <th style="text-align:right;padding:0.4rem;color:#888;">CO₂</th>
+        </tr></thead>
+        <tbody>
+          ${data.energy.byProject.slice(0, 10).map((p, i) => `
+          <tr style="${i % 2 === 0 ? "background:#0f1429;" : ""}">
+            <td style="padding:0.4rem;color:#ccc;overflow:hidden;text-overflow:ellipsis;max-width:240px;white-space:nowrap;">${p.project}</td>
+            <td style="padding:0.4rem;text-align:right;color:#fff;">${formatEnergy(p.energyWh)}</td>
+            <td style="padding:0.4rem;text-align:right;color:#aaa;">${formatCO2(p.co2Grams)}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>` : ""}
+
+    <!-- Disclaimer -->
+    <p style="font-size:0.6rem;color:#666;text-align:center;margin-top:0.5rem;">${t("dashboard:energy.disclaimer")}</p>
+  </div>
+  ` : ""}
+
   <!-- ═══════════════ TAB: Settings ═══════════════ -->
   <div class="tab-panel" id="tab-settings">
     <div class="summary-bar" style="margin-bottom:1rem;">
@@ -839,6 +932,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           case 'plan': initPlan(); break;
           case 'context': initContext(); break;
           case 'efficiency': initEfficiency(); break;
+          case 'energy': initEnergy(); break;
           case 'spending': initSpending(); break;
           case 'settings': initSettings(); break;
         }
@@ -1476,6 +1570,76 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           if (cfg.costThresholds.week != null) threshWeek.value = cfg.costThresholds.week;
           if (cfg.costThresholds.month != null) threshMonth.value = cfg.costThresholds.month;
         }
+      }
+
+      // ═══════════════ ENERGY CHARTS ═══════════════
+      function initEnergy() {
+        if (!d.energy) return;
+        var en = d.energy;
+
+        // Daily energy bar chart
+        (function () {
+          var el = document.getElementById('energy-day-chart');
+          if (!el || !en.byDay || !en.byDay.length) return;
+          var ctx = el.getContext('2d');
+          new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: en.byDay.map(function (d) { return d.date; }),
+              datasets: [
+                {
+                  label: 'Energy (Wh)',
+                  data: en.byDay.map(function (d) { return d.energyWh; }),
+                  backgroundColor: '#4e79a7',
+                  yAxisID: 'y'
+                },
+                {
+                  label: 'CO₂ (g)',
+                  data: en.byDay.map(function (d) { return d.co2Grams; }),
+                  backgroundColor: '#e15759',
+                  yAxisID: 'y2',
+                  type: 'line',
+                  borderColor: '#e15759',
+                  borderWidth: 1.5,
+                  pointRadius: 2,
+                  fill: false
+                }
+              ]
+            },
+            options: Object.assign({}, chartOpts, {
+              scales: {
+                x: Object.assign({}, chartOpts.scales && chartOpts.scales.x),
+                y: { position: 'left', ticks: { color: '#4e79a7', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                y2: { position: 'right', ticks: { color: '#e15759', font: { size: 10 } }, grid: { drawOnChartArea: false } }
+              }
+            })
+          });
+        })();
+
+        // Energy by model — horizontal bar chart
+        (function () {
+          var el = document.getElementById('energy-model-chart');
+          if (!el || !en.byModel || !en.byModel.length) return;
+          var ctx = el.getContext('2d');
+          var palette = ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc948','#b07aa1'];
+          new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: en.byModel.map(function (m) { return m.model; }),
+              datasets: [{
+                label: 'Energy (Wh)',
+                data: en.byModel.map(function (m) { return m.energyWh; }),
+                backgroundColor: en.byModel.map(function (_, i) { return palette[i % palette.length]; })
+              }]
+            },
+            options: Object.assign({}, chartOpts, {
+              indexAxis: 'y',
+              plugins: Object.assign({}, chartOpts.plugins, {
+                legend: { display: false }
+              })
+            })
+          });
+        })();
       }
 
       // ═══════════════ SPENDING CHARTS ═══════════════

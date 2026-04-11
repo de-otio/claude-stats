@@ -8,6 +8,7 @@
     "plan": "Plan",
     "context": "Context",
     "efficiency": "Efficiency",
+    "energy": "Energy",
     "settings": "Settings"
   },
   "toolbar": {
@@ -117,6 +118,30 @@
     "overuseDescription": "turns sent to pricier model than needed",
     "turnsAnalyzed": "Turns Analyzed",
     "ofTotalMessages": "of {{count}} total messages"
+  },
+  "energy": {
+    "totalEnergy": "Total Energy",
+    "totalCO2": "CO₂ Emissions",
+    "co2Range": "±55% uncertainty: {{low}} – {{high}}",
+    "region": "Grid Region",
+    "gridIntensity": "Grid Intensity",
+    "gCO2perKWh": "gCO₂/kWh",
+    "cacheSaved": "Cache Saved",
+    "energySavedLabel": "vs. re-computing inputs",
+    "thinkingSessions": "Thinking Sessions",
+    "thinkingEnergyPct": "{{pct}}% of energy",
+    "geoCoverage": "Geo Coverage",
+    "geoCoverageHint": "% of messages with detected inference region",
+    "equivalents": "Environmental Context",
+    "searches": "Google searches",
+    "smartphones": "phone charges",
+    "ledHours": "LED bulb hours",
+    "netflixHours": "Netflix hours",
+    "disclaimer": "Estimates only — ±55% uncertainty. Anthropic does not publish per-request energy data. Not for regulatory use.",
+    "byModel": "Energy by Model",
+    "byDay": "Daily Energy & CO₂",
+    "byProject": "Energy by Project",
+    "noData": "No energy data available for this period."
   },
   "settings": {
     "configuration": "Configuration",

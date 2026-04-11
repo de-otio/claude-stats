@@ -164,6 +164,27 @@
         }
       ]
     },
+    "energy": {
+      "title": "Energy",
+      "sections": [
+        {
+          "heading": "What this tab measures",
+          "body": "Estimates the electricity and CO₂ footprint of your Claude usage. Computed per-message using model-class energy coefficients (Haiku/Sonnet/Opus) and your detected or locale-inferred grid region. Uncertainty is ±55% — Anthropic does not publish per-request energy data."
+        },
+        {
+          "heading": "Grid Region",
+          "body": "Energy-to-CO₂ conversion uses the carbon intensity of the detected inference region (from inference_geo on each message). Falls back to your locale if no geo is detected. You can see coverage % and which regions were seen."
+        },
+        {
+          "heading": "Cache Savings",
+          "body": "Cache read tokens are ~3% the energy cost of re-computing them as input tokens. This section shows estimated energy and CO₂ saved by prompt caching."
+        },
+        {
+          "heading": "Environmental Equivalents",
+          "body": "Converts total energy and CO₂ to intuitive units: Google searches (0.24 Wh each), smartphone charges, LED bulb hours, and Netflix hours. Useful for communicating footprint in concrete terms."
+        }
+      ]
+    },
     "settings": {
       "title": "Settings",
       "sections": [

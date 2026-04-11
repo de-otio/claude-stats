@@ -164,6 +164,27 @@
         }
       ]
     },
+    "energy": {
+      "title": "Energie",
+      "sections": [
+        {
+          "heading": "Was dieser Tab misst",
+          "body": "Schätzt den Strom- und CO₂-Fußabdruck Ihrer Claude-Nutzung. Berechnet pro Nachricht mit modellklassenspezifischen Energiekoeffizienten (Haiku/Sonnet/Opus) und Ihrer erkannten oder locale-abgeleiteten Netzregion. Unsicherheit ±55% — Anthropic veröffentlicht keine anforderungsbezogenen Energiedaten."
+        },
+        {
+          "heading": "Netzregion",
+          "body": "Die Energie-zu-CO₂-Umrechnung verwendet die Kohlenstoffintensität der erkannten Inferenzregion (aus inference_geo jeder Nachricht). Fällt auf Ihr Locale zurück, wenn keine Geo erkannt wird."
+        },
+        {
+          "heading": "Cache-Einsparungen",
+          "body": "Cache-Read-Token verbrauchen ~3% der Energie im Vergleich zur Neuberechnung als Eingabe-Token. Dieser Abschnitt zeigt die durch Prompt-Caching eingesparte Energie und CO₂."
+        },
+        {
+          "heading": "Umweltäquivalente",
+          "body": "Wandelt Gesamtenergie und CO₂ in anschauliche Einheiten um: Google-Suchen (je 0,24 Wh), Smartphone-Ladungen, LED-Lampenstunden und Netflix-Stunden."
+        }
+      ]
+    },
     "settings": {
       "title": "Einstellungen",
       "sections": [
