@@ -71,7 +71,7 @@ const inlineLocalesPlugin = {
 };
 
 /** @type {import("esbuild").BuildOptions} */
-const options = {
+const extensionOptions = {
   entryPoints: ["packages/cli/src/extension/extension.ts"],
   bundle: true,
   outfile: "extension/dist/extension.js",
@@ -81,15 +81,37 @@ const options = {
   sourcemap: true,
   external: ["vscode"],
   plugins: [inlineLocalesPlugin],
-  // Keep the output readable for debugging
+  minify: false,
+  logLevel: "info",
+};
+
+// Standalone MCP server bundle — runs as a child process over stdio.
+// No vscode dependency; self-contained so it works from the installed VSIX path.
+/** @type {import("esbuild").BuildOptions} */
+const mcpOptions = {
+  entryPoints: ["packages/cli/src/mcp/index.ts"],
+  bundle: true,
+  outfile: "extension/dist/mcp.js",
+  platform: "node",
+  target: "node22",
+  format: "cjs",
+  sourcemap: true,
+  external: ["vscode"],
+  plugins: [inlineLocalesPlugin],
   minify: false,
   logLevel: "info",
 };
 
 if (watch) {
-  const ctx = await esbuild.context(options);
-  await ctx.watch();
+  const [extCtx, mcpCtx] = await Promise.all([
+    esbuild.context(extensionOptions),
+    esbuild.context(mcpOptions),
+  ]);
+  await Promise.all([extCtx.watch(), mcpCtx.watch()]);
   console.log("Watching for changes...");
 } else {
-  await esbuild.build(options);
+  await Promise.all([
+    esbuild.build(extensionOptions),
+    esbuild.build(mcpOptions),
+  ]);
 }

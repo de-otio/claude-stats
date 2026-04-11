@@ -3,13 +3,12 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node
 import { join } from "node:path";
 
 // vi.hoisted runs before vi.mock factories, so tmpDir is available
-const { tmpDir, mockExecFileSync } = vi.hoisted(() => {
+const { tmpDir } = vi.hoisted(() => {
   const { mkdtempSync } = require("node:fs");
   const { tmpdir } = require("node:os");
   const { join } = require("node:path");
   return {
     tmpDir: mkdtempSync(join(tmpdir(), "claude-stats-mcp-reg-test-")) as string,
-    mockExecFileSync: vi.fn(),
   };
 });
 
@@ -27,15 +26,6 @@ vi.mock("node:os", async () => {
     ...actual,
     default: { ...actual, homedir: () => tmpDir },
     homedir: () => tmpDir,
-  };
-});
-
-// Mock child_process.execFileSync for the `which` command
-vi.mock("node:child_process", async () => {
-  const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
-  return {
-    ...actual,
-    execFileSync: (...args: unknown[]) => mockExecFileSync(...args),
   };
 });
 
@@ -58,13 +48,10 @@ describe("ensureMcpServer", () => {
       rmSync(SETTINGS_DIR, { recursive: true, force: true });
     } catch { /* ignore */ }
 
-    mockExecFileSync.mockReset();
     vi.mocked(vscode.window.showInformationMessage).mockReset();
   });
 
   it("creates settings file and registers MCP server when none exists", () => {
-    mockExecFileSync.mockReturnValue("/usr/local/bin/claude-stats\n");
-
     ensureMcpServer(mockContext);
 
     expect(existsSync(SETTINGS_PATH)).toBe(true);
@@ -72,13 +59,14 @@ describe("ensureMcpServer", () => {
     expect(settings.mcpServers).toBeDefined();
     const servers = settings.mcpServers as Record<string, { command: string; args: string[] }>;
     expect(servers["claude-stats"]).toBeDefined();
-    expect(servers["claude-stats"]!.command).toBe("/usr/local/bin/claude-stats");
-    expect(servers["claude-stats"]!.args).toEqual(["mcp"]);
+    // Should use current node executable
+    expect(servers["claude-stats"]!.command).toBe(process.execPath);
+    // Should pass --experimental-sqlite and point to mcp.js
+    expect(servers["claude-stats"]!.args[0]).toBe("--experimental-sqlite");
+    expect(servers["claude-stats"]!.args[1]).toMatch(/mcp\.js$/);
   });
 
-  it("shows info message after registration", () => {
-    mockExecFileSync.mockReturnValue("/usr/local/bin/claude-stats\n");
-
+  it("shows info message after first registration", () => {
     ensureMcpServer(mockContext);
 
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
@@ -95,8 +83,6 @@ describe("ensureMcpServer", () => {
       someOtherSetting: true,
     }));
 
-    mockExecFileSync.mockReturnValue("/usr/local/bin/claude-stats\n");
-
     ensureMcpServer(mockContext);
 
     const settings = readSettings();
@@ -106,60 +92,49 @@ describe("ensureMcpServer", () => {
     expect(settings.someOtherSetting).toBe(true);
   });
 
-  it("skips registration if claude-stats is already registered", () => {
-    mkdirSync(SETTINGS_DIR, { recursive: true });
-    const existing = {
-      mcpServers: {
-        "claude-stats": { command: "existing-cmd", args: ["mcp"] },
-      },
-    };
-    writeFileSync(SETTINGS_PATH, JSON.stringify(existing));
-
+  it("skips notification if entry is already up-to-date (idempotent on second call)", () => {
+    // First call registers and shows notification
     ensureMcpServer(mockContext);
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(1);
 
-    // Should not modify the file
-    const settings = readSettings();
-    const servers = settings.mcpServers as Record<string, { command: string }>;
-    expect(servers["claude-stats"]!.command).toBe("existing-cmd");
-    // Should not show info message
+    vi.mocked(vscode.window.showInformationMessage).mockReset();
+
+    // Second call — entry already up-to-date, no notification
+    ensureMcpServer(mockContext);
     expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
   });
 
-  it("falls back to node path when claude-stats is not on PATH", () => {
-    mockExecFileSync.mockImplementation(() => {
-      throw new Error("not found");
-    });
+  it("updates stale entry (e.g. old npx command) to current mcp.js path", () => {
+    mkdirSync(SETTINGS_DIR, { recursive: true });
+    writeFileSync(SETTINGS_PATH, JSON.stringify({
+      mcpServers: {
+        "claude-stats": { command: "npx", args: ["claude-stats", "mcp"] },
+      },
+    }));
 
     ensureMcpServer(mockContext);
 
-    if (existsSync(SETTINGS_PATH)) {
-      const settings = readSettings();
-      const servers = settings.mcpServers as Record<string, { command: string; args: string[] }>;
-      const entry = servers["claude-stats"]!;
-      // Should use either node or npx as fallback
-      expect(entry.command).toBeTruthy();
-      expect(entry.args).toContain("mcp");
-    }
+    const settings = readSettings();
+    const servers = settings.mcpServers as Record<string, { command: string; args: string[] }>;
+    // Should have been updated to use node + mcp.js
+    expect(servers["claude-stats"]!.command).toBe(process.execPath);
+    expect(servers["claude-stats"]!.args[0]).toBe("--experimental-sqlite");
+    // Should NOT show notification (was already registered, just updated silently)
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
   });
 
   it("does not throw on errors — fails silently", () => {
-    // Make settings dir unwritable by giving a bad homedir mock
-    // The function should catch and log, not throw
     vi.spyOn(console, "warn").mockImplementation(() => {});
 
     // Create a file where the directory should be, causing mkdir to fail
     mkdirSync(join(tmpDir, ".claude"), { recursive: true });
     writeFileSync(SETTINGS_PATH, "invalid json{{{");
 
-    mockExecFileSync.mockReturnValue("/usr/local/bin/claude-stats\n");
-
-    // Should not throw
+    // Should not throw (invalid JSON is caught and treated as empty settings)
     expect(() => ensureMcpServer(mockContext)).not.toThrow();
   });
 
   it("creates .claude directory if it does not exist", () => {
-    mockExecFileSync.mockReturnValue("/usr/local/bin/claude-stats\n");
-
     expect(existsSync(SETTINGS_DIR)).toBe(false);
 
     ensureMcpServer(mockContext);
@@ -171,8 +146,6 @@ describe("ensureMcpServer", () => {
   it("handles empty settings file gracefully", () => {
     mkdirSync(SETTINGS_DIR, { recursive: true });
     writeFileSync(SETTINGS_PATH, "{}");
-
-    mockExecFileSync.mockReturnValue("/usr/local/bin/claude-stats\n");
 
     ensureMcpServer(mockContext);
 

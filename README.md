@@ -9,14 +9,16 @@ Collect and visualize usage statistics from Claude Code sessions stored locally 
 - **Node.js 22.5+** (for the built-in `node:sqlite` module)
 - Claude Code installed and used at least once (`~/.claude/projects/` must exist)
 
-## VS Code Extension
+## Install via AI Agent
 
-An optional extension embeds the dashboard inside VS Code with a status bar showing today's token usage. The extension is fully self-contained — all dependencies are bundled, no separate `claude-stats` install required.
+Tell your AI agent:
 
-Download the extension from the latest build run under "Actions" or clone and build it yourself.
+> Install claude-stats from https://github.com/de-otio/claude-stats
+
+The agent should run:
 
 ```sh
-git clone <repo-url> claude-stats
+git clone https://github.com/de-otio/claude-stats
 cd claude-stats
 npm install
 npm run build
@@ -24,29 +26,71 @@ npm run package:ext
 code --install-extension extension/claude-stats-vscode-0.1.0.vsix
 ```
 
-Open the dashboard via the activity bar icon or the Command Palette: **Claude Stats: Open Dashboard**.
+After the VS Code extension activates (reload the window if needed), it automatically:
+1. Registers the MCP server in `~/.claude/settings.json`
+2. Updates any stale registration on subsequent activations
 
-## Build
+**Restart Claude Code** (or reload the window) after the extension installs for the MCP server to become available.
+
+## VS Code Extension
+
+The extension embeds the dashboard inside VS Code with a status bar showing today's token usage. It is fully self-contained — all dependencies are bundled, no separate global install required.
+
+**The extension also auto-registers the MCP server.** Once installed, your AI agent can query your usage stats without any manual MCP configuration.
+
+### Build and install
 
 ```sh
-git clone <repo-url> claude-stats
+git clone https://github.com/de-otio/claude-stats
 cd claude-stats
 npm install
 npm run build
+npm run package:ext
+code --install-extension extension/claude-stats-vscode-0.1.0.vsix
 ```
+
+Open the dashboard via the activity bar icon or: **Command Palette → Claude Stats: Open Dashboard**.
+
+## MCP Server
+
+The VS Code extension bundles a local MCP server and registers it automatically at `~/.claude/settings.json` on first activation. The server runs as a child process over stdio — no network access or authentication required, all data is local.
+
+If you need to register it manually (without the extension), add to `~/.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "claude-stats": {
+      "command": "node",
+      "args": ["--experimental-sqlite", "/path/to/claude-stats/extension/dist/mcp.js"]
+    }
+  }
+}
+```
+
+### Available tools
+
+| Tool | Description |
+|------|-------------|
+| `get_stats` | Usage summary for a period — tokens, cost, sessions, cache efficiency, streaks |
+| `list_sessions` | Recent sessions with token counts and estimated cost |
+| `get_session_detail` | Messages and token usage for a specific session |
+| `list_projects` | Per-project usage breakdown |
+| `get_status` | Database health, session count, last collection time |
+| `search_history` | Search prompt history by keyword |
+
+### Example queries
+
+- "How many tokens have I used this week?"
+- "What were my most expensive sessions today?"
+- "Which projects am I spending the most on?"
+- "How much CO₂ did my Claude usage cause last week?"
 
 ## Commandline Usage
 
-Link the command globally:
-
 ```sh
-npm link
-```
-
-Or run directly:
-
-```sh
-node --experimental-sqlite dist/index.js <command>
+npm link           # link claude-stats globally, OR
+npm install -g .   # install globally from the repo root
 ```
 
 ### Quick start
@@ -74,7 +118,14 @@ claude-stats report --html        # export a standalone HTML dashboard file
 | `diagnose`     | Show quarantine counts and schema health                     |
 | `mcp`          | Start a local MCP server over stdio for AI agent access      |
 
-Run `claude-stats --help` or `claude-stats <command> --help` for full option details.
+## Build
+
+```sh
+git clone https://github.com/de-otio/claude-stats
+cd claude-stats
+npm install
+npm run build
+```
 
 ## Development
 
@@ -93,39 +144,5 @@ Claude Code writes a JSONL file for every session under `~/.claude/projects/`. T
 - **Incremental.** Only new lines are read on each `collect` run.
 - **Non-destructive.** The tool never modifies Claude Code's own files.
 - **No API scraping.** Unlike some alternatives, claude-stats does not call undocumented Anthropic endpoints, scrape session cookies, or inject code into Claude Code's process. It only reads the local JSONL files that Claude Code already writes to disk — fully compliant with Anthropic's Terms of Service.
-
-## MCP Server
-
-claude-stats includes a local MCP server that lets AI agents query your usage data directly. Ask your agent things like "how many tokens have I used today?" or "what are my most expensive sessions?"
-
-### Setup
-
-Add to your Claude Code MCP configuration (`.mcp.json` or settings):
-
-```json
-{
-  "mcpServers": {
-    "claude-stats": {
-      "command": "claude-stats",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-Or run manually: `claude-stats mcp`
-
-### Available Tools
-
-| Tool | Description |
-|------|-------------|
-| `get_stats` | Usage summary for a period (tokens, cost, sessions, velocity, cache efficiency) |
-| `list_sessions` | Recent sessions with token counts and cost |
-| `get_session_detail` | Messages and token usage for a specific session |
-| `list_projects` | Per-project usage breakdown |
-| `get_status` | Database health, session count, last collection time |
-| `search_history` | Search prompt history by keyword |
-
-The server reads directly from your local database (`~/.claude-stats/stats.db`) over stdio. No network access or authentication required.
 
 See [doc/user-doc/](doc/user-doc/) for full documentation.

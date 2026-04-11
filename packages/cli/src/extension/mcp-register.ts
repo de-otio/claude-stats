@@ -1,87 +1,79 @@
 /**
  * Auto-register the claude-stats MCP server in Claude Code's global settings
- * (~/.claude/settings.json) if not already present.
+ * (~/.claude/settings.json) on extension activation.
  *
- * Runs once on extension activation. Idempotent — skips if the entry exists.
+ * The MCP server runs as a child process using the `mcp.js` bundle that ships
+ * alongside this extension (extension/dist/mcp.js). Using an absolute path to
+ * the bundled file means the server works regardless of whether `claude-stats`
+ * is installed globally — and survives extension updates by always pointing to
+ * the currently installed version.
+ *
+ * The registration is re-written on every activation so stale entries (e.g.
+ * from a previous install that used `npx claude-stats mcp`) are corrected.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as vscode from "vscode";
-import { execFileSync } from "node:child_process";
 
 const SETTINGS_PATH = path.join(os.homedir(), ".claude", "settings.json");
 const MCP_KEY = "claude-stats";
 
 interface ClaudeSettings {
-  mcpServers?: Record<string, unknown>;
+  mcpServers?: Record<string, { command: string; args: string[] }>;
   [key: string]: unknown;
 }
 
-function resolveClaudeStatsCommand(): { command: string; args: string[] } {
-  // Try to find claude-stats on PATH
-  try {
-    const which = process.platform === "win32" ? "where" : "which";
-    const resolved = execFileSync(which, ["claude-stats"], {
-      encoding: "utf-8",
-      timeout: 3000,
-    }).trim().split("\n")[0]!;
-    if (resolved) {
-      return { command: resolved, args: ["mcp"] };
-    }
-  } catch {
-    // Not on PATH — fall through
-  }
-
-  // Fall back to node with the CLI entry point resolved from this extension's location
-  const nodeExec = process.execPath;
-  // Extension is at extension/dist/extension.js, CLI dist is at packages/cli/dist/index.js
-  // Both relative to the repo root
-  const extDir = path.dirname(__dirname); // extension/
-  const repoRoot = path.dirname(extDir);
-  const cliEntry = path.join(repoRoot, "packages", "cli", "dist", "index.js");
-
-  if (fs.existsSync(cliEntry)) {
-    return {
-      command: nodeExec,
-      args: ["--experimental-sqlite", cliEntry, "mcp"],
-    };
-  }
-
-  // Last resort: assume npm global install
-  return { command: "npx", args: ["claude-stats", "mcp"] };
+/**
+ * Resolve the absolute path to the bundled mcp.js.
+ *
+ * `__dirname` inside the CJS bundle is the directory containing extension.js,
+ * i.e. `<install-path>/dist/`. The mcp.js bundle is built alongside it.
+ */
+function resolveMcpEntry(): { command: string; args: string[] } {
+  const mcpJs = path.join(__dirname, "mcp.js");
+  return {
+    command: process.execPath,          // absolute path to the current Node binary
+    args: ["--experimental-sqlite", mcpJs],
+  };
 }
 
 export function ensureMcpServer(_context: vscode.ExtensionContext): void {
   try {
+    const { command, args } = resolveMcpEntry();
+
     // Read existing settings
     let settings: ClaudeSettings = {};
     if (fs.existsSync(SETTINGS_PATH)) {
-      const raw = fs.readFileSync(SETTINGS_PATH, "utf-8");
-      settings = JSON.parse(raw) as ClaudeSettings;
+      try {
+        settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8")) as ClaudeSettings;
+      } catch {
+        settings = {};
+      }
     }
 
-    // Check if already registered
-    if (settings.mcpServers && MCP_KEY in settings.mcpServers) {
-      return; // Already registered
-    }
+    // Check if the entry already points to the correct mcp.js path.
+    // Re-register when: entry is absent, command changed, or args changed
+    // (catches stale "npx claude-stats mcp" entries from previous installs).
+    const existing = settings.mcpServers?.[MCP_KEY];
+    const argsMatch = existing &&
+      existing.command === command &&
+      JSON.stringify(existing.args) === JSON.stringify(args);
 
-    // Resolve the command
-    const { command, args } = resolveClaudeStatsCommand();
+    if (argsMatch) return; // Already up-to-date
 
-    // Register
-    if (!settings.mcpServers) {
-      settings.mcpServers = {};
-    }
+    // Register / update
+    if (!settings.mcpServers) settings.mcpServers = {};
     settings.mcpServers[MCP_KEY] = { command, args };
 
-    // Write back
     fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
     fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n");
 
-    void vscode.window.showInformationMessage(
-      "Claude Stats MCP server registered. Your AI agent can now query your usage stats.",
-    );
+    if (!existing) {
+      void vscode.window.showInformationMessage(
+        "Claude Stats MCP server registered. Your AI agent can now query your usage stats.",
+      );
+    }
   } catch (err) {
     // Non-fatal — don't block extension activation
     const msg = err instanceof Error ? err.message : String(err);
