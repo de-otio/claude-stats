@@ -32,9 +32,6 @@ export const prodConfig: EnvironmentConfig = {
     appTitle: "Acme Claude Stats",
   },
 
-  // MCP
-  mcpEnabled: true,
-
   // Monitoring
   alarmEmailSsmPath: "/claude-stats/prod/alarm-email",
   logRetentionDays: 90,

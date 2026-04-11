@@ -7,7 +7,6 @@ export { AuthStack } from "./stacks/auth-stack.js";
 export { ApiStack } from "./stacks/api-stack.js";
 export { DnsStack } from "./stacks/dns-stack.js";
 export { FrontendStack } from "./stacks/frontend-stack.js";
-export { McpStack } from "./stacks/mcp-stack.js";
 export { MonitoringStack } from "./stacks/monitoring-stack.js";
 
 // Constructs

@@ -567,6 +567,14 @@ export async function buildCli(): Promise<Command> {
       store.close();
     });
 
+  program
+    .command("mcp")
+    .description("Start a local MCP server over stdio for AI agent access to your stats")
+    .action(async () => {
+      const { startMcpServer } = await import("../mcp/index.js");
+      await startMcpServer();
+    });
+
   return program;
 }
 

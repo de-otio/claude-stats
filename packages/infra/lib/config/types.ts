@@ -39,8 +39,6 @@ export interface ClaudeStatsAppProps {
   parentZoneName?: string | null;
   /** Parent Route53 hosted zone ID. */
   parentZoneId?: string | null;
-  /** Enable the MCP server stack. Default: false. */
-  enableMcp?: boolean;
   /** Override any EnvironmentConfig field not covered by top-level props. */
   configOverrides?: Partial<Omit<EnvironmentConfig, "account" | "region" | "envName" | "allowedEmailDomains" | "domainName" | "parentZoneName" | "parentZoneId">>;
 }

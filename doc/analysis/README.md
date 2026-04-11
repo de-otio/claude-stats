@@ -26,6 +26,12 @@ Claude Code stores rich session data locally in `~/.claude/projects/`. Every mes
 
 Read in order for full context, or jump to 07 and 02 to start implementing.
 
+## Sub-analyses
+
+| Directory | Purpose |
+|-----------|---------|
+| [energy-dashboard/](energy-dashboard/) | Energy consumption and carbon footprint estimation dashboard |
+
 ## Architecture Summary
 
 ```

@@ -72,6 +72,7 @@ claude-stats report --html        # export a standalone HTML dashboard file
 | `tag` / `tags` | Tag sessions and list tags                                   |
 | `config`       | View or set cost alert thresholds                            |
 | `diagnose`     | Show quarantine counts and schema health                     |
+| `mcp`          | Start a local MCP server over stdio for AI agent access      |
 
 Run `claude-stats --help` or `claude-stats <command> --help` for full option details.
 
@@ -92,5 +93,39 @@ Claude Code writes a JSONL file for every session under `~/.claude/projects/`. T
 - **Incremental.** Only new lines are read on each `collect` run.
 - **Non-destructive.** The tool never modifies Claude Code's own files.
 - **No API scraping.** Unlike some alternatives, claude-stats does not call undocumented Anthropic endpoints, scrape session cookies, or inject code into Claude Code's process. It only reads the local JSONL files that Claude Code already writes to disk — fully compliant with Anthropic's Terms of Service.
+
+## MCP Server
+
+claude-stats includes a local MCP server that lets AI agents query your usage data directly. Ask your agent things like "how many tokens have I used today?" or "what are my most expensive sessions?"
+
+### Setup
+
+Add to your Claude Code MCP configuration (`.mcp.json` or settings):
+
+```json
+{
+  "mcpServers": {
+    "claude-stats": {
+      "command": "claude-stats",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Or run manually: `claude-stats mcp`
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `get_stats` | Usage summary for a period (tokens, cost, sessions, velocity, cache efficiency) |
+| `list_sessions` | Recent sessions with token counts and cost |
+| `get_session_detail` | Messages and token usage for a specific session |
+| `list_projects` | Per-project usage breakdown |
+| `get_status` | Database health, session count, last collection time |
+| `search_history` | Search prompt history by keyword |
+
+The server reads directly from your local database (`~/.claude-stats/stats.db`) over stdio. No network access or authentication required.
 
 See [doc/user-doc/](doc/user-doc/) for full documentation.

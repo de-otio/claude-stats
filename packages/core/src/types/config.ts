@@ -37,9 +37,6 @@ export interface EnvironmentConfig {
   // Branding
   branding: BrandingConfig;
 
-  // MCP
-  mcpEnabled: boolean;
-
   // Monitoring
   alarmEmailSsmPath: string | null;
   logRetentionDays: number;

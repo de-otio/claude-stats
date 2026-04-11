@@ -32,9 +32,6 @@ export const devConfig: EnvironmentConfig = {
     appTitle: 'Claude Stats (Dev)',
   },
 
-  // MCP
-  mcpEnabled: true,
-
   // Monitoring
   alarmEmailSsmPath: null, // No alerts in dev
   logRetentionDays: 7,

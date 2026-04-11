@@ -13,6 +13,7 @@ import { AutoCollector } from "./collector.js";
 import { initPricingCache } from "../pricing-cache.js";
 import { initI18n } from "@claude-stats/core/i18n";
 import { setT, t } from "./i18n.js";
+import { ensureMcpServer } from "./mcp-register.js";
 
 // Build a require() that works in both ESM and CJS (esbuild bundles).
 const _url = typeof import.meta?.url === "string"
@@ -82,6 +83,9 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   );
   context.subscriptions.push(openDashboard);
+
+  // Register MCP server in Claude Code global settings if not already present
+  ensureMcpServer(context);
 
   // Start watching and run initial collection
   collector.start();

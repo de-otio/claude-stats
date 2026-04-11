@@ -33,9 +33,6 @@ export const defaultConfig: Omit<EnvironmentConfig, "account" | "region" | "send
     appTitle: "Claude Stats",
   },
 
-  // MCP
-  mcpEnabled: true,
-
   // Monitoring
   alarmEmailSsmPath: null,
   logRetentionDays: 7,

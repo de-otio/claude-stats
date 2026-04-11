@@ -22,7 +22,6 @@ interface AuthStackProps extends cdk.StackProps {
 export class AuthStack extends cdk.Stack {
   public readonly userPool: cognito.UserPool;
   public readonly spaClient: cognito.UserPoolClient;
-  public readonly mcpClient: cognito.UserPoolClient;
 
   constructor(scope: Construct, id: string, props: AuthStackProps) {
     super(scope, id, { ...props, description: "Claude Stats auth — Cognito user pool, magic-link Lambdas, SES email identity" });
@@ -323,36 +322,6 @@ export class AuthStack extends cdk.Stack {
       generateSecret: false, // SPA client — no secret
     });
 
-    // ---------- MCP User Pool Client ----------
-
-    const mcpCallbackUrls = config.domainName
-      ? [`https://${config.domainName}/mcp/callback`]
-      : ["http://localhost:5173/mcp/callback"];
-
-    const mcpClient = userPool.addClient("McpClient", {
-      userPoolClientName: `${prefix}-McpClient`,
-      authFlows: {
-        custom: true,
-        userPassword: false,
-        userSrp: false,
-      },
-      oAuth: {
-        flows: { authorizationCodeGrant: true },
-        scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.PROFILE],
-        callbackUrls: mcpCallbackUrls,
-      },
-      accessTokenValidity: cdk.Duration.minutes(
-        config.cognitoAccessTokenTtlMinutes,
-      ),
-      idTokenValidity: cdk.Duration.minutes(
-        config.cognitoAccessTokenTtlMinutes,
-      ),
-      refreshTokenValidity: cdk.Duration.days(
-        config.cognitoRefreshTokenTtlDays,
-      ),
-      preventUserExistenceErrors: true,
-      generateSecret: true, // MCP client is confidential
-    });
 
     // ---------- Cognito Domain ----------
 
@@ -366,14 +335,12 @@ export class AuthStack extends cdk.Stack {
 
     this.userPool = userPool;
     this.spaClient = spaClient;
-    this.mcpClient = mcpClient;
 
     // ---------- SSM Parameters ----------
 
     putParam(this, prefix, "auth/user-pool-id", userPool.userPoolId);
     putParam(this, prefix, "auth/user-pool-arn", userPool.userPoolArn);
     putParam(this, prefix, "auth/spa-client-id", spaClient.userPoolClientId);
-    putParam(this, prefix, "auth/mcp-client-id", mcpClient.userPoolClientId);
     putParam(
       this,
       prefix,

@@ -8,7 +8,6 @@ import { ApiStack } from "./stacks/api-stack.js";
 import { DnsStack } from "./stacks/dns-stack.js";
 import { FrontendStack } from "./stacks/frontend-stack.js";
 import { MonitoringStack } from "./stacks/monitoring-stack.js";
-import { McpStack } from "./stacks/mcp-stack.js";
 
 /**
  * All-in-one construct that deploys the full Claude Stats infrastructure.
@@ -34,7 +33,6 @@ export class ClaudeStatsApp extends Construct {
   public readonly api: ApiStack;
   public readonly dns?: DnsStack;
   public readonly frontend: FrontendStack;
-  public readonly mcp?: McpStack;
   public readonly monitoring: MonitoringStack;
 
   constructor(scope: Construct, id: string, props: ClaudeStatsAppProps) {
@@ -48,7 +46,6 @@ export class ClaudeStatsApp extends Construct {
       region: props.region,
       senderEmail: props.senderEmail,
       allowedEmailDomains: props.allowedEmailDomains,
-      mcpEnabled: props.enableMcp ?? defaultConfig.mcpEnabled,
       domainName: props.domainName ?? defaultConfig.domainName,
       parentZoneName: props.parentZoneName ?? defaultConfig.parentZoneName,
       parentZoneId: props.parentZoneId ?? defaultConfig.parentZoneId,
@@ -75,12 +72,6 @@ export class ClaudeStatsApp extends Construct {
 
     this.frontend = new FrontendStack(scope, `${id}-Frontend`, { env, config });
     this.frontend.addDependency(this.api);
-
-    if (props.enableMcp) {
-      this.mcp = new McpStack(scope, `${id}-Mcp`, { env, config });
-      this.mcp.addDependency(this.api);
-      this.mcp.addDependency(this.auth);
-    }
 
     this.monitoring = new MonitoringStack(scope, `${id}-Monitoring`, { env, config });
     this.monitoring.addDependency(this.api);
