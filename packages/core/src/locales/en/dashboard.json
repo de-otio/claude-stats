@@ -160,6 +160,35 @@
     "byDay": "Daily Energy & CO₂",
     "byProject": "Energy by Project",
     "noData": "No energy data available for this period.",
+    "calc": {
+      "title": "How this is calculated",
+      "clickToExpand": "click to expand",
+      "intro": "Every tile on this tab is derived from the token counts Anthropic's API returns for each message. Here is exactly how that token-level data becomes the kWh, kg CO₂, and equivalent figures shown above, using your actual period's numbers so you can audit the math.",
+      "ratesHeader": "Per-model energy rates:",
+      "periodHeader": "Your period ({{start}} → {{end}}):",
+      "col": {
+        "class": "Class",
+        "inputRate": "Input Wh/1K",
+        "outputRate": "Output Wh/1K",
+        "msgs": "Msgs",
+        "output": "Output tok",
+        "input": "Input tok",
+        "cacheWrite": "Cache write",
+        "cacheRead": "Cache read",
+        "rawEnergy": "Raw energy",
+        "rawTotal": "Raw total"
+      },
+      "totals": "Raw total {{raw}} kWh × PUE {{pue}} = <strong>{{totalKwh}} kWh</strong> consumed. At <strong>{{region}}</strong> grid intensity {{gridIntensity}} gCO₂/kWh, that is <strong>{{co2Kg}} kg CO₂</strong>.",
+      "equivHeader": "How the equivalents were derived from {{co2Kg}} kg CO₂ / {{totalKwh}} kWh:",
+      "eq": {
+        "gasoline": "Gasoline: {{co2Kg}} kg ÷ 2.31 kg CO₂/L = <strong>{{value}} L</strong>",
+        "train": "Long-distance train: {{co2Kg}} kg ÷ 0.006 kg CO₂/pkm = <strong>{{value}} km</strong>",
+        "transit": "Local transit: {{co2Kg}} kg ÷ 0.030 kg CO₂/pkm = <strong>{{value}} km</strong>",
+        "coffee": "Coffee: {{co2Kg}} kg ÷ 0.3 kg CO₂/cup = <strong>{{value}} cups</strong>",
+        "nuclearWaste": "Nuclear waste: {{totalKwh}} kWh × 3 mg spent fuel/kWh = <strong>{{value}} mg</strong>",
+        "solar": "Solar panels: {{totalKwh}} kWh ÷ ({{regionYield}} kWh/m²/yr in {{region}} × {{periodDays}}/365) = <strong>{{value}}</strong>"
+      }
+    },
     "sources": {
       "title": "Data Sources",
       "items": {

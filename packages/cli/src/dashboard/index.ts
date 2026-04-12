@@ -16,7 +16,8 @@ import {
   type ModelEfficiencyData,
 } from "../classifier.js";
 import { attributeToolCosts, groupByMcpServer, detectAnomalies, aggregateMcpServerUsage } from "../spending.js";
-import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor } from "@claude-stats/core/energy";
+import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor, modelClass } from "@claude-stats/core/energy";
+import type { ModelClass } from "@claude-stats/core/energy";
 
 export interface DashboardSummary {
   sessions: number;
@@ -259,6 +260,20 @@ export interface DashboardEnergy {
   region: string;
   /** Grid carbon intensity used (gCO₂eq/kWh). */
   gridIntensity: number;
+  /** Power Usage Effectiveness multiplier applied to raw inference energy. */
+  pue: number;
+  /** Per-model-class breakdown for the calculation-transparency panel. */
+  byClass: Array<{
+    cls: "haiku" | "sonnet" | "opus";
+    msgs: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheWriteTokens: number;
+    cacheReadTokens: number;
+    rawEnergyWh: number;
+    inputWhPer1K: number;
+    outputWhPer1K: number;
+  }>;
 }
 
 export interface ContextAnalysis {
@@ -1444,6 +1459,11 @@ function buildEnergySection(
   let thinkingEnergy = 0;
   let sessionsWithThinking = new Set<string>();
 
+  const emptyClass = () => ({ msgs: 0, inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0, rawEnergyWh: 0 });
+  const classAccum: Record<ModelClass, ReturnType<typeof emptyClass>> = {
+    haiku: emptyClass(), sonnet: emptyClass(), opus: emptyClass(),
+  };
+
   // Cache impact: estimate energy saved by cache reads vs re-computing as input
   let cacheEnergySavedWh = 0;
   let cacheCO2SavedGrams = 0;
@@ -1463,6 +1483,16 @@ function buildEnergySection(
     }, { region: regionKey, gridIntensity });
 
     allEstimates.push(estimate);
+
+    // byClass accumulator for the calculation-transparency panel
+    const cls = modelClass(m.model);
+    const acc = classAccum[cls];
+    acc.msgs += 1;
+    acc.inputTokens += m.input_tokens;
+    acc.outputTokens += m.output_tokens;
+    acc.cacheWriteTokens += m.cache_creation_tokens;
+    acc.cacheReadTokens += m.cache_read_tokens;
+    acc.rawEnergyWh += estimate.energyWh;
 
     // byDay
     const dateStr = m.timestamp != null
@@ -1583,5 +1613,19 @@ function buildEnergySection(
     },
     region: regionKey,
     gridIntensity,
+    pue: aggregated.config.pue,
+    byClass: (["opus", "sonnet", "haiku"] as const)
+      .map(cls => ({
+        cls,
+        msgs: classAccum[cls].msgs,
+        inputTokens: classAccum[cls].inputTokens,
+        outputTokens: classAccum[cls].outputTokens,
+        cacheWriteTokens: classAccum[cls].cacheWriteTokens,
+        cacheReadTokens: classAccum[cls].cacheReadTokens,
+        rawEnergyWh: Math.round(classAccum[cls].rawEnergyWh * 100) / 100,
+        inputWhPer1K: MODEL_ENERGY[cls].inputWhPer1K,
+        outputWhPer1K: MODEL_ENERGY[cls].outputWhPer1K,
+      }))
+      .filter(c => c.msgs > 0),
   };
 }

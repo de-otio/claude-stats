@@ -160,6 +160,35 @@
     "byDay": "Tägliche Energie & CO₂",
     "byProject": "Energie nach Projekt",
     "noData": "Keine Energiedaten für diesen Zeitraum verfügbar.",
+    "calc": {
+      "title": "So wird das berechnet",
+      "clickToExpand": "zum Aufklappen klicken",
+      "intro": "Jede Kachel in diesem Tab leitet sich aus den Token-Zahlen ab, die Anthropics API pro Nachricht zurückliefert. Hier steht — mit Ihren realen Zeitraum-Werten — wie daraus die kWh, kg CO₂ und Äquivalent-Zahlen werden, damit Sie die Rechnung prüfen können.",
+      "ratesHeader": "Energieraten je Modellklasse:",
+      "periodHeader": "Ihr Zeitraum ({{start}} → {{end}}):",
+      "col": {
+        "class": "Klasse",
+        "inputRate": "Input Wh/1K",
+        "outputRate": "Output Wh/1K",
+        "msgs": "Msg",
+        "output": "Output-Tok",
+        "input": "Input-Tok",
+        "cacheWrite": "Cache-Write",
+        "cacheRead": "Cache-Read",
+        "rawEnergy": "Roh-Energie",
+        "rawTotal": "Roh-Summe"
+      },
+      "totals": "Roh-Summe {{raw}} kWh × PUE {{pue}} = <strong>{{totalKwh}} kWh</strong> Verbrauch. Bei <strong>{{region}}</strong>-Netzintensität von {{gridIntensity}} gCO₂/kWh ergibt das <strong>{{co2Kg}} kg CO₂</strong>.",
+      "equivHeader": "So wurden die Äquivalente aus {{co2Kg}} kg CO₂ / {{totalKwh}} kWh abgeleitet:",
+      "eq": {
+        "gasoline": "Benzin: {{co2Kg}} kg ÷ 2,31 kg CO₂/L = <strong>{{value}} L</strong>",
+        "train": "Fernverkehrszug: {{co2Kg}} kg ÷ 0,006 kg CO₂/pkm = <strong>{{value}} km</strong>",
+        "transit": "Nahverkehr: {{co2Kg}} kg ÷ 0,030 kg CO₂/pkm = <strong>{{value}} km</strong>",
+        "coffee": "Kaffee: {{co2Kg}} kg ÷ 0,3 kg CO₂/Tasse = <strong>{{value}} Tassen</strong>",
+        "nuclearWaste": "Atommüll: {{totalKwh}} kWh × 3 mg Brennstoff/kWh = <strong>{{value}} mg</strong>",
+        "solar": "Solarmodule: {{totalKwh}} kWh ÷ ({{regionYield}} kWh/m²/Jahr in {{region}} × {{periodDays}}/365) = <strong>{{value}}</strong>"
+      }
+    },
     "sources": {
       "title": "Datenquellen",
       "items": {

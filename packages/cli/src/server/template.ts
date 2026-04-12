@@ -797,6 +797,94 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       </table>
     </div>` : ""}
 
+    <!-- Calculation transparency -->
+    <details style="background:#1a1f3a;border-radius:6px;padding:1rem;margin-top:1rem;">
+      <summary style="cursor:pointer;font-size:0.85rem;color:#a0c4ff;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;">
+        <span>${t("dashboard:energy.calc.title")}</span>
+        <span style="font-size:0.6rem;color:#888;font-weight:400;">${t("dashboard:energy.calc.clickToExpand")}</span>
+      </summary>
+      <div style="margin-top:0.75rem;font-size:0.7rem;color:#ccc;line-height:1.55;">
+        <p style="margin:0 0 0.5rem 0;">${t("dashboard:energy.calc.intro")}</p>
+        <div style="background:#0f1429;border-radius:4px;padding:0.75rem;margin:0.5rem 0;font-family:ui-monospace,monospace;font-size:0.65rem;color:#a0c4ff;white-space:pre;overflow-x:auto;">energy_Wh = (output_tokens / 1K) × output_rate
+          + (input_tokens  / 1K) × input_rate
+          + (cache_write   / 1K) × input_rate  × 1.15
+          + (cache_read    / 1K) × output_rate × 0.03
+
+total_kWh = energy_Wh × PUE / 1000
+CO₂_grams = total_kWh × grid_intensity</div>
+        <p style="margin:0.5rem 0;"><strong style="color:#a0c4ff;">${t("dashboard:energy.calc.ratesHeader")}</strong></p>
+        <table style="width:100%;border-collapse:collapse;font-size:0.65rem;margin:0.25rem 0;">
+          <thead><tr style="color:#888;text-align:right;">
+            <th style="text-align:left;padding:0.2rem 0.4rem;">${t("dashboard:energy.calc.col.class")}</th>
+            <th style="padding:0.2rem 0.4rem;">${t("dashboard:energy.calc.col.inputRate")}</th>
+            <th style="padding:0.2rem 0.4rem;">${t("dashboard:energy.calc.col.outputRate")}</th>
+          </tr></thead>
+          <tbody>${data.energy.byClass.map(c => `
+            <tr style="color:#ddd;text-align:right;">
+              <td style="text-align:left;padding:0.2rem 0.4rem;text-transform:capitalize;">${c.cls}</td>
+              <td style="padding:0.2rem 0.4rem;">${c.inputWhPer1K.toFixed(3)} Wh/1K</td>
+              <td style="padding:0.2rem 0.4rem;">${c.outputWhPer1K.toFixed(3)} Wh/1K</td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+        <p style="margin:0.75rem 0 0.25rem 0;"><strong style="color:#a0c4ff;">${t("dashboard:energy.calc.periodHeader", { start: data.energy.periodStartIso, end: data.energy.periodEndIso })}</strong></p>
+        <div style="overflow-x:auto;">
+        <table style="width:100%;min-width:600px;border-collapse:collapse;font-size:0.65rem;margin:0.25rem 0;">
+          <thead><tr style="color:#888;text-align:right;">
+            <th style="text-align:left;padding:0.2rem 0.4rem;">${t("dashboard:energy.calc.col.class")}</th>
+            <th style="padding:0.2rem 0.4rem;">${t("dashboard:energy.calc.col.msgs")}</th>
+            <th style="padding:0.2rem 0.4rem;">${t("dashboard:energy.calc.col.output")}</th>
+            <th style="padding:0.2rem 0.4rem;">${t("dashboard:energy.calc.col.input")}</th>
+            <th style="padding:0.2rem 0.4rem;">${t("dashboard:energy.calc.col.cacheWrite")}</th>
+            <th style="padding:0.2rem 0.4rem;">${t("dashboard:energy.calc.col.cacheRead")}</th>
+            <th style="padding:0.2rem 0.4rem;">${t("dashboard:energy.calc.col.rawEnergy")}</th>
+          </tr></thead>
+          <tbody>${data.energy.byClass.map(c => `
+            <tr style="color:#ddd;text-align:right;">
+              <td style="text-align:left;padding:0.2rem 0.4rem;text-transform:capitalize;">${c.cls}</td>
+              <td style="padding:0.2rem 0.4rem;">${fmtNum(c.msgs)}</td>
+              <td style="padding:0.2rem 0.4rem;">${fmtNum(c.outputTokens)}</td>
+              <td style="padding:0.2rem 0.4rem;">${fmtNum(c.inputTokens)}</td>
+              <td style="padding:0.2rem 0.4rem;">${fmtNum(c.cacheWriteTokens)}</td>
+              <td style="padding:0.2rem 0.4rem;">${fmtNum(c.cacheReadTokens)}</td>
+              <td style="padding:0.2rem 0.4rem;color:#fff;">${(c.rawEnergyWh / 1000).toFixed(2)} kWh</td>
+            </tr>`).join("")}
+          </tbody>
+          <tfoot>
+            <tr style="color:#a0c4ff;text-align:right;font-weight:600;border-top:1px solid #2a2f4f;">
+              <td style="text-align:left;padding:0.3rem 0.4rem;">${t("dashboard:energy.calc.col.rawTotal")}</td>
+              <td colspan="5"></td>
+              <td style="padding:0.3rem 0.4rem;">${(data.energy.byClass.reduce((s, c) => s + c.rawEnergyWh, 0) / 1000).toFixed(2)} kWh</td>
+            </tr>
+          </tfoot>
+        </table>
+        </div>
+        <p style="margin:0.5rem 0;">${t("dashboard:energy.calc.totals", {
+          raw: (data.energy.byClass.reduce((s, c) => s + c.rawEnergyWh, 0) / 1000).toFixed(2),
+          pue: data.energy.pue.toFixed(2),
+          totalKwh: (data.energy.totalEnergyWh / 1000).toFixed(2),
+          region: REGIONS[data.energy.region]?.name ?? data.energy.region,
+          gridIntensity: data.energy.gridIntensity,
+          co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2),
+        })}</p>
+        <p style="margin:0.75rem 0 0.25rem 0;"><strong style="color:#a0c4ff;">${t("dashboard:energy.calc.equivHeader")}</strong></p>
+        <ul style="list-style:none;padding:0;margin:0.25rem 0;font-size:0.65rem;color:#ccc;line-height:1.55;">
+          <li>${t("dashboard:energy.calc.eq.gasoline", { co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2), value: data.energy.equivalents.gasolineLiters.toFixed(3) })}</li>
+          <li>${t("dashboard:energy.calc.eq.train", { co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2), value: data.energy.equivalents.trainKm.toFixed(2) })}</li>
+          <li>${t("dashboard:energy.calc.eq.transit", { co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2), value: data.energy.equivalents.transitKm.toFixed(2) })}</li>
+          <li>${t("dashboard:energy.calc.eq.coffee", { co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2), value: data.energy.equivalents.coffeeCups.toFixed(2) })}</li>
+          <li>${t("dashboard:energy.calc.eq.nuclearWaste", { totalKwh: (data.energy.totalEnergyWh / 1000).toFixed(2), value: data.energy.equivalents.nuclearWasteMg.toFixed(2) })}</li>
+          <li>${t("dashboard:energy.calc.eq.solar", {
+            totalKwh: (data.energy.totalEnergyWh / 1000).toFixed(2),
+            regionYield: REGIONS[data.energy.equivalents.solarRegionKey]?.solarYield ?? 210,
+            region: REGIONS[data.energy.equivalents.solarRegionKey]?.name ?? data.energy.equivalents.solarRegionKey,
+            periodDays: data.energy.periodDays,
+            value: (data.energy.equivalents.solarPanelM2 >= 1 ? `${data.energy.equivalents.solarPanelM2.toFixed(2)} m²` : `${Math.round(data.energy.equivalents.solarPanelM2 * 10000)} cm²`),
+          })}</li>
+        </ul>
+      </div>
+    </details>
+
     <!-- Data sources -->
     <div style="background:#1a1f3a;border-radius:6px;padding:1rem;margin-top:1rem;">
       <h2 style="margin:0 0 0.6rem 0;font-size:0.85rem;color:#a0c4ff;">${t("dashboard:energy.sources.title")}</h2>

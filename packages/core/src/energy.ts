@@ -311,7 +311,7 @@ export interface EnergyEstimate {
  *   energy_wh = (output_tokens / 1K) * outputRate
  *             + (input_tokens / 1K)  * inputRate
  *             + (cache_creation / 1K) * inputRate * 1.15
- *             + (cache_read + ephemeral_5m + ephemeral_1h) / 1K * outputRate * 0.03
+ *             + (cache_read / 1K)     * outputRate * 0.03
  */
 export function estimateEnergy(usage: TokenUsage, config: Partial<EnergyConfig> = {}): EnergyEstimate {
   // Resolve config: detect region from inferenceGeo, then apply
@@ -336,12 +336,15 @@ export function estimateEnergy(usage: TokenUsage, config: Partial<EnergyConfig> 
   const cls = modelClass(usage.model);
   const rates = MODEL_ENERGY[cls];
 
+  // ephemeral_{5m,1h}_cache_tokens are a TTL breakdown of cache_creation_tokens,
+  // NOT additional tokens — summing them with cache_creation would double-count.
+  // They're retained on the usage record for future per-TTL cost accounting, but
+  // excluded from this energy estimate.
   const energyWh =
     (usage.outputTokens / 1000) * rates.outputWhPer1K +
     (usage.inputTokens / 1000) * rates.inputWhPer1K +
     (usage.cacheCreationTokens / 1000) * rates.inputWhPer1K * 1.15 +
-    ((usage.cacheReadTokens + usage.ephemeral5mCacheTokens + usage.ephemeral1hCacheTokens) / 1000) *
-      rates.outputWhPer1K * 0.03;
+    (usage.cacheReadTokens / 1000) * rates.outputWhPer1K * 0.03;
 
   const totalEnergyWh = energyWh * resolvedConfig.pue;
   const co2Grams = (totalEnergyWh / 1000) * resolvedConfig.gridIntensity;

@@ -155,6 +155,26 @@ describe("estimateEnergy", () => {
     expect(withCacheCreate.energyWh).toBeCloseTo(expected, 5);
   });
 
+  it("excludes ephemeral cache tokens from the energy calc (they are a TTL breakdown of cache_creation, not additional tokens)", () => {
+    const withOnlyCreation = estimateEnergy({
+      ...basicUsage,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 1000,
+      ephemeral5mCacheTokens: 0,
+      ephemeral1hCacheTokens: 0,
+    });
+    const withCreationAndEphemerals = estimateEnergy({
+      ...basicUsage,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 1000,
+      ephemeral5mCacheTokens: 600,
+      ephemeral1hCacheTokens: 400,
+    });
+    expect(withCreationAndEphemerals.energyWh).toBeCloseTo(withOnlyCreation.energyWh, 10);
+  });
+
   it("returns zero energy for all-zero tokens", () => {
     const result = estimateEnergy({
       ...basicUsage,
