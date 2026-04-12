@@ -62,49 +62,51 @@ export interface RegionInfo {
   name: string;
   /** gCO₂eq per kWh. Sources: EPA eGRID2022, EEA 2024, IEA 2024, national agencies. */
   gridIntensity: number;
+  /** Annual solar panel yield in kWh/m²/year (≈GHI × 20% efficiency × 0.75 performance ratio). */
+  solarYield: number;
 }
 
-/** Grid carbon intensities by region key. Values in gCO₂eq/kWh. */
+/** Grid carbon intensities and solar yields by region key. gCO₂eq/kWh and kWh/m²/yr. */
 export const REGIONS: Record<string, RegionInfo> = {
   // Americas
-  "us-average":   { name: "US Average",          gridIntensity: 368 },
-  "us-west":      { name: "US West (WECC)",       gridIntensity: 260 },
-  "us-east":      { name: "US East (SERC)",       gridIntensity: 420 },
-  "us-midwest":   { name: "US Midwest (MROW)",    gridIntensity: 470 },
-  "us-ca":        { name: "US California (CAMX)", gridIntensity: 210 },
-  "us-nw":        { name: "US Pacific NW (NWPP)", gridIntensity: 170 },
-  "ca":           { name: "Canada",               gridIntensity: 110 },
-  "br":           { name: "Brazil",               gridIntensity: 60  },
+  "us-average":   { name: "US Average",          gridIntensity: 368, solarYield: 230 },
+  "us-west":      { name: "US West (WECC)",       gridIntensity: 260, solarYield: 280 },
+  "us-east":      { name: "US East (SERC)",       gridIntensity: 420, solarYield: 200 },
+  "us-midwest":   { name: "US Midwest (MROW)",    gridIntensity: 470, solarYield: 220 },
+  "us-ca":        { name: "US California (CAMX)", gridIntensity: 210, solarYield: 300 },
+  "us-nw":        { name: "US Pacific NW (NWPP)", gridIntensity: 170, solarYield: 180 },
+  "ca":           { name: "Canada",               gridIntensity: 110, solarYield: 180 },
+  "br":           { name: "Brazil",               gridIntensity: 60,  solarYield: 280 },
   // Europe
-  "eu-average":   { name: "EU Average",           gridIntensity: 230 },
-  "fr":           { name: "France",               gridIntensity: 57  },
-  "de":           { name: "Germany",              gridIntensity: 350 },
-  "gb":           { name: "UK",                   gridIntensity: 200 },
-  "es":           { name: "Spain",                gridIntensity: 150 },
-  "it":           { name: "Italy",                gridIntensity: 260 },
-  "nl":           { name: "Netherlands",          gridIntensity: 300 },
-  "pl":           { name: "Poland",               gridIntensity: 620 },
-  "se":           { name: "Sweden",               gridIntensity: 25  },
-  "no":           { name: "Norway",               gridIntensity: 10  },
-  "dk":           { name: "Denmark",              gridIntensity: 100 },
-  "at":           { name: "Austria",              gridIntensity: 90  },
-  "fi":           { name: "Finland",              gridIntensity: 70  },
-  "ie":           { name: "Ireland",              gridIntensity: 270 },
-  "ch":           { name: "Switzerland",          gridIntensity: 30  },
-  "be":           { name: "Belgium",              gridIntensity: 140 },
-  "pt":           { name: "Portugal",             gridIntensity: 130 },
-  "cz":           { name: "Czech Republic",       gridIntensity: 370 },
-  "gr":           { name: "Greece",               gridIntensity: 280 },
+  "eu-average":   { name: "EU Average",           gridIntensity: 230, solarYield: 180 },
+  "fr":           { name: "France",               gridIntensity: 57,  solarYield: 200 },
+  "de":           { name: "Germany",              gridIntensity: 350, solarYield: 165 },
+  "gb":           { name: "UK",                   gridIntensity: 200, solarYield: 150 },
+  "es":           { name: "Spain",                gridIntensity: 150, solarYield: 270 },
+  "it":           { name: "Italy",                gridIntensity: 260, solarYield: 230 },
+  "nl":           { name: "Netherlands",          gridIntensity: 300, solarYield: 170 },
+  "pl":           { name: "Poland",               gridIntensity: 620, solarYield: 170 },
+  "se":           { name: "Sweden",               gridIntensity: 25,  solarYield: 140 },
+  "no":           { name: "Norway",               gridIntensity: 10,  solarYield: 130 },
+  "dk":           { name: "Denmark",              gridIntensity: 100, solarYield: 155 },
+  "at":           { name: "Austria",              gridIntensity: 90,  solarYield: 180 },
+  "fi":           { name: "Finland",              gridIntensity: 70,  solarYield: 130 },
+  "ie":           { name: "Ireland",              gridIntensity: 270, solarYield: 145 },
+  "ch":           { name: "Switzerland",          gridIntensity: 30,  solarYield: 190 },
+  "be":           { name: "Belgium",              gridIntensity: 140, solarYield: 165 },
+  "pt":           { name: "Portugal",             gridIntensity: 130, solarYield: 275 },
+  "cz":           { name: "Czech Republic",       gridIntensity: 370, solarYield: 175 },
+  "gr":           { name: "Greece",               gridIntensity: 280, solarYield: 250 },
   // Asia-Pacific
-  "au":           { name: "Australia",            gridIntensity: 530 },
-  "jp":           { name: "Japan",                gridIntensity: 430 },
-  "kr":           { name: "South Korea",          gridIntensity: 390 },
-  "in":           { name: "India",                gridIntensity: 680 },
-  "cn":           { name: "China",                gridIntensity: 530 },
-  "sg":           { name: "Singapore",            gridIntensity: 370 },
-  "nz":           { name: "New Zealand",          gridIntensity: 80  },
+  "au":           { name: "Australia",            gridIntensity: 530, solarYield: 285 },
+  "jp":           { name: "Japan",                gridIntensity: 430, solarYield: 195 },
+  "kr":           { name: "South Korea",          gridIntensity: 390, solarYield: 190 },
+  "in":           { name: "India",                gridIntensity: 680, solarYield: 280 },
+  "cn":           { name: "China",                gridIntensity: 530, solarYield: 210 },
+  "sg":           { name: "Singapore",            gridIntensity: 370, solarYield: 220 },
+  "nz":           { name: "New Zealand",          gridIntensity: 80,  solarYield: 200 },
   // Global fallback
-  "global":       { name: "Global Average",       gridIntensity: 436 },
+  "global":       { name: "Global Average",       gridIntensity: 436, solarYield: 210 },
 };
 
 /** Inference geo (AWS/GCP region codes) → region key mapping. */
@@ -234,8 +236,10 @@ export interface EnvironmentalEquivalents {
   carKm: number;
   /** Smartphone charges. */
   smartphoneCharges: number;
-  /** LED bulb (10W) hours. */
-  ledBulbHours: number;
+  /** Solar panel area (m²) that, in the detected region, would take one year to generate this much energy. */
+  solarPanelM2: number;
+  /** Region key whose solar yield was used for solarPanelM2 (falls back to "global"). */
+  solarRegionKey: string;
   /** Liters of gasoline burned (2.31 kgCO₂/L). */
   gasolineLiters: number;
   /** Cups of coffee produced (0.3 kgCO₂/cup, farm-to-cup). */
@@ -348,7 +352,7 @@ export function estimateEnergy(usage: TokenUsage, config: Partial<EnergyConfig> 
     co2Grams,
     co2GramsLow: co2Grams * 0.45,
     co2GramsHigh: co2Grams * 1.55,
-    equivalents: computeEquivalents(totalEnergyWh, co2Grams),
+    equivalents: computeEquivalents(totalEnergyWh, co2Grams, detectedRegion ?? resolvedConfig.region ?? null),
     detectedRegion,
     config: resolvedConfig,
   };
@@ -379,7 +383,7 @@ export function aggregateEnergy(estimates: EnergyEstimate[]): EnergyEstimate {
     co2Grams,
     co2GramsLow: co2Grams * 0.45,
     co2GramsHigh: co2Grams * 1.55,
-    equivalents: computeEquivalents(totalEnergyWh, co2Grams),
+    equivalents: computeEquivalents(totalEnergyWh, co2Grams, estimates.find(e => e.detectedRegion)?.detectedRegion ?? config.region ?? null),
     detectedRegion: estimates.find(e => e.detectedRegion)?.detectedRegion ?? null,
     config,
   };
@@ -387,13 +391,16 @@ export function aggregateEnergy(estimates: EnergyEstimate[]): EnergyEstimate {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function computeEquivalents(totalEnergyWh: number, co2Grams: number): EnvironmentalEquivalents {
+function computeEquivalents(totalEnergyWh: number, co2Grams: number, regionKey: string | null): EnvironmentalEquivalents {
   const co2Kg = co2Grams / 1000;
+  const solarRegionKey = (regionKey && REGIONS[regionKey]) ? regionKey : "global";
+  const solarYield = REGIONS[solarRegionKey]!.solarYield;
   return {
     treesYears: co2Kg / 21,
     carKm: co2Kg / 0.12,
     smartphoneCharges: co2Kg / 0.011,
-    ledBulbHours: totalEnergyWh / 10,
+    solarPanelM2: (totalEnergyWh / 1000) / solarYield,
+    solarRegionKey,
     gasolineLiters: co2Kg / 2.31,
     coffeeCups: co2Kg / 0.3,
     trainKm: co2Kg / 0.006,

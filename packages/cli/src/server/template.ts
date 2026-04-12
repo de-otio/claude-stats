@@ -5,7 +5,7 @@
  */
 import type { DashboardData } from "../dashboard/index.js";
 import { PRICING, PRICING_VERIFIED_DATE } from "@claude-stats/core/pricing";
-import { formatEnergy, formatCO2 } from "@claude-stats/core/energy";
+import { formatEnergy, formatCO2, REGIONS } from "@claude-stats/core/energy";
 
 export { DashboardData };
 
@@ -733,8 +733,9 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.smartphones")}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
-          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.ledBulbHours.toFixed(1)}</div>
-          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.ledHours")}</div>
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${formatSolarArea(data.energy.equivalents.solarPanelM2)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.solarPanels")}</div>
+          <div style="font-size:0.55rem;color:#666;margin-top:0.15rem;">${t("dashboard:energy.solarRegion", { region: REGIONS[data.energy.equivalents.solarRegionKey]?.name ?? data.energy.equivalents.solarRegionKey })}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
           <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.coffeeCups.toFixed(2)}</div>
@@ -785,6 +786,17 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         </tbody>
       </table>
     </div>` : ""}
+
+    <!-- Data sources -->
+    <div style="background:#1a1f3a;border-radius:6px;padding:1rem;margin-top:1rem;">
+      <h2 style="margin:0 0 0.6rem 0;font-size:0.85rem;color:#a0c4ff;">${t("dashboard:energy.sources.title")}</h2>
+      <ul style="list-style:none;padding:0;margin:0;font-size:0.65rem;color:#aaa;line-height:1.5;">
+        ${[
+          "methodology", "pue", "gridIntensity", "solarYield",
+          "carKm", "trainKm", "smartphone", "tree", "gasoline", "coffee", "nuclearWaste",
+        ].map(k => `<li style="padding:0.15rem 0;"><span style="color:#a0c4ff;font-weight:600;">${t(`dashboard:energy.sources.items.${k}.label`)}:</span> ${t(`dashboard:energy.sources.items.${k}.value`)}</li>`).join("")}
+      </ul>
+    </div>
 
     <!-- Disclaimer -->
     <p style="font-size:0.6rem;color:#666;text-align:center;margin-top:0.5rem;">${t("dashboard:energy.disclaimer")}</p>
@@ -1807,6 +1819,13 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   </script>
 </body>
 </html>`;
+}
+
+/** Format a solar-panel area: cm² when <1 m², m² otherwise. */
+function formatSolarArea(m2: number): string {
+  if (m2 < 1) return `${Math.round(m2 * 10000)} cm²`;
+  if (m2 < 10) return `${m2.toFixed(2)} m²`;
+  return `${m2.toFixed(1)} m²`;
 }
 
 /** Format a large number with k/M suffix for display in summary bar. */

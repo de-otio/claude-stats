@@ -228,7 +228,8 @@ export interface DashboardEnergy {
     treesYears: number;
     carKm: number;
     smartphoneCharges: number;
-    ledBulbHours: number;
+    solarPanelM2: number;
+    solarRegionKey: string;
     gasolineLiters: number;
     coffeeCups: number;
     trainKm: number;
@@ -1539,7 +1540,8 @@ function buildEnergySection(
       treesYears: Math.round(aggregated.equivalents.treesYears * 10000) / 10000,
       carKm: Math.round(aggregated.equivalents.carKm * 100) / 100,
       smartphoneCharges: Math.round(aggregated.equivalents.smartphoneCharges * 10) / 10,
-      ledBulbHours: Math.round(aggregated.equivalents.ledBulbHours * 10) / 10,
+      solarPanelM2: Math.round(aggregated.equivalents.solarPanelM2 * 10000) / 10000,
+      solarRegionKey: aggregated.equivalents.solarRegionKey,
       gasolineLiters: Math.round(aggregated.equivalents.gasolineLiters * 1000) / 1000,
       coffeeCups: Math.round(aggregated.equivalents.coffeeCups * 100) / 100,
       trainKm: Math.round(aggregated.equivalents.trainKm * 100) / 100,

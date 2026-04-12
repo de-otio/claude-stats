@@ -135,7 +135,8 @@
     "equivalents": "Umweltkontext",
     "gasolineLiters": "Liter Benzin",
     "smartphones": "Smartphone-Ladungen",
-    "ledHours": "LED-Lampenstunden",
+    "solarPanels": "Solarmodule (1 Jahr)",
+    "solarRegion": "in {{region}}",
     "coffeeCups": "Tassen Kaffee",
     "nuclearWaste": "mg Atommüll",
     "nuclearWasteFootnote": "Abgebrannter Brennstoff bei 100 % Kernstrom (~3 mg/kWh, OECD NEA). Hochradioaktiver Abfall muss sicher isoliert und bewacht werden — etwa 100.000 Jahre lang, bis seine Radioaktivität auf das Niveau von natürlichem Uranerz abgeklungen ist.",
@@ -155,7 +156,56 @@
     "byModel": "Energie nach Modell",
     "byDay": "Tägliche Energie & CO₂",
     "byProject": "Energie nach Projekt",
-    "noData": "Keine Energiedaten für diesen Zeitraum verfügbar."
+    "noData": "Keine Energiedaten für diesen Zeitraum verfügbar.",
+    "sources": {
+      "title": "Datenquellen",
+      "items": {
+        "methodology": {
+          "label": "Modell-Energieraten",
+          "value": "Abgeleitet aus Googles Gemini-Inferenz-Whitepaper 2025 (0,24 Wh pro typischer Textanfrage) und Epoch-AI-Schätzungen 2024 auf Token-Ebene, skaliert nach Modellklasse (Haiku/Sonnet/Opus). Details: /doc/analysis/energy-dashboard/01-estimation-model.md."
+        },
+        "pue": {
+          "label": "Rechenzentrums-Overhead",
+          "value": "PUE 1,2 — Uptime Institute 2023, Hyperscaler-Durchschnitt (Google, AWS, Azure geben 1,10–1,20 an)."
+        },
+        "gridIntensity": {
+          "label": "CO₂-Intensität des Stromnetzes",
+          "value": "USA: EPA eGRID2022. EU: Europäische Umweltagentur (EEA) 2024. Asien-Pazifik & global: IEA 2024. Nationale Agenturen, wo verfügbar."
+        },
+        "solarYield": {
+          "label": "Solarmodul-Ertrag",
+          "value": "Regionale jährliche Globalstrahlung aus PVGIS (Europa) / NREL NSRDB (Amerika) / Weltbank GSA (global), multipliziert mit 20 % Wirkungsgrad × 0,75 Performance-Ratio."
+        },
+        "carKm": {
+          "label": "Fahrzeug-Emissionen",
+          "value": "120 gCO₂/km — EU-Neuwagen-Flottendurchschnitt, EEA 2024."
+        },
+        "trainKm": {
+          "label": "Zug-Emissionen",
+          "value": "6 gCO₂ pro Personenkilometer — EU-Elektrobahnen-Durchschnitt, UIC & EEA 2024."
+        },
+        "smartphone": {
+          "label": "Smartphone-Ladung",
+          "value": "11 gCO₂ pro Vollladung — US EPA Greenhouse Gas Equivalencies Calculator."
+        },
+        "tree": {
+          "label": "Baumaufnahme",
+          "value": "21 kg CO₂ pro Jahr von einem ausgewachsenen Baum aufgenommen — US Forest Service / EPA."
+        },
+        "gasoline": {
+          "label": "Benzinverbrennung",
+          "value": "2,31 kg CO₂ pro Liter — US EPA Auspuffemissionsfaktor."
+        },
+        "coffee": {
+          "label": "Tasse Kaffee",
+          "value": "≈ 0,3 kg CO₂e pro Latte (Farm bis Tasse, inkl. Milch) — Carbon Trust / University of Manchester LCA."
+        },
+        "nuclearWaste": {
+          "label": "Atommüll",
+          "value": "~3 mg abgebrannter Brennstoff pro kWh — OECD Nuclear Energy Agency: ~30 Tonnen pro GWe-Jahr."
+        }
+      }
+    }
   },
   "settings": {
     "configuration": "Konfiguration",

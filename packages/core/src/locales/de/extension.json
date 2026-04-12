@@ -181,7 +181,7 @@
         },
         {
           "heading": "Umweltäquivalente",
-          "body": "Wandelt Gesamtenergie und CO₂ in anschauliche Einheiten um: Liter Benzin (2,31 kgCO₂/L), Smartphone-Ladungen, LED-Lampenstunden, Tassen Kaffee (0,3 kgCO₂/Tasse) und Milligramm abgebrannter Brennelemente (kontrafaktisches 100 %-Kernstrom-Szenario, ~3 mg/kWh). Ein Reise-Anker rechnet den zurückgelegten Autokilometer-Äquivalentwert des Zeitraums in eine bekannte Strecke um."
+          "body": "Wandelt Gesamtenergie und CO₂ in anschauliche Einheiten um: Liter Benzin (2,31 kgCO₂/L), Smartphone-Ladungen, Fläche an Solarmodulen, die in der erkannten Netzregion ein Jahr bräuchten, um dieselbe Energie zu erzeugen (~20 % Wirkungsgrad, 0,75 Performance-Ratio), Tassen Kaffee (0,3 kgCO₂/Tasse) und Milligramm abgebrannter Brennelemente (kontrafaktisches 100 %-Kernstrom-Szenario, ~3 mg/kWh). Ein Reise-Anker rechnet den zurückgelegten Autokilometer-Äquivalentwert des Zeitraums in eine bekannte Strecke um."
         }
       ]
     },
