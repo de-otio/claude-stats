@@ -52,6 +52,7 @@ claude-stats report [options]
 |---|---|---|
 | `--project <path>` | _(all projects)_ | Filter to one project by its filesystem path (e.g. `/Users/you/repos/myproject`) |
 | `--repo <url>` | _(all repos)_ | Filter to sessions whose git remote origin matches this URL |
+| `--account <uuid>` | _(all accounts)_ | Filter to sessions associated with a specific Anthropic account UUID |
 | `--period <period>` | `all` | `day`, `week`, `month`, or `all` |
 | `--timezone <tz>` | System timezone | IANA timezone name used for day/week/month boundaries (e.g. `America/New_York`) |
 | `--source <entrypoint>` | _(all)_ | Filter by entrypoint: `claude` (CLI) or `claude-vscode` |
@@ -152,7 +153,8 @@ The CSV format includes these columns:
 ```
 session_id, project_path, first_timestamp, last_timestamp,
 claude_version, entrypoint, prompt_count,
-input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens
+input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+account_uuid, subscription_type
 ```
 
 ---
@@ -329,6 +331,97 @@ Outputs a JSON object with `summary`, `byDay`, `byProject`, `byModel`, `byEntryp
 ```sh
 claude-stats dashboard --period week | jq '.summary'
 ```
+
+---
+
+## `spending`
+
+Show a detailed cost breakdown for a period: total cost by model, top sessions, top tools by estimated token cost, MCP server costs, anomalous prompts, and cache efficiency.
+
+```
+claude-stats spending [options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--period <period>` | `day` | `day`, `week`, `month`, or `all` |
+| `--project <path>` | _(all projects)_ | Filter to one project |
+| `--model <name>` | _(all models)_ | Filter to sessions using a specific model (prefix match, e.g. `claude-opus`) |
+| `--top <n>` | `5` | Number of top sessions/tools/anomalies to show |
+| `--sort <key>` | `cost` | Sort sessions by: `cost`, `tokens`, or `prompts` |
+| `--timezone <tz>` | System timezone | IANA timezone for period boundaries |
+| `--account <uuid>` | _(all accounts)_ | Filter to a specific Anthropic account UUID |
+| `--json` | _(off)_ | Output full breakdown as JSON instead of a formatted report |
+
+**What it shows:**
+
+- **Total cost by model** — estimated API-equivalent cost broken down by model with input/output token counts
+- **Top sessions** — most expensive sessions in the period (session ID prefix, project, prompt count, duration, model)
+- **Top tools** — tools ranked by estimated cost contribution (based on tokens used in messages where the tool was called)
+- **MCP servers** — cost and call volume grouped by MCP server
+- **Anomalies** — prompts with unusually high token counts (relative to your average)
+- **Cache efficiency** — hit rate and estimated savings from cache hits
+- **Subagent overhead** — tokens consumed by spawned agent tool calls
+
+**Examples:**
+
+```sh
+# Today's spending breakdown
+claude-stats spending
+
+# This week's spending, top 10 sessions
+claude-stats spending --period week --top 10
+
+# Sorted by prompt count rather than cost
+claude-stats spending --period month --sort prompts
+
+# Export as JSON for processing
+claude-stats spending --period week --json | jq '.topSessions'
+```
+
+---
+
+## `mcp`
+
+Start a local MCP server over stdio for AI agent access to your usage stats.
+
+```
+claude-stats mcp
+```
+
+No options. The server is intended to be launched by a Claude Code client (not run manually in a terminal). It reads the local database and exposes read-only tools — no network access or authentication required.
+
+**Available tools:**
+
+| Tool | Description |
+|---|---|
+| `get_stats` | Usage summary for a period — tokens, cost, sessions, cache efficiency |
+| `list_sessions` | Recent sessions with token counts and estimated cost |
+| `get_session_detail` | Messages and token usage for a specific session |
+| `list_projects` | Per-project usage breakdown |
+| `get_status` | Database health, session count, last collection time |
+| `search_history` | Search prompt history by keyword |
+
+**Client configuration** (add to `~/.claude/settings.json` or `.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "claude-stats": {
+      "command": "claude-stats",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+The VS Code extension auto-registers this configuration on first activation — no manual setup needed if you use the extension.
+
+**Example queries once connected:**
+
+- "How many tokens have I used this week?"
+- "What were my most expensive sessions today?"
+- "Which projects am I spending the most on?"
 
 ---
 

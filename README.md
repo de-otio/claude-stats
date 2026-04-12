@@ -13,12 +13,12 @@ Collect and visualize usage statistics from Claude Code sessions stored locally 
 
 Tell your AI agent:
 
-> Install claude-stats from https://github.com/de-otio/claude-stats
+> Install claude-stats from https://github.com/deotio/claude-stats
 
 The agent should run:
 
 ```sh
-git clone https://github.com/de-otio/claude-stats
+git clone https://github.com/deotio/claude-stats
 cd claude-stats
 npm install
 npm run build
@@ -41,7 +41,7 @@ The extension embeds the dashboard inside VS Code with a status bar showing toda
 ### Build and install
 
 ```sh
-git clone https://github.com/de-otio/claude-stats
+git clone https://github.com/deotio/claude-stats
 cd claude-stats
 npm install
 npm run build
@@ -108,6 +108,7 @@ claude-stats report --html        # export a standalone HTML dashboard file
 | -------------- | ------------------------------------------------------------ |
 | `collect`      | Incrementally import session data from `~/.claude/projects/` |
 | `report`       | Print usage summary, per-session detail, or trend breakdown  |
+| `spending`     | Detailed cost breakdown by model, session, tool, and MCP server |
 | `serve`        | Start a local web dashboard (`http://localhost:9120`)        |
 | `status`       | Show database size, session count, and last collection time  |
 | `export`       | Export sessions as JSON or CSV                               |
@@ -115,13 +116,14 @@ claude-stats report --html        # export a standalone HTML dashboard file
 | `dashboard`    | Output pre-aggregated dashboard JSON to stdout               |
 | `tag` / `tags` | Tag sessions and list tags                                   |
 | `config`       | View or set cost alert thresholds                            |
+| `backfill`     | Re-parse all session files to populate newly added fields    |
 | `diagnose`     | Show quarantine counts and schema health                     |
 | `mcp`          | Start a local MCP server over stdio for AI agent access      |
 
 ## Build
 
 ```sh
-git clone https://github.com/de-otio/claude-stats
+git clone https://github.com/deotio/claude-stats
 cd claude-stats
 npm install
 npm run build
