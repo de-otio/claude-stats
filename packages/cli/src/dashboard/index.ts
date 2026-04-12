@@ -704,14 +704,15 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     const throttledWindowPercent = byWindow.length > 0
       ? Math.round((throttledCount / byWindow.length) * 1000) / 10 : 0;
 
-    // Estimate per-window usage limit from throttled windows or plan fee
+    // Estimate per-window usage limit from throttled windows only.
+    // When no throttled windows exist, fall back to plan fee / 120 (assumed window count).
     const throttledWindows = byWindow.filter(w => w.throttled);
     let estimatedWindowLimit = 0;
     if (throttledWindows.length > 0) {
       // Use the minimum cost among throttled windows as the approximate limit
       estimatedWindowLimit = Math.min(...throttledWindows.map(w => w.totalCostEquivalent));
-    } else if (windowCosts.length > 0 && effectivePlanFee > 0) {
-      // Estimate: plan fee spread across typical active windows per month (~120)
+    } else if (effectivePlanFee > 0) {
+      // Fall back to plan fee estimate when no throttle data exists
       estimatedWindowLimit = effectivePlanFee / 120;
     }
 

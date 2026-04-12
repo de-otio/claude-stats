@@ -48,7 +48,6 @@
     "windowLimitUsage": "Window Limit Usage %",
     "weeklyActivity": "Weekly Activity",
     "windowsPerWeek": "Windows Per Week",
-    "weeklyPlanUtilization": "Weekly Plan Utilization Rate",
     "conversationLengthDist": "Conversation Length Distribution",
     "contextGrowthCurve": "Context Growth Curve",
     "cacheEfficiencyByLength": "Cache Efficiency by Conversation Length",

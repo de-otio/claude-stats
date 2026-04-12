@@ -94,7 +94,7 @@
         },
         {
           "heading": "Window Limit Usage %",
-          "body": "Shows what percentage of your per-window usage limit was consumed in each 5-hour window. Derived from throttled windows (if any) or estimated from your plan fee. Red bars indicate throttled windows, orange means approaching the limit (>=80%)."
+          "body": "Shows what percentage of your per-window usage limit was consumed in each 5-hour window. The limit is only estimated when throttle events are actually detected — without that data, the chart falls back to showing absolute API-equivalent cost per window instead. Red bars indicate throttled windows, orange means approaching the limit (>=80%)."
         },
         {
           "heading": "Windows Per Week",

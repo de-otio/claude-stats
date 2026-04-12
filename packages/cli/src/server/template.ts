@@ -436,12 +436,6 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <canvas id="chart-windows-per-week"></canvas>
       </div>
       ` : ''}
-      ${hasPlanBudget ? `
-      <div class="chart-card" style="grid-column: 1 / -1;">
-        <h2>${t("dashboard:charts.weeklyPlanUtilization")}</h2>
-        <canvas id="chart-weekly-util-rate"></canvas>
-      </div>
-      ` : ''}
     </div>
     `;
     })() : `
@@ -1338,42 +1332,57 @@ CO₂_grams = total_kWh × grid_intensity</div>
         }());
 
         // 1b. Window Limit Usage % (per-window usage as % of estimated limit)
+        // Only show as % when we have a real limit from throttled windows.
+        // Without throttle data, show absolute cost per window instead —
+        // any percentage estimate from plan fee alone produces misleading values.
         (function () {
           var el = document.getElementById('chart-window-limit-pct');
           if (!el || !d.byWindow || d.byWindow.length === 0) return;
           var limit = pu.estimatedWindowLimit;
-          if (!limit || limit <= 0) {
-            // Fallback: use max observed window cost as 100%
-            var maxObs = 0;
-            for (var i = 0; i < d.byWindow.length; i++) {
-              if (d.byWindow[i].totalCostEquivalent > maxObs) maxObs = d.byWindow[i].totalCostEquivalent;
-            }
-            limit = maxObs > 0 ? maxObs : 1;
-          }
+          var hasRealLimit = limit && limit > 0;
           var ctx = el.getContext('2d');
           // Sort windows chronologically (oldest first)
           var sorted = d.byWindow.slice().sort(function (a, b) { return a.windowStart - b.windowStart; });
           var labels = sorted.map(function (w) { return new Date(w.windowStart).toISOString().slice(5, 16).replace('T', ' '); });
-          var pcts = sorted.map(function (w) { return Math.round((w.totalCostEquivalent / limit) * 1000) / 10; });
-          var bgColors = sorted.map(function (w) { return w.throttled ? '#e15759' : pcts[sorted.indexOf(w)] >= 80 ? '#f28e2b' : '#4e79a7'; });
-          new Chart(ctx, {
-            type: 'bar',
-            data: {
-              labels: labels,
-              datasets: [{ label: 'Usage %', data: pcts, backgroundColor: bgColors }]
-            },
-            options: Object.assign({}, chartOpts, {
-              plugins: Object.assign({}, chartOpts.plugins, {
-                legend: { display: false },
-                title: { display: true, text: limit === pu.estimatedWindowLimit ? 'Per-window usage vs estimated limit ($' + limit.toFixed(2) + ')' : 'Per-window usage (relative to peak)', color: '#888', font: { size: 10 } },
-                tooltip: { callbacks: { label: function(ctx) { return ctx.parsed.y.toFixed(1) + '% of window limit'; } } }
-              }),
-              scales: {
-                x: { ticks: { maxRotation: 45, font: { size: 9 } } },
-                y: { title: { display: true, text: 'Usage %', color: '#888' }, ticks: { callback: function(v) { return v + '%'; } } }
-              }
-            })
-          });
+          if (hasRealLimit) {
+            // Show % of estimated throttle limit (derived from actual throttled windows)
+            var pcts = sorted.map(function (w) { return Math.round((w.totalCostEquivalent / limit) * 1000) / 10; });
+            var bgColors = sorted.map(function (w, i) { return w.throttled ? '#e15759' : pcts[i] >= 80 ? '#f28e2b' : '#4e79a7'; });
+            new Chart(ctx, {
+              type: 'bar',
+              data: { labels: labels, datasets: [{ label: 'Usage %', data: pcts, backgroundColor: bgColors }] },
+              options: Object.assign({}, chartOpts, {
+                plugins: Object.assign({}, chartOpts.plugins, {
+                  legend: { display: false },
+                  title: { display: true, text: 'Per-window usage vs throttle limit ($' + limit.toFixed(2) + ' — from observed throttle events)', color: '#888', font: { size: 10 } },
+                  tooltip: { callbacks: { label: function(ctx) { return ctx.parsed.y.toFixed(1) + '% of window limit'; } } }
+                }),
+                scales: {
+                  x: { ticks: { maxRotation: 45, font: { size: 9 } } },
+                  y: { title: { display: true, text: 'Usage %', color: '#888' }, ticks: { callback: function(v) { return v + '%'; } } }
+                }
+              })
+            });
+          } else {
+            // No throttle data — show absolute API-equivalent cost per window
+            var costs = sorted.map(function (w) { return Math.round(w.totalCostEquivalent * 1000) / 1000; });
+            var costColors = sorted.map(function (w) { return w.throttled ? '#e15759' : '#4e79a7'; });
+            new Chart(ctx, {
+              type: 'bar',
+              data: { labels: labels, datasets: [{ label: 'API Cost ($)', data: costs, backgroundColor: costColors }] },
+              options: Object.assign({}, chartOpts, {
+                plugins: Object.assign({}, chartOpts.plugins, {
+                  legend: { display: false },
+                  title: { display: true, text: 'API-equivalent cost per 5-hour window (no throttle events detected — % limit unavailable)', color: '#888', font: { size: 10 } },
+                  tooltip: { callbacks: { label: function(ctx) { return '$' + ctx.parsed.y.toFixed(3) + ' API-equivalent'; } } }
+                }),
+                scales: {
+                  x: { ticks: { maxRotation: 45, font: { size: 9 } } },
+                  y: { title: { display: true, text: 'Cost ($)', color: '#888' }, ticks: { callback: function(v) { return '$' + v; } } }
+                }
+              })
+            });
+          }
         }());
 
         // 2. Windows per week trend
@@ -1402,42 +1411,6 @@ CO₂_grams = total_kWh × grid_intensity</div>
           });
         }());
 
-        // 4. Weekly utilization rate (% of plan budget used per week)
-        (function () {
-          var el = document.getElementById('chart-weekly-util-rate');
-          if (!el || !pu.weeklyPlanBudget || pu.weeklyPlanBudget <= 0) return;
-          var ctx = el.getContext('2d');
-          var labels = d.byWeek.map(function (w) { return w.week; });
-          var rates = d.byWeek.map(function (w) { return Math.round((w.estimatedCost / pu.weeklyPlanBudget) * 1000) / 10; });
-          var bgColors = rates.map(function (r) { return r >= 100 ? '#59a14f' : r >= 50 ? '#f28e2b' : '#e15759'; });
-          new Chart(ctx, {
-            type: 'bar',
-            data: {
-              labels: labels,
-              datasets: [{
-                label: 'Plan Utilization %',
-                data: rates,
-                backgroundColor: bgColors
-              }]
-            },
-            options: Object.assign({}, chartOpts, {
-              plugins: Object.assign({}, chartOpts.plugins, {
-                legend: { display: false },
-                title: { display: true, text: 'Green = getting full value (>=100%), Orange = moderate (50-99%), Red = underusing (<50%)', color: '#666', font: { size: 10 } },
-                tooltip: { callbacks: { label: function(ctx) { return ctx.parsed.y.toFixed(1) + '% of weekly plan budget ($' + pu.weeklyPlanBudget.toFixed(2) + ')'; } } }
-              }),
-              scales: {
-                x: { ticks: { maxRotation: 45, font: { size: 9 } } },
-                y: {
-                  title: { display: true, text: 'Utilization %', color: '#888' },
-                  ticks: { callback: function(v) { return v + '%'; } }
-                }
-              },
-              annotation: undefined
-            })
-          });
-          // Add 100% reference line if annotation plugin is available
-        }());
       }
 
       // ═══════════════ CONTEXT CHARTS ═══════════════

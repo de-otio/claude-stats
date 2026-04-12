@@ -94,7 +94,7 @@
         },
         {
           "heading": "Fensterlimit-Auslastung %",
-          "body": "Zeigt, welcher Prozentsatz Ihres Nutzungslimits pro Fenster in jedem 5-Stunden-Fenster verbraucht wurde. Abgeleitet aus gedrosselten Fenstern (falls vorhanden) oder geschätzt anhand Ihrer Abogebühr. Rote Balken zeigen gedrosselte Fenster, orange bedeutet Annäherung an das Limit (>=80%)."
+          "body": "Zeigt, welcher Prozentsatz Ihres Nutzungslimits pro Fenster in jedem 5-Stunden-Fenster verbraucht wurde. Das Limit wird nur geschätzt, wenn tatsächlich Drosselungsereignisse erkannt werden — ohne diese Daten zeigt das Diagramm stattdessen die absolute API-Äquivalentkosten pro Fenster. Rote Balken zeigen gedrosselte Fenster, orange bedeutet Annäherung an das Limit (>=80%)."
         },
         {
           "heading": "Fenster pro Woche",
