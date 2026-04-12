@@ -748,6 +748,10 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.transitKm.toFixed(2)}</div>
           <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.transitKm")}</div>
         </div>
+        <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.trainKm.toFixed(2)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.trainKm")}</div>
+        </div>
       </div>
       <div style="margin-top:0.6rem;font-size:0.6rem;color:#888;line-height:1.35;">
         ${t("dashboard:energy.journeyAnchor", { name: t(`dashboard:energy.journeys.${data.energy.journeyAnchor.key}`), km: data.energy.journeyAnchor.km })}
@@ -799,7 +803,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       <ul style="list-style:none;padding:0;margin:0;font-size:0.65rem;color:#aaa;line-height:1.5;">
         ${[
           "methodology", "pue", "gridIntensity", "solarYield",
-          "carKm", "transit", "tree", "gasoline", "coffee", "nuclearWaste",
+          "carKm", "transit", "train", "tree", "gasoline", "coffee", "nuclearWaste",
         ].map(k => `<li style="padding:0.15rem 0;"><span style="color:#a0c4ff;font-weight:600;">${t(`dashboard:energy.sources.items.${k}.label`)}:</span> ${t(`dashboard:energy.sources.items.${k}.value`)}</li>`).join("")}
       </ul>
     </div>
@@ -1616,8 +1620,8 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
               labels: en.byDay.map(function (d) { return d.date; }),
               datasets: [
                 {
-                  label: 'Energy (Wh)',
-                  data: en.byDay.map(function (d) { return d.energyWh; }),
+                  label: 'Energy (kWh)',
+                  data: en.byDay.map(function (d) { return d.energyWh / 1000; }),
                   backgroundColor: '#4e79a7',
                   yAxisID: 'y'
                 },
@@ -1655,8 +1659,8 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
             data: {
               labels: en.byModel.map(function (m) { return m.model; }),
               datasets: [{
-                label: 'Energy (Wh)',
-                data: en.byModel.map(function (m) { return m.energyWh; }),
+                label: 'Energy (kWh)',
+                data: en.byModel.map(function (m) { return m.energyWh / 1000; }),
                 backgroundColor: en.byModel.map(function (_, i) { return palette[i % palette.length]; })
               }]
             },

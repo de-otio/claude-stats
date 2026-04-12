@@ -135,7 +135,8 @@
     "equivalents": "Umweltkontext",
     "periodRange": "{{start}} → {{end}} ({{days}} Tage)",
     "gasolineLiters": "Liter Benzin",
-    "transitKm": "km im ÖPNV",
+    "transitKm": "km im Nahverkehr",
+    "trainKm": "km im Fernverkehr",
     "solarPanels": "benötigte Solarmodule (Zeitraum)",
     "solarRegion": "in {{region}}",
     "solarPanelsFootnote": "Fläche an Aufdach-PV-Modulen (~20 % Wirkungsgrad, 0,75 Performance-Ratio), die — platziert in {{region}} — genau den gewählten Zeitraum bräuchten, um den in diesem Zeitraum angefallenen Gesamtenergieverbrauch zu erzeugen. Skaliert mit der regionalen Sonneneinstrahlung und der gewählten Zeitraum-Länge.",
@@ -183,8 +184,12 @@
           "value": "120 gCO₂/km — EU-Neuwagen-Flottendurchschnitt, EEA 2024."
         },
         "transit": {
-          "label": "ÖPNV-Emissionen",
-          "value": "25 gCO₂ pro Personenkilometer — gewichtete Mischung aus Stadtbus (~27), U-Bahn/Metro (~8) und elektrifizierter Bahn (~6), IEA Transport Emissions (2024), UIC Railway Handbook und EEA Transport & Environment Reporting Mechanism 2024."
+          "label": "Nahverkehrs-Emissionen",
+          "value": "30 gCO₂ pro Personenkilometer — gewichtete Mischung aus Stadtbus (~27), U-Bahn/Metro (~8) und Straßenbahn/Stadtbahn, IEA Transport Emissions (2024) und EEA Transport & Environment Reporting Mechanism 2024."
+        },
+        "train": {
+          "label": "Fernverkehrs-Emissionen",
+          "value": "6 gCO₂ pro Personenkilometer — europäischer elektrifizierter Intercity-Bahn-Durchschnitt, UIC Railway Handbook on Energy and CO₂ Emissions und EEA 2024."
         },
         "tree": {
           "label": "Baumaufnahme",

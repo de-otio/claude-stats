@@ -135,7 +135,8 @@
     "equivalents": "Environmental Context",
     "periodRange": "{{start}} → {{end}} ({{days}} days)",
     "gasolineLiters": "liters of gasoline",
-    "transitKm": "km by mass transit",
+    "transitKm": "km by local transit",
+    "trainKm": "km by long-distance train",
     "solarPanels": "solar panels required (period)",
     "solarRegion": "in {{region}}",
     "solarPanelsFootnote": "Area of rooftop PV modules (~20% efficiency, 0.75 performance ratio) that, sited in {{region}}, would take exactly the selected time window to generate this period's total energy consumption. Scales with the regional annual solar irradiance and the chosen period length.",
@@ -183,8 +184,12 @@
           "value": "120 gCO₂/km — EU new-car fleet average, EEA 2024."
         },
         "transit": {
-          "label": "Mass transit emissions",
-          "value": "25 gCO₂/passenger-km — weighted blend of urban bus (~27), subway/metro (~8), and electrified rail (~6) from IEA Transport Emissions (2024), UIC Railway Handbook, and EEA Transport & Environment Reporting Mechanism 2024."
+          "label": "Local transit emissions",
+          "value": "30 gCO₂/passenger-km — weighted blend of urban bus (~27), subway/metro (~8), and tram/light rail from IEA Transport Emissions (2024) and EEA Transport & Environment Reporting Mechanism 2024."
+        },
+        "train": {
+          "label": "Long-distance train emissions",
+          "value": "6 gCO₂/passenger-km — European electrified intercity rail average, UIC Railway Handbook on Energy and CO₂ Emissions and EEA 2024."
         },
         "tree": {
           "label": "Tree absorption",
