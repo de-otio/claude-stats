@@ -7,6 +7,8 @@ import {
   aggregateEnergy,
   formatEnergy,
   formatCO2,
+  nearestJourneyAnchor,
+  JOURNEY_ANCHORS,
   REGIONS,
   MODEL_ENERGY,
   DEFAULT_ENERGY_CONFIG,
@@ -165,8 +167,20 @@ describe("estimateEnergy", () => {
 
   it("includes environmental equivalents", () => {
     const result = estimateEnergy(basicUsage);
-    expect(result.equivalents.googleSearches).toBeGreaterThan(0);
+    expect(result.equivalents.gasolineLiters).toBeGreaterThan(0);
+    expect(result.equivalents.coffeeCups).toBeGreaterThan(0);
     expect(result.equivalents.ledBulbHours).toBeGreaterThan(0);
+    expect(result.equivalents.nuclearWasteMg).toBeGreaterThan(0);
+    expect(result.equivalents.nuclearWasteMg).toBeCloseTo(result.totalEnergyWh * 0.003, 10);
+  });
+
+  it("nearestJourneyAnchor snaps to the log-nearest anchor", () => {
+    expect(nearestJourneyAnchor(250).key).toBe("berlinHamburg");
+    expect(nearestJourneyAnchor(2).key).toBe("coffeeWalk");
+    expect(nearestJourneyAnchor(6).key).toBe("bikeCrossTown");
+    expect(nearestJourneyAnchor(7000).key).toBe("coastToCoast");
+    expect(nearestJourneyAnchor(50000).key).toBe("halfEarth");
+    expect(nearestJourneyAnchor(0).key).toBe(JOURNEY_ANCHORS[0]!.key);
   });
 
   it("uses custom PUE from config", () => {

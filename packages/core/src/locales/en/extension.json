@@ -181,7 +181,7 @@
         },
         {
           "heading": "Environmental Equivalents",
-          "body": "Converts total energy and CO₂ to intuitive units: Google searches (0.24 Wh each), smartphone charges, LED bulb hours, and Netflix hours. Useful for communicating footprint in concrete terms."
+          "body": "Converts total energy and CO₂ to intuitive units: liters of gasoline burned (2.31 kgCO₂/L), smartphone charges, LED bulb hours, cups of coffee produced (0.3 kgCO₂/cup), and milligrams of spent nuclear fuel (the counterfactual 100%-nuclear alternative, ~3 mg/kWh). A journey anchor snaps the period's driven-km-equivalent to a recognizable trip. Useful for communicating footprint in concrete terms."
         }
       ]
     },

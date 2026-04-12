@@ -236,12 +236,47 @@ export interface EnvironmentalEquivalents {
   smartphoneCharges: number;
   /** LED bulb (10W) hours. */
   ledBulbHours: number;
-  /** Equivalent number of Google searches (0.24 Wh each). */
-  googleSearches: number;
-  /** Netflix streaming hours (36 Wh/hour). */
-  netflixHours: number;
+  /** Liters of gasoline burned (2.31 kgCO₂/L). */
+  gasolineLiters: number;
+  /** Cups of coffee produced (0.3 kgCO₂/cup, farm-to-cup). */
+  coffeeCups: number;
   /** EU train km (6 gCO₂/pkm). */
   trainKm: number;
+  /** Milligrams of spent nuclear fuel if the same energy came from 100% nuclear (3 mg/kWh, OECD NEA). */
+  nuclearWasteMg: number;
+}
+
+/** Canonical journeys ordered by distance, used to anchor a period's carKm to a relatable trip. */
+export interface JourneyAnchor {
+  /** Locale key (e.g. "berlinHamburg"). */
+  key: string;
+  /** Anchor distance in km. */
+  km: number;
+}
+
+export const JOURNEY_ANCHORS: readonly JourneyAnchor[] = [
+  { key: "coffeeWalk", km: 1 },
+  { key: "bikeCrossTown", km: 5 },
+  { key: "crosstownCommute", km: 20 },
+  { key: "shortIntercity", km: 85 },
+  { key: "berlinHamburg", km: 286 },
+  { key: "berlinMunich", km: 585 },
+  { key: "parisBerlin", km: 1000 },
+  { key: "coastToCoast", km: 4500 },
+  { key: "halfEarth", km: 20000 },
+] as const;
+
+/** Snap a driving distance (km) to the nearest anchor in log space. */
+export function nearestJourneyAnchor(carKm: number): JourneyAnchor {
+  if (!(carKm > 0)) return JOURNEY_ANCHORS[0]!;
+  const logKm = Math.log(carKm);
+  let best = JOURNEY_ANCHORS[0]!;
+  let bestDist = Math.abs(logKm - Math.log(best.km));
+  for (const a of JOURNEY_ANCHORS) {
+    const d = Math.abs(logKm - Math.log(a.km));
+    if (d < bestDist) { best = a; bestDist = d; }
+  }
+  return best;
 }
 
 export interface EnergyEstimate {
@@ -359,9 +394,10 @@ function computeEquivalents(totalEnergyWh: number, co2Grams: number): Environmen
     carKm: co2Kg / 0.12,
     smartphoneCharges: co2Kg / 0.011,
     ledBulbHours: totalEnergyWh / 10,
-    googleSearches: totalEnergyWh / 0.24,
-    netflixHours: totalEnergyWh / 36,
+    gasolineLiters: co2Kg / 2.31,
+    coffeeCups: co2Kg / 0.3,
     trainKm: co2Kg / 0.006,
+    nuclearWasteMg: totalEnergyWh * 0.003,
   };
 }
 

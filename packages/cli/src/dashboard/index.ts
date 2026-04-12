@@ -16,7 +16,7 @@ import {
   type ModelEfficiencyData,
 } from "../classifier.js";
 import { attributeToolCosts, groupByMcpServer, detectAnomalies, aggregateMcpServerUsage } from "../spending.js";
-import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY } from "@claude-stats/core/energy";
+import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor } from "@claude-stats/core/energy";
 
 export interface DashboardSummary {
   sessions: number;
@@ -229,10 +229,13 @@ export interface DashboardEnergy {
     carKm: number;
     smartphoneCharges: number;
     ledBulbHours: number;
-    googleSearches: number;
-    netflixHours: number;
+    gasolineLiters: number;
+    coffeeCups: number;
     trainKm: number;
+    nuclearWasteMg: number;
   };
+  /** Nearest canonical driving journey for this period's carKm. */
+  journeyAnchor: { key: string; km: number };
   /** Energy and CO₂ per calendar day. */
   byDay: Array<{ date: string; energyWh: number; co2Grams: number }>;
   /** Energy and CO₂ per model (sorted by energyWh desc). */
@@ -1537,10 +1540,12 @@ function buildEnergySection(
       carKm: Math.round(aggregated.equivalents.carKm * 100) / 100,
       smartphoneCharges: Math.round(aggregated.equivalents.smartphoneCharges * 10) / 10,
       ledBulbHours: Math.round(aggregated.equivalents.ledBulbHours * 10) / 10,
-      googleSearches: Math.round(aggregated.equivalents.googleSearches * 10) / 10,
-      netflixHours: Math.round(aggregated.equivalents.netflixHours * 100) / 100,
+      gasolineLiters: Math.round(aggregated.equivalents.gasolineLiters * 1000) / 1000,
+      coffeeCups: Math.round(aggregated.equivalents.coffeeCups * 100) / 100,
       trainKm: Math.round(aggregated.equivalents.trainKm * 100) / 100,
+      nuclearWasteMg: Math.round(aggregated.equivalents.nuclearWasteMg * 1000) / 1000,
     },
+    journeyAnchor: nearestJourneyAnchor(aggregated.equivalents.carKm),
     byDay,
     byModel,
     byProject,

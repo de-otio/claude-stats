@@ -725,8 +725,8 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       <h2 style="margin:0 0 0.75rem 0;font-size:0.85rem;color:#a0c4ff;">${t("dashboard:energy.equivalents")}</h2>
       <div style="display:flex;flex-wrap:wrap;gap:1rem;">
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
-          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.googleSearches.toFixed(0)}</div>
-          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.searches")}</div>
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.gasolineLiters.toFixed(3)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.gasolineLiters")}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
           <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.smartphoneCharges.toFixed(1)}</div>
@@ -737,9 +737,19 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.ledHours")}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
-          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.netflixHours.toFixed(2)}</div>
-          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.netflixHours")}</div>
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.coffeeCups.toFixed(2)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.coffeeCups")}</div>
         </div>
+        <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.nuclearWasteMg.toFixed(2)}<sup style="font-size:0.7rem;color:#ffb347;">*</sup></div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.nuclearWaste")}</div>
+        </div>
+      </div>
+      <div style="margin-top:0.6rem;font-size:0.6rem;color:#888;line-height:1.35;">
+        ${t("dashboard:energy.journeyAnchor", { name: t(`dashboard:energy.journeys.${data.energy.journeyAnchor.key}`), km: data.energy.journeyAnchor.km })}
+      </div>
+      <div style="margin-top:0.35rem;font-size:0.6rem;color:#888;line-height:1.35;">
+        <span style="color:#ffb347;">*</span> ${t("dashboard:energy.nuclearWasteFootnote")}
       </div>
     </div>
 
