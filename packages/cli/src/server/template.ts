@@ -1271,7 +1271,11 @@ CO₂_grams = total_kWh × grid_intensity</div>
           if (!el || !d.byConversationCost || d.byConversationCost.length === 0) return;
           var ctx = el.getContext('2d');
           var top = d.byConversationCost.slice(0, 15);
-          var labels = top.map(function (c) { var parts = (c.projectPath || '').replace(/\\\\/g, '/').split('/'); var proj = parts[parts.length - 1] || c.projectPath; return proj + ' (' + c.sessionId.slice(0, 6) + ')'; });
+          var labels = top.map(function (c) {
+            var parts = (c.projectPath || '').replace(/\\\\/g, '/').split('/').filter(Boolean);
+            var proj = parts.length >= 2 ? parts[parts.length - 2] + '/' + parts[parts.length - 1] : (parts[parts.length - 1] || c.projectPath);
+            return proj + ' (' + c.sessionId.slice(0, 6) + ')';
+          });
           var costs = top.map(function (c) { return c.estimatedCost; });
           var bgColors = top.map(function (_, i) { return COLORS[i % COLORS.length]; });
           new Chart(ctx, {
