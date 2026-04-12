@@ -737,12 +737,13 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           <div style="font-size:0.55rem;color:#666;margin-top:0.15rem;">${t("dashboard:energy.solarRegion", { region: REGIONS[data.energy.equivalents.solarRegionKey]?.name ?? data.energy.equivalents.solarRegionKey })}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
-          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${formatNuclearVolume(data.energy.equivalents.nuclearWasteMl)}<sup style="font-size:0.7rem;color:#ffb347;">*</sup></div>
-          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.nuclearWaste")}</div>
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.windRotations.toFixed(1)}<sup style="font-size:0.7rem;color:#7ec4e8;">‡</sup></div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.windRotations")}</div>
+          <div style="font-size:0.55rem;color:#666;margin-top:0.15rem;">${t("dashboard:energy.windTurbineRef")}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
-          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.coffeeCups.toFixed(2)}</div>
-          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.coffeeCups")}</div>
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${formatNuclearVolume(data.energy.equivalents.nuclearWasteMl)}<sup style="font-size:0.7rem;color:#ffb347;">*</sup></div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.nuclearWaste")}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
           <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.transitKm.toFixed(2)}</div>
@@ -761,6 +762,12 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       </div>
       <div style="margin-top:0.35rem;font-size:0.6rem;color:#888;line-height:1.35;">
         <span style="color:#ffb347;">*</span> ${t("dashboard:energy.nuclearWasteFootnote")}
+      </div>
+      <div style="margin-top:0.35rem;font-size:0.6rem;color:#888;line-height:1.35;">
+        <span style="color:#7ec4e8;">‡</span> ${t("dashboard:energy.windRotationsFootnote", {
+          minutes: (data.energy.totalEnergyWh / 17500).toFixed(1),
+          ratedMinutes: (data.energy.totalEnergyWh / 50000).toFixed(2),
+        })}
       </div>
     </div>
 
@@ -872,8 +879,8 @@ CO₂_grams = total_kWh × grid_intensity</div>
           <li>${t("dashboard:energy.calc.eq.gasoline", { co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2), value: data.energy.equivalents.gasolineLiters.toFixed(3) })}</li>
           <li>${t("dashboard:energy.calc.eq.train", { co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2), value: data.energy.equivalents.trainKm.toFixed(2) })}</li>
           <li>${t("dashboard:energy.calc.eq.transit", { co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2), value: data.energy.equivalents.transitKm.toFixed(2) })}</li>
-          <li>${t("dashboard:energy.calc.eq.coffee", { co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2), value: data.energy.equivalents.coffeeCups.toFixed(2) })}</li>
           <li>${t("dashboard:energy.calc.eq.nuclearWaste", { totalKwh: (data.energy.totalEnergyWh / 1000).toFixed(2), value: formatNuclearVolume(data.energy.equivalents.nuclearWasteMl) })}</li>
+          <li>${t("dashboard:energy.calc.eq.wind", { totalKwh: (data.energy.totalEnergyWh / 1000).toFixed(2), value: data.energy.equivalents.windRotations.toFixed(1), minutes: (data.energy.totalEnergyWh / 17500).toFixed(1) })}</li>
           <li>${t("dashboard:energy.calc.eq.solar", {
             totalKwh: (data.energy.totalEnergyWh / 1000).toFixed(2),
             regionYield: REGIONS[data.energy.equivalents.solarRegionKey]?.solarYield ?? 210,
@@ -890,8 +897,8 @@ CO₂_grams = total_kWh × grid_intensity</div>
       <h2 style="margin:0 0 0.6rem 0;font-size:0.85rem;color:#a0c4ff;">${t("dashboard:energy.sources.title")}</h2>
       <ul style="list-style:none;padding:0;margin:0;font-size:0.65rem;color:#aaa;line-height:1.5;">
         ${[
-          "methodology", "pue", "gridIntensity", "solarYield",
-          "carKm", "transit", "train", "tree", "gasoline", "coffee", "nuclearWaste",
+          "methodology", "pue", "gridIntensity", "solarYield", "windTurbine",
+          "carKm", "transit", "train", "tree", "gasoline", "nuclearWaste",
         ].map(k => `<li style="padding:0.15rem 0;"><span style="color:#a0c4ff;font-weight:600;">${t(`dashboard:energy.sources.items.${k}.label`)}:</span> ${t(`dashboard:energy.sources.items.${k}.value`)}</li>`).join("")}
       </ul>
     </div>

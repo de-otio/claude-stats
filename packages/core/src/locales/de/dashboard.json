@@ -140,7 +140,9 @@
     "solarPanels": "benötigte Solarmodule (Zeitraum)",
     "solarRegion": "in {{region}}",
     "solarPanelsFootnote": "Fläche an Aufdach-PV-Modulen (~20 % Wirkungsgrad, 0,75 Performance-Ratio), die — platziert in {{region}} — genau den gewählten Zeitraum bräuchten, um den in diesem Zeitraum angefallenen Gesamtenergieverbrauch zu erzeugen. Skaliert mit der regionalen Sonneneinstrahlung und der gewählten Zeitraum-Länge.",
-    "coffeeCups": "Tassen Kaffee",
+    "windRotations": "Windrad-Umdrehungen",
+    "windTurbineRef": "3 MW Onshore, 35 % NLF",
+    "windRotationsFootnote": "Umdrehungen eines typischen modernen 3-MW-Onshore-Windrads bei ~15 U/min und 35 % Nutzungsfaktor — ~1,17 kWh pro Umdrehung bei Durchschnittsleistung. Das gleiche Windrad bräuchte entsprechend {{minutes}} min bei realer Durchschnittsleistung (oder {{ratedMinutes}} min bei Nennleistung 3 MW), um den gesamten Energieverbrauch Ihres Zeitraums zu erzeugen.",
     "nuclearWaste": "Endlagervolumen",
     "nuclearWasteFootnote": "Endlager-Volumen der gebauten Anlage — nicht Rohabfall — wenn dieselbe Energie aus 100 % Kernstrom käme (~4 mL/kWh). Gewichtete Mischung aus HLW-Einlagerung nach Posiva KBS-3 (~1.500× das Volumen des rohen abgebrannten Brennstoffs, wenn Kupferbehälter, Bentonit-Puffer und thermisch entzerrte Tunnel mitgerechnet werden — Onkalo schachtet ~1 Mio. m³ Fels für ~650 m³ abgebrannten Brennstoff aus), plus ILW (~5×) und LLW (~3×), basierend auf IAEA-Bestandsanteilen. HLW muss etwa 100.000 Jahre lang sicher isoliert und bewacht werden, bis seine Radioaktivität auf das Niveau von natürlichem Uranerz abgeklungen ist.",
     "journeyAnchor": "Ihr CO₂ ≈ Autofahrt {{name}} ({{km}} km).",
@@ -184,8 +186,8 @@
         "gasoline": "Benzin: {{co2Kg}} kg ÷ 2,31 kg CO₂/L = <strong>{{value}} L</strong>",
         "train": "Fernverkehrszug: {{co2Kg}} kg ÷ 0,006 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "transit": "Nahverkehr: {{co2Kg}} kg ÷ 0,030 kg CO₂/pkm = <strong>{{value}} km</strong>",
-        "coffee": "Kaffee: {{co2Kg}} kg ÷ 0,3 kg CO₂/Tasse = <strong>{{value}} Tassen</strong>",
         "nuclearWaste": "Endlagervolumen: {{totalKwh}} kWh × 4 mL/kWh (gebautes HLW+ILW+LLW-Endlager, gewichtet) = <strong>{{value}}</strong>",
+        "wind": "Windrad-Umdrehungen: {{totalKwh}} kWh ÷ 1,17 kWh/Umdrehung (3-MW-Windrad bei 15 U/min, 35 % NLF) = <strong>{{value}} Umdrehungen</strong> ≈ {{minutes}} min reale Drehung",
         "solar": "Solarmodule: {{totalKwh}} kWh ÷ ({{regionYield}} kWh/m²/Jahr in {{region}} × {{periodDays}}/365) = <strong>{{value}}</strong>"
       }
     },
@@ -208,6 +210,10 @@
           "label": "Solarmodul-Ertrag",
           "value": "Regionale jährliche Globalstrahlung aus PVGIS (Europa) / NREL NSRDB (Amerika) / Weltbank GSA (global), multipliziert mit 20 % Wirkungsgrad × 0,75 Performance-Ratio. Das Tile skaliert diesen Jahresertrag auf den gewählten Zeitraum herunter und zeigt die Modulfläche, die genau in dieser Zeitspanne den Energieverbrauch des Zeitraums erzeugen würde."
         },
+        "windTurbine": {
+          "label": "Windrad-Referenz",
+          "value": "Modernes 3-MW-Onshore-Windrad bei 15 U/min und ~35 % Nutzungsfaktor (IRENA Renewable Power Generation Costs 2023, IEA Renewables 2024). Energie pro Umdrehung = 3 MW × 4 s × 0,35 ≈ 1,17 kWh bei Durchschnittsleistung (~3,33 kWh bei Nennleistung)."
+        },
         "carKm": {
           "label": "Fahrzeug-Emissionen",
           "value": "120 gCO₂/km — EU-Neuwagen-Flottendurchschnitt, EEA 2024."
@@ -227,10 +233,6 @@
         "gasoline": {
           "label": "Benzinverbrennung",
           "value": "2,31 kg CO₂ pro Liter — US EPA Auspuffemissionsfaktor."
-        },
-        "coffee": {
-          "label": "Tasse Kaffee",
-          "value": "≈ 0,3 kg CO₂e pro Latte (Farm bis Tasse, inkl. Milch) — Carbon Trust / University of Manchester LCA."
         },
         "nuclearWaste": {
           "label": "Atommüll-Endlagervolumen",

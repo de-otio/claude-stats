@@ -188,12 +188,13 @@ describe("estimateEnergy", () => {
   it("includes environmental equivalents", () => {
     const result = estimateEnergy(basicUsage);
     expect(result.equivalents.gasolineLiters).toBeGreaterThan(0);
-    expect(result.equivalents.coffeeCups).toBeGreaterThan(0);
     expect(result.equivalents.solarPanelM2).toBeGreaterThan(0);
     expect(result.equivalents.solarRegionKey).toBeTruthy();
     expect(result.equivalents.transitKm).toBeGreaterThan(0);
     expect(result.equivalents.nuclearWasteMl).toBeGreaterThan(0);
     expect(result.equivalents.nuclearWasteMl).toBeCloseTo(result.totalEnergyWh * 0.004, 10);
+    expect(result.equivalents.windRotations).toBeGreaterThan(0);
+    expect(result.equivalents.windRotations).toBeCloseTo(result.totalEnergyWh / 1170, 8);
   });
 
   it("nearestJourneyAnchor snaps to the log-nearest anchor", () => {

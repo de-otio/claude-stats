@@ -181,7 +181,7 @@
         },
         {
           "heading": "Umweltäquivalente",
-          "body": "Wandelt Gesamtenergie und CO₂ in anschauliche Einheiten um: Liter Benzin (2,31 kgCO₂/L), Solarmodul-Fläche, die im erkannten Stromnetz den gewählten Zeitraum bräuchte, um dieselbe Energie zu erzeugen (~20 % Wirkungsgrad, 0,75 Performance-Ratio), gebautes Endlager-Volumen (Behälter + Puffer + Tunnelausbruch, gewichtet über HLW+ILW+LLW, kontrafaktisches 100 %-Kernstrom-Szenario, ~4 mL/kWh), Tassen Kaffee (0,3 kgCO₂/Tasse) und Nahverkehrs-Kilometer (30 gCO₂/pkm, Mittel aus Bus, U-Bahn und Straßenbahn) sowie Fernverkehrs-Kilometer elektrifizierter Züge (6 gCO₂/pkm). Ein Reise-Anker rechnet den zurückgelegten Autokilometer-Äquivalentwert des Zeitraums in eine bekannte Strecke um."
+          "body": "Wandelt Gesamtenergie und CO₂ in anschauliche Einheiten um: Liter Benzin (2,31 kgCO₂/L), Solarmodul-Fläche, die im erkannten Stromnetz den gewählten Zeitraum bräuchte, um dieselbe Energie zu erzeugen (~20 % Wirkungsgrad, 0,75 Performance-Ratio), Windrad-Umdrehungen (~1,17 kWh pro Umdrehung bei 3-MW-Onshore-Windrad, 35 % NLF), gebautes Endlager-Volumen (Behälter + Puffer + Tunnelausbruch, gewichtet über HLW+ILW+LLW, kontrafaktisches 100 %-Kernstrom-Szenario, ~4 mL/kWh), Nahverkehrs-Kilometer (30 gCO₂/pkm, Mittel aus Bus, U-Bahn und Straßenbahn) sowie Fernverkehrs-Kilometer elektrifizierter Züge (6 gCO₂/pkm). Ein Reise-Anker rechnet den zurückgelegten Autokilometer-Äquivalentwert des Zeitraums in eine bekannte Strecke um."
         }
       ]
     },

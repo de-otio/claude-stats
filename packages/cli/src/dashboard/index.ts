@@ -232,9 +232,9 @@ export interface DashboardEnergy {
     solarPanelM2: number;
     solarRegionKey: string;
     gasolineLiters: number;
-    coffeeCups: number;
     trainKm: number;
     nuclearWasteMl: number;
+    windRotations: number;
   };
   /** Nearest canonical driving journey for this period's carKm. */
   journeyAnchor: { key: string; km: number };
@@ -1587,9 +1587,9 @@ function buildEnergySection(
       solarPanelM2: Math.round(((aggregated.totalEnergyWh / 1000) / (REGIONS[aggregated.equivalents.solarRegionKey]!.solarYield * (daysInPeriod / 365))) * 10000) / 10000,
       solarRegionKey: aggregated.equivalents.solarRegionKey,
       gasolineLiters: Math.round(aggregated.equivalents.gasolineLiters * 1000) / 1000,
-      coffeeCups: Math.round(aggregated.equivalents.coffeeCups * 100) / 100,
       trainKm: Math.round(aggregated.equivalents.trainKm * 100) / 100,
       nuclearWasteMl: Math.round(aggregated.equivalents.nuclearWasteMl * 10000) / 10000,
+      windRotations: Math.round(aggregated.equivalents.windRotations * 10) / 10,
     },
     journeyAnchor: nearestJourneyAnchor(aggregated.equivalents.carKm),
     periodStartIso: new Date(effectiveSince).toISOString().slice(0, 10),

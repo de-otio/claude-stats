@@ -140,7 +140,9 @@
     "solarPanels": "solar panels required (period)",
     "solarRegion": "in {{region}}",
     "solarPanelsFootnote": "Area of rooftop PV modules (~20% efficiency, 0.75 performance ratio) that, sited in {{region}}, would take exactly the selected time window to generate this period's total energy consumption. Scales with the regional annual solar irradiance and the chosen period length.",
-    "coffeeCups": "cups of coffee",
+    "windRotations": "wind-turbine rotations",
+    "windTurbineRef": "3 MW onshore, 35 % CF",
+    "windRotationsFootnote": "Rotations of a typical modern 3 MW onshore wind turbine at ~15 RPM under a 35 % capacity factor — ~1.17 kWh per rotation at average output. Equivalently, one such turbine would need {{minutes}} min at its real-world average output (or {{ratedMinutes}} min at rated 3 MW) to generate your period's total energy.",
     "nuclearWaste": "nuclear disposal volume",
     "nuclearWasteFootnote": "Engineered disposal-facility volume — not raw waste — if the same energy came from 100 % nuclear (~4 mL/kWh). Weighted blend of HLW emplacement per Posiva KBS-3 (~1,500× raw spent-fuel volume once copper canister, bentonite buffer, and thermally-spaced repository tunnels are counted — Onkalo excavates ~1 million m³ of rock for ~650 m³ of spent fuel), plus ILW (~5×) and LLW (~3×) disposal, using IAEA waste-inventory volume shares. HLW must be safely isolated and guarded for ~100,000 years before its radioactivity decays to the level of natural uranium ore.",
     "journeyAnchor": "Your carbon ≈ driving {{name}} ({{km}} km).",
@@ -184,8 +186,8 @@
         "gasoline": "Gasoline: {{co2Kg}} kg ÷ 2.31 kg CO₂/L = <strong>{{value}} L</strong>",
         "train": "Long-distance train: {{co2Kg}} kg ÷ 0.006 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "transit": "Local transit: {{co2Kg}} kg ÷ 0.030 kg CO₂/pkm = <strong>{{value}} km</strong>",
-        "coffee": "Coffee: {{co2Kg}} kg ÷ 0.3 kg CO₂/cup = <strong>{{value}} cups</strong>",
         "nuclearWaste": "Nuclear disposal volume: {{totalKwh}} kWh × 4 mL/kWh (engineered HLW+ILW+LLW repository, weighted) = <strong>{{value}}</strong>",
+        "wind": "Wind-turbine rotations: {{totalKwh}} kWh ÷ 1.17 kWh/rotation (3 MW turbine at 15 RPM, 35 % CF) = <strong>{{value}} rotations</strong> ≈ {{minutes}} min of real-world spinning",
         "solar": "Solar panels: {{totalKwh}} kWh ÷ ({{regionYield}} kWh/m²/yr in {{region}} × {{periodDays}}/365) = <strong>{{value}}</strong>"
       }
     },
@@ -208,6 +210,10 @@
           "label": "Solar panel yield",
           "value": "Regional annual GHI from PVGIS (Europe) / NREL NSRDB (Americas) / World Bank GSA (global), multiplied by 20% panel efficiency × 0.75 performance ratio. The tile scales this annual yield down to the selected period to show the panel area required to produce exactly this period's energy in that timeframe."
         },
+        "windTurbine": {
+          "label": "Wind turbine reference",
+          "value": "Modern 3 MW onshore turbine at 15 RPM and ~35 % capacity factor (IRENA Renewable Power Generation Costs 2023, IEA Renewables 2024). Energy per rotation = 3 MW × 4 s × 0.35 ≈ 1.17 kWh at average output (~3.33 kWh at rated)."
+        },
         "carKm": {
           "label": "Car emissions",
           "value": "120 gCO₂/km — EU new-car fleet average, EEA 2024."
@@ -227,10 +233,6 @@
         "gasoline": {
           "label": "Gasoline combustion",
           "value": "2.31 kg CO₂ per liter — US EPA tailpipe emissions factor."
-        },
-        "coffee": {
-          "label": "Coffee cup",
-          "value": "≈ 0.3 kg CO₂e per latte (farm-to-cup incl. dairy) — Carbon Trust / University of Manchester LCA."
         },
         "nuclearWaste": {
           "label": "Nuclear disposal volume",

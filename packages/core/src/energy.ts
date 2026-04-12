@@ -242,12 +242,12 @@ export interface EnvironmentalEquivalents {
   solarRegionKey: string;
   /** Liters of gasoline burned (2.31 kgCO₂/L). */
   gasolineLiters: number;
-  /** Cups of coffee produced (0.3 kgCO₂/cup, farm-to-cup). */
-  coffeeCups: number;
   /** EU train km (6 gCO₂/pkm). */
   trainKm: number;
   /** Milliliters of engineered repository volume (HLW+ILW+LLW, incl. canisters/buffer/tunnel excavation) if the same energy came from 100% nuclear (~4 mL/kWh, weighted from Posiva KBS-3 + IAEA inventory). */
   nuclearWasteMl: number;
+  /** Rotations of a 3 MW onshore wind turbine at ~35% capacity factor (≈1.17 kWh per rotation at 15 RPM). */
+  windRotations: number;
 }
 
 /** Canonical journeys ordered by distance, used to anchor a period's carKm to a relatable trip. */
@@ -405,9 +405,9 @@ function computeEquivalents(totalEnergyWh: number, co2Grams: number, regionKey: 
     solarPanelM2: (totalEnergyWh / 1000) / solarYield,
     solarRegionKey,
     gasolineLiters: co2Kg / 2.31,
-    coffeeCups: co2Kg / 0.3,
     trainKm: co2Kg / 0.006,
     nuclearWasteMl: totalEnergyWh * 0.004,
+    windRotations: totalEnergyWh / 1170,
   };
 }
 
