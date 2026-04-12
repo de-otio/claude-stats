@@ -316,7 +316,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       ${data.byConversationCost.length > 0 ? `
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h2>${t("dashboard:charts.topConversations")}</h2>
-        <canvas id="chart-conv-cost"></canvas>
+        <canvas id="chart-conv-cost" height="420"></canvas>
       </div>
       ` : ""}
     </div>
@@ -1279,10 +1279,23 @@ CO₂_grams = total_kWh × grid_intensity</div>
             data: { labels: labels, datasets: [{ label: 'Est. API Cost ($)', data: costs, backgroundColor: bgColors }] },
             options: Object.assign({}, chartOpts, {
               indexAxis: 'y',
+              maintainAspectRatio: false,
+              layout: { padding: { left: 4 } },
               plugins: Object.assign({}, chartOpts.plugins, {
                 tooltip: { callbacks: { afterLabel: function(ctx) { var c = top[ctx.dataIndex]; var lines = ['Prompts: ' + c.promptCount]; if (c.percentOfPlanFee > 0) lines.push(c.percentOfPlanFee.toFixed(1) + '% of plan fee'); if (c.dominantModel) lines.push('Model: ' + c.dominantModel); return lines; } } }
               }),
-              scales: { x: { title: { display: true, text: 'API Value ($)', color: '#888' }, ticks: { callback: function(v) { return '$' + v.toFixed(3); } } } }
+              scales: {
+                x: { title: { display: true, text: 'API Value ($)', color: '#888' }, ticks: { callback: function(v) { return '$' + v.toFixed(3); } } },
+                y: {
+                  ticks: {
+                    autoSkip: false,
+                    font: { size: 10 },
+                    crossAlign: 'far',
+                    callback: function(_, i) { return labels[i]; }
+                  },
+                  afterFit: function(scale) { scale.width = Math.min(360, Math.max(180, scale.chart.width * 0.40)); }
+                }
+              }
             })
           });
         }());
