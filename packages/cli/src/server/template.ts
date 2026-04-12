@@ -32,6 +32,34 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     ? `${data.summary.planMultiplier.toFixed(1)}×`
     : "";
 
+  const escapeHtml = (s: string) => s.replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+  const sevColor: Record<string, string> = { critical: "#e15759", warning: "#f28e2b", info: "#4e79a7", success: "#59a14f" };
+  const sevIcon: Record<string, string> = { critical: "!", warning: "!", info: "i", success: "\u2713" };
+  const recs = data.recommendations ?? [];
+  const actions = recs.filter(r => r.severity !== "success");
+  const positives = recs.filter(r => r.severity === "success");
+  const renderRec = (r: typeof recs[number]) => `
+    <div style="display:flex;gap:0.75rem;padding:0.5rem 0;border-top:1px solid #2a3552;align-items:flex-start;">
+      <div style="flex:0 0 1.25rem;width:1.25rem;height:1.25rem;border-radius:50%;background:${sevColor[r.severity]};color:#16213e;font-weight:bold;font-size:0.75rem;display:flex;align-items:center;justify-content:center;margin-top:0.1rem;">${sevIcon[r.severity]}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:0.85rem;color:#e8e8e8;font-weight:600;">${escapeHtml(r.title)}${r.impact ? ` <span style="font-size:0.7rem;font-weight:500;color:#59a14f;background:#1e3a2a;padding:0.05rem 0.4rem;border-radius:3px;margin-left:0.4rem;">${escapeHtml(r.impact)}</span>` : ""}</div>
+        <div style="font-size:0.75rem;color:#b0b0b0;margin-top:0.2rem;line-height:1.4;">${escapeHtml(r.body)}</div>
+      </div>
+    </div>
+  `;
+  const actionsHtml = actions.length > 0 ? `
+    <div class="recommendations-panel" style="margin-bottom:1rem;background:#16213e;border:1px solid #2a3552;border-radius:6px;padding:0.75rem 1rem;">
+      <div style="font-size:0.75rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">Suggested actions</div>
+      ${actions.map(renderRec).join("")}
+    </div>` : "";
+  const positivesHtml = positives.length > 0 ? `
+    <div class="recommendations-panel" style="margin-bottom:1rem;background:#14291e;border:1px solid #2b5238;border-radius:6px;padding:0.75rem 1rem;">
+      <div style="font-size:0.75rem;color:#8ec07c;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">What you're doing well</div>
+      ${positives.map(renderRec).join("")}
+    </div>` : "";
+  const recsHtml = actionsHtml + positivesHtml;
+
   // Build pricing info rows for the cost-related panel
   const pricingRows = Object.entries(PRICING)
     .map(([model, p]) =>
@@ -196,6 +224,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
 
   <!-- ═══════════════ TAB: Overview ═══════════════ -->
   <div class="tab-panel active" id="tab-overview">
+    ${recsHtml}
     <div class="summary-bar">
       <div class="summary-card" style="grid-column: 1 / -1; text-align: left; padding: 0.5rem 0.75rem;">
         <span style="font-size:0.7rem; color:#888;">${t("dashboard:toolbar.period")} </span>
@@ -248,10 +277,10 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <div class="value">${fmtNum(data.summary.tokensPerMinute)}</div>
       </div>
       ` : ""}
-      ${data.summary.throttleEvents > 0 ? `
-      <div class="summary-card" style="border-color:#e15759;">
-        <div class="label">${t("dashboard:summary.throttleEvents")}</div>
-        <div class="value" style="color:#e15759;">${data.summary.throttleEvents}</div>
+      ${data.summary.truncatedOutputs > 0 ? `
+      <div class="summary-card" style="border-color:#f28e2b;">
+        <div class="label">${t("dashboard:summary.truncatedOutputs")}</div>
+        <div class="value" style="color:#f28e2b;">${data.summary.truncatedOutputs}</div>
       </div>
       ` : ""}
     </div>
@@ -390,11 +419,11 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <div class="value">$${pu.avgWindowCost.toFixed(2)}</div>
         <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${t("dashboard:plan.medianLabel", { value: pu.medianWindowCost.toFixed(2) })}</div>
       </div>
-      ${pu.throttledWindowPercent > 0 ? `
-      <div class="summary-card" style="border-color:#e15759;">
-        <div class="label">${t("dashboard:plan.throttledWindows")}</div>
-        <div class="value" style="color:#e15759;">${pu.throttledWindowPercent}%</div>
-        <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${t("dashboard:plan.hittingLimits")}</div>
+      ${pu.truncatedOutputWindowPercent > 0 ? `
+      <div class="summary-card" style="border-color:#f28e2b;">
+        <div class="label">${t("dashboard:plan.truncatedOutputWindows")}</div>
+        <div class="value" style="color:#f28e2b;">${pu.truncatedOutputWindowPercent}%</div>
+        <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${t("dashboard:plan.truncatedOutputWindowsHint")}</div>
       </div>
       ` : ''}
     </div>
@@ -1249,7 +1278,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
             data: { labels: labels, datasets: datasets },
             options: Object.assign({}, chartOpts, {
               plugins: Object.assign({}, chartOpts.plugins, {
-                tooltip: { callbacks: { afterTitle: function(items) { var w = windows[items[0].dataIndex]; return w && w.throttled ? '⚠ Throttled' : ''; } } }
+                tooltip: { callbacks: { afterTitle: function(items) { var w = windows[items[0].dataIndex]; return w && w.throttled ? '⚠ Contains truncated output' : ''; } } }
               }),
               scales: {
                 x: { stacked: true, ticks: { maxRotation: 45, font: { size: 9 } } },
@@ -1331,58 +1360,32 @@ CO₂_grams = total_kWh × grid_intensity</div>
           });
         }());
 
-        // 1b. Window Limit Usage % (per-window usage as % of estimated limit)
-        // Only show as % when we have a real limit from throttled windows.
-        // Without throttle data, show absolute cost per window instead —
-        // any percentage estimate from plan fee alone produces misleading values.
+        // 1b. Per-window API-equivalent cost.
+        // We don't have a reliable rate-limit signal from the JSONL, so we show absolute
+        // cost per window rather than a fabricated "% of limit" value.
         (function () {
           var el = document.getElementById('chart-window-limit-pct');
           if (!el || !d.byWindow || d.byWindow.length === 0) return;
-          var limit = pu.estimatedWindowLimit;
-          var hasRealLimit = limit && limit > 0;
           var ctx = el.getContext('2d');
-          // Sort windows chronologically (oldest first)
           var sorted = d.byWindow.slice().sort(function (a, b) { return a.windowStart - b.windowStart; });
           var labels = sorted.map(function (w) { return new Date(w.windowStart).toISOString().slice(5, 16).replace('T', ' '); });
-          if (hasRealLimit) {
-            // Show % of estimated throttle limit (derived from actual throttled windows)
-            var pcts = sorted.map(function (w) { return Math.round((w.totalCostEquivalent / limit) * 1000) / 10; });
-            var bgColors = sorted.map(function (w, i) { return w.throttled ? '#e15759' : pcts[i] >= 80 ? '#f28e2b' : '#4e79a7'; });
-            new Chart(ctx, {
-              type: 'bar',
-              data: { labels: labels, datasets: [{ label: 'Usage %', data: pcts, backgroundColor: bgColors }] },
-              options: Object.assign({}, chartOpts, {
-                plugins: Object.assign({}, chartOpts.plugins, {
-                  legend: { display: false },
-                  title: { display: true, text: 'Per-window usage vs throttle limit ($' + limit.toFixed(2) + ' — from observed throttle events)', color: '#888', font: { size: 10 } },
-                  tooltip: { callbacks: { label: function(ctx) { return ctx.parsed.y.toFixed(1) + '% of window limit'; } } }
-                }),
-                scales: {
-                  x: { ticks: { maxRotation: 45, font: { size: 9 } } },
-                  y: { title: { display: true, text: 'Usage %', color: '#888' }, ticks: { callback: function(v) { return v + '%'; } } }
-                }
-              })
-            });
-          } else {
-            // No throttle data — show absolute API-equivalent cost per window
-            var costs = sorted.map(function (w) { return Math.round(w.totalCostEquivalent * 1000) / 1000; });
-            var costColors = sorted.map(function (w) { return w.throttled ? '#e15759' : '#4e79a7'; });
-            new Chart(ctx, {
-              type: 'bar',
-              data: { labels: labels, datasets: [{ label: 'API Cost ($)', data: costs, backgroundColor: costColors }] },
-              options: Object.assign({}, chartOpts, {
-                plugins: Object.assign({}, chartOpts.plugins, {
-                  legend: { display: false },
-                  title: { display: true, text: 'API-equivalent cost per 5-hour window (no throttle events detected — % limit unavailable)', color: '#888', font: { size: 10 } },
-                  tooltip: { callbacks: { label: function(ctx) { return '$' + ctx.parsed.y.toFixed(3) + ' API-equivalent'; } } }
-                }),
-                scales: {
-                  x: { ticks: { maxRotation: 45, font: { size: 9 } } },
-                  y: { title: { display: true, text: 'Cost ($)', color: '#888' }, ticks: { callback: function(v) { return '$' + v; } } }
-                }
-              })
-            });
-          }
+          var costs = sorted.map(function (w) { return Math.round(w.totalCostEquivalent * 1000) / 1000; });
+          var costColors = sorted.map(function (w) { return w.throttled ? '#f28e2b' : '#4e79a7'; });
+          new Chart(ctx, {
+            type: 'bar',
+            data: { labels: labels, datasets: [{ label: 'API Cost ($)', data: costs, backgroundColor: costColors }] },
+            options: Object.assign({}, chartOpts, {
+              plugins: Object.assign({}, chartOpts.plugins, {
+                legend: { display: false },
+                title: { display: true, text: 'API-equivalent cost per 5-hour window (orange = window contained a truncated output)', color: '#888', font: { size: 10 } },
+                tooltip: { callbacks: { label: function(ctx) { return '$' + ctx.parsed.y.toFixed(3) + ' API-equivalent'; } } }
+              }),
+              scales: {
+                x: { ticks: { maxRotation: 45, font: { size: 9 } } },
+                y: { title: { display: true, text: 'Cost ($)', color: '#888' }, ticks: { callback: function(v) { return '$' + v; } } }
+              }
+            })
+          });
         }());
 
         // 2. Windows per week trend
@@ -1392,14 +1395,14 @@ CO₂_grams = total_kWh × grid_intensity</div>
           var ctx = el.getContext('2d');
           var labels = d.byWeek.map(function (w) { return w.week; });
           var windowCounts = d.byWeek.map(function (w) { return w.windowCount; });
-          var throttledCounts = d.byWeek.map(function (w) { return w.throttledWindows; });
+          var truncatedCounts = d.byWeek.map(function (w) { return w.windowsWithTruncatedOutput; });
           new Chart(ctx, {
             type: 'bar',
             data: {
               labels: labels,
               datasets: [
-                { label: 'Normal Windows', data: windowCounts.map(function (c, i) { return c - throttledCounts[i]; }), backgroundColor: '#4e79a7' },
-                { label: 'Throttled Windows', data: throttledCounts, backgroundColor: '#e15759' }
+                { label: 'Normal Windows', data: windowCounts.map(function (c, i) { return c - truncatedCounts[i]; }), backgroundColor: '#4e79a7' },
+                { label: 'Windows w/ Truncated Output', data: truncatedCounts, backgroundColor: '#f28e2b' }
               ]
             },
             options: Object.assign({}, chartOpts, {

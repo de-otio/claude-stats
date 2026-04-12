@@ -723,6 +723,49 @@ export class Store {
     return (stmt.all as (...args: any[]) => unknown[])(sessionId) as MessageRow[];
   }
 
+  /**
+   * Returns all message timestamps (ms since epoch) for sessions matching the
+   * provided filters, sorted ascending. Used to compute active interaction time
+   * by merging timestamps across parallel sessions before measuring gaps.
+   */
+  getMessageTimestamps(filters: {
+    projectPath?: string;
+    repoUrl?: string;
+    accountUuid?: string;
+    since?: number;
+  } = {}): number[] {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (filters.projectPath) {
+      conditions.push("s.project_path = ?");
+      params.push(filters.projectPath);
+    }
+    if (filters.repoUrl) {
+      conditions.push("s.repo_url = ?");
+      params.push(filters.repoUrl);
+    }
+    if (filters.accountUuid) {
+      conditions.push("s.account_uuid = ?");
+      params.push(filters.accountUuid);
+    }
+    if (filters.since !== undefined) {
+      conditions.push("m.timestamp >= ?");
+      params.push(filters.since);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const sql = `
+      SELECT m.timestamp AS ts
+      FROM messages m
+      JOIN sessions s ON m.session_id = s.session_id
+      ${where}
+      ORDER BY m.timestamp ASC
+    `;
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (stmt.all as (...args: any[]) => unknown[])(...params) as Array<{ ts: number }>;
+    return rows.map(r => r.ts);
+  }
+
   // ─── Tags ──────────────────────────────────────────────────────────────────
 
   addTag(sessionId: string, tag: string): void {

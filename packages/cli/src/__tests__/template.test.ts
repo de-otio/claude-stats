@@ -39,7 +39,7 @@ const mockData: DashboardData = {
     promptsPerHour: 0,
     totalActiveHours: 2.0,
     avgSessionDurationMinutes: 2.9,
-    throttleEvents: 0,
+    truncatedOutputs: 0,
     currentWindowStart: null,
     currentWindowPrompts: 0,
     currentWindowCost: 0,
@@ -111,6 +111,7 @@ const mockData: DashboardData = {
   contextAnalysis: null,
   spending: null,
   energy: null,
+  recommendations: [],
 };
 
 describe("renderDashboard", () => {
@@ -239,13 +240,13 @@ describe("renderDashboard", () => {
     expect(html).not.toContain("Plan Value");
   });
 
-  it("shows throttle events card when throttleEvents > 0", () => {
-    const withThrottles: DashboardData = {
+  it("shows truncated outputs card when truncatedOutputs > 0", () => {
+    const withTruncations: DashboardData = {
       ...mockData,
-      summary: { ...mockData.summary, throttleEvents: 3 },
+      summary: { ...mockData.summary, truncatedOutputs: 3 },
     };
-    const html = renderDashboard(withThrottles, t);
-    expect(html).toContain("Throttle Events");
+    const html = renderDashboard(withTruncations, t);
+    expect(html).toContain("Truncated Outputs");
     expect(html).toContain(">3<");
   });
 
@@ -340,7 +341,7 @@ describe("renderDashboard", () => {
       ...mockData,
       summary: { ...mockData.summary, planFee: 100, planMultiplier: 2.5 },
       byWeek: [
-        { week: "2026-01-13", sessions: 10, prompts: 50, estimatedCost: 25.0, activeHoursEstimate: 5.0, windowCount: 3, throttledWindows: 0 },
+        { week: "2026-01-13", sessions: 10, prompts: 50, estimatedCost: 25.0, activeHoursEstimate: 5.0, windowCount: 3, windowsWithTruncatedOutput: 0 },
       ],
       planUtilization: {
         weeklyPlanBudget: 23.09,
@@ -352,9 +353,8 @@ describe("renderDashboard", () => {
         avgWindowCost: 8.33,
         medianWindowCost: 8.33,
         windowsPerWeek: 3.0,
-        throttledWindowPercent: 0,
+        truncatedOutputWindowPercent: 0,
         totalWindows: 3,
-        estimatedWindowLimit: 0.5,
         recommendedPlan: "max_5x",
         currentPlanVerdict: "good-value",
         byAccount: [],
@@ -374,7 +374,7 @@ describe("renderDashboard", () => {
       ...mockData,
       summary: { ...mockData.summary, planFee: 200, planMultiplier: 0.3 },
       byWeek: [
-        { week: "2026-01-13", sessions: 2, prompts: 5, estimatedCost: 3.0, activeHoursEstimate: 0.5, windowCount: 1, throttledWindows: 0 },
+        { week: "2026-01-13", sessions: 2, prompts: 5, estimatedCost: 3.0, activeHoursEstimate: 0.5, windowCount: 1, windowsWithTruncatedOutput: 0 },
       ],
       planUtilization: {
         weeklyPlanBudget: 46.19,
@@ -386,9 +386,8 @@ describe("renderDashboard", () => {
         avgWindowCost: 3.0,
         medianWindowCost: 3.0,
         windowsPerWeek: 1.0,
-        throttledWindowPercent: 0,
+        truncatedOutputWindowPercent: 0,
         totalWindows: 1,
-        estimatedWindowLimit: 0,
         recommendedPlan: "pro",
         currentPlanVerdict: "underusing",
         byAccount: [],
@@ -398,12 +397,12 @@ describe("renderDashboard", () => {
     expect(html).toContain("Underusing");
   });
 
-  it("renders throttled windows in plan tab when present", () => {
+  it("renders truncated-output windows in plan tab when present", () => {
     const withThrottled: DashboardData = {
       ...mockData,
       summary: { ...mockData.summary, planFee: 100, planMultiplier: 1.5 },
       byWeek: [
-        { week: "2026-01-13", sessions: 10, prompts: 50, estimatedCost: 30.0, activeHoursEstimate: 8.0, windowCount: 5, throttledWindows: 2 },
+        { week: "2026-01-13", sessions: 10, prompts: 50, estimatedCost: 30.0, activeHoursEstimate: 8.0, windowCount: 5, windowsWithTruncatedOutput: 2 },
       ],
       planUtilization: {
         weeklyPlanBudget: 23.09,
@@ -415,16 +414,15 @@ describe("renderDashboard", () => {
         avgWindowCost: 6.0,
         medianWindowCost: 6.0,
         windowsPerWeek: 5.0,
-        throttledWindowPercent: 40.0,
+        truncatedOutputWindowPercent: 40.0,
         totalWindows: 5,
-        estimatedWindowLimit: 6.0,
         recommendedPlan: "max_5x",
         currentPlanVerdict: "good-value",
         byAccount: [],
       },
     };
     const html = renderDashboard(withThrottled, t);
-    expect(html).toContain("Throttled Windows");
+    expect(html).toContain("Trunc. Output");
     expect(html).toContain("40%");
   });
 
@@ -433,7 +431,7 @@ describe("renderDashboard", () => {
       ...mockData,
       summary: { ...mockData.summary, planFee: 0, planMultiplier: 0 },
       byWeek: [
-        { week: "2026-01-13", sessions: 10, prompts: 50, estimatedCost: 25.0, activeHoursEstimate: 5.0, windowCount: 3, throttledWindows: 0 },
+        { week: "2026-01-13", sessions: 10, prompts: 50, estimatedCost: 25.0, activeHoursEstimate: 5.0, windowCount: 3, windowsWithTruncatedOutput: 0 },
       ],
       planUtilization: {
         weeklyPlanBudget: 27.71,
@@ -445,9 +443,8 @@ describe("renderDashboard", () => {
         avgWindowCost: 8.33,
         medianWindowCost: 8.33,
         windowsPerWeek: 3.0,
-        throttledWindowPercent: 0,
+        truncatedOutputWindowPercent: 0,
         totalWindows: 3,
-        estimatedWindowLimit: 0.5,
         recommendedPlan: "max_5x",
         currentPlanVerdict: "good-value",
         byAccount: [
@@ -470,7 +467,7 @@ describe("renderDashboard", () => {
       ...mockData,
       summary: { ...mockData.summary, planFee: 0, planMultiplier: 0 },
       byWeek: [
-        { week: "2026-01-13", sessions: 5, prompts: 20, estimatedCost: 15.0, activeHoursEstimate: 3.0, windowCount: 2, throttledWindows: 0 },
+        { week: "2026-01-13", sessions: 5, prompts: 20, estimatedCost: 15.0, activeHoursEstimate: 3.0, windowCount: 2, windowsWithTruncatedOutput: 0 },
       ],
       planUtilization: {
         weeklyPlanBudget: 4.62,
@@ -482,9 +479,8 @@ describe("renderDashboard", () => {
         avgWindowCost: 7.5,
         medianWindowCost: 7.5,
         windowsPerWeek: 2.0,
-        throttledWindowPercent: 0,
+        truncatedOutputWindowPercent: 0,
         totalWindows: 2,
-        estimatedWindowLimit: 0.17,
         recommendedPlan: "pro",
         currentPlanVerdict: "good-value",
         byAccount: [{ accountId: "acct-111...", emailAddress: null, subscriptionType: "pro", detectedPlanFee: 20, sessions: 5, estimatedCost: 15.0, planVerdict: "good-value" }],
@@ -502,7 +498,7 @@ describe("renderDashboard", () => {
       ...mockData,
       summary: { ...mockData.summary, planFee: 0, planMultiplier: 0 },
       byWeek: [
-        { week: "2026-01-13", sessions: 5, prompts: 20, estimatedCost: 15.0, activeHoursEstimate: 3.0, windowCount: 2, throttledWindows: 0 },
+        { week: "2026-01-13", sessions: 5, prompts: 20, estimatedCost: 15.0, activeHoursEstimate: 3.0, windowCount: 2, windowsWithTruncatedOutput: 0 },
       ],
       planUtilization: {
         weeklyPlanBudget: 4.62,
@@ -514,9 +510,8 @@ describe("renderDashboard", () => {
         avgWindowCost: 7.5,
         medianWindowCost: 7.5,
         windowsPerWeek: 2.0,
-        throttledWindowPercent: 0,
+        truncatedOutputWindowPercent: 0,
         totalWindows: 2,
-        estimatedWindowLimit: 0.17,
         recommendedPlan: "pro",
         currentPlanVerdict: "good-value",
         byAccount: [{ accountId: "acct-111...", emailAddress: "user@example.com", subscriptionType: "max_5x", detectedPlanFee: 100, sessions: 5, estimatedCost: 15.0, planVerdict: "good-value" }],
@@ -534,7 +529,7 @@ describe("renderDashboard", () => {
       ...mockData,
       summary: { ...mockData.summary, planFee: 100, planMultiplier: 2.5 },
       byWeek: [
-        { week: "2026-01-13", sessions: 10, prompts: 50, estimatedCost: 25.0, activeHoursEstimate: 5.0, windowCount: 3, throttledWindows: 0 },
+        { week: "2026-01-13", sessions: 10, prompts: 50, estimatedCost: 25.0, activeHoursEstimate: 5.0, windowCount: 3, windowsWithTruncatedOutput: 0 },
       ],
       planUtilization: {
         weeklyPlanBudget: 23.09,
@@ -546,9 +541,8 @@ describe("renderDashboard", () => {
         avgWindowCost: 8.33,
         medianWindowCost: 8.33,
         windowsPerWeek: 3.0,
-        throttledWindowPercent: 0,
+        truncatedOutputWindowPercent: 0,
         totalWindows: 3,
-        estimatedWindowLimit: 0.5,
         recommendedPlan: "max_5x",
         currentPlanVerdict: "good-value",
         byAccount: [],
@@ -564,7 +558,7 @@ describe("renderDashboard", () => {
       ...mockData,
       summary: { ...mockData.summary, planFee: 100, planMultiplier: 2.5 },
       byWeek: [
-        { week: "2026-01-13", sessions: 5, prompts: 20, estimatedCost: 15.0, activeHoursEstimate: 3.0, windowCount: 2, throttledWindows: 0 },
+        { week: "2026-01-13", sessions: 5, prompts: 20, estimatedCost: 15.0, activeHoursEstimate: 3.0, windowCount: 2, windowsWithTruncatedOutput: 0 },
       ],
       byWindow: [{
         windowStart: 1_000_000,
@@ -585,9 +579,8 @@ describe("renderDashboard", () => {
         avgWindowCost: 1.5,
         medianWindowCost: 1.5,
         windowsPerWeek: 2.0,
-        throttledWindowPercent: 0,
+        truncatedOutputWindowPercent: 0,
         totalWindows: 1,
-        estimatedWindowLimit: 0.83,
         recommendedPlan: "max_5x",
         currentPlanVerdict: "good-value",
         byAccount: [],

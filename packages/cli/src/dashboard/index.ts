@@ -42,7 +42,12 @@ export interface DashboardSummary {
   // Session patterns
   totalActiveHours: number;
   avgSessionDurationMinutes: number;
-  throttleEvents: number;
+  /**
+   * Count of assistant responses that ended with stop_reason=max_tokens AND produced
+   * fewer than 200 output tokens — i.e. near-empty responses cut off at the output limit.
+   * NOT a measurement of Anthropic rate-limit rejections (those never reach the JSONL).
+   */
+  truncatedOutputs: number;
   // Current window
   currentWindowStart: string | null;
   currentWindowPrompts: number;
@@ -116,7 +121,9 @@ export interface DashboardData {
     estimatedCost: number;
     activeHoursEstimate: number;
     windowCount: number;
-    throttledWindows: number;
+    /** Windows that contained at least one truncated-output response.
+     * NOT a measurement of Anthropic 5-hour rate-limit rejections. */
+    windowsWithTruncatedOutput: number;
   }>;
   planUtilization: {
     weeklyPlanBudget: number;       // planFee / 4.33
@@ -129,10 +136,10 @@ export interface DashboardData {
     avgWindowCost: number;
     medianWindowCost: number;
     windowsPerWeek: number;
-    throttledWindowPercent: number;
+    /** Percentage of 5-hour windows that contained a truncated-output response.
+     * NOT a measurement of Anthropic rate-limit throttling. */
+    truncatedOutputWindowPercent: number;
     totalWindows: number;
-    // Window limit
-    estimatedWindowLimit: number;    // estimated per-window cost limit (from throttled windows or plan fee)
     // Recommendation
     recommendedPlan: string | null;  // "pro", "max_5x", "max_20x", "team_standard", "team_premium", or null
     currentPlanVerdict: string;      // "good-value" | "underusing" | "no-plan"
@@ -151,6 +158,16 @@ export interface DashboardData {
   contextAnalysis: ContextAnalysis | null;
   spending: DashboardSpending | null;
   energy: DashboardEnergy | null;
+  recommendations: Recommendation[];
+}
+
+export interface Recommendation {
+  id: string;
+  severity: "critical" | "warning" | "info" | "success";
+  title: string;
+  body: string;
+  /** Optional dollar-impact tag shown as a pill next to the title. */
+  impact?: string;
 }
 
 export interface DashboardSpending {
@@ -504,15 +521,34 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   const dailyValueRate = totalCost / daysInPeriod;
 
   // ── Velocity + active hours ──────────────────────────────────────────────
+  // Active time is derived from the merged timeline of all message timestamps in
+  // the selected period. Gaps ≥ 30 min are treated as idle and excluded. We merge
+  // across sessions first (rather than summing per-session durations) so that
+  // overlapping parallel sessions — common when agents spawn subagents — don't
+  // get double-counted.
+  const mergedTimestamps = store.getMessageTimestamps({
+    projectPath: opts.projectPath,
+    repoUrl: opts.repoUrl,
+    accountUuid: opts.accountUuid,
+    since: since > 0 ? since : undefined,
+  });
+  const IDLE_GAP_MS = 30 * 60_000;
   let totalActiveDurationMs = 0;
+  for (let i = 1; i < mergedTimestamps.length; i++) {
+    const gap = mergedTimestamps[i]! - mergedTimestamps[i - 1]!;
+    if (gap < IDLE_GAP_MS) totalActiveDurationMs += gap;
+  }
+  // Session-level active duration is still useful for per-session averages —
+  // it doesn't over-count as long as we don't sum it into the period total.
+  let totalSessionActiveMs = 0;
   let totalThrottleEvents = 0;
   for (const row of rows) {
-    if (row.active_duration_ms != null) totalActiveDurationMs += row.active_duration_ms;
+    if (row.active_duration_ms != null) totalSessionActiveMs += row.active_duration_ms;
     totalThrottleEvents += row.throttle_events ?? 0;
   }
   const totalActiveHours = totalActiveDurationMs / 3_600_000;
   const avgSessionDurationMinutes = rows.length > 0
-    ? (totalActiveDurationMs / rows.length) / 60_000
+    ? (totalSessionActiveMs / rows.length) / 60_000
     : 0;
   const tokensPerMinute = totalActiveDurationMs > 0
     ? Math.round((totalInput + totalOutput) / (totalActiveDurationMs / 60_000))
@@ -642,7 +678,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
         estimatedCost: Math.round(w.cost * 100) / 100,
         activeHoursEstimate: Math.round((w.activeDurationMs / 3_600_000) * 10) / 10,
         windowCount: ww?.count ?? 0,
-        throttledWindows: ww?.throttled ?? 0,
+        windowsWithTruncatedOutput: ww?.throttled ?? 0,
       };
     });
 
@@ -700,21 +736,11 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       ? windowCosts[Math.floor(windowCosts.length / 2)]! : 0;
     const totalWeeks = byWeek.length;
     const windowsPerWeek = totalWeeks > 0 ? byWindow.length / totalWeeks : 0;
-    const throttledCount = byWindow.filter(w => w.throttled).length;
-    const throttledWindowPercent = byWindow.length > 0
-      ? Math.round((throttledCount / byWindow.length) * 1000) / 10 : 0;
-
-    // Estimate per-window usage limit from throttled windows only.
-    // When no throttled windows exist, fall back to plan fee / 120 (assumed window count).
-    const throttledWindows = byWindow.filter(w => w.throttled);
-    let estimatedWindowLimit = 0;
-    if (throttledWindows.length > 0) {
-      // Use the minimum cost among throttled windows as the approximate limit
-      estimatedWindowLimit = Math.min(...throttledWindows.map(w => w.totalCostEquivalent));
-    } else if (effectivePlanFee > 0) {
-      // Fall back to plan fee estimate when no throttle data exists
-      estimatedWindowLimit = effectivePlanFee / 120;
-    }
+    // Share of 5-hour windows that contained at least one truncated-output response.
+    // This is NOT a rate-limit throttle metric — the JSONL doesn't capture those at all.
+    const truncatedCount = byWindow.filter(w => w.throttled).length;
+    const truncatedOutputWindowPercent = byWindow.length > 0
+      ? Math.round((truncatedCount / byWindow.length) * 1000) / 10 : 0;
 
     // Plan recommendation based on weekly API-equivalent cost
     const monthlyEquiv = avgWeeklyCost * 4.33;
@@ -780,9 +806,8 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       avgWindowCost: Math.round(avgWindowCost * 100) / 100,
       medianWindowCost: Math.round(medianWindowCost * 100) / 100,
       windowsPerWeek: Math.round(windowsPerWeek * 10) / 10,
-      throttledWindowPercent,
+      truncatedOutputWindowPercent,
       totalWindows: byWindow.length,
-      estimatedWindowLimit: Math.round(estimatedWindowLimit * 100) / 100,
       recommendedPlan,
       currentPlanVerdict,
       byAccount,
@@ -812,6 +837,18 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     timezone: tz,
   });
 
+  // ── Actionable recommendations ─────────────────────────────────────────
+  const recommendations = buildRecommendations({
+    totalCost,
+    totalPrompts,
+    cacheEfficiency,
+    planUtilization,
+    modelEfficiency,
+    contextAnalysis,
+    spending,
+    byConversationCost,
+  });
+
   return {
     generated: new Date().toISOString(),
     period: opts.period ?? "all",
@@ -837,7 +874,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       promptsPerHour,
       totalActiveHours: Math.round(totalActiveHours * 10) / 10,
       avgSessionDurationMinutes: Math.round(avgSessionDurationMinutes * 10) / 10,
-      throttleEvents: totalThrottleEvents,
+      truncatedOutputs: totalThrottleEvents,
       currentWindowStart,
       currentWindowPrompts,
       currentWindowCost: Math.round(currentWindowCost * 100) / 100,
@@ -860,7 +897,218 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     contextAnalysis,
     spending,
     energy,
+    recommendations,
   };
+}
+
+const PLAN_LABELS: Record<string, string> = {
+  pro: "Pro ($20/mo)",
+  team_standard: "Team Standard ($25/mo)",
+  max_5x: "Max 5x ($100/mo)",
+  team_premium: "Team Premium ($125/mo)",
+  max_20x: "Max 20x ($200/mo)",
+};
+
+function buildRecommendations(input: {
+  totalCost: number;
+  totalPrompts: number;
+  cacheEfficiency: number;
+  planUtilization: DashboardData["planUtilization"];
+  modelEfficiency: ModelEfficiencyData | null;
+  contextAnalysis: ContextAnalysis | null;
+  spending: DashboardSpending | null;
+  byConversationCost: DashboardData["byConversationCost"];
+}): Recommendation[] {
+  const out: Recommendation[] = [];
+  const { totalCost, totalPrompts, cacheEfficiency, planUtilization, modelEfficiency, contextAnalysis, spending, byConversationCost } = input;
+
+  // 1. Model tier waste — biggest actionable lever when present
+  if (modelEfficiency && modelEfficiency.summary.potentialSavings >= 5) {
+    const savings = modelEfficiency.summary.potentialSavings;
+    const overuse = modelEfficiency.summary.overusePercent;
+    out.push({
+      id: "model-tier-waste",
+      severity: savings >= 25 ? "critical" : "warning",
+      title: "Route simpler prompts to cheaper models",
+      body: `${overuse}% of your classified turns were sent to a pricier model than their complexity warranted. Check the Efficiency tab to see which prompts drove the overspend and consider using Haiku/Sonnet for the simpler ones.`,
+      impact: `~$${savings.toFixed(2)} saveable`,
+    });
+  }
+
+  // NOTE: no "consider upgrading" rule. We don't have a reliable signal for
+  // Anthropic 5-hour rate-limit rejections — those never make it into the JSONL.
+  // See `truncatedOutputs` and the note in DashboardSummary.
+
+  // 2. Underusing plan — clearly spending far less than the plan fee
+  if (planUtilization) {
+    if (
+      planUtilization.currentPlanVerdict === "underusing" &&
+      planUtilization.weeklyPlanBudget > 0 &&
+      planUtilization.avgWeeklyCost < planUtilization.weeklyPlanBudget * 0.5 &&
+      planUtilization.recommendedPlan
+    ) {
+      const monthlyFee = Math.round(planUtilization.weeklyPlanBudget * 4.33);
+      const monthlyUse = (planUtilization.avgWeeklyCost * 4.33).toFixed(0);
+      const suggested = PLAN_LABELS[planUtilization.recommendedPlan] ?? planUtilization.recommendedPlan;
+      // Only suggest downgrade if the suggested plan is actually cheaper
+      const suggestedFeeMatch = suggested.match(/\$(\d+)/);
+      const suggestedFee = suggestedFeeMatch ? parseInt(suggestedFeeMatch[1]!, 10) : monthlyFee;
+      if (suggestedFee < monthlyFee) {
+        out.push({
+          id: "plan-underusing",
+          severity: "info",
+          title: `Consider downgrading to ${suggested}`,
+          body: `Your average API-equivalent usage is only ~$${monthlyUse}/mo — well below your current ~$${monthlyFee}/mo plan fee. Downgrading would still cover your typical usage.`,
+          impact: `~$${monthlyFee - suggestedFee}/mo`,
+        });
+      }
+    }
+  }
+
+  // 4. Long sessions without compaction
+  if (contextAnalysis && contextAnalysis.sessionsNeedingCompaction >= 3) {
+    const n = contextAnalysis.sessionsNeedingCompaction;
+    out.push({
+      id: "context-compaction",
+      severity: n >= 10 ? "warning" : "info",
+      title: "Use /compact or /clear more aggressively",
+      body: `${n} long sessions (15+ prompts) ran without compaction. Long uncompacted contexts re-send the entire history each turn, inflating input-token cost. Start a new conversation or run /compact for unrelated tasks.`,
+    });
+  }
+
+  // 5. Low cache efficiency — only meaningful at volume
+  if (cacheEfficiency < 30 && totalPrompts >= 50 && totalCost >= 10) {
+    out.push({
+      id: "cache-low-hit-rate",
+      severity: "info",
+      title: "Cache hit rate is low — restructure prompts",
+      body: `Only ${cacheEfficiency.toFixed(0)}% of your input tokens hit the prompt cache. Keeping a stable prefix (system prompt, tool definitions, long context) at the start of each turn lets Anthropic reuse it at ~10% the price of fresh input tokens.`,
+    });
+  }
+
+  // 6. One conversation dominates total cost — possible runaway agent or unbounded session
+  if (byConversationCost && byConversationCost.length >= 5) {
+    const costs = byConversationCost.map(c => c.estimatedCost).filter(c => c > 0);
+    if (costs.length >= 5) {
+      const sorted = [...costs].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+      const top = byConversationCost[0]!;
+      // Fire when the top conversation is both (a) substantial in absolute terms
+      // and (b) dramatically larger than typical sessions
+      if (top.estimatedCost >= 5 && median > 0 && top.estimatedCost >= median * 5) {
+        const parts = (top.projectPath || "").replace(/\\/g, "/").split("/").filter(Boolean);
+        const projLabel = parts.length >= 2
+          ? `${parts[parts.length - 2]}/${parts[parts.length - 1]}`
+          : (parts[parts.length - 1] || top.projectPath || "unknown");
+        const ratio = (top.estimatedCost / median).toFixed(1);
+        out.push({
+          id: "runaway-conversation",
+          severity: top.estimatedCost >= median * 10 ? "warning" : "info",
+          title: "One conversation is dominating your spend",
+          body: `Session in ${projLabel} cost $${top.estimatedCost.toFixed(2)} across ${top.promptCount} prompts — ${ratio}× the median session. Long single conversations grow their own context on every turn; consider splitting unrelated work into fresh sessions.`,
+          impact: `$${top.estimatedCost.toFixed(2)}`,
+        });
+      }
+    }
+  }
+
+  // 7. Average peak context tokens approaching the context-window ceiling
+  if (contextAnalysis && contextAnalysis.avgPeakInputTokens >= 150_000) {
+    const k = Math.round(contextAnalysis.avgPeakInputTokens / 1000);
+    out.push({
+      id: "context-near-limit",
+      severity: contextAnalysis.avgPeakInputTokens >= 180_000 ? "warning" : "info",
+      title: "Sessions are regularly filling the context window",
+      body: `Your average peak input reaches ~${k}k tokens (out of a 200k ceiling). Near-full contexts are slower and more expensive per turn, and further prompts risk truncation. Run /compact earlier — or start a fresh session once a task is complete.`,
+    });
+  }
+
+  // 8. Unusually expensive MCP server — possible misbehavior or runaway tool
+  if (spending && spending.mcpServers && spending.mcpServers.length > 0 && totalCost > 0) {
+    // Flag any MCP server whose cost exceeds 15% of total spend OR whose avg tokens/call
+    // is >10× the median across MCP servers, provided it has meaningful invocation volume.
+    const servers = spending.mcpServers.filter(s => s.totalCalls >= 5);
+    if (servers.length > 0) {
+      const avgs = servers.map(s => s.avgTokensPerCall).sort((a, b) => a - b);
+      const median = avgs[Math.floor(avgs.length / 2)] ?? 0;
+      for (const s of servers) {
+        const costShare = s.estimatedCost / totalCost;
+        const avgRatio = median > 0 ? s.avgTokensPerCall / median : 1;
+        if (costShare >= 0.15 || (avgRatio >= 10 && s.estimatedCost >= 1)) {
+          out.push({
+            id: `mcp-heavy-${s.server}`,
+            severity: costShare >= 0.3 ? "warning" : "info",
+            title: `MCP server “${s.server}” is consuming an unusually large share`,
+            body: `${(costShare * 100).toFixed(1)}% of your total spend (~$${s.estimatedCost.toFixed(2)}) went to this server across ${s.totalCalls} calls, averaging ${Math.round(s.avgTokensPerCall).toLocaleString()} tokens per call${median > 0 && avgRatio >= 2 ? ` (${avgRatio.toFixed(1)}× the median MCP server)` : ""}. Verify that it is returning the right amount of data and not looping or echoing large payloads.`,
+            impact: `~$${s.estimatedCost.toFixed(2)}`,
+          });
+          break; // only flag the worst offender to avoid noise
+        }
+      }
+    }
+  }
+
+  // ── Positive reinforcement — call out things the user is doing well ────
+  // Keep thresholds strict so these stay meaningful and don't feel like participation trophies.
+
+  // P1. Strong cache discipline on meaningful volume
+  if (cacheEfficiency >= 75 && totalPrompts >= 100 && totalCost >= 5) {
+    out.push({
+      id: "good-cache",
+      severity: "success",
+      title: "Excellent cache discipline",
+      body: `${cacheEfficiency.toFixed(0)}% of your input tokens are coming from the prompt cache — strong reuse of stable prefixes is saving you real money on every turn.`,
+    });
+  }
+
+  // P2. Efficient model selection — low overuse on sufficient classified volume
+  if (
+    modelEfficiency &&
+    modelEfficiency.summary.overusePercent <= 10 &&
+    modelEfficiency.summary.potentialSavings < 2 &&
+    modelEfficiency.summary.classifiedMessages >= 30
+  ) {
+    out.push({
+      id: "good-model-routing",
+      severity: "success",
+      title: "You're picking the right model for the job",
+      body: `Only ${modelEfficiency.summary.overusePercent}% of your classified turns used a pricier model than needed. You're matching prompt complexity to model tier well.`,
+    });
+  }
+
+  // P3. Strong plan value — getting ≥3× out of the subscription
+  if (planUtilization && planUtilization.weeklyPlanBudget > 0) {
+    const monthlyFee = planUtilization.weeklyPlanBudget * 4.33;
+    const monthlyUse = planUtilization.avgWeeklyCost * 4.33;
+    const multiplier = monthlyFee > 0 ? monthlyUse / monthlyFee : 0;
+    if (multiplier >= 3) {
+      out.push({
+        id: "good-plan-value",
+        severity: "success",
+        title: "Great value from your plan",
+        body: `Your API-equivalent usage averages ~${multiplier.toFixed(1)}× your plan fee. The subscription is paying for itself several times over.`,
+      });
+    }
+  }
+
+  // P4. Active context management — actually using /compact
+  if (contextAnalysis && contextAnalysis.compactionRate >= 30 && contextAnalysis.sessionsNeedingCompaction <= 2) {
+    out.push({
+      id: "good-compaction",
+      severity: "success",
+      title: "Good context hygiene",
+      body: `${contextAnalysis.compactionRate.toFixed(0)}% of your sessions show compaction activity, and few long sessions went uncompacted. You're keeping context sizes in check.`,
+    });
+  }
+
+  // NOTE: no "pacing your usage well" rule. The truncatedOutputs metric counts short
+  // max_tokens responses, not real rate-limit events — those are rejected before a
+  // response is written and never reach the JSONL. We can't assert "never throttled".
+
+  // Sort by severity — actions first (critical → warning → info), positives last
+  const rank: Record<Recommendation["severity"], number> = { critical: 0, warning: 1, info: 2, success: 3 };
+  out.sort((a, b) => rank[a.severity] - rank[b.severity]);
+  return out;
 }
 
 function buildSpendingSection(

@@ -93,12 +93,12 @@
           "body": "Balkendiagramm mit Sessions und Prompts pro Woche. Hilft Ihnen, Ihre Nutzungsmuster zu erkennen und ob Ihr Aktivitätsniveau Ihr aktuelles Abo rechtfertigt."
         },
         {
-          "heading": "Fensterlimit-Auslastung %",
-          "body": "Zeigt, welcher Prozentsatz Ihres Nutzungslimits pro Fenster in jedem 5-Stunden-Fenster verbraucht wurde. Das Limit wird nur geschätzt, wenn tatsächlich Drosselungsereignisse erkannt werden — ohne diese Daten zeigt das Diagramm stattdessen die absolute API-Äquivalentkosten pro Fenster. Rote Balken zeigen gedrosselte Fenster, orange bedeutet Annäherung an das Limit (>=80%)."
+          "heading": "API-Kosten pro 5-Stunden-Fenster",
+          "body": "Zeigt die absoluten API-Äquivalentkosten pro 5-Stunden-Fenster. Orange Balken markieren Fenster, die eine am Output-Token-Limit abgeschnittene Antwort enthielten. Hinweis: Die 5-Stunden-Ratenlimit-Ablehnungen von Anthropic erscheinen nie in den Session-Logs, daher kann kein echter Prozentsatz eines Limits ausgegeben werden."
         },
         {
           "heading": "Fenster pro Woche",
-          "body": "Gestapelter Balken mit normalen vs. gedrosselten Fenstern pro Woche. Mehr gedrosselte Fenster deutet darauf hin, dass Sie von einem höheren Abo profitieren könnten."
+          "body": "Gestapelter Balken mit der Gesamtzahl der 5-Stunden-Fenster pro Woche. Der orange Anteil zählt Fenster, die eine abgeschnittene Antwort enthielten — ein unkritisches Signal, meist verursacht durch eine einzelne lange Antwort, die am Output-Token-Limit gestoppt wurde."
         },
         {
           "heading": "Multi-Account-Unterstützung",

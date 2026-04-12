@@ -93,12 +93,12 @@
           "body": "Bar chart showing sessions and prompts per week. Helps you see your usage patterns and whether your activity level justifies your current plan."
         },
         {
-          "heading": "Window Limit Usage %",
-          "body": "Shows what percentage of your per-window usage limit was consumed in each 5-hour window. The limit is only estimated when throttle events are actually detected — without that data, the chart falls back to showing absolute API-equivalent cost per window instead. Red bars indicate throttled windows, orange means approaching the limit (>=80%)."
+          "heading": "API Cost per 5-Hour Window",
+          "body": "Shows absolute API-equivalent cost per 5-hour window. Bars are orange for windows that contained an assistant response cut off at the output-token limit (a \"truncated output\"). Note: Anthropic's 5-hour rate-limit rejections never reach the session logs, so we cannot reliably show a real \"% of limit\" value."
         },
         {
           "heading": "Windows Per Week",
-          "body": "Stacked bar showing normal vs throttled windows per week. More throttled windows suggests you may benefit from a higher-tier plan."
+          "body": "Stacked bar showing total 5-hour usage windows per week. The orange segment counts windows that contained a truncated-output response — a non-critical signal that usually points at a single long response being cut off at the output-token limit."
         },
         {
           "heading": "Multi-Account Support",
