@@ -737,7 +737,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           <div style="font-size:0.55rem;color:#666;margin-top:0.15rem;">${t("dashboard:energy.solarRegion", { region: REGIONS[data.energy.equivalents.solarRegionKey]?.name ?? data.energy.equivalents.solarRegionKey })}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
-          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.nuclearWasteMg.toFixed(2)}<sup style="font-size:0.7rem;color:#ffb347;">*</sup></div>
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${formatNuclearVolume(data.energy.equivalents.nuclearWasteMl)}<sup style="font-size:0.7rem;color:#ffb347;">*</sup></div>
           <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.nuclearWaste")}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
@@ -873,7 +873,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
           <li>${t("dashboard:energy.calc.eq.train", { co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2), value: data.energy.equivalents.trainKm.toFixed(2) })}</li>
           <li>${t("dashboard:energy.calc.eq.transit", { co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2), value: data.energy.equivalents.transitKm.toFixed(2) })}</li>
           <li>${t("dashboard:energy.calc.eq.coffee", { co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2), value: data.energy.equivalents.coffeeCups.toFixed(2) })}</li>
-          <li>${t("dashboard:energy.calc.eq.nuclearWaste", { totalKwh: (data.energy.totalEnergyWh / 1000).toFixed(2), value: data.energy.equivalents.nuclearWasteMg.toFixed(2) })}</li>
+          <li>${t("dashboard:energy.calc.eq.nuclearWaste", { totalKwh: (data.energy.totalEnergyWh / 1000).toFixed(2), value: formatNuclearVolume(data.energy.equivalents.nuclearWasteMl) })}</li>
           <li>${t("dashboard:energy.calc.eq.solar", {
             totalKwh: (data.energy.totalEnergyWh / 1000).toFixed(2),
             regionYield: REGIONS[data.energy.equivalents.solarRegionKey]?.solarYield ?? 210,
@@ -1924,6 +1924,13 @@ function formatSolarArea(m2: number): string {
   if (m2 < 1) return `${Math.round(m2 * 10000)} cm²`;
   if (m2 < 10) return `${m2.toFixed(2)} m²`;
   return `${m2.toFixed(1)} m²`;
+}
+
+/** Format a nuclear-waste volume: mm³ when <1 mL, mL when <1000, L otherwise. */
+function formatNuclearVolume(ml: number): string {
+  if (ml < 1) return `${Math.round(ml * 1000)} mm³`;
+  if (ml < 1000) return `${ml.toFixed(1)} mL`;
+  return `${(ml / 1000).toFixed(2)} L`;
 }
 
 /** Format a large number with k/M suffix for display in summary bar. */

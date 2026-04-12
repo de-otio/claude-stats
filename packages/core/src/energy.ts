@@ -246,8 +246,8 @@ export interface EnvironmentalEquivalents {
   coffeeCups: number;
   /** EU train km (6 gCO₂/pkm). */
   trainKm: number;
-  /** Milligrams of spent nuclear fuel if the same energy came from 100% nuclear (3 mg/kWh, OECD NEA). */
-  nuclearWasteMg: number;
+  /** Milliliters of total radioactive waste volume (HLW + ILW + LLW) if the same energy came from 100% nuclear (~0.05 mL/kWh, OECD/NEA cumulative inventory). */
+  nuclearWasteMl: number;
 }
 
 /** Canonical journeys ordered by distance, used to anchor a period's carKm to a relatable trip. */
@@ -407,7 +407,7 @@ function computeEquivalents(totalEnergyWh: number, co2Grams: number, regionKey: 
     gasolineLiters: co2Kg / 2.31,
     coffeeCups: co2Kg / 0.3,
     trainKm: co2Kg / 0.006,
-    nuclearWasteMg: totalEnergyWh * 0.003,
+    nuclearWasteMl: totalEnergyWh * 0.00005,
   };
 }
 

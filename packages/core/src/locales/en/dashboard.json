@@ -141,8 +141,8 @@
     "solarRegion": "in {{region}}",
     "solarPanelsFootnote": "Area of rooftop PV modules (~20% efficiency, 0.75 performance ratio) that, sited in {{region}}, would take exactly the selected time window to generate this period's total energy consumption. Scales with the regional annual solar irradiance and the chosen period length.",
     "coffeeCups": "cups of coffee",
-    "nuclearWaste": "mg nuclear waste",
-    "nuclearWasteFootnote": "Spent fuel if the same energy came from 100% nuclear (~3 mg/kWh, OECD NEA). High-level waste must be safely isolated and guarded for ~100,000 years before its radioactivity decays to that of natural uranium ore.",
+    "nuclearWaste": "total nuclear waste",
+    "nuclearWasteFootnote": "Total radioactive waste volume — high-level (spent fuel), intermediate-level, and low-level operational waste combined — if the same energy came from 100 % nuclear (~0.05 mL/kWh, derived from OECD/NEA cumulative inventory ÷ cumulative nuclear generation). High-level waste must be safely isolated and guarded for ~100,000 years before its radioactivity decays to the level of natural uranium ore.",
     "journeyAnchor": "Your carbon ≈ driving {{name}} ({{km}} km).",
     "journeys": {
       "coffeeWalk": "to the coffee shop and back",
@@ -185,7 +185,7 @@
         "train": "Long-distance train: {{co2Kg}} kg ÷ 0.006 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "transit": "Local transit: {{co2Kg}} kg ÷ 0.030 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "coffee": "Coffee: {{co2Kg}} kg ÷ 0.3 kg CO₂/cup = <strong>{{value}} cups</strong>",
-        "nuclearWaste": "Nuclear waste: {{totalKwh}} kWh × 3 mg spent fuel/kWh = <strong>{{value}} mg</strong>",
+        "nuclearWaste": "Nuclear waste: {{totalKwh}} kWh × 0.05 mL/kWh (total HLW+ILW+LLW) = <strong>{{value}}</strong>",
         "solar": "Solar panels: {{totalKwh}} kWh ÷ ({{regionYield}} kWh/m²/yr in {{region}} × {{periodDays}}/365) = <strong>{{value}}</strong>"
       }
     },
@@ -234,7 +234,7 @@
         },
         "nuclearWaste": {
           "label": "Nuclear waste",
-          "value": "~3 mg spent fuel per kWh — OECD Nuclear Energy Agency: ~30 tonnes spent fuel per GWe-year."
+          "value": "~0.05 mL/kWh total radioactive waste volume — high-level (spent fuel) + intermediate-level + low-level operational waste combined. Derived from OECD/NEA cumulative inventory (~4 million m³ through 2020) divided by cumulative civil nuclear generation (~84,000 TWh)."
         }
       }
     }

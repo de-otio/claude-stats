@@ -234,7 +234,7 @@ export interface DashboardEnergy {
     gasolineLiters: number;
     coffeeCups: number;
     trainKm: number;
-    nuclearWasteMg: number;
+    nuclearWasteMl: number;
   };
   /** Nearest canonical driving journey for this period's carKm. */
   journeyAnchor: { key: string; km: number };
@@ -1589,7 +1589,7 @@ function buildEnergySection(
       gasolineLiters: Math.round(aggregated.equivalents.gasolineLiters * 1000) / 1000,
       coffeeCups: Math.round(aggregated.equivalents.coffeeCups * 100) / 100,
       trainKm: Math.round(aggregated.equivalents.trainKm * 100) / 100,
-      nuclearWasteMg: Math.round(aggregated.equivalents.nuclearWasteMg * 1000) / 1000,
+      nuclearWasteMl: Math.round(aggregated.equivalents.nuclearWasteMl * 10000) / 10000,
     },
     journeyAnchor: nearestJourneyAnchor(aggregated.equivalents.carKm),
     periodStartIso: new Date(effectiveSince).toISOString().slice(0, 10),
