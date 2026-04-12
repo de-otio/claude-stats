@@ -141,8 +141,8 @@
     "solarRegion": "in {{region}}",
     "solarPanelsFootnote": "Fläche an Aufdach-PV-Modulen (~20 % Wirkungsgrad, 0,75 Performance-Ratio), die — platziert in {{region}} — genau den gewählten Zeitraum bräuchten, um den in diesem Zeitraum angefallenen Gesamtenergieverbrauch zu erzeugen. Skaliert mit der regionalen Sonneneinstrahlung und der gewählten Zeitraum-Länge.",
     "coffeeCups": "Tassen Kaffee",
-    "nuclearWaste": "Atommüll gesamt",
-    "nuclearWasteFootnote": "Gesamtvolumen radioaktiver Abfälle — hochradioaktive Abfälle (abgebrannter Brennstoff), mittelradioaktive und schwachradioaktive Betriebsabfälle zusammen — wenn dieselbe Energie aus 100 % Kernstrom käme (~0,05 mL/kWh, abgeleitet aus OECD/NEA-Bestandsdaten ÷ kumulierter Kernstromerzeugung). Hochradioaktive Abfälle müssen sicher isoliert und bewacht werden — etwa 100.000 Jahre lang, bis ihre Radioaktivität auf das Niveau von natürlichem Uranerz abgeklungen ist.",
+    "nuclearWaste": "Endlagervolumen",
+    "nuclearWasteFootnote": "Endlager-Volumen der gebauten Anlage — nicht Rohabfall — wenn dieselbe Energie aus 100 % Kernstrom käme (~4 mL/kWh). Gewichtete Mischung aus HLW-Einlagerung nach Posiva KBS-3 (~1.500× das Volumen des rohen abgebrannten Brennstoffs, wenn Kupferbehälter, Bentonit-Puffer und thermisch entzerrte Tunnel mitgerechnet werden — Onkalo schachtet ~1 Mio. m³ Fels für ~650 m³ abgebrannten Brennstoff aus), plus ILW (~5×) und LLW (~3×), basierend auf IAEA-Bestandsanteilen. HLW muss etwa 100.000 Jahre lang sicher isoliert und bewacht werden, bis seine Radioaktivität auf das Niveau von natürlichem Uranerz abgeklungen ist.",
     "journeyAnchor": "Ihr CO₂ ≈ Autofahrt {{name}} ({{km}} km).",
     "journeys": {
       "coffeeWalk": "zum Café und zurück",
@@ -185,7 +185,7 @@
         "train": "Fernverkehrszug: {{co2Kg}} kg ÷ 0,006 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "transit": "Nahverkehr: {{co2Kg}} kg ÷ 0,030 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "coffee": "Kaffee: {{co2Kg}} kg ÷ 0,3 kg CO₂/Tasse = <strong>{{value}} Tassen</strong>",
-        "nuclearWaste": "Atommüll: {{totalKwh}} kWh × 0,05 mL/kWh (gesamt HLW+ILW+LLW) = <strong>{{value}}</strong>",
+        "nuclearWaste": "Endlagervolumen: {{totalKwh}} kWh × 4 mL/kWh (gebautes HLW+ILW+LLW-Endlager, gewichtet) = <strong>{{value}}</strong>",
         "solar": "Solarmodule: {{totalKwh}} kWh ÷ ({{regionYield}} kWh/m²/Jahr in {{region}} × {{periodDays}}/365) = <strong>{{value}}</strong>"
       }
     },
@@ -233,8 +233,8 @@
           "value": "≈ 0,3 kg CO₂e pro Latte (Farm bis Tasse, inkl. Milch) — Carbon Trust / University of Manchester LCA."
         },
         "nuclearWaste": {
-          "label": "Atommüll",
-          "value": "~0,05 mL/kWh Gesamtvolumen radioaktiver Abfälle — hochradioaktive (abgebrannter Brennstoff) + mittel- + schwachradioaktive Betriebsabfälle zusammen. Abgeleitet aus OECD/NEA-Bestandsdaten (~4 Mio. m³ bis 2020) geteilt durch kumulierte zivile Kernstromerzeugung (~84.000 TWh)."
+          "label": "Atommüll-Endlagervolumen",
+          "value": "~4 mL/kWh gebautes Endlager-Volumen — nicht Rohabfall. Gewichtete Mischung aus HLW-Einlagerung nach Posiva KBS-3 / Onkalo (~1.500× Volumen des rohen abgebrannten Brennstoffs nach Kupferbehälter, Bentonit-Puffer und thermischer Tunnelabstandung), ILW (~5×) und LLW (~3×), basierend auf IAEA-Volumenanteilen. Quellen: Posiva 2012 Safety Case, SKB TR-11-01, IAEA Radioactive Waste Inventory."
         }
       }
     }

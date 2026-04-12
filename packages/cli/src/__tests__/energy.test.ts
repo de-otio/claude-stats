@@ -193,7 +193,7 @@ describe("estimateEnergy", () => {
     expect(result.equivalents.solarRegionKey).toBeTruthy();
     expect(result.equivalents.transitKm).toBeGreaterThan(0);
     expect(result.equivalents.nuclearWasteMl).toBeGreaterThan(0);
-    expect(result.equivalents.nuclearWasteMl).toBeCloseTo(result.totalEnergyWh * 0.00005, 10);
+    expect(result.equivalents.nuclearWasteMl).toBeCloseTo(result.totalEnergyWh * 0.004, 10);
   });
 
   it("nearestJourneyAnchor snaps to the log-nearest anchor", () => {

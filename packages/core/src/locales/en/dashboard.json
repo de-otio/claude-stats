@@ -141,8 +141,8 @@
     "solarRegion": "in {{region}}",
     "solarPanelsFootnote": "Area of rooftop PV modules (~20% efficiency, 0.75 performance ratio) that, sited in {{region}}, would take exactly the selected time window to generate this period's total energy consumption. Scales with the regional annual solar irradiance and the chosen period length.",
     "coffeeCups": "cups of coffee",
-    "nuclearWaste": "total nuclear waste",
-    "nuclearWasteFootnote": "Total radioactive waste volume — high-level (spent fuel), intermediate-level, and low-level operational waste combined — if the same energy came from 100 % nuclear (~0.05 mL/kWh, derived from OECD/NEA cumulative inventory ÷ cumulative nuclear generation). High-level waste must be safely isolated and guarded for ~100,000 years before its radioactivity decays to the level of natural uranium ore.",
+    "nuclearWaste": "nuclear disposal volume",
+    "nuclearWasteFootnote": "Engineered disposal-facility volume — not raw waste — if the same energy came from 100 % nuclear (~4 mL/kWh). Weighted blend of HLW emplacement per Posiva KBS-3 (~1,500× raw spent-fuel volume once copper canister, bentonite buffer, and thermally-spaced repository tunnels are counted — Onkalo excavates ~1 million m³ of rock for ~650 m³ of spent fuel), plus ILW (~5×) and LLW (~3×) disposal, using IAEA waste-inventory volume shares. HLW must be safely isolated and guarded for ~100,000 years before its radioactivity decays to the level of natural uranium ore.",
     "journeyAnchor": "Your carbon ≈ driving {{name}} ({{km}} km).",
     "journeys": {
       "coffeeWalk": "to the coffee shop and back",
@@ -185,7 +185,7 @@
         "train": "Long-distance train: {{co2Kg}} kg ÷ 0.006 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "transit": "Local transit: {{co2Kg}} kg ÷ 0.030 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "coffee": "Coffee: {{co2Kg}} kg ÷ 0.3 kg CO₂/cup = <strong>{{value}} cups</strong>",
-        "nuclearWaste": "Nuclear waste: {{totalKwh}} kWh × 0.05 mL/kWh (total HLW+ILW+LLW) = <strong>{{value}}</strong>",
+        "nuclearWaste": "Nuclear disposal volume: {{totalKwh}} kWh × 4 mL/kWh (engineered HLW+ILW+LLW repository, weighted) = <strong>{{value}}</strong>",
         "solar": "Solar panels: {{totalKwh}} kWh ÷ ({{regionYield}} kWh/m²/yr in {{region}} × {{periodDays}}/365) = <strong>{{value}}</strong>"
       }
     },
@@ -233,8 +233,8 @@
           "value": "≈ 0.3 kg CO₂e per latte (farm-to-cup incl. dairy) — Carbon Trust / University of Manchester LCA."
         },
         "nuclearWaste": {
-          "label": "Nuclear waste",
-          "value": "~0.05 mL/kWh total radioactive waste volume — high-level (spent fuel) + intermediate-level + low-level operational waste combined. Derived from OECD/NEA cumulative inventory (~4 million m³ through 2020) divided by cumulative civil nuclear generation (~84,000 TWh)."
+          "label": "Nuclear disposal volume",
+          "value": "~4 mL/kWh engineered repository volume — not raw waste. Weighted across HLW disposal per Posiva KBS-3 / Onkalo (~1,500× raw spent-fuel volume after copper canister, bentonite buffer, and thermal tunnel spacing), ILW (~5×) and LLW (~3×) disposal, using IAEA volume shares. References: Posiva 2012 safety case, SKB TR-11-01, IAEA Radioactive Waste Inventory."
         }
       }
     }

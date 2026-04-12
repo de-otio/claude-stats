@@ -246,7 +246,7 @@ export interface EnvironmentalEquivalents {
   coffeeCups: number;
   /** EU train km (6 gCO₂/pkm). */
   trainKm: number;
-  /** Milliliters of total radioactive waste volume (HLW + ILW + LLW) if the same energy came from 100% nuclear (~0.05 mL/kWh, OECD/NEA cumulative inventory). */
+  /** Milliliters of engineered repository volume (HLW+ILW+LLW, incl. canisters/buffer/tunnel excavation) if the same energy came from 100% nuclear (~4 mL/kWh, weighted from Posiva KBS-3 + IAEA inventory). */
   nuclearWasteMl: number;
 }
 
@@ -407,7 +407,7 @@ function computeEquivalents(totalEnergyWh: number, co2Grams: number, regionKey: 
     gasolineLiters: co2Kg / 2.31,
     coffeeCups: co2Kg / 0.3,
     trainKm: co2Kg / 0.006,
-    nuclearWasteMl: totalEnergyWh * 0.00005,
+    nuclearWasteMl: totalEnergyWh * 0.004,
   };
 }
 
