@@ -248,6 +248,9 @@ export interface EnvironmentalEquivalents {
   nuclearWasteMl: number;
   /** Rotations of a 3 MW onshore wind turbine at ~35% capacity factor (≈1.17 kWh per rotation at 15 RPM). */
   windRotations: number;
+  /** Liters of water that would pass through a typical modern hydroelectric turbine
+   * (≈100 m head, 90% efficiency) to generate this period's energy (~4,077 L/kWh). */
+  hydroTurbineLiters: number;
 }
 
 /** Canonical journeys ordered by distance, used to anchor a period's carKm to a relatable trip. */
@@ -408,6 +411,8 @@ function computeEquivalents(totalEnergyWh: number, co2Grams: number, regionKey: 
     trainKm: co2Kg / 0.006,
     nuclearWasteMl: totalEnergyWh * 0.004,
     windRotations: totalEnergyWh / 1170,
+    // E = m·g·h·η → L per kWh = 3,600,000 / (9.81·h·η); at h=100 m, η=0.9 → ~4,077 L/kWh
+    hydroTurbineLiters: (totalEnergyWh / 1000) * 4077,
   };
 }
 

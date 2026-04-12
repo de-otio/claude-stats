@@ -252,6 +252,7 @@ export interface DashboardEnergy {
     trainKm: number;
     nuclearWasteMl: number;
     windRotations: number;
+    hydroTurbineLiters: number;
   };
   /** Nearest canonical driving journey for this period's carKm. */
   journeyAnchor: { key: string; km: number };
@@ -1839,6 +1840,7 @@ function buildEnergySection(
       trainKm: Math.round(aggregated.equivalents.trainKm * 100) / 100,
       nuclearWasteMl: Math.round(aggregated.equivalents.nuclearWasteMl * 10000) / 10000,
       windRotations: Math.round(aggregated.equivalents.windRotations * 10) / 10,
+      hydroTurbineLiters: Math.round(aggregated.equivalents.hydroTurbineLiters * 100) / 100,
     },
     journeyAnchor: nearestJourneyAnchor(aggregated.equivalents.carKm),
     periodStartIso: new Date(effectiveSince).toISOString().slice(0, 10),

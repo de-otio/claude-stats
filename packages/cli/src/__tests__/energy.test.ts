@@ -195,6 +195,8 @@ describe("estimateEnergy", () => {
     expect(result.equivalents.nuclearWasteMl).toBeCloseTo(result.totalEnergyWh * 0.004, 10);
     expect(result.equivalents.windRotations).toBeGreaterThan(0);
     expect(result.equivalents.windRotations).toBeCloseTo(result.totalEnergyWh / 1170, 8);
+    expect(result.equivalents.hydroTurbineLiters).toBeGreaterThan(0);
+    expect(result.equivalents.hydroTurbineLiters).toBeCloseTo((result.totalEnergyWh / 1000) * 4077, 6);
   });
 
   it("nearestJourneyAnchor snaps to the log-nearest anchor", () => {

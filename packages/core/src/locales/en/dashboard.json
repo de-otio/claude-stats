@@ -142,7 +142,10 @@
     "windRotations": "wind-turbine rotations",
     "windTurbineRef": "3 MW onshore, 35 % CF",
     "windRotationsFootnote": "Rotations of a typical modern 3 MW onshore wind turbine at ~15 RPM under a 35 % capacity factor — ~1.17 kWh per rotation at average output. Equivalently, one such turbine would need {{minutes}} min at its real-world average output (or {{ratedMinutes}} min at rated 3 MW) to generate your period's total energy.",
-    "nuclearWaste": "nuclear disposal volume",
+    "hydroTurbineLiters": "liters through a hydro turbine",
+    "hydroTurbineRef": "~100 m head, 90 % η",
+    "hydroTurbineFootnote": "Volume of water that would need to pass through a typical modern hydroelectric turbine (~100 m head, ~90 % efficiency) to generate this period's energy — about 4,077 L per kWh, derived from E = m·g·h·η. High-head plants need less (Hoover Dam, 180 m: ~2,200 L/kWh); low-head run-of-river plants need much more.",
+    "nuclearWaste": "nuclear waste volume",
     "nuclearWasteFootnote": "Engineered disposal-facility volume — not raw waste — if the same energy came from 100 % nuclear (~4 mL/kWh). Weighted blend of HLW emplacement per Posiva KBS-3 (~1,500× raw spent-fuel volume once copper canister, bentonite buffer, and thermally-spaced repository tunnels are counted — Onkalo excavates ~1 million m³ of rock for ~650 m³ of spent fuel), plus ILW (~5×) and LLW (~3×) disposal, using IAEA waste-inventory volume shares. HLW must be safely isolated and guarded for ~100,000 years before its radioactivity decays to the level of natural uranium ore.",
     "journeyAnchor": "Your carbon ≈ driving {{name}} ({{km}} km).",
     "journeys": {
@@ -187,6 +190,7 @@
         "transit": "Local transit: {{co2Kg}} kg ÷ 0.030 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "nuclearWaste": "Nuclear disposal volume: {{totalKwh}} kWh × 4 mL/kWh (engineered HLW+ILW+LLW repository, weighted) = <strong>{{value}}</strong>",
         "wind": "Wind-turbine rotations: {{totalKwh}} kWh ÷ 1.17 kWh/rotation (3 MW turbine at 15 RPM, 35 % CF) = <strong>{{value}} rotations</strong> ≈ {{minutes}} min of real-world spinning",
+        "hydro": "Hydro-turbine water volume: {{totalKwh}} kWh × 4,077 L/kWh (~100 m head, 90 % η via E = m·g·h·η) = <strong>{{value}}</strong>",
         "solar": "Solar panels: {{totalKwh}} kWh ÷ ({{regionYield}} kWh/m²/yr in {{region}} × {{periodDays}}/365) = <strong>{{value}}</strong>"
       }
     },
@@ -212,6 +216,10 @@
         "windTurbine": {
           "label": "Wind turbine reference",
           "value": "Modern 3 MW onshore turbine at 15 RPM and ~35 % capacity factor (IRENA Renewable Power Generation Costs 2023, IEA Renewables 2024). Energy per rotation = 3 MW × 4 s × 0.35 ≈ 1.17 kWh at average output (~3.33 kWh at rated)."
+        },
+        "hydroTurbine": {
+          "label": "Hydroelectric turbine reference",
+          "value": "Representative modern hydroelectric plant at ~100 m net head with ~90 % combined turbine+generator efficiency. Derived from the physical relation E = m·g·h·η with g = 9.81 m/s², giving 3,600,000 J ÷ (9.81 × 100 × 0.9) ≈ 4,077 L/kWh. Close to the global capacity-weighted average (Three Gorges ~95 m, Itaipu ~118 m); high-head plants such as Hoover Dam (180 m) need ~2,200 L/kWh."
         },
         "carKm": {
           "label": "Car emissions",

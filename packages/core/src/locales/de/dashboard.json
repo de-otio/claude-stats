@@ -142,6 +142,9 @@
     "windRotations": "Windrad-Umdrehungen",
     "windTurbineRef": "3 MW Onshore, 35 % NLF",
     "windRotationsFootnote": "Umdrehungen eines typischen modernen 3-MW-Onshore-Windrads bei ~15 U/min und 35 % Nutzungsfaktor — ~1,17 kWh pro Umdrehung bei Durchschnittsleistung. Das gleiche Windrad bräuchte entsprechend {{minutes}} min bei realer Durchschnittsleistung (oder {{ratedMinutes}} min bei Nennleistung 3 MW), um den gesamten Energieverbrauch Ihres Zeitraums zu erzeugen.",
+    "hydroTurbineLiters": "Liter durch Wasserturbine",
+    "hydroTurbineRef": "~100 m Fallhöhe, 90 % η",
+    "hydroTurbineFootnote": "Wassermenge, die durch eine typische moderne Wasserkraftturbine (~100 m Fallhöhe, ~90 % Wirkungsgrad) fließen müsste, um den Energieverbrauch des Zeitraums zu erzeugen — rund 4.077 L pro kWh, abgeleitet aus E = m·g·h·η. Hochdruckanlagen benötigen weniger (Hoover Dam, 180 m: ~2.200 L/kWh); Niederdruck- bzw. Laufwasseranlagen deutlich mehr.",
     "nuclearWaste": "Endlagervolumen",
     "nuclearWasteFootnote": "Endlager-Volumen der gebauten Anlage — nicht Rohabfall — wenn dieselbe Energie aus 100 % Kernstrom käme (~4 mL/kWh). Gewichtete Mischung aus HLW-Einlagerung nach Posiva KBS-3 (~1.500× das Volumen des rohen abgebrannten Brennstoffs, wenn Kupferbehälter, Bentonit-Puffer und thermisch entzerrte Tunnel mitgerechnet werden — Onkalo schachtet ~1 Mio. m³ Fels für ~650 m³ abgebrannten Brennstoff aus), plus ILW (~5×) und LLW (~3×), basierend auf IAEA-Bestandsanteilen. HLW muss etwa 100.000 Jahre lang sicher isoliert und bewacht werden, bis seine Radioaktivität auf das Niveau von natürlichem Uranerz abgeklungen ist.",
     "journeyAnchor": "Ihr CO₂ ≈ Autofahrt {{name}} ({{km}} km).",
@@ -187,6 +190,7 @@
         "transit": "Nahverkehr: {{co2Kg}} kg ÷ 0,030 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "nuclearWaste": "Endlagervolumen: {{totalKwh}} kWh × 4 mL/kWh (gebautes HLW+ILW+LLW-Endlager, gewichtet) = <strong>{{value}}</strong>",
         "wind": "Windrad-Umdrehungen: {{totalKwh}} kWh ÷ 1,17 kWh/Umdrehung (3-MW-Windrad bei 15 U/min, 35 % NLF) = <strong>{{value}} Umdrehungen</strong> ≈ {{minutes}} min reale Drehung",
+        "hydro": "Wasserturbine: {{totalKwh}} kWh × 4.077 L/kWh (~100 m Fallhöhe, 90 % η über E = m·g·h·η) = <strong>{{value}}</strong>",
         "solar": "Solarmodule: {{totalKwh}} kWh ÷ ({{regionYield}} kWh/m²/Jahr in {{region}} × {{periodDays}}/365) = <strong>{{value}}</strong>"
       }
     },
@@ -212,6 +216,10 @@
         "windTurbine": {
           "label": "Windrad-Referenz",
           "value": "Modernes 3-MW-Onshore-Windrad bei 15 U/min und ~35 % Nutzungsfaktor (IRENA Renewable Power Generation Costs 2023, IEA Renewables 2024). Energie pro Umdrehung = 3 MW × 4 s × 0,35 ≈ 1,17 kWh bei Durchschnittsleistung (~3,33 kWh bei Nennleistung)."
+        },
+        "hydroTurbine": {
+          "label": "Wasserturbinen-Referenz",
+          "value": "Repräsentative moderne Wasserkraftanlage bei ~100 m Nettofallhöhe und ~90 % Gesamtwirkungsgrad (Turbine + Generator). Abgeleitet aus E = m·g·h·η mit g = 9,81 m/s²: 3.600.000 J ÷ (9,81 × 100 × 0,9) ≈ 4.077 L/kWh. Nahe am weltweit kapazitätsgewichteten Durchschnitt (Drei Schluchten ~95 m, Itaipú ~118 m); Hochdruckanlagen wie der Hoover Dam (180 m) benötigen ~2.200 L/kWh."
         },
         "carKm": {
           "label": "Fahrzeug-Emissionen",
