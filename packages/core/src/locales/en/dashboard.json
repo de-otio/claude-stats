@@ -134,9 +134,10 @@
     "geoCoverageHint": "% of messages with detected inference region",
     "equivalents": "Environmental Context",
     "gasolineLiters": "liters of gasoline",
-    "smartphones": "phone charges",
-    "solarPanels": "solar panels (period)",
+    "transitKm": "km by mass transit",
+    "solarPanels": "solar panels required (period)",
     "solarRegion": "in {{region}}",
+    "solarPanelsFootnote": "Area of rooftop PV modules (~20% efficiency, 0.75 performance ratio) that, sited in {{region}}, would take exactly the selected time window to generate this period's total energy consumption. Scales with the regional annual solar irradiance and the chosen period length.",
     "coffeeCups": "cups of coffee",
     "nuclearWaste": "mg nuclear waste",
     "nuclearWasteFootnote": "Spent fuel if the same energy came from 100% nuclear (~3 mg/kWh, OECD NEA). High-level waste must be safely isolated and guarded for ~100,000 years before its radioactivity decays to that of natural uranium ore.",
@@ -174,19 +175,15 @@
         },
         "solarYield": {
           "label": "Solar panel yield",
-          "value": "Regional annual GHI from PVGIS (Europe) / NREL NSRDB (Americas) / World Bank GSA (global), multiplied by 20% panel efficiency × 0.75 performance ratio."
+          "value": "Regional annual GHI from PVGIS (Europe) / NREL NSRDB (Americas) / World Bank GSA (global), multiplied by 20% panel efficiency × 0.75 performance ratio. The tile scales this annual yield down to the selected period to show the panel area required to produce exactly this period's energy in that timeframe."
         },
         "carKm": {
           "label": "Car emissions",
           "value": "120 gCO₂/km — EU new-car fleet average, EEA 2024."
         },
-        "trainKm": {
-          "label": "Train emissions",
-          "value": "6 gCO₂/passenger-km — EU electrified rail average, UIC & EEA 2024."
-        },
-        "smartphone": {
-          "label": "Smartphone charge",
-          "value": "11 gCO₂ per full charge — US EPA Greenhouse Gas Equivalencies Calculator."
+        "transit": {
+          "label": "Mass transit emissions",
+          "value": "10 gCO₂/passenger-km — weighted average of urban bus, subway/metro, and electrified rail from IEA Transport Emissions (2024), UIC, and EEA 2024."
         },
         "tree": {
           "label": "Tree absorption",

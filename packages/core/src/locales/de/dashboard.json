@@ -134,9 +134,10 @@
     "geoCoverageHint": "% der Nachrichten mit erkannter Inferenzregion",
     "equivalents": "Umweltkontext",
     "gasolineLiters": "Liter Benzin",
-    "smartphones": "Smartphone-Ladungen",
-    "solarPanels": "Solarmodule (Zeitraum)",
+    "transitKm": "km im ÖPNV",
+    "solarPanels": "benötigte Solarmodule (Zeitraum)",
     "solarRegion": "in {{region}}",
+    "solarPanelsFootnote": "Fläche an Aufdach-PV-Modulen (~20 % Wirkungsgrad, 0,75 Performance-Ratio), die — platziert in {{region}} — genau den gewählten Zeitraum bräuchten, um den in diesem Zeitraum angefallenen Gesamtenergieverbrauch zu erzeugen. Skaliert mit der regionalen Sonneneinstrahlung und der gewählten Zeitraum-Länge.",
     "coffeeCups": "Tassen Kaffee",
     "nuclearWaste": "mg Atommüll",
     "nuclearWasteFootnote": "Abgebrannter Brennstoff bei 100 % Kernstrom (~3 mg/kWh, OECD NEA). Hochradioaktiver Abfall muss sicher isoliert und bewacht werden — etwa 100.000 Jahre lang, bis seine Radioaktivität auf das Niveau von natürlichem Uranerz abgeklungen ist.",
@@ -174,19 +175,15 @@
         },
         "solarYield": {
           "label": "Solarmodul-Ertrag",
-          "value": "Regionale jährliche Globalstrahlung aus PVGIS (Europa) / NREL NSRDB (Amerika) / Weltbank GSA (global), multipliziert mit 20 % Wirkungsgrad × 0,75 Performance-Ratio."
+          "value": "Regionale jährliche Globalstrahlung aus PVGIS (Europa) / NREL NSRDB (Amerika) / Weltbank GSA (global), multipliziert mit 20 % Wirkungsgrad × 0,75 Performance-Ratio. Das Tile skaliert diesen Jahresertrag auf den gewählten Zeitraum herunter und zeigt die Modulfläche, die genau in dieser Zeitspanne den Energieverbrauch des Zeitraums erzeugen würde."
         },
         "carKm": {
           "label": "Fahrzeug-Emissionen",
           "value": "120 gCO₂/km — EU-Neuwagen-Flottendurchschnitt, EEA 2024."
         },
-        "trainKm": {
-          "label": "Zug-Emissionen",
-          "value": "6 gCO₂ pro Personenkilometer — EU-Elektrobahnen-Durchschnitt, UIC & EEA 2024."
-        },
-        "smartphone": {
-          "label": "Smartphone-Ladung",
-          "value": "11 gCO₂ pro Vollladung — US EPA Greenhouse Gas Equivalencies Calculator."
+        "transit": {
+          "label": "ÖPNV-Emissionen",
+          "value": "10 gCO₂ pro Personenkilometer — gewichteter Mittelwert aus Stadtbus, U-Bahn/Metro und elektrifizierter Bahn, IEA Transport Emissions (2024), UIC und EEA 2024."
         },
         "tree": {
           "label": "Baumaufnahme",

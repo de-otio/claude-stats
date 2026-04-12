@@ -171,6 +171,7 @@ describe("estimateEnergy", () => {
     expect(result.equivalents.coffeeCups).toBeGreaterThan(0);
     expect(result.equivalents.solarPanelM2).toBeGreaterThan(0);
     expect(result.equivalents.solarRegionKey).toBeTruthy();
+    expect(result.equivalents.transitKm).toBeGreaterThan(0);
     expect(result.equivalents.nuclearWasteMg).toBeGreaterThan(0);
     expect(result.equivalents.nuclearWasteMg).toBeCloseTo(result.totalEnergyWh * 0.003, 10);
   });

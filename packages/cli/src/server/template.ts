@@ -729,25 +729,28 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.gasolineLiters")}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
-          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.smartphoneCharges.toFixed(1)}</div>
-          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.smartphones")}</div>
-        </div>
-        <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
-          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${formatSolarArea(data.energy.equivalents.solarPanelM2)}</div>
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${formatSolarArea(data.energy.equivalents.solarPanelM2)}<sup style="font-size:0.7rem;color:#8ec07c;">†</sup></div>
           <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.solarPanels")}</div>
           <div style="font-size:0.55rem;color:#666;margin-top:0.15rem;">${t("dashboard:energy.solarRegion", { region: REGIONS[data.energy.equivalents.solarRegionKey]?.name ?? data.energy.equivalents.solarRegionKey })}</div>
+        </div>
+        <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.nuclearWasteMg.toFixed(2)}<sup style="font-size:0.7rem;color:#ffb347;">*</sup></div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.nuclearWaste")}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
           <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.coffeeCups.toFixed(2)}</div>
           <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.coffeeCups")}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
-          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.nuclearWasteMg.toFixed(2)}<sup style="font-size:0.7rem;color:#ffb347;">*</sup></div>
-          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.nuclearWaste")}</div>
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.transitKm.toFixed(2)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:energy.transitKm")}</div>
         </div>
       </div>
       <div style="margin-top:0.6rem;font-size:0.6rem;color:#888;line-height:1.35;">
         ${t("dashboard:energy.journeyAnchor", { name: t(`dashboard:energy.journeys.${data.energy.journeyAnchor.key}`), km: data.energy.journeyAnchor.km })}
+      </div>
+      <div style="margin-top:0.35rem;font-size:0.6rem;color:#888;line-height:1.35;">
+        <span style="color:#8ec07c;">†</span> ${t("dashboard:energy.solarPanelsFootnote", { region: REGIONS[data.energy.equivalents.solarRegionKey]?.name ?? data.energy.equivalents.solarRegionKey })}
       </div>
       <div style="margin-top:0.35rem;font-size:0.6rem;color:#888;line-height:1.35;">
         <span style="color:#ffb347;">*</span> ${t("dashboard:energy.nuclearWasteFootnote")}
@@ -793,7 +796,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       <ul style="list-style:none;padding:0;margin:0;font-size:0.65rem;color:#aaa;line-height:1.5;">
         ${[
           "methodology", "pue", "gridIntensity", "solarYield",
-          "carKm", "trainKm", "smartphone", "tree", "gasoline", "coffee", "nuclearWaste",
+          "carKm", "transit", "tree", "gasoline", "coffee", "nuclearWaste",
         ].map(k => `<li style="padding:0.15rem 0;"><span style="color:#a0c4ff;font-weight:600;">${t(`dashboard:energy.sources.items.${k}.label`)}:</span> ${t(`dashboard:energy.sources.items.${k}.value`)}</li>`).join("")}
       </ul>
     </div>

@@ -227,7 +227,7 @@ export interface DashboardEnergy {
   equivalents: {
     treesYears: number;
     carKm: number;
-    smartphoneCharges: number;
+    transitKm: number;
     solarPanelM2: number;
     solarRegionKey: string;
     gasolineLiters: number;
@@ -1547,7 +1547,7 @@ function buildEnergySection(
     equivalents: {
       treesYears: Math.round(aggregated.equivalents.treesYears * 10000) / 10000,
       carKm: Math.round(aggregated.equivalents.carKm * 100) / 100,
-      smartphoneCharges: Math.round(aggregated.equivalents.smartphoneCharges * 10) / 10,
+      transitKm: Math.round(aggregated.equivalents.transitKm * 100) / 100,
       solarPanelM2: Math.round(((aggregated.totalEnergyWh / 1000) / (REGIONS[aggregated.equivalents.solarRegionKey]!.solarYield * (daysInPeriod / 365))) * 10000) / 10000,
       solarRegionKey: aggregated.equivalents.solarRegionKey,
       gasolineLiters: Math.round(aggregated.equivalents.gasolineLiters * 1000) / 1000,
