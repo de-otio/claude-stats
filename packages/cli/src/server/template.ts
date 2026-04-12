@@ -183,6 +183,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
 
   <div class="tab-bar">
     <button class="tab-btn active" data-tab="overview">${t("dashboard:tabs.overview")}</button>
+    ${data.energy ? `<button class="tab-btn" data-tab="energy">${t("dashboard:tabs.energy")}</button>` : ""}
     ${data.spending ? `<button class="tab-btn" data-tab="spending">Spending</button>` : ""}
     <button class="tab-btn" data-tab="models">${t("dashboard:tabs.models")}</button>
     <button class="tab-btn" data-tab="projects">${t("dashboard:tabs.projects")}</button>
@@ -190,7 +191,6 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     <button class="tab-btn" data-tab="plan">${t("dashboard:tabs.plan")}</button>
     ${data.contextAnalysis ? `<button class="tab-btn" data-tab="context">${t("dashboard:tabs.context")}</button>` : ""}
     ${data.modelEfficiency ? `<button class="tab-btn" data-tab="efficiency">${t("dashboard:tabs.efficiency")}</button>` : ""}
-    ${data.energy ? `<button class="tab-btn" data-tab="energy">${t("dashboard:tabs.energy")}</button>` : ""}
     <button class="tab-btn" data-tab="settings">${t("dashboard:tabs.settings")}</button>
   </div>
 
