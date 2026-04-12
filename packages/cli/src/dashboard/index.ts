@@ -1377,6 +1377,10 @@ function buildEnergySection(
 
   if (messages.length === 0) return null;
 
+  const daysInPeriod = filters.since && filters.since > 0
+    ? Math.max(1, (Date.now() - filters.since) / (24 * 60 * 60 * 1000))
+    : 30;
+
   // Determine grid region: prefer most common detected inferenceGeo, fall back to locale
   const geoCount: Record<string, number> = {};
   let geoMessages = 0;
@@ -1540,7 +1544,7 @@ function buildEnergySection(
       treesYears: Math.round(aggregated.equivalents.treesYears * 10000) / 10000,
       carKm: Math.round(aggregated.equivalents.carKm * 100) / 100,
       smartphoneCharges: Math.round(aggregated.equivalents.smartphoneCharges * 10) / 10,
-      solarPanelM2: Math.round(aggregated.equivalents.solarPanelM2 * 10000) / 10000,
+      solarPanelM2: Math.round(((aggregated.totalEnergyWh / 1000) / (REGIONS[aggregated.equivalents.solarRegionKey]!.solarYield * (daysInPeriod / 365))) * 10000) / 10000,
       solarRegionKey: aggregated.equivalents.solarRegionKey,
       gasolineLiters: Math.round(aggregated.equivalents.gasolineLiters * 1000) / 1000,
       coffeeCups: Math.round(aggregated.equivalents.coffeeCups * 100) / 100,
