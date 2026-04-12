@@ -722,7 +722,10 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
 
     <!-- Environmental equivalents -->
     <div style="background:#1a1f3a;border-radius:6px;padding:1rem;margin-bottom:1rem;">
-      <h2 style="margin:0 0 0.75rem 0;font-size:0.85rem;color:#a0c4ff;">${t("dashboard:energy.equivalents")}</h2>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin:0 0 0.75rem 0;">
+        <h2 style="margin:0;font-size:0.85rem;color:#a0c4ff;">${t("dashboard:energy.equivalents")}</h2>
+        <span style="font-size:0.65rem;color:#888;">${t("dashboard:energy.periodRange", { start: data.energy.periodStartIso, end: data.energy.periodEndIso, days: data.energy.periodDays })}</span>
+      </div>
       <div style="display:flex;flex-wrap:wrap;gap:1rem;">
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
           <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.gasolineLiters.toFixed(3)}</div>

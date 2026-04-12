@@ -133,6 +133,7 @@
     "geoCoverage": "Geo-Abdeckung",
     "geoCoverageHint": "% der Nachrichten mit erkannter Inferenzregion",
     "equivalents": "Umweltkontext",
+    "periodRange": "{{start}} → {{end}} ({{days}} Tage)",
     "gasolineLiters": "Liter Benzin",
     "transitKm": "km im ÖPNV",
     "solarPanels": "benötigte Solarmodule (Zeitraum)",
@@ -183,7 +184,7 @@
         },
         "transit": {
           "label": "ÖPNV-Emissionen",
-          "value": "10 gCO₂ pro Personenkilometer — gewichteter Mittelwert aus Stadtbus, U-Bahn/Metro und elektrifizierter Bahn, IEA Transport Emissions (2024), UIC und EEA 2024."
+          "value": "25 gCO₂ pro Personenkilometer — gewichtete Mischung aus Stadtbus (~27), U-Bahn/Metro (~8) und elektrifizierter Bahn (~6), IEA Transport Emissions (2024), UIC Railway Handbook und EEA Transport & Environment Reporting Mechanism 2024."
         },
         "tree": {
           "label": "Baumaufnahme",

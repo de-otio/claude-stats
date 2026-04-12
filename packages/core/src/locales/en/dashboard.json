@@ -133,6 +133,7 @@
     "geoCoverage": "Geo Coverage",
     "geoCoverageHint": "% of messages with detected inference region",
     "equivalents": "Environmental Context",
+    "periodRange": "{{start}} → {{end}} ({{days}} days)",
     "gasolineLiters": "liters of gasoline",
     "transitKm": "km by mass transit",
     "solarPanels": "solar panels required (period)",
@@ -183,7 +184,7 @@
         },
         "transit": {
           "label": "Mass transit emissions",
-          "value": "10 gCO₂/passenger-km — weighted average of urban bus, subway/metro, and electrified rail from IEA Transport Emissions (2024), UIC, and EEA 2024."
+          "value": "25 gCO₂/passenger-km — weighted blend of urban bus (~27), subway/metro (~8), and electrified rail (~6) from IEA Transport Emissions (2024), UIC Railway Handbook, and EEA Transport & Environment Reporting Mechanism 2024."
         },
         "tree": {
           "label": "Tree absorption",

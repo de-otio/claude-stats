@@ -181,7 +181,7 @@
         },
         {
           "heading": "Environmental Equivalents",
-          "body": "Converts total energy and CO₂ to intuitive units: liters of gasoline burned (2.31 kgCO₂/L), area of solar panels that would take the selected period to generate the same energy in the detected grid region (~20% efficiency, 0.75 performance ratio), milligrams of spent nuclear fuel (counterfactual 100%-nuclear alternative, ~3 mg/kWh), cups of coffee produced (0.3 kgCO₂/cup), and km travelled by mass transit (10 gCO₂/pkm, urban bus + metro + rail blend). A journey anchor snaps the period's driven-km-equivalent to a recognizable trip. Useful for communicating footprint in concrete terms."
+          "body": "Converts total energy and CO₂ to intuitive units: liters of gasoline burned (2.31 kgCO₂/L), area of solar panels that would take the selected period to generate the same energy in the detected grid region (~20% efficiency, 0.75 performance ratio), milligrams of spent nuclear fuel (counterfactual 100%-nuclear alternative, ~3 mg/kWh), cups of coffee produced (0.3 kgCO₂/cup), and km travelled by mass transit (25 gCO₂/pkm, urban bus + metro + rail blend). A journey anchor snaps the period's driven-km-equivalent to a recognizable trip. Useful for communicating footprint in concrete terms."
         }
       ]
     },

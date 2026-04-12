@@ -237,6 +237,12 @@ export interface DashboardEnergy {
   };
   /** Nearest canonical driving journey for this period's carKm. */
   journeyAnchor: { key: string; km: number };
+  /** ISO date (YYYY-MM-DD) of the effective period start — earliest message for "all time", else the since filter. */
+  periodStartIso: string;
+  /** ISO date (YYYY-MM-DD) of "now". */
+  periodEndIso: string;
+  /** Number of days covered by the period (>= 1). */
+  periodDays: number;
   /** Energy and CO₂ per calendar day. */
   byDay: Array<{ date: string; energyWh: number; co2Grams: number }>;
   /** Energy and CO₂ per model (sorted by energyWh desc). */
@@ -1556,6 +1562,9 @@ function buildEnergySection(
       nuclearWasteMg: Math.round(aggregated.equivalents.nuclearWasteMg * 1000) / 1000,
     },
     journeyAnchor: nearestJourneyAnchor(aggregated.equivalents.carKm),
+    periodStartIso: new Date(effectiveSince).toISOString().slice(0, 10),
+    periodEndIso: new Date().toISOString().slice(0, 10),
+    periodDays: Math.round(daysInPeriod),
     byDay,
     byModel,
     byProject,

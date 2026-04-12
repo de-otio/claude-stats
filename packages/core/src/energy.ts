@@ -234,7 +234,7 @@ export interface EnvironmentalEquivalents {
   treesYears: number;
   /** EU-average car km driven. */
   carKm: number;
-  /** Passenger-km by mass transit — bus/subway/urban-rail weighted average (10 gCO₂/pkm). */
+  /** Passenger-km by mass transit — urban bus/subway/electrified-rail weighted average (25 gCO₂/pkm). */
   transitKm: number;
   /** Solar panel area (m²) that, in the detected region, would take one year to generate this much energy. */
   solarPanelM2: number;
@@ -398,7 +398,7 @@ function computeEquivalents(totalEnergyWh: number, co2Grams: number, regionKey: 
   return {
     treesYears: co2Kg / 21,
     carKm: co2Kg / 0.12,
-    transitKm: co2Kg / 0.010,
+    transitKm: co2Kg / 0.025,
     solarPanelM2: (totalEnergyWh / 1000) / solarYield,
     solarRegionKey,
     gasolineLiters: co2Kg / 2.31,
