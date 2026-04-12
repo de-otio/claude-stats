@@ -1377,9 +1377,13 @@ function buildEnergySection(
 
   if (messages.length === 0) return null;
 
-  const daysInPeriod = filters.since && filters.since > 0
-    ? Math.max(1, (Date.now() - filters.since) / (24 * 60 * 60 * 1000))
-    : 30;
+  let effectiveSince = filters.since && filters.since > 0 ? filters.since : Date.now();
+  if (!(filters.since && filters.since > 0)) {
+    for (const m of messages) {
+      if (m.timestamp != null && m.timestamp < effectiveSince) effectiveSince = m.timestamp;
+    }
+  }
+  const daysInPeriod = Math.max(1, (Date.now() - effectiveSince) / (24 * 60 * 60 * 1000));
 
   // Determine grid region: prefer most common detected inferenceGeo, fall back to locale
   const geoCount: Record<string, number> = {};
