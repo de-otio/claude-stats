@@ -32,38 +32,39 @@ vi.mock("node:os", async () => {
 import { ensureMcpServer } from "../extension/mcp-register.js";
 import * as vscode from "vscode";
 
-const SETTINGS_DIR = join(tmpDir, ".claude");
-const SETTINGS_PATH = join(SETTINGS_DIR, "settings.json");
+// Claude Code CLI reads MCP servers from ~/.claude.json, not ~/.claude/settings.json
+const CLAUDE_JSON_PATH = join(tmpDir, ".claude.json");
 
-function readSettings(): Record<string, unknown> {
-  return JSON.parse(readFileSync(SETTINGS_PATH, "utf-8")) as Record<string, unknown>;
+function readClaudeJson(): Record<string, unknown> {
+  return JSON.parse(readFileSync(CLAUDE_JSON_PATH, "utf-8")) as Record<string, unknown>;
 }
 
 describe("ensureMcpServer", () => {
   const mockContext = {} as vscode.ExtensionContext;
 
   beforeEach(() => {
-    // Ensure clean state
     try {
-      rmSync(SETTINGS_DIR, { recursive: true, force: true });
+      rmSync(CLAUDE_JSON_PATH, { force: true });
     } catch { /* ignore */ }
 
     vi.mocked(vscode.window.showInformationMessage).mockReset();
   });
 
-  it("creates settings file and registers MCP server when none exists", () => {
+  it("creates ~/.claude.json and registers MCP server when none exists", () => {
     ensureMcpServer(mockContext);
 
-    expect(existsSync(SETTINGS_PATH)).toBe(true);
-    const settings = readSettings();
-    expect(settings.mcpServers).toBeDefined();
-    const servers = settings.mcpServers as Record<string, { command: string; args: string[] }>;
+    expect(existsSync(CLAUDE_JSON_PATH)).toBe(true);
+    const json = readClaudeJson();
+    expect(json.mcpServers).toBeDefined();
+    const servers = json.mcpServers as Record<string, { command: string; args: string[] }>;
     expect(servers["claude-stats"]).toBeDefined();
-    // Should use current node executable
-    expect(servers["claude-stats"]!.command).toBe(process.execPath);
-    // Should pass --experimental-sqlite and point to mcp.js
+    // Command must be a plain Node binary (not the Electron host)
+    expect(servers["claude-stats"]!.command).toBeTruthy();
+    // Args: --experimental-sqlite, -e, <inline script containing mcp.js>
     expect(servers["claude-stats"]!.args[0]).toBe("--experimental-sqlite");
-    expect(servers["claude-stats"]!.args[1]).toMatch(/mcp\.js$/);
+    expect(servers["claude-stats"]!.args[1]).toBe("-e");
+    expect(servers["claude-stats"]!.args[2]).toMatch(/mcp\.js/);
+    expect(servers["claude-stats"]!.args[2]).toMatch(/startMcpServer/);
   });
 
   it("shows info message after first registration", () => {
@@ -75,21 +76,20 @@ describe("ensureMcpServer", () => {
   });
 
   it("preserves existing settings when adding MCP server", () => {
-    mkdirSync(SETTINGS_DIR, { recursive: true });
-    writeFileSync(SETTINGS_PATH, JSON.stringify({
+    writeFileSync(CLAUDE_JSON_PATH, JSON.stringify({
       mcpServers: {
-        "other-server": { command: "other", args: [] },
+        "other-server": { type: "stdio", command: "other", args: [], env: {} },
       },
       someOtherSetting: true,
     }));
 
     ensureMcpServer(mockContext);
 
-    const settings = readSettings();
-    const servers = settings.mcpServers as Record<string, unknown>;
+    const json = readClaudeJson();
+    const servers = json.mcpServers as Record<string, unknown>;
     expect(servers["other-server"]).toBeDefined();
     expect(servers["claude-stats"]).toBeDefined();
-    expect(settings.someOtherSetting).toBe(true);
+    expect(json.someOtherSetting).toBe(true);
   });
 
   it("skips notification if entry is already up-to-date (idempotent on second call)", () => {
@@ -105,20 +105,20 @@ describe("ensureMcpServer", () => {
   });
 
   it("updates stale entry (e.g. old npx command) to current mcp.js path", () => {
-    mkdirSync(SETTINGS_DIR, { recursive: true });
-    writeFileSync(SETTINGS_PATH, JSON.stringify({
+    writeFileSync(CLAUDE_JSON_PATH, JSON.stringify({
       mcpServers: {
-        "claude-stats": { command: "npx", args: ["claude-stats", "mcp"] },
+        "claude-stats": { type: "stdio", command: "npx", args: ["claude-stats", "mcp"], env: {} },
       },
     }));
 
     ensureMcpServer(mockContext);
 
-    const settings = readSettings();
-    const servers = settings.mcpServers as Record<string, { command: string; args: string[] }>;
-    // Should have been updated to use node + mcp.js
-    expect(servers["claude-stats"]!.command).toBe(process.execPath);
+    const json = readClaudeJson();
+    const servers = json.mcpServers as Record<string, { command: string; args: string[] }>;
+    // Should have been updated to use node + -e invocation
     expect(servers["claude-stats"]!.args[0]).toBe("--experimental-sqlite");
+    expect(servers["claude-stats"]!.args[1]).toBe("-e");
+    expect(servers["claude-stats"]!.args[2]).toMatch(/startMcpServer/);
     // Should NOT show notification (was already registered, just updated silently)
     expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
   });
@@ -126,31 +126,19 @@ describe("ensureMcpServer", () => {
   it("does not throw on errors — fails silently", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    // Create a file where the directory should be, causing mkdir to fail
-    mkdirSync(join(tmpDir, ".claude"), { recursive: true });
-    writeFileSync(SETTINGS_PATH, "invalid json{{{");
+    // Invalid JSON is caught and treated as empty settings
+    writeFileSync(CLAUDE_JSON_PATH, "invalid json{{{");
 
-    // Should not throw (invalid JSON is caught and treated as empty settings)
     expect(() => ensureMcpServer(mockContext)).not.toThrow();
   });
 
-  it("creates .claude directory if it does not exist", () => {
-    expect(existsSync(SETTINGS_DIR)).toBe(false);
-
-    ensureMcpServer(mockContext);
-
-    expect(existsSync(SETTINGS_DIR)).toBe(true);
-    expect(existsSync(SETTINGS_PATH)).toBe(true);
-  });
-
   it("handles empty settings file gracefully", () => {
-    mkdirSync(SETTINGS_DIR, { recursive: true });
-    writeFileSync(SETTINGS_PATH, "{}");
+    writeFileSync(CLAUDE_JSON_PATH, "{}");
 
     ensureMcpServer(mockContext);
 
-    const settings = readSettings();
-    const servers = settings.mcpServers as Record<string, unknown>;
+    const json = readClaudeJson();
+    const servers = json.mcpServers as Record<string, unknown>;
     expect(servers["claude-stats"]).toBeDefined();
   });
 });
