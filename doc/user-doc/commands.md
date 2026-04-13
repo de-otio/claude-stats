@@ -402,20 +402,17 @@ No options. The server is intended to be launched by a Claude Code client (not r
 | `get_status` | Database health, session count, last collection time |
 | `search_history` | Search prompt history by keyword |
 
-**Client configuration** (add to `~/.claude/settings.json` or `.mcp.json`):
+**Client configuration** — register via `claude mcp add`:
 
-```json
-{
-  "mcpServers": {
-    "claude-stats": {
-      "command": "claude-stats",
-      "args": ["mcp"]
-    }
-  }
-}
+```sh
+MCP_JS="$HOME/.vscode/extensions/claude-stats.claude-stats-vscode-0.1.0/dist/mcp.js"
+claude mcp add -s user claude-stats -- "$(which node)" --experimental-sqlite \
+  -e "require('$MCP_JS').startMcpServer().catch(e=>{console.error(e);process.exit(1)})"
 ```
 
-The VS Code extension auto-registers this configuration on first activation — no manual setup needed if you use the extension.
+> **Note:** The `mcpServers` key in `~/.claude/settings.json` is ignored by the Claude Code CLI for server registration. Servers must be registered in `~/.claude.json` via `claude mcp add` or `.mcp.json` for project-scope use.
+
+The VS Code extension auto-registers this in `~/.claude.json` on first activation — no manual setup needed if you use the extension.
 
 **Example queries once connected:**
 
