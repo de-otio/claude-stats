@@ -180,8 +180,20 @@
           "body": "Cache-Read-Token verbrauchen ~3% der Energie im Vergleich zur Neuberechnung als Eingabe-Token. Dieser Abschnitt zeigt die durch Prompt-Caching eingesparte Energie und CO₂."
         },
         {
-          "heading": "Umweltäquivalente",
-          "body": "Wandelt Gesamtenergie und CO₂ in anschauliche Einheiten um: Liter Benzin (2,31 kgCO₂/L), Solarmodul-Fläche, die im erkannten Stromnetz den gewählten Zeitraum bräuchte, um dieselbe Energie zu erzeugen (~20 % Wirkungsgrad, 0,75 Performance-Ratio), Windrad-Umdrehungen (~1,17 kWh pro Umdrehung bei 3-MW-Onshore-Windrad, 35 % NLF), gebautes Endlager-Volumen (Behälter + Puffer + Tunnelausbruch, gewichtet über HLW+ILW+LLW, kontrafaktisches 100 %-Kernstrom-Szenario, ~4 mL/kWh), Nahverkehrs-Kilometer (30 gCO₂/pkm, Mittel aus Bus, U-Bahn und Straßenbahn) sowie Fernverkehrs-Kilometer elektrifizierter Züge (6 gCO₂/pkm). Ein Reise-Anker rechnet den zurückgelegten Autokilometer-Äquivalentwert des Zeitraums in eine bekannte Strecke um."
+          "heading": "Umwelt-Kontext",
+          "body": "Wandelt Gesamtenergie und CO₂ in greifbare Einheiten nebeneinander in einer Leiste: Liter Benzin (2,31 kgCO₂/L), Solarmodul-Fläche, die im erkannten Stromnetz den gewählten Zeitraum bräuchte, um dieselbe Energie zu erzeugen (~20 % Wirkungsgrad × 0,75 Performance-Ratio, aus dem Jahresertrag heruntergerechnet), Windrad-Umdrehungen (~1,17 kWh pro Umdrehung bei 3-MW-Onshore-Windrad, 35 % NLF), Liter Wasser durch eine Wasserturbine (~4.077 L/kWh bei repräsentativen 100 m Fallhöhe und 90 % Wirkungsgrad, über E = m·g·h·η), gebautes Endlager-Volumen (Behälter + Puffer + Tunnelausbruch, gewichtet über HLW+ILW+LLW, ~4 mL/kWh) sowie Nahverkehrs-Kilometer (30 gCO₂/pkm, Mittel aus Bus, U-Bahn und Straßenbahn) und Fernverkehrs-Kilometer elektrifizierter Züge (6 gCO₂/pkm). Ein Reise-Anker unter der Leiste rechnet den Auto-Kilometer-Äquivalentwert des Zeitraums in eine bekannte Strecke um."
+        },
+        {
+          "heading": "Wie das berechnet wird",
+          "body": "Ein ausklappbares Panel unter der Äquivalente-Leiste zeigt die vollständige Herleitung anhand Ihrer tatsächlichen Zeitraum-Zahlen: Token-Summen pro Modellklasse, Energieraten pro Klasse (Wh pro 1K Input-/Output-Token), PUE-Overhead, Netz-Intensität und die Arithmetik hinter jedem Äquivalent. Jede Kennzahl lässt sich so aus den von der API zurückgegebenen Token auditieren."
+        },
+        {
+          "heading": "Datenquellen",
+          "body": "Listet die vorgelagerten Quellen hinter jedem Koeffizienten: Googles Gemini-Inference-Whitepaper 2025 und Epoch AI 2024 für Modell-Energieraten; Uptime Institute für PUE; EPA eGRID / EEA / IEA für Netz-Intensität; PVGIS/NREL/World Bank GSA für Solar-Ertrag; IRENA/IEA für das Windrad; Posiva KBS-3 / SKB / IAEA für nukleare Endlagerung; UIC und EEA für Verkehrs-Emissionen."
+        },
+        {
+          "heading": "Tages- und Modell-Diagramme",
+          "body": "Zwei Diagramme unter der Äquivalente-Leiste: Energie und CO₂ pro Tag über den Zeitraum (links) und Gesamtenergie pro Modell (rechts). Beide zeigen Energie in kWh."
         }
       ]
     },

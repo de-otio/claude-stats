@@ -180,8 +180,20 @@
           "body": "Cache read tokens are ~3% the energy cost of re-computing them as input tokens. This section shows estimated energy and CO₂ saved by prompt caching."
         },
         {
-          "heading": "Environmental Equivalents",
-          "body": "Converts total energy and CO₂ to intuitive units: liters of gasoline burned (2.31 kgCO₂/L), area of solar panels that would take the selected period to generate the same energy in the detected grid region (~20% efficiency, 0.75 performance ratio), wind-turbine rotations (~1.17 kWh per rotation on a 3 MW onshore turbine at 35 % capacity factor), engineered nuclear-repository volume (canisters + buffer + tunnel excavation, weighted across HLW+ILW+LLW, counterfactual 100%-nuclear alternative, ~4 mL/kWh), km travelled by local transit (30 gCO₂/pkm, bus + metro + tram blend) and long-distance electrified train (6 gCO₂/pkm). A journey anchor snaps the period's driven-km-equivalent to a recognizable trip. Useful for communicating footprint in concrete terms."
+          "heading": "Environmental Context",
+          "body": "Converts total energy and CO₂ to tangible units sitting side-by-side in one strip: liters of gasoline burned (2.31 kgCO₂/L), area of solar panels that would take the selected period to generate the same energy in the detected grid region (~20% efficiency × 0.75 performance ratio, scaled down from annual yield), wind-turbine rotations (~1.17 kWh per rotation on a 3 MW onshore turbine at 35% capacity factor), liters of water through a hydroelectric turbine (~4,077 L/kWh at a representative 100 m head with 90% efficiency, via E = m·g·h·η), engineered nuclear-repository volume (canisters + buffer + tunnel excavation, weighted across HLW+ILW+LLW, ~4 mL/kWh), and km travelled by local transit (30 gCO₂/pkm — bus/metro/tram blend) and long-distance electrified train (6 gCO₂/pkm). A journey anchor below the strip snaps the period's driven-km equivalent to a recognizable trip."
+        },
+        {
+          "heading": "How this is calculated",
+          "body": "A collapsible panel below the equivalents strip shows the full derivation using your period's actual numbers: per-model-class token counts, per-class energy rates (Wh per 1K input/output tokens), PUE overhead, grid intensity, and the arithmetic behind every equivalent. You can audit or reproduce each figure from the tokens the API returned."
+        },
+        {
+          "heading": "Data Sources",
+          "body": "Lists the upstream citations behind each coefficient: Google's 2025 Gemini inference whitepaper and Epoch AI 2024 for model energy rates; Uptime Institute for PUE; EPA eGRID / EEA / IEA for grid intensity; PVGIS/NREL/World Bank GSA for solar yield; IRENA/IEA for the wind turbine; Posiva KBS-3 / SKB / IAEA for nuclear disposal; UIC and EEA for transport emissions."
+        },
+        {
+          "heading": "Daily and Per-Model Charts",
+          "body": "Two charts below the equivalents strip: daily energy and CO₂ over the period (left) and total energy by model (right). Both report energy in kWh."
         }
       ]
     },
