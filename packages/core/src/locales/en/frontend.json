@@ -118,6 +118,7 @@
     "periodWeek": "This week",
     "periodMonth": "This month",
     "periodAll": "All time",
+    "tokensPerProject": "Token Distribution by Project",
     "promptsPerProject": "Prompts per Project",
     "projectDetails": "Project Details",
     "headerProject": "Project",

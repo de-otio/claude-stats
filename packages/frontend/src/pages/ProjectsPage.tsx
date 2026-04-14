@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Card, Text, Badge, BarChart, Select, SelectItem } from "@tremor/react";
+import { Card, Text, Badge, BarChart, DonutChart, Select, SelectItem } from "@tremor/react";
 import { useTranslation } from "react-i18next";
 import { useProjectBreakdown } from "../hooks/useApi";
 
@@ -23,6 +23,29 @@ export function ProjectsPage() {
           </Select>
         </div>
       </div>
+
+      {/* Token Distribution Pie Chart */}
+      <Card className="mb-6">
+        <Text className="mb-4 text-lg font-semibold text-gray-900">{t('projects.tokensPerProject')}</Text>
+        {isLoading ? (
+          <div className="flex h-52 items-center justify-center">
+            <div className="h-40 w-40 animate-pulse rounded-full bg-gray-100" />
+          </div>
+        ) : (
+          <DonutChart
+            className="h-52"
+            data={(projects ?? []).map((p) => ({
+              project: p.project,
+              tokens: p.inputTokens + p.outputTokens,
+            }))}
+            category="tokens"
+            index="project"
+            colors={["indigo", "cyan", "amber", "emerald", "rose"]}
+            valueFormatter={(v: number) => `${(v / 1000).toFixed(1)}K tokens`}
+            showAnimation
+          />
+        )}
+      </Card>
 
       {/* Bar Chart */}
       <Card className="mb-6">

@@ -327,6 +327,10 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <canvas id="chart-project"></canvas>
       </div>
       <div class="chart-card">
+        <h2>${t("dashboard:charts.tokensByProject")}</h2>
+        <canvas id="chart-project-tokens"></canvas>
+      </div>
+      <div class="chart-card">
         <h2>${t("dashboard:charts.sessionsByEntrypoint")}</h2>
         <canvas id="chart-entrypoint"></canvas>
       </div>
@@ -1236,6 +1240,35 @@ CO₂_grams = total_kWh × grid_intensity</div>
             options: Object.assign({}, chartOpts, {
               indexAxis: 'y',
               scales: { x: { stacked: true, title: { display: true, text: 'Tokens', color: '#888' }, ticks: { callback: function(v) { return fmtTokens(v); } } }, y: { stacked: true } }
+            })
+          });
+        }());
+
+        // Token share pie
+        (function () {
+          var ctx = document.getElementById('chart-project-tokens').getContext('2d');
+          var top10 = d.byProject.slice(0, 10);
+          var labels = top10.map(function (r) { var parts = r.projectPath.replace(/\\\\/g, '/').split('/').filter(Boolean); return parts.length >= 2 ? parts.slice(-2).join('/') : parts[parts.length - 1] || r.projectPath; });
+          var totals = top10.map(function (r) { return r.inputTokens + r.outputTokens; });
+          var grand = totals.reduce(function (a, b) { return a + b; }, 0);
+          new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+              labels: labels,
+              datasets: [{ data: totals, backgroundColor: COLORS }]
+            },
+            options: Object.assign({}, chartOpts, {
+              plugins: {
+                tooltip: {
+                  callbacks: {
+                    label: function (context) {
+                      var val = context.parsed;
+                      var pct = grand > 0 ? ((val / grand) * 100).toFixed(1) : '0.0';
+                      return ' ' + fmtTokens(val) + ' (' + pct + '%)';
+                    }
+                  }
+                }
+              }
             })
           });
         }());

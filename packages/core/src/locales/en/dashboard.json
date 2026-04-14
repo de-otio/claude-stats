@@ -42,6 +42,7 @@
     "tokensByModel": "Tokens by Model",
     "stopReasons": "Stop Reasons",
     "topProjects": "Top Projects",
+    "tokensByProject": "Token Share by Project",
     "sessionsByEntrypoint": "Sessions by Entrypoint",
     "usageWindows": "5-Hour Usage Windows",
     "topConversations": "Top Conversations by API Cost",
