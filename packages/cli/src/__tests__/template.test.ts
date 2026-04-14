@@ -77,6 +77,7 @@ const mockData: DashboardData = {
       outputTokens: 30000,
       estimatedCost: 1.50,
       thinkingBlocks: 120,
+      workProfile: { exploring: 45, editing: 30, running: 15, researching: 5, planning: 5 },
     },
   ],
   byModel: [

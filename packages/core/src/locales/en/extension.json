@@ -65,6 +65,10 @@
         {
           "heading": "Thinking Intensity by Project",
           "body": "Measures extended thinking blocks per prompt for each project. Higher values indicate projects requiring deeper reasoning \u2014 complex debugging, architectural decisions, or nuanced code generation. Low values suggest straightforward tasks. A sudden increase may signal growing codebase complexity."
+        },
+        {
+          "heading": "Nature of Work by Project",
+          "body": "Shows how Claude's effort breaks down across five categories for each project: Exploring (reading and searching code), Editing (writing and modifying files), Running (shell commands and builds), Researching (web searches), and Planning (plans and tasks). Reveals whether a project is mostly exploration, active development, or debugging."
         }
       ]
     },

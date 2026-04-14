@@ -19,6 +19,17 @@ import { attributeToolCosts, groupByMcpServer, detectAnomalies, aggregateMcpServ
 import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor, modelClass } from "@claude-stats/core/energy";
 import type { ModelClass } from "@claude-stats/core/energy";
 
+type WorkCategory = "exploring" | "editing" | "running" | "researching" | "planning";
+
+/** Map tool names to high-level work categories. */
+const TOOL_CATEGORY: Record<string, WorkCategory> = {
+  Read: "exploring", Grep: "exploring", Glob: "exploring", Agent: "exploring",
+  Edit: "editing", Write: "editing", NotebookEdit: "editing",
+  Bash: "running",
+  WebSearch: "researching", WebFetch: "researching",
+  EnterPlanMode: "planning", TodoWrite: "planning",
+};
+
 export interface DashboardSummary {
   sessions: number;
   prompts: number;
@@ -81,6 +92,13 @@ export interface DashboardData {
     outputTokens: number;
     estimatedCost: number;
     thinkingBlocks: number;
+    workProfile: {
+      exploring: number;
+      editing: number;
+      running: number;
+      researching: number;
+      planning: number;
+    };
   }>;
   byModel: Array<{
     model: string;
@@ -370,7 +388,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   // Accumulators for grouping
   const dayMap = new Map<string, { sessions: number; prompts: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }>();
   const hourMap = new Map<number, { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }>();
-  const projectMap = new Map<string, { sessions: number; prompts: number; inputTokens: number; outputTokens: number }>();
+  const projectMap = new Map<string, { sessions: number; prompts: number; inputTokens: number; outputTokens: number; thinkingBlocks: number; workProfile: { exploring: number; editing: number; running: number; researching: number; planning: number } }>();
   const entrypointMap = new Map<string, number>();
 
   for (const row of rows) {
@@ -408,12 +426,20 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     }
 
     // byProject
-    const projEntry = projectMap.get(row.project_path) ?? { sessions: 0, prompts: 0, inputTokens: 0, outputTokens: 0, thinkingBlocks: 0 };
+    const projEntry = projectMap.get(row.project_path) ?? {
+      sessions: 0, prompts: 0, inputTokens: 0, outputTokens: 0, thinkingBlocks: 0,
+      workProfile: { exploring: 0, editing: 0, running: 0, researching: 0, planning: 0 },
+    };
     projEntry.sessions++;
     projEntry.prompts += row.prompt_count;
     projEntry.inputTokens += row.input_tokens;
     projEntry.outputTokens += row.output_tokens;
     projEntry.thinkingBlocks += row.thinking_blocks;
+    const toolCounts: Array<{ name: string; count: number }> = JSON.parse(row.tool_use_counts || "[]");
+    for (const tc of toolCounts) {
+      const cat = TOOL_CATEGORY[tc.name];
+      if (cat) projEntry.workProfile[cat] += tc.count;
+    }
     projectMap.set(row.project_path, projEntry);
 
     // byEntrypoint
@@ -489,6 +515,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       outputTokens: p.outputTokens,
       estimatedCost: Math.round((p.outputTokens / totalOutputForCost) * totalCost * 100) / 100,
       thinkingBlocks: p.thinkingBlocks,
+      workProfile: p.workProfile,
     }));
 
   // ── Cache efficiency ─────────────────────────────────────────────────────

@@ -45,6 +45,7 @@
     "tokensByProject": "Token Share by Project",
     "energyByProject": "Energy Usage by Project",
     "thinkingIntensity": "Thinking Intensity by Project",
+    "natureOfWork": "Nature of Work by Project",
     "sessionsByEntrypoint": "Sessions by Entrypoint",
     "usageWindows": "5-Hour Usage Windows",
     "topConversations": "Top Conversations by API Cost",

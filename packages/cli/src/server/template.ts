@@ -339,6 +339,10 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <h2>${t("dashboard:charts.thinkingIntensity")}</h2>
         <canvas id="chart-project-thinking"></canvas>
       </div>
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h2>${t("dashboard:charts.natureOfWork")}</h2>
+        <canvas id="chart-work-profile"></canvas>
+      </div>
     </div>
   </div>
 
@@ -1347,6 +1351,59 @@ CO₂_grams = total_kWh × grid_intensity</div>
                     afterLabel: function (context) {
                       var p = top10[context.dataIndex];
                       return p.thinkingBlocks + ' blocks across ' + p.prompts + ' prompts';
+                    }
+                  }
+                }
+              }
+            })
+          });
+        }());
+
+        // Nature of work (stacked bar of work categories per project)
+        (function () {
+          var ctx = document.getElementById('chart-work-profile').getContext('2d');
+          var top10 = d.byProject.slice(0, 10).filter(function (r) {
+            var wp = r.workProfile;
+            return wp && (wp.exploring + wp.editing + wp.running + wp.researching + wp.planning) > 0;
+          });
+          if (top10.length === 0) return;
+          var labels = top10.map(function (r) { var parts = r.projectPath.replace(/\\\\/g, '/').split('/').filter(Boolean); return parts.length >= 2 ? parts.slice(-2).join('/') : parts[parts.length - 1] || r.projectPath; });
+          // Compute percentages
+          var pcts = top10.map(function (r) {
+            var wp = r.workProfile;
+            var total = wp.exploring + wp.editing + wp.running + wp.researching + wp.planning;
+            if (total === 0) return { exploring: 0, editing: 0, running: 0, researching: 0, planning: 0 };
+            return {
+              exploring: (wp.exploring / total) * 100,
+              editing: (wp.editing / total) * 100,
+              running: (wp.running / total) * 100,
+              researching: (wp.researching / total) * 100,
+              planning: (wp.planning / total) * 100
+            };
+          });
+          new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [
+                { label: 'Exploring', data: pcts.map(function (p) { return p.exploring; }), backgroundColor: '#4e79a7' },
+                { label: 'Editing', data: pcts.map(function (p) { return p.editing; }), backgroundColor: '#59a14f' },
+                { label: 'Running', data: pcts.map(function (p) { return p.running; }), backgroundColor: '#f28e2b' },
+                { label: 'Researching', data: pcts.map(function (p) { return p.researching; }), backgroundColor: '#b07aa1' },
+                { label: 'Planning', data: pcts.map(function (p) { return p.planning; }), backgroundColor: '#76b7b2' }
+              ]
+            },
+            options: Object.assign({}, chartOpts, {
+              indexAxis: 'y',
+              scales: {
+                x: { stacked: true, max: 100, ticks: { callback: function(v) { return v + '%'; } } },
+                y: { stacked: true }
+              },
+              plugins: {
+                tooltip: {
+                  callbacks: {
+                    label: function (context) {
+                      return ' ' + context.dataset.label + ': ' + context.parsed.x.toFixed(1) + '%';
                     }
                   }
                 }
