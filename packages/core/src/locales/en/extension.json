@@ -55,8 +55,16 @@
           "body": "Horizontal bar chart of your most token-intensive projects. Useful for understanding where your usage is concentrated."
         },
         {
-          "heading": "Sessions by Entrypoint",
-          "body": "Pie chart showing how sessions are distributed across entrypoints (CLI, VS Code extension, API, etc.)."
+          "heading": "Token Share by Project",
+          "body": "Pie chart showing what percentage of total tokens each project consumes. Quickly identifies which projects dominate your usage."
+        },
+        {
+          "heading": "Energy Usage by Project",
+          "body": "Pie chart of estimated energy consumption per project. Only shown when energy data is available."
+        },
+        {
+          "heading": "Thinking Intensity by Project",
+          "body": "Measures extended thinking blocks per prompt for each project. Higher values indicate projects requiring deeper reasoning \u2014 complex debugging, architectural decisions, or nuanced code generation. Low values suggest straightforward tasks. A sudden increase may signal growing codebase complexity."
         }
       ]
     },
@@ -70,6 +78,10 @@
         {
           "heading": "Top Conversations by API Cost",
           "body": "Your most expensive individual conversations. Hover for details including prompt count, dominant model, and percentage of plan fee."
+        },
+        {
+          "heading": "Sessions by Entrypoint",
+          "body": "Pie chart showing how sessions are distributed across entrypoints (CLI, VS Code extension, API, etc.)."
         }
       ]
     },
