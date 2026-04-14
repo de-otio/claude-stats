@@ -336,8 +336,8 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <canvas id="chart-project-energy"></canvas>
       </div>` : ""}
       <div class="chart-card">
-        <h2>${t("dashboard:charts.sessionsByEntrypoint")}</h2>
-        <canvas id="chart-entrypoint"></canvas>
+        <h2>${t("dashboard:charts.thinkingIntensity")}</h2>
+        <canvas id="chart-project-thinking"></canvas>
       </div>
     </div>
   </div>
@@ -357,6 +357,10 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <canvas id="chart-conv-cost" height="420"></canvas>
       </div>
       ` : ""}
+      <div class="chart-card">
+        <h2>${t("dashboard:charts.sessionsByEntrypoint")}</h2>
+        <canvas id="chart-entrypoint"></canvas>
+      </div>
     </div>
   </div>
 
@@ -1315,16 +1319,39 @@ CO₂_grams = total_kWh × grid_intensity</div>
           });
         }());
 
-        // Entrypoint pie
+        // Thinking intensity (thinking blocks per prompt by project)
         (function () {
-          var ctx = document.getElementById('chart-entrypoint').getContext('2d');
+          var ctx = document.getElementById('chart-project-thinking').getContext('2d');
+          var top10 = d.byProject.slice(0, 10).filter(function (r) { return r.prompts > 0; });
+          var labels = top10.map(function (r) { var parts = r.projectPath.replace(/\\\\/g, '/').split('/').filter(Boolean); return parts.length >= 2 ? parts.slice(-2).join('/') : parts[parts.length - 1] || r.projectPath; });
+          var intensity = top10.map(function (r) { return Math.round((r.thinkingBlocks / r.prompts) * 100) / 100; });
           new Chart(ctx, {
-            type: 'pie',
+            type: 'bar',
             data: {
-              labels: d.byEntrypoint.map(function (r) { return r.entrypoint; }),
-              datasets: [{ data: d.byEntrypoint.map(function (r) { return r.sessions; }), backgroundColor: COLORS }]
+              labels: labels,
+              datasets: [{
+                label: 'Thinking blocks / prompt',
+                data: intensity,
+                backgroundColor: top10.map(function (_, i) { return COLORS[i % COLORS.length]; })
+              }]
             },
-            options: chartOpts
+            options: Object.assign({}, chartOpts, {
+              indexAxis: 'y',
+              scales: {
+                x: { title: { display: true, text: 'Thinking blocks per prompt', color: '#888' }, beginAtZero: true },
+                y: {}
+              },
+              plugins: {
+                tooltip: {
+                  callbacks: {
+                    afterLabel: function (context) {
+                      var p = top10[context.dataIndex];
+                      return p.thinkingBlocks + ' blocks across ' + p.prompts + ' prompts';
+                    }
+                  }
+                }
+              }
+            })
           });
         }());
       }
@@ -1415,6 +1442,19 @@ CO₂_grams = total_kWh × grid_intensity</div>
                 }
               }
             })
+          });
+        }());
+
+        // Entrypoint pie
+        (function () {
+          var ctx = document.getElementById('chart-entrypoint').getContext('2d');
+          new Chart(ctx, {
+            type: 'pie',
+            data: {
+              labels: d.byEntrypoint.map(function (r) { return r.entrypoint; }),
+              datasets: [{ data: d.byEntrypoint.map(function (r) { return r.sessions; }), backgroundColor: COLORS }]
+            },
+            options: chartOpts
           });
         }());
       }

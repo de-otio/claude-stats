@@ -80,6 +80,7 @@ export interface DashboardData {
     inputTokens: number;
     outputTokens: number;
     estimatedCost: number;
+    thinkingBlocks: number;
   }>;
   byModel: Array<{
     model: string;
@@ -407,11 +408,12 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     }
 
     // byProject
-    const projEntry = projectMap.get(row.project_path) ?? { sessions: 0, prompts: 0, inputTokens: 0, outputTokens: 0 };
+    const projEntry = projectMap.get(row.project_path) ?? { sessions: 0, prompts: 0, inputTokens: 0, outputTokens: 0, thinkingBlocks: 0 };
     projEntry.sessions++;
     projEntry.prompts += row.prompt_count;
     projEntry.inputTokens += row.input_tokens;
     projEntry.outputTokens += row.output_tokens;
+    projEntry.thinkingBlocks += row.thinking_blocks;
     projectMap.set(row.project_path, projEntry);
 
     // byEntrypoint
@@ -486,6 +488,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       inputTokens: p.inputTokens,
       outputTokens: p.outputTokens,
       estimatedCost: Math.round((p.outputTokens / totalOutputForCost) * totalCost * 100) / 100,
+      thinkingBlocks: p.thinkingBlocks,
     }));
 
   // ── Cache efficiency ─────────────────────────────────────────────────────

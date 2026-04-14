@@ -76,6 +76,7 @@ const mockData: DashboardData = {
       inputTokens: 200000,
       outputTokens: 30000,
       estimatedCost: 1.50,
+      thinkingBlocks: 120,
     },
   ],
   byModel: [
