@@ -330,6 +330,11 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <h2>${t("dashboard:charts.tokensByProject")}</h2>
         <canvas id="chart-project-tokens"></canvas>
       </div>
+      ${data.energy && data.energy.byProject.length > 0 ? `
+      <div class="chart-card">
+        <h2>${t("dashboard:charts.energyByProject")}</h2>
+        <canvas id="chart-project-energy"></canvas>
+      </div>` : ""}
       <div class="chart-card">
         <h2>${t("dashboard:charts.sessionsByEntrypoint")}</h2>
         <canvas id="chart-entrypoint"></canvas>
@@ -1265,6 +1270,43 @@ CO₂_grams = total_kWh × grid_intensity</div>
                       var val = context.parsed;
                       var pct = grand > 0 ? ((val / grand) * 100).toFixed(1) : '0.0';
                       return ' ' + fmtTokens(val) + ' (' + pct + '%)';
+                    }
+                  }
+                }
+              }
+            })
+          });
+        }());
+
+        // Energy share pie
+        (function () {
+          var el = document.getElementById('chart-project-energy');
+          if (!el || !d.energy || !d.energy.byProject || d.energy.byProject.length === 0) return;
+          var ctx = el.getContext('2d');
+          var top10 = d.energy.byProject.slice(0, 10);
+          var labels = top10.map(function (r) { var parts = r.project.replace(/\\\\/g, '/').split('/').filter(Boolean); return parts.length >= 2 ? parts.slice(-2).join('/') : parts[parts.length - 1] || r.project; });
+          var values = top10.map(function (r) { return r.energyWh; });
+          var grandWh = values.reduce(function (a, b) { return a + b; }, 0);
+          var fmtWh = function (wh) {
+            if (wh >= 1000) return (wh / 1000).toFixed(2) + ' kWh';
+            if (wh >= 10) return wh.toFixed(1) + ' Wh';
+            if (wh >= 1) return wh.toFixed(2) + ' Wh';
+            return (wh * 1000).toFixed(1) + ' mWh';
+          };
+          new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+              labels: labels,
+              datasets: [{ data: values, backgroundColor: COLORS }]
+            },
+            options: Object.assign({}, chartOpts, {
+              plugins: {
+                tooltip: {
+                  callbacks: {
+                    label: function (context) {
+                      var val = context.parsed;
+                      var pct = grandWh > 0 ? ((val / grandWh) * 100).toFixed(1) : '0.0';
+                      return ' ' + fmtWh(val) + ' (' + pct + '%)';
                     }
                   }
                 }
