@@ -186,6 +186,23 @@ export function createMcpServer(store: Store): McpServer {
     },
   );
 
+  // ── get_ruflo_insights ─────────────────────────────────────────────────
+  server.tool(
+    "get_ruflo_insights",
+    "Get insights about ruflo agent orchestration usage — adoption, cost, method breakdown, and A/B comparison vs baseline sessions",
+    {
+      period: z.enum(["day", "week", "month", "all"]).default("week")
+        .describe("Time period for aggregation"),
+    },
+    async ({ period }) => {
+      const data = buildDashboard(store, periodToReportOpts(period));
+      if (!data.ruflo) {
+        return formatResult({ detected: false, message: "No ruflo MCP tool usage detected in this period" });
+      }
+      return formatResult(data.ruflo);
+    },
+  );
+
   return server;
 }
 

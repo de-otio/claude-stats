@@ -727,6 +727,97 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         </table>
       </div>
     </div>` : ""}
+
+    ${data.ruflo ? `
+    <div class="chart-card" style="margin-top:1rem;border-left:3px solid #76b7b2;">
+      <h2 style="color:#76b7b2;">Ruflo Agent Orchestration</h2>
+      <div class="summary-bar" style="margin-bottom:1rem;">
+        <div class="summary-card" style="border-color:#76b7b2;">
+          <div class="label">Adoption</div>
+          <div class="value">${(data.ruflo.adoptionRate * 100).toFixed(1)}%</div>
+          <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${data.ruflo.sessionCount} of ${data.ruflo.totalSessions} sessions</div>
+        </div>
+        <div class="summary-card" style="border-color:#76b7b2;">
+          <div class="label">Ruflo Cost</div>
+          <div class="value" style="color:#59a14f;">$${data.ruflo.costBreakdown.rufloCost.toFixed(2)}</div>
+          <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${data.ruflo.costBreakdown.rufloSharePct}% of spend</div>
+        </div>
+        <div class="summary-card" style="border-color:#76b7b2;">
+          <div class="label">Tool Calls</div>
+          <div class="value">${data.ruflo.serverUsage?.callCount ?? 0}</div>
+          <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${data.ruflo.topMethods.length} methods</div>
+        </div>
+      </div>
+
+      ${data.ruflo.topMethods.length > 0 ? `
+      <div style="margin-bottom:1rem;">
+        <h3 style="font-size:0.75rem;margin:0 0 0.5rem 0;color:#aaa;">Top Methods</h3>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:0.7rem;">
+            <thead><tr style="border-bottom:1px solid #333;">
+              <th style="text-align:left;padding:0.4rem;">Method</th>
+              <th style="text-align:right;padding:0.4rem;">Calls</th>
+              <th style="text-align:right;padding:0.4rem;">Est. Cost</th>
+            </tr></thead>
+            <tbody>
+              ${data.ruflo.topMethods.slice(0, 8).map(m => `
+              <tr style="border-bottom:1px solid #222;">
+                <td style="padding:0.4rem;font-family:monospace;color:#76b7b2;">${m.method}</td>
+                <td style="text-align:right;padding:0.4rem;">${m.calls}</td>
+                <td style="text-align:right;padding:0.4rem;color:#59a14f;">$${m.estimatedCost.toFixed(2)}</td>
+              </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>` : ""}
+
+      ${data.ruflo.comparison ? `
+      <div>
+        <h3 style="font-size:0.75rem;margin:0 0 0.5rem 0;color:#aaa;">Ruflo vs. Baseline (${data.ruflo.comparison.rufloSessions.count} vs ${data.ruflo.comparison.baselineSessions.count} sessions)</h3>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:0.7rem;">
+            <thead><tr style="border-bottom:1px solid #333;">
+              <th style="text-align:left;padding:0.4rem;">Metric</th>
+              <th style="text-align:right;padding:0.4rem;">Ruflo</th>
+              <th style="text-align:right;padding:0.4rem;">Baseline</th>
+              <th style="text-align:right;padding:0.4rem;">Delta</th>
+            </tr></thead>
+            <tbody>
+              <tr style="border-bottom:1px solid #222;">
+                <td style="padding:0.4rem;">Tokens/prompt</td>
+                <td style="text-align:right;padding:0.4rem;">${data.ruflo.comparison.rufloSessions.avgTokensPerPrompt.toLocaleString()}</td>
+                <td style="text-align:right;padding:0.4rem;">${data.ruflo.comparison.baselineSessions.avgTokensPerPrompt.toLocaleString()}</td>
+                <td style="text-align:right;padding:0.4rem;color:${data.ruflo.comparison.deltas.tokensPerPrompt <= 0 ? '#59a14f' : '#e15759'};">${data.ruflo.comparison.deltas.tokensPerPrompt > 0 ? '+' : ''}${data.ruflo.comparison.deltas.tokensPerPrompt.toFixed(0)}</td>
+              </tr>
+              <tr style="border-bottom:1px solid #222;">
+                <td style="padding:0.4rem;">Cost/session</td>
+                <td style="text-align:right;padding:0.4rem;">$${data.ruflo.comparison.rufloSessions.avgCostPerSession.toFixed(2)}</td>
+                <td style="text-align:right;padding:0.4rem;">$${data.ruflo.comparison.baselineSessions.avgCostPerSession.toFixed(2)}</td>
+                <td style="text-align:right;padding:0.4rem;color:${data.ruflo.comparison.deltas.costPerSession <= 0 ? '#59a14f' : '#e15759'};">${data.ruflo.comparison.deltas.costPerSession > 0 ? '+' : ''}$${data.ruflo.comparison.deltas.costPerSession.toFixed(2)}</td>
+              </tr>
+              <tr style="border-bottom:1px solid #222;">
+                <td style="padding:0.4rem;">Cache hit rate</td>
+                <td style="text-align:right;padding:0.4rem;">${data.ruflo.comparison.rufloSessions.avgCacheHitRate}%</td>
+                <td style="text-align:right;padding:0.4rem;">${data.ruflo.comparison.baselineSessions.avgCacheHitRate}%</td>
+                <td style="text-align:right;padding:0.4rem;color:${data.ruflo.comparison.deltas.cacheHitRate >= 0 ? '#59a14f' : '#e15759'};">${data.ruflo.comparison.deltas.cacheHitRate > 0 ? '+' : ''}${data.ruflo.comparison.deltas.cacheHitRate.toFixed(1)}pp</td>
+              </tr>
+              <tr style="border-bottom:1px solid #222;">
+                <td style="padding:0.4rem;">Prompts/session</td>
+                <td style="text-align:right;padding:0.4rem;">${data.ruflo.comparison.rufloSessions.avgPromptsPerSession}</td>
+                <td style="text-align:right;padding:0.4rem;">${data.ruflo.comparison.baselineSessions.avgPromptsPerSession}</td>
+                <td style="text-align:right;padding:0.4rem;">${data.ruflo.comparison.deltas.promptsPerSession > 0 ? '+' : ''}${data.ruflo.comparison.deltas.promptsPerSession.toFixed(1)}</td>
+              </tr>
+              <tr style="border-bottom:1px solid #222;">
+                <td style="padding:0.4rem;">Truncation rate</td>
+                <td style="text-align:right;padding:0.4rem;">${data.ruflo.comparison.rufloSessions.truncationRate}%</td>
+                <td style="text-align:right;padding:0.4rem;">${data.ruflo.comparison.baselineSessions.truncationRate}%</td>
+                <td style="text-align:right;padding:0.4rem;color:${data.ruflo.comparison.deltas.truncationRate <= 0 ? '#59a14f' : '#e15759'};">${data.ruflo.comparison.deltas.truncationRate > 0 ? '+' : ''}${data.ruflo.comparison.deltas.truncationRate.toFixed(1)}pp</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>` : ""}
+    </div>` : ""}
   </div>
   ` : ""}
 

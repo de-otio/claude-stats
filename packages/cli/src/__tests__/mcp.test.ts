@@ -84,10 +84,11 @@ afterAll(() => {
 
 describe("MCP Server", () => {
   describe("tools/list", () => {
-    it("returns all 6 tools", async () => {
+    it("returns all 7 tools", async () => {
       const result = await client.listTools();
       const names = result.tools.map((t) => t.name).sort();
       expect(names).toEqual([
+        "get_ruflo_insights",
         "get_session_detail",
         "get_stats",
         "get_status",

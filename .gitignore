@@ -5,6 +5,11 @@
 # Claude
 .claude/
 
+# Ruflo
+.claude-flow/
+.swarm/
+ruvector.db
+
 # Dependencies
 node_modules/
 dist/
