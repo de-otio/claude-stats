@@ -405,7 +405,7 @@ No options. The server is intended to be launched by a Claude Code client (not r
 **Client configuration** — register via `claude mcp add`:
 
 ```sh
-MCP_JS="$HOME/.vscode/extensions/claude-stats.claude-stats-vscode-0.1.0/dist/mcp.js"
+MCP_JS="$HOME/.vscode/extensions/de-otio.claude-stats-vscode-0.1.1/dist/mcp.js"
 claude mcp add -s user claude-stats -- "$(which node)" --experimental-sqlite \
   -e "require('$MCP_JS').startMcpServer().catch(e=>{console.error(e);process.exit(1)})"
 ```
@@ -484,7 +484,7 @@ The extension is fully self-contained — all dependencies (including the parser
 npm run package:ext
 
 # Install the .vsix
-code --install-extension extension/claude-stats-vscode-0.1.0.vsix
+code --install-extension extension/claude-stats-vscode-*.vsix
 ```
 
 For development, you can use `npm run build:ext` to rebuild just the extension bundle, or `npm run build:all` to build both the CLI and extension.

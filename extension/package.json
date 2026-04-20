@@ -1,18 +1,24 @@
 {
   "name": "claude-stats-vscode",
-  "displayName": "Claude Stats",
+  "displayName": "Claude Stats by de-otio",
   "description": "View Claude Code usage statistics in VS Code",
-  "version": "0.1.0",
-  "publisher": "claude-stats",
+  "version": "0.1.1",
+  "publisher": "de-otio",
   "license": "MIT",
+  "icon": "media/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/deotio/claude-stats"
   },
+  "bugs": {
+    "url": "https://github.com/deotio/claude-stats/issues"
+  },
+  "homepage": "https://github.com/deotio/claude-stats#readme",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": ["Visualization", "Other"],
+  "keywords": ["claude", "claude-code", "statistics", "usage", "tokens", "mcp", "dashboard"],
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {

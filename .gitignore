@@ -37,3 +37,7 @@ coverage/
 plans/
 
 tmp/
+
+# VS Code extension build artifacts
+*.vsix
+.claude-flow/

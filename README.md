@@ -23,7 +23,7 @@ cd claude-stats
 npm install
 npm run build
 npm run package:ext
-code --install-extension extension/claude-stats-vscode-0.1.0.vsix
+code --install-extension extension/claude-stats-vscode-*.vsix
 ```
 
 After the VS Code extension activates (reload the window if needed), it automatically:
@@ -49,7 +49,7 @@ cd claude-stats
 npm install
 npm run build
 npm run package:ext
-code --install-extension extension/claude-stats-vscode-0.1.0.vsix
+code --install-extension extension/claude-stats-vscode-*.vsix
 ```
 
 Open the dashboard via the activity bar icon or: **Command Palette → Claude Stats: Open Dashboard**.
@@ -61,7 +61,7 @@ The VS Code extension bundles a local MCP server and registers it automatically 
 If you need to register it manually (without the extension), run:
 
 ```sh
-MCP_JS="$HOME/.vscode/extensions/claude-stats.claude-stats-vscode-0.1.0/dist/mcp.js"
+MCP_JS="$HOME/.vscode/extensions/de-otio.claude-stats-vscode-0.1.1/dist/mcp.js"
 claude mcp add -s user claude-stats -- "$(which node)" --experimental-sqlite \
   -e "require('$MCP_JS').startMcpServer().catch(e=>{console.error(e);process.exit(1)})"
 ```
