@@ -895,55 +895,6 @@ export function printSessionDetail(store: Store, sessionId: string, opts: Report
   console.log();
 }
 
-// ── Ruflo Insights ──────────────────────────────────────────────────────
-
-import type { RufloInsights } from "../ruflo.js";
-
-export function printRufloInsights(ruflo: RufloInsights | null): void {
-  if (!ruflo || !ruflo.detected) return;
-
-  console.log(`\n\u2500\u2500\u2500 Ruflo Insights \u2500\u2500\u2500\n`);
-  const adoptionPct = (ruflo.adoptionRate * 100).toFixed(1);
-  console.log(`  Status:     Active (detected in ${ruflo.sessionCount} of ${ruflo.totalSessions} sessions, ${adoptionPct}% adoption)`);
-  console.log(`  Total cost: ${formatCost(ruflo.costBreakdown.rufloCost)} (${ruflo.costBreakdown.rufloSharePct}% of period spend)`);
-
-  if (ruflo.topMethods.length > 0) {
-    console.log(`  Top methods:`);
-    for (const m of ruflo.topMethods.slice(0, 8)) {
-      const name = m.method.padEnd(22);
-      const calls = `${m.calls} calls`.padStart(10);
-      const cost = formatCost(m.estimatedCost).padStart(8);
-      console.log(`    ${name} ${calls}   ${cost}`);
-    }
-  }
-
-  if (ruflo.comparison) {
-    const c = ruflo.comparison;
-    console.log(`\n  Ruflo vs. Baseline (${c.rufloSessions.count} ruflo, ${c.baselineSessions.count} baseline)`);
-    console.log(`  ${"".padEnd(22)} ${"Ruflo".padStart(10)} ${"Baseline".padStart(10)} ${"Delta".padStart(10)}`);
-
-    const rows: Array<{ label: string; ruflo: string; baseline: string; delta: number; unit: string; lowerIsBetter: boolean }> = [
-      { label: "Tokens/prompt", ruflo: String(c.rufloSessions.avgTokensPerPrompt), baseline: String(c.baselineSessions.avgTokensPerPrompt), delta: c.deltas.tokensPerPrompt, unit: "", lowerIsBetter: true },
-      { label: "Cost/session", ruflo: formatCost(c.rufloSessions.avgCostPerSession), baseline: formatCost(c.baselineSessions.avgCostPerSession), delta: c.deltas.costPerSession, unit: "", lowerIsBetter: true },
-      { label: "Duration", ruflo: formatDuration(c.rufloSessions.avgDurationMs), baseline: formatDuration(c.baselineSessions.avgDurationMs), delta: c.deltas.durationMs, unit: "", lowerIsBetter: true },
-      { label: "Cache hit rate", ruflo: `${c.rufloSessions.avgCacheHitRate}%`, baseline: `${c.baselineSessions.avgCacheHitRate}%`, delta: c.deltas.cacheHitRate, unit: "pp", lowerIsBetter: false },
-      { label: "Prompts/session", ruflo: String(c.rufloSessions.avgPromptsPerSession), baseline: String(c.baselineSessions.avgPromptsPerSession), delta: c.deltas.promptsPerSession, unit: "", lowerIsBetter: false },
-      { label: "Truncation rate", ruflo: `${c.rufloSessions.truncationRate}%`, baseline: `${c.baselineSessions.truncationRate}%`, delta: c.deltas.truncationRate, unit: "pp", lowerIsBetter: true },
-    ];
-
-    for (const r of rows) {
-      const sign = r.delta > 0 ? "+" : "";
-      const deltaStr = r.unit === "pp"
-        ? `${sign}${r.delta.toFixed(1)}${r.unit}`
-        : `${sign}${r.delta.toFixed(0)}`;
-      const arrow = r.delta === 0 ? " " : (r.lowerIsBetter ? (r.delta < 0 ? " \u2193" : " \u2191") : (r.delta > 0 ? " \u2191" : " \u2193"));
-      console.log(`  ${r.label.padEnd(22)} ${r.ruflo.padStart(10)} ${r.baseline.padStart(10)} ${deltaStr.padStart(10)}${arrow}`);
-    }
-  }
-
-  console.log();
-}
-
 export function printStatus(info: StatusInfo): void {
   console.log(`\n\u2500\u2500\u2500 ${t("cli:report.titleStatus")} \u2500\u2500\u2500\n`);
   console.log(`${t("cli:status.databaseSize").padEnd(16)}: ${formatBytes(info.dbSize)}`);

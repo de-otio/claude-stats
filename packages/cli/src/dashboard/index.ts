@@ -16,7 +16,6 @@ import {
   type ModelEfficiencyData,
 } from "../classifier.js";
 import { attributeToolCosts, groupByMcpServer, detectAnomalies, aggregateMcpServerUsage } from "../spending.js";
-import { buildRufloInsights, type RufloInsights } from "../ruflo.js";
 import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor, modelClass } from "@claude-stats/core/energy";
 import type { ModelClass } from "@claude-stats/core/energy";
 
@@ -177,7 +176,6 @@ export interface DashboardData {
   modelEfficiency: ModelEfficiencyData | null;
   contextAnalysis: ContextAnalysis | null;
   spending: DashboardSpending | null;
-  ruflo: RufloInsights | null;
   energy: DashboardEnergy | null;
   recommendations: Recommendation[];
 }
@@ -862,19 +860,6 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     since: since > 0 ? since : undefined,
   });
 
-  // ── Ruflo insights (conditional on ruflo MCP tools being present) ──────
-  let ruflo: RufloInsights | null = null;
-  if (spending?.mcpServerUsage) {
-    const mcpMessages = store.getMcpMessages({
-      projectPath: opts.projectPath,
-      repoUrl: opts.repoUrl,
-      accountUuid: opts.accountUuid,
-      since: since > 0 ? since : undefined,
-    });
-    ruflo = buildRufloInsights(mcpMessages, spending.mcpServerUsage, rows, totalCost);
-    if (!ruflo.detected) ruflo = null;
-  }
-
   // ── Energy dashboard ────────────────────────────────────────────────────
   const energy = buildEnergySection(store, {
     projectPath: opts.projectPath,
@@ -942,7 +927,6 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     modelEfficiency,
     contextAnalysis,
     spending,
-    ruflo,
     energy,
     recommendations,
   };

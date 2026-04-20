@@ -112,7 +112,6 @@ const mockData: DashboardData = {
   modelEfficiency: null,
   contextAnalysis: null,
   spending: null,
-  ruflo: null,
   energy: null,
   recommendations: [],
 };
