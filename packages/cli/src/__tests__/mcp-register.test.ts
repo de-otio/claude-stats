@@ -119,8 +119,10 @@ describe("ensureMcpServer", () => {
     expect(servers["claude-stats"]!.args[0]).toBe("--experimental-sqlite");
     expect(servers["claude-stats"]!.args[1]).toBe("-e");
     expect(servers["claude-stats"]!.args[2]).toMatch(/startMcpServer/);
-    // Should NOT show notification (was already registered, just updated silently)
-    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+    // Should notify so the user knows to restart Claude Code for the new path to take effect
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining("Restart Claude Code"),
+    );
   });
 
   it("does not throw on errors — fails silently", () => {
