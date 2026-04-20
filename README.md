@@ -13,12 +13,12 @@ Collect and visualize usage statistics from Claude Code sessions stored locally 
 
 Tell your AI agent:
 
-> Install claude-stats from https://github.com/deotio/claude-stats
+> Install claude-stats from https://github.com/de-otio/claude-stats
 
 The agent should run:
 
 ```sh
-git clone https://github.com/deotio/claude-stats
+git clone https://github.com/de-otio/claude-stats
 cd claude-stats
 npm install
 npm run build
@@ -44,7 +44,7 @@ The extension embeds the dashboard inside VS Code with a status bar showing toda
 ### Build and install
 
 ```sh
-git clone https://github.com/deotio/claude-stats
+git clone https://github.com/de-otio/claude-stats
 cd claude-stats
 npm install
 npm run build
@@ -125,7 +125,7 @@ claude-stats report --html        # export a standalone HTML dashboard file
 ## Build
 
 ```sh
-git clone https://github.com/deotio/claude-stats
+git clone https://github.com/de-otio/claude-stats
 cd claude-stats
 npm install
 npm run build

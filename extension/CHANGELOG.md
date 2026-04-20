@@ -2,6 +2,11 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.1.2 — 2026-04-20
+
+- Fix broken dashboard screenshot on marketplace listing (GitHub org URL was `deotio`, correct is `de-otio`)
+- Correct repository, bugs, and homepage URLs in `package.json`
+
 ## 0.1.1 — 2026-04-20
 
 - Marketplace metadata: icon, README, CHANGELOG, keywords, bugs URL

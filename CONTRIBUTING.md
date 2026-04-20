@@ -7,7 +7,7 @@ Thanks for your interest in contributing!
 **Requirements:** Node.js 22.5+ (for the built-in `node:sqlite` module)
 
 ```sh
-git clone https://github.com/deotio/claude-stats
+git clone https://github.com/de-otio/claude-stats
 cd claude-stats
 npm install
 npm run build
@@ -30,7 +30,7 @@ npm run coverage
 
 ## What to work on
 
-Check the [Issues](https://github.com/deotio/claude-stats/issues) tab. Issues labeled [`good first issue`](https://github.com/deotio/claude-stats/issues?q=label%3A%22good+first+issue%22) are a good starting point.
+Check the [Issues](https://github.com/de-otio/claude-stats/issues) tab. Issues labeled [`good first issue`](https://github.com/de-otio/claude-stats/issues?q=label%3A%22good+first+issue%22) are a good starting point.
 
 ## Pull request guidelines
 

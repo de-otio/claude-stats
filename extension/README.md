@@ -2,7 +2,7 @@
 
 View your Claude Code usage statistics directly inside VS Code. Local-only — no API key, no network access, nothing leaves your machine.
 
-![claude-stats dashboard](https://raw.githubusercontent.com/deotio/claude-stats/master/doc/screenshot.png)
+![claude-stats dashboard](https://raw.githubusercontent.com/de-otio/claude-stats/master/doc/screenshot.png)
 
 ## Features
 
@@ -60,8 +60,8 @@ Once installed, ask your AI agent things like:
 
 ## Issues and source
 
-- Source: https://github.com/deotio/claude-stats
-- Issues: https://github.com/deotio/claude-stats/issues
+- Source: https://github.com/de-otio/claude-stats
+- Issues: https://github.com/de-otio/claude-stats/issues
 
 ## License
 
