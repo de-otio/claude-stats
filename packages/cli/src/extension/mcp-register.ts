@@ -133,11 +133,10 @@ export function ensureMcpServer(_context: vscode.ExtensionContext): void {
 
     fs.writeFileSync(CLAUDE_JSON_PATH, JSON.stringify(json, null, 2) + "\n");
 
-    if (!existing) {
-      void vscode.window.showInformationMessage(
-        "Claude Stats MCP server registered in ~/.claude.json. Restart Claude Code for it to take effect.",
-      );
-    }
+    const message = existing
+      ? "Claude Stats MCP server path updated (extension version changed). Restart Claude Code for the MCP server to work again."
+      : "Claude Stats MCP server registered in ~/.claude.json. Restart Claude Code for it to take effect.";
+    void vscode.window.showInformationMessage(message);
   } catch (err) {
     // Non-fatal — don't block extension activation
     const msg = err instanceof Error ? err.message : String(err);

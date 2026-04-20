@@ -2,7 +2,7 @@
   "name": "claude-stats-vscode",
   "displayName": "Claude Stats by de-otio",
   "description": "View Claude Code usage statistics in VS Code",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "de-otio",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -19,7 +19,7 @@
   },
   "categories": ["Visualization", "Other"],
   "keywords": ["claude", "claude-code", "statistics", "usage", "tokens", "mcp", "dashboard"],
-  "activationEvents": [],
+  "activationEvents": ["onStartupFinished"],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {

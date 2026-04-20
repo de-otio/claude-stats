@@ -2,6 +2,12 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.1.3 — 2026-04-20
+
+- Fix stale MCP server path in `~/.claude.json` after extension upgrades (previously caused `MCP error -32000: Connection closed` until the Claude Stats sidebar was manually opened)
+- Activate on VS Code startup (`onStartupFinished`) so the MCP registration is refreshed without waiting for the sidebar to be opened
+- Notify on every MCP path update — not just first install — so users know to restart Claude Code after upgrading the extension
+
 ## 0.1.2 — 2026-04-20
 
 - Fix broken dashboard screenshot on marketplace listing (GitHub org URL was `deotio`, correct is `de-otio`)
