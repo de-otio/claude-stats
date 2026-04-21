@@ -119,6 +119,7 @@
     "periodMonth": "Dieser Monat",
     "periodAll": "Gesamter Zeitraum",
     "promptsPerProject": "Prompts pro Projekt",
+    "tokensPerProject": "Token-Verteilung nach Projekt",
     "projectDetails": "Projektdetails",
     "headerProject": "Projekt",
     "headerSessions": "Sessions",

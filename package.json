@@ -8,7 +8,9 @@
   },
   "license": "MIT",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "npm run build --workspaces",
     "build:ext": "node scripts/build-extension.mjs",
@@ -17,11 +19,14 @@
     "dev": "tsx packages/cli/src/index.ts",
     "start": "node --experimental-sqlite packages/cli/dist/index.js",
     "typecheck": "tsc --build",
+    "locales:check": "node scripts/check-locale-parity.mjs",
+    "locales:fill": "node scripts/fill-locales.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.85.0",
     "@vitest/coverage-v8": "^4.0.18",

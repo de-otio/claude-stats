@@ -27,6 +27,9 @@ jobs:
       - name: Typecheck all packages
         run: npx tsc --build --force
 
+      - name: Check locale parity
+        run: npm run locales:check
+
       - name: Run tests
         run: npx vitest run --coverage
 
