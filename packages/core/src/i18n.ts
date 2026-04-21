@@ -16,6 +16,14 @@ const _url = typeof import.meta?.url === "string"
 const _require = createRequire(_url);
 const enCommon = _require("./locales/en/common.json") as Record<string, unknown>;
 const deCommon = _require("./locales/de/common.json") as Record<string, unknown>;
+const jaCommon = _require("./locales/ja/common.json") as Record<string, unknown>;
+const zhCnCommon = _require("./locales/zh-CN/common.json") as Record<string, unknown>;
+const frCommon = _require("./locales/fr/common.json") as Record<string, unknown>;
+const esCommon = _require("./locales/es/common.json") as Record<string, unknown>;
+const ptBrCommon = _require("./locales/pt-BR/common.json") as Record<string, unknown>;
+const plCommon = _require("./locales/pl/common.json") as Record<string, unknown>;
+const ukCommon = _require("./locales/uk/common.json") as Record<string, unknown>;
+const ruCommon = _require("./locales/ru/common.json") as Record<string, unknown>;
 
 export type { TFunction, I18nInstance };
 
@@ -42,6 +50,14 @@ export async function initI18n(options: I18nOptions): Promise<I18nInstance> {
     resources: {
       en: { common: enCommon, ...options.resources?.en },
       de: { common: deCommon, ...options.resources?.de },
+      ja: { common: jaCommon, ...options.resources?.ja },
+      "zh-CN": { common: zhCnCommon, ...options.resources?.["zh-CN"] },
+      fr: { common: frCommon, ...options.resources?.fr },
+      es: { common: esCommon, ...options.resources?.es },
+      "pt-BR": { common: ptBrCommon, ...options.resources?.["pt-BR"] },
+      pl: { common: plCommon, ...options.resources?.pl },
+      uk: { common: ukCommon, ...options.resources?.uk },
+      ru: { common: ruCommon, ...options.resources?.ru },
     },
     interpolation: {
       escapeValue: false,

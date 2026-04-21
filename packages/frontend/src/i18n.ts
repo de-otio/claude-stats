@@ -11,6 +11,7 @@ import esCommon from '../../core/src/locales/es/common.json';
 import ptBrCommon from '../../core/src/locales/pt-BR/common.json';
 import plCommon from '../../core/src/locales/pl/common.json';
 import ukCommon from '../../core/src/locales/uk/common.json';
+import ruCommon from '../../core/src/locales/ru/common.json';
 import enFrontend from '../../core/src/locales/en/frontend.json';
 import deFrontend from '../../core/src/locales/de/frontend.json';
 import jaFrontend from '../../core/src/locales/ja/frontend.json';
@@ -20,6 +21,7 @@ import esFrontend from '../../core/src/locales/es/frontend.json';
 import ptBrFrontend from '../../core/src/locales/pt-BR/frontend.json';
 import plFrontend from '../../core/src/locales/pl/frontend.json';
 import ukFrontend from '../../core/src/locales/uk/frontend.json';
+import ruFrontend from '../../core/src/locales/ru/frontend.json';
 
 i18next
   .use(LanguageDetector)
@@ -64,6 +66,10 @@ i18next
       uk: {
         common: ukCommon,
         frontend: ukFrontend,
+      },
+      ru: {
+        common: ruCommon,
+        frontend: ruFrontend,
       },
     },
     detection: {
