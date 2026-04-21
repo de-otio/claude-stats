@@ -33,13 +33,22 @@ export function activate(context: vscode.ExtensionContext): void {
   const jaDash = _require("@claude-stats/core/locales/ja/dashboard.json") as Record<string, unknown>;
   const zhCnExt = _require("@claude-stats/core/locales/zh-CN/extension.json") as Record<string, unknown>;
   const zhCnDash = _require("@claude-stats/core/locales/zh-CN/dashboard.json") as Record<string, unknown>;
+  const frExt = _require("@claude-stats/core/locales/fr/extension.json") as Record<string, unknown>;
+  const frDash = _require("@claude-stats/core/locales/fr/dashboard.json") as Record<string, unknown>;
+  const esExt = _require("@claude-stats/core/locales/es/extension.json") as Record<string, unknown>;
+  const esDash = _require("@claude-stats/core/locales/es/dashboard.json") as Record<string, unknown>;
+  const ptBrExt = _require("@claude-stats/core/locales/pt-BR/extension.json") as Record<string, unknown>;
+  const ptBrDash = _require("@claude-stats/core/locales/pt-BR/dashboard.json") as Record<string, unknown>;
 
-  // VS Code's language code is e.g. "zh-cn" for Simplified Chinese — normalize
-  // to match our resource keys, which use the BCP 47 casing "zh-CN".
-  const rawLang = vscode.env.language;
-  const lng = rawLang.toLowerCase().startsWith("zh-cn")
+  // VS Code returns lowercase locale codes (e.g. "zh-cn", "pt-br"). Normalize
+  // the regionalized ones to match our resource keys (BCP 47 casing). All
+  // other codes collapse to their primary subtag.
+  const rawLang = vscode.env.language.toLowerCase();
+  const lng = rawLang.startsWith("zh-cn")
     ? "zh-CN"
-    : rawLang.split("-")[0];
+    : rawLang.startsWith("pt-br")
+      ? "pt-BR"
+      : rawLang.split("-")[0];
 
   void initI18n({
     lng,
@@ -49,6 +58,9 @@ export function activate(context: vscode.ExtensionContext): void {
       de: { extension: deExt, dashboard: deDash },
       ja: { extension: jaExt, dashboard: jaDash },
       "zh-CN": { extension: zhCnExt, dashboard: zhCnDash },
+      fr: { extension: frExt, dashboard: frDash },
+      es: { extension: esExt, dashboard: esDash },
+      "pt-BR": { extension: ptBrExt, dashboard: ptBrDash },
     },
   }).then((instance: import("i18next").i18n) => {
     setT(instance.t.bind(instance));

@@ -57,10 +57,13 @@
     "./locales/en/*.json": "./dist/locales/en/*.json",
     "./locales/de/*.json": "./dist/locales/de/*.json",
     "./locales/ja/*.json": "./dist/locales/ja/*.json",
-    "./locales/zh-CN/*.json": "./dist/locales/zh-CN/*.json"
+    "./locales/zh-CN/*.json": "./dist/locales/zh-CN/*.json",
+    "./locales/fr/*.json": "./dist/locales/fr/*.json",
+    "./locales/es/*.json": "./dist/locales/es/*.json",
+    "./locales/pt-BR/*.json": "./dist/locales/pt-BR/*.json"
   },
   "scripts": {
-    "build": "tsc && mkdir -p dist/locales && cp -r src/locales/en src/locales/de src/locales/ja 'src/locales/zh-CN' dist/locales/",
+    "build": "tsc && mkdir -p dist/locales && cp -r src/locales/en src/locales/de src/locales/ja 'src/locales/zh-CN' src/locales/fr src/locales/es 'src/locales/pt-BR' dist/locales/",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

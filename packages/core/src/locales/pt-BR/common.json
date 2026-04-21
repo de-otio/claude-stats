@@ -1,0 +1,79 @@
+{
+  "metrics": {
+    "sessions": "Sessões",
+    "prompts": "Prompts",
+    "inputTokens": "Tokens de entrada",
+    "outputTokens": "Tokens de saída",
+    "input": "Entrada",
+    "output": "Saída",
+    "cache": "Cache",
+    "cacheEfficiency": "Eficiência do cache",
+    "estCost": "Custo estimado",
+    "planValue": "Valor do plano",
+    "planROI": "ROI do plano",
+    "activeHours": "Horas ativas",
+    "costPerPrompt": "Custo / Prompt",
+    "tokPerMin": "Tok / Min",
+    "throttleEvents": "Eventos de limitação",
+    "velocity": "Velocidade",
+    "cost": "Custo",
+    "duration": "Duração",
+    "thinking": "Raciocínio"
+  },
+  "periods": {
+    "day": "Dia",
+    "week": "Semana",
+    "month": "Mês",
+    "all": "Tudo",
+    "allTime": "todo o período"
+  },
+  "periodLabels": {
+    "daily": "Diário",
+    "weekly": "Semanal",
+    "monthly": "Mensal",
+    "allTime": "Todo o período"
+  },
+  "models": {
+    "opus4": "Opus 4",
+    "sonnet4": "Sonnet 4",
+    "haiku4": "Haiku 4"
+  },
+  "plans": {
+    "pro": "Pro",
+    "max5x": "Max 5x",
+    "max20x": "Max 20x",
+    "teamStandard": "Team Standard",
+    "teamPremium": "Team Premium"
+  },
+  "verdicts": {
+    "goodValue": "Bom custo-benefício",
+    "underusing": "Subutilização",
+    "noPlanDetected": "Nenhum plano detectado"
+  },
+  "tableHeaders": {
+    "session": "Sessão",
+    "started": "Início",
+    "model": "Modelo",
+    "time": "Horário",
+    "stop": "Parada",
+    "tools": "Ferramentas",
+    "total": "Total",
+    "totals": "Totais"
+  },
+  "units": {
+    "tokens": "tokens",
+    "session_one": "{{count}} sessão",
+    "session_other": "{{count}} sessões",
+    "tokPerMin": "tok/min",
+    "promptsPerHr": "prompts/h",
+    "outputPerPrompt": "saída/prompt"
+  },
+  "actions": {
+    "connect": "Conectar",
+    "disconnect": "Desconectar",
+    "cancel": "Cancelar",
+    "refresh": "Atualizar",
+    "save": "Salvar",
+    "send": "Enviar"
+  }
+}

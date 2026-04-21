@@ -6,10 +6,16 @@ import enCommon from '../../core/src/locales/en/common.json';
 import deCommon from '../../core/src/locales/de/common.json';
 import jaCommon from '../../core/src/locales/ja/common.json';
 import zhCnCommon from '../../core/src/locales/zh-CN/common.json';
+import frCommon from '../../core/src/locales/fr/common.json';
+import esCommon from '../../core/src/locales/es/common.json';
+import ptBrCommon from '../../core/src/locales/pt-BR/common.json';
 import enFrontend from '../../core/src/locales/en/frontend.json';
 import deFrontend from '../../core/src/locales/de/frontend.json';
 import jaFrontend from '../../core/src/locales/ja/frontend.json';
 import zhCnFrontend from '../../core/src/locales/zh-CN/frontend.json';
+import frFrontend from '../../core/src/locales/fr/frontend.json';
+import esFrontend from '../../core/src/locales/es/frontend.json';
+import ptBrFrontend from '../../core/src/locales/pt-BR/frontend.json';
 
 i18next
   .use(LanguageDetector)
@@ -34,6 +40,18 @@ i18next
       'zh-CN': {
         common: zhCnCommon,
         frontend: zhCnFrontend,
+      },
+      fr: {
+        common: frCommon,
+        frontend: frFrontend,
+      },
+      es: {
+        common: esCommon,
+        frontend: esFrontend,
+      },
+      'pt-BR': {
+        common: ptBrCommon,
+        frontend: ptBrFrontend,
       },
     },
     detection: {

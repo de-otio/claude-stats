@@ -1,0 +1,338 @@
+{
+  "statusBar": {
+    "idle": "$(graph) Claude Stats",
+    "withStats": "$(graph) {{tokens}} tokens · ~${{cost}}",
+    "tooltip": "Ouvrir le tableau de bord Claude Stats",
+    "tooltipEmpty": "Claude Stats : aucune session Claude Code détectée pour l'instant — cliquez pour voir les instructions d'installation"
+  },
+  "sidebar": {
+    "openDashboard": "Ouvrir le tableau de bord",
+    "tabTitle": "Onglet {{title}}"
+  },
+  "tabHelp": {
+    "overview": {
+      "title": "Vue d'ensemble",
+      "sections": [
+        {
+          "heading": "Ce que vous voyez",
+          "body": "Statistiques d'utilisation de haut niveau pour la période sélectionnée : sessions, prompts, tokens, efficacité du cache et coût API estimé."
+        },
+        {
+          "heading": "Utilisation quotidienne / horaire des tokens",
+          "body": "Graphique en barres empilées montrant les tokens de sortie, l'entrée non mise en cache, les lectures de cache et les créations de cache au fil du temps. Lorsque la période est « Jour », affiche la répartition horaire."
+        },
+        {
+          "heading": "Répartition des tokens",
+          "body": "Graphique en anneau de la distribution totale des tokens à travers les quatre catégories : sortie, entrée, lecture de cache et création de cache."
+        },
+        {
+          "heading": "Utilisation du cache",
+          "body": "Montre l'efficacité du cache des prompts. Un pourcentage plus élevé de lecture de cache signifie moins de traitement redondant de tokens et un coût plus bas."
+        },
+        {
+          "heading": "Valeur API cumulée vs frais du forfait",
+          "body": "Suit la valeur API consommée au fil du temps par rapport aux frais mensuels de votre forfait. Si la ligne dépasse la ligne pointillée des frais du forfait, vous obtenez plus de 1× la valeur de votre abonnement."
+        }
+      ]
+    },
+    "models": {
+      "title": "Modèles",
+      "sections": [
+        {
+          "heading": "Tokens par modèle",
+          "body": "Barre empilée montrant la consommation de tokens d'entrée et de sortie par modèle. Aide à voir quels modèles vous utilisez le plus."
+        },
+        {
+          "heading": "Raisons d'arrêt",
+          "body": "Fréquence de chaque raison d'arrêt. « end_turn » signifie que le modèle a terminé naturellement, « tool_use » signifie qu'il a appelé un outil, « max_tokens » signifie qu'il a atteint la limite de sortie."
+        }
+      ]
+    },
+    "projects": {
+      "title": "Projets",
+      "sections": [
+        {
+          "heading": "Projets principaux",
+          "body": "Graphique en barres horizontales de vos projets les plus consommateurs de tokens. Utile pour comprendre où se concentre votre utilisation."
+        },
+        {
+          "heading": "Part de tokens par projet",
+          "body": "Diagramme circulaire montrant le pourcentage du total des tokens consommés par chaque projet. Identifie rapidement les projets qui dominent votre utilisation."
+        },
+        {
+          "heading": "Consommation d'énergie par projet",
+          "body": "Diagramme circulaire de la consommation d'énergie estimée par projet. Affiché uniquement lorsque les données d'énergie sont disponibles."
+        },
+        {
+          "heading": "Intensité de réflexion par projet",
+          "body": "Mesure les blocs de réflexion étendue par prompt pour chaque projet. Des valeurs plus élevées indiquent des projets nécessitant un raisonnement plus profond — débogage complexe, décisions d'architecture ou génération de code nuancée. Des valeurs faibles suggèrent des tâches simples. Une augmentation soudaine peut signaler une complexité croissante du code."
+        },
+        {
+          "heading": "Nature du travail par projet",
+          "body": "Montre comment l'effort de Claude se répartit en cinq catégories pour chaque projet : Exploration (lecture et recherche de code), Édition (écriture et modification de fichiers), Exécution (commandes shell et builds), Recherche (recherches web) et Planification (plans et tâches). Révèle si un projet est principalement de l'exploration, du développement actif ou du débogage."
+        }
+      ]
+    },
+    "sessions": {
+      "title": "Sessions",
+      "sections": [
+        {
+          "heading": "Fenêtres d'utilisation de 5 heures",
+          "body": "Claude suit l'utilisation par fenêtres glissantes de 5 heures. Chaque barre affiche la valeur API consommée dans cette fenêtre. Les barres rouges indiquent les fenêtres où une limitation s'est produite."
+        },
+        {
+          "heading": "Principales conversations par coût API",
+          "body": "Vos conversations individuelles les plus coûteuses. Survolez pour les détails, y compris le nombre de prompts, le modèle dominant et le pourcentage des frais du forfait."
+        },
+        {
+          "heading": "Sessions par point d'entrée",
+          "body": "Diagramme circulaire montrant comment les sessions sont réparties entre les points d'entrée (CLI, extension VS Code, API, etc.)."
+        }
+      ]
+    },
+    "plan": {
+      "title": "Forfait",
+      "sections": [
+        {
+          "heading": "Ce que mesure cet onglet",
+          "body": "Compare la valeur API équivalente de votre utilisation de Claude au coût de votre forfait d'abonnement. Aide à répondre : « Devrais-je passer à un forfait supérieur ou inférieur ? »"
+        },
+        {
+          "heading": "Verdict du forfait",
+          "body": "« Bon rapport qualité-prix » signifie que votre utilisation API équivalente dépasse les frais de votre forfait (vous obtenez plus que vous ne payez). « Sous-utilisation » signifie que vous payez plus que le coût API équivalent."
+        },
+        {
+          "heading": "Forfait suggéré",
+          "body": "Basé sur votre coût API équivalent hebdomadaire moyen, extrapolé au mois. Comparé aux niveaux Pro ($20), Team Standard ($25), Max 5x ($100), Team Premium ($125) et Max 20x ($200)."
+        },
+        {
+          "heading": "Activité hebdomadaire",
+          "body": "Graphique en barres montrant les sessions et prompts par semaine. Aide à visualiser vos schémas d'utilisation et si votre niveau d'activité justifie votre forfait actuel."
+        },
+        {
+          "heading": "Coût API par fenêtre de 5 heures",
+          "body": "Affiche le coût API équivalent absolu par fenêtre de 5 heures. Les barres sont orange pour les fenêtres qui contenaient une réponse d'assistant coupée à la limite de tokens de sortie (une « sortie tronquée »). Note : les rejets de limite de taux de 5 heures d'Anthropic n'atteignent jamais les journaux de session, donc nous ne pouvons pas afficher de manière fiable une vraie valeur de « % de limite »."
+        },
+        {
+          "heading": "Fenêtres par semaine",
+          "body": "Barre empilée montrant le nombre total de fenêtres d'utilisation de 5 heures par semaine. Le segment orange compte les fenêtres qui contenaient une réponse avec sortie tronquée — un signal non critique qui pointe généralement vers une seule longue réponse coupée à la limite de tokens de sortie."
+        },
+        {
+          "heading": "Support multi-comptes",
+          "body": "Si vous utilisez plusieurs comptes Claude (ex. équipe de travail + personnel), chaque compte est détecté séparément avec son propre verdict de forfait et sa propre répartition de coûts."
+        }
+      ]
+    },
+    "context": {
+      "title": "Contexte",
+      "sections": [
+        {
+          "heading": "Ce que mesure cet onglet",
+          "body": "Analyse vos habitudes de gestion du contexte : longueur des conversations, croissance de la fenêtre de contexte, utilisation du compactage et efficacité du cache. Aide à répondre : « Est-ce que je gère mon contexte de manière optimale ? »"
+        },
+        {
+          "heading": "Distribution de la longueur des conversations",
+          "body": "Histogramme du nombre de prompts contenus dans vos sessions. Des sessions très longues (15+ prompts) sans compactage peuvent entraîner des coûts plus élevés et des réponses plus lentes à mesure que la fenêtre de contexte se remplit."
+        },
+        {
+          "heading": "Courbe de croissance du contexte",
+          "body": "Montre comment les tokens d'entrée augmentent à chaque prompt successif dans une conversation. Une courbe abrupte signifie que le contexte s'accumule rapidement — envisagez d'utiliser /compact ou de démarrer de nouvelles conversations pour des tâches non liées."
+        },
+        {
+          "heading": "Efficacité du cache par longueur",
+          "body": "Compare les taux de succès du cache entre conversations courtes et longues. Si l'efficacité du cache chute dans les sessions plus longues, cela peut indiquer que le contexte est reconstruit trop souvent ou que /compact élimine un contexte caché utile."
+        },
+        {
+          "heading": "Événements de compactage",
+          "body": "Instances détectées où les tokens d'entrée ont baissé de manière significative entre les messages (réduction >40%), indiquant l'utilisation de /compact. Affiche les comptes de tokens avant/après pour visualiser la quantité de contexte récupéré."
+        },
+        {
+          "heading": "Tableau des sessions longues",
+          "body": "Sessions avec 15+ prompts, triées par tokens d'entrée de pointe. La colonne « Compacté ? » indique si le compactage a été détecté. Les sessions marquées « Non » auraient pu bénéficier de l'exécution de /compact pour réduire la taille du contexte et le coût."
+        }
+      ]
+    },
+    "efficiency": {
+      "title": "Efficacité",
+      "sections": [
+        {
+          "heading": "Ce que mesure cet onglet",
+          "body": "Analyse si vous envoyez des prompts à un modèle plus coûteux que nécessaire. Chaque prompt utilisateur (« tour ») est noté pour sa complexité, puis classé dans un niveau recommandé : Haiku, Sonnet ou Opus."
+        },
+        {
+          "heading": "Économies potentielles",
+          "body": "Montant en dollars que vous auriez pu économiser si chaque tour avait été routé vers le modèle le moins cher capable de le gérer. Compte uniquement les cas où vous avez utilisé un modèle plus coûteux que le niveau classifié."
+        },
+        {
+          "heading": "Taux de surutilisation",
+          "body": "Pourcentage de tours classifiés où le modèle réel était plus coûteux que le niveau recommandé. Un taux de surutilisation élevé suggère des opportunités d'utiliser des modèles moins chers pour les tâches simples."
+        },
+        {
+          "heading": "Utilisation des modèles par niveau de complexité",
+          "body": "Barre empilée par modèle, colorée par niveau classifié (vert=Haiku, bleu=Sonnet, rouge=Opus). Si Opus a un grand segment vert ou bleu, ces tours auraient pu utiliser un modèle moins cher."
+        },
+        {
+          "heading": "Distribution des scores de complexité Opus",
+          "body": "Histogramme des scores de complexité (0–100) pour les tours envoyés à Opus. Les scores sont calculés à partir de quatre signaux :\n\n• Tokens de sortie (0–25 pts) — des réponses plus longues indiquent des tâches plus difficiles\n• Blocs de réflexion (0–30 pts) — la réflexion étendue est le signal de complexité le plus fort\n• Complexité des outils (0–25 pts) — Agent, Write, NotebookEdit ont les scores les plus élevés\n• Analyse du texte du prompt (0–20 pts) — des mots-clés comme « refactor » ou « architect » ajoutent des points ; « fix typo » ou « rename » en soustraient\n\nLes barres sont colorées par niveau : vert (0–20, niveau Haiku), bleu (20–40, niveau Sonnet), rouge (40+, niveau Opus). Les barres vertes et bleues représentent des tours Opus qui n'auraient peut-être pas eu besoin d'Opus."
+        },
+        {
+          "heading": "Surutilisation principale",
+          "body": "Les tours spécifiques avec les économies potentielles les plus élevées — cas où un modèle coûteux a été utilisé pour une tâche classifiée comme plus simple. Affiche un aperçu du texte du prompt et les économies en dollars si le modèle approprié au niveau avait été utilisé."
+        }
+      ]
+    },
+    "energy": {
+      "title": "Énergie",
+      "sections": [
+        {
+          "heading": "Ce que mesure cet onglet",
+          "body": "Estime l'empreinte électrique et CO₂ de votre utilisation de Claude. Calculé par message à l'aide de coefficients d'énergie par classe de modèle (Haiku/Sonnet/Opus) et de votre région de réseau détectée ou inférée par locale. L'incertitude est de ±55% — Anthropic ne publie pas de données d'énergie par requête."
+        },
+        {
+          "heading": "Région du réseau électrique",
+          "body": "La conversion énergie-CO₂ utilise l'intensité carbone de la région d'inférence détectée (à partir d'inference_geo sur chaque message). Se rabat sur votre locale si aucune géo n'est détectée. Vous pouvez voir le % de couverture et quelles régions ont été vues."
+        },
+        {
+          "heading": "Économies du cache",
+          "body": "Les tokens de lecture de cache représentent ~3% du coût énergétique de leur recalcul en tant que tokens d'entrée. Cette section montre l'énergie et le CO₂ estimés économisés par le cache des prompts."
+        },
+        {
+          "heading": "Contexte environnemental",
+          "body": "Convertit l'énergie totale et le CO₂ en unités tangibles alignées dans une bande : litres d'essence brûlés (2,31 kgCO₂/L), surface de panneaux solaires qui, dans la région de réseau détectée, mettraient la période sélectionnée pour générer la même énergie (~20% d'efficacité × 0,75 ratio de performance, réduit du rendement annuel), rotations d'éolienne (~1,17 kWh par rotation sur une éolienne terrestre de 3 MW à 35% de facteur de capacité), litres d'eau à travers une turbine hydroélectrique (~4 077 L/kWh à une hauteur représentative de 100 m avec 90% d'efficacité, via E = m·g·h·η), volume de dépôt nucléaire conçu (conteneurs + tampon + excavation de tunnel, pondéré sur DHAVL+DMAVL+DFAVL, ~4 mL/kWh), et km parcourus en transport urbain (30 gCO₂/pkm — mélange bus/métro/tram) et en train électrifié longue distance (6 gCO₂/pkm). Un ancrage de voyage sous la bande associe l'équivalent en km parcourus de la période à un trajet reconnaissable."
+        },
+        {
+          "heading": "Méthode de calcul",
+          "body": "Un panneau repliable sous la bande d'équivalents affiche la dérivation complète en utilisant les chiffres réels de votre période : comptes de tokens par classe de modèle, taux d'énergie par classe (Wh pour 1K tokens d'entrée/sortie), surcoût PUE, intensité du réseau, et l'arithmétique derrière chaque équivalent. Vous pouvez auditer ou reproduire chaque chiffre à partir des tokens renvoyés par l'API."
+        },
+        {
+          "heading": "Sources de données",
+          "body": "Liste les citations en amont derrière chaque coefficient : livre blanc d'inférence Gemini 2025 de Google et Epoch AI 2024 pour les taux d'énergie par modèle ; Uptime Institute pour le PUE ; EPA eGRID / EEA / IEA pour l'intensité du réseau ; PVGIS/NREL/World Bank GSA pour le rendement solaire ; IRENA/IEA pour l'éolienne ; Posiva KBS-3 / SKB / IAEA pour l'élimination nucléaire ; UIC et EEA pour les émissions de transport."
+        },
+        {
+          "heading": "Graphiques quotidiens et par modèle",
+          "body": "Deux graphiques sous la bande d'équivalents : énergie et CO₂ quotidiens sur la période (à gauche) et énergie totale par modèle (à droite). Les deux rapportent l'énergie en kWh."
+        }
+      ]
+    },
+    "settings": {
+      "title": "Paramètres",
+      "sections": [
+        {
+          "heading": "Ce que vous pouvez configurer",
+          "body": "Type de forfait (Pro, Max, Team, Personnalisé) et frais mensuels. Ceux-ci sont utilisés pour les calculs d'utilisation du forfait dans l'onglet Forfait. S'ils ne sont pas définis, l'outil se base sur la télémétrie pour l'auto-détection."
+        },
+        {
+          "heading": "Seuils d'alerte de coût",
+          "body": "Définissez des seuils de coût quotidiens, hebdomadaires et mensuels. Lorsque le coût API estimé dépasse un seuil, des alertes sont affichées après la collecte."
+        },
+        {
+          "heading": "Où sont stockés les paramètres",
+          "body": "Tous les paramètres sont enregistrés dans ~/.claude-stats/config.json. Vous pouvez aussi éditer ce fichier directement."
+        }
+      ]
+    }
+  },
+  "panel": {
+    "title": "Claude Stats",
+    "errors": {
+      "failedToLoadConfig": "Échec du chargement de la configuration",
+      "failedToSaveConfig": "Échec de l'enregistrement de la configuration"
+    }
+  },
+  "sync": {
+    "status": {
+      "connectedText": "$(cloud) Sync",
+      "connectedTooltip": "Claude Stats : synchronisé - cliquez pour synchroniser maintenant",
+      "disconnectedText": "$(cloud-upload) Sync désactivée",
+      "disconnectedTooltip": "Claude Stats : non connecté - cliquez pour synchroniser",
+      "syncingText": "$(sync~spin) Synchronisation...",
+      "syncingTooltip": "Claude Stats : synchronisation des données de session...",
+      "errorText": "$(cloud-upload) Erreur de sync",
+      "errorTooltip": "Claude Stats : erreur de synchronisation - cliquez pour réessayer"
+    },
+    "dialogs": {
+      "notConfigured": "La synchronisation Claude Stats n'est pas configurée. Souhaitez-vous vous connecter ?",
+      "authExpired": "Claude Stats : authentification expirée. Veuillez vous reconnecter.",
+      "disconnectConfirm": "Se déconnecter de la synchronisation Claude Stats ? Cela supprimera vos tokens d'authentification.",
+      "enterBackendUrl": "Saisissez l'URL du backend Claude Stats",
+      "backendUrlPlaceholder": "https://your-team-instance.example.com",
+      "enterEmail": "Saisissez votre adresse e-mail pour vous authentifier",
+      "emailPlaceholder": "you@example.com",
+      "checkEmailOrBrowser": "Claude Stats : vérifiez votre e-mail ou navigateur pour terminer l'authentification. Code : {{code}}",
+      "checkEmail": "Claude Stats : vérifiez votre e-mail pour un lien de connexion."
+    },
+    "progress": {
+      "syncing": "Claude Stats : synchronisation des sessions...",
+      "connecting": "Claude Stats : connexion..."
+    },
+    "messages": {
+      "syncComplete": "Claude Stats : synchronisation terminée.",
+      "syncFailed": "Échec de la synchronisation Claude Stats : {{message}}",
+      "connectedSuccess": "Claude Stats : connecté avec succès !",
+      "connectionFailed": "Claude Stats : échec de la connexion - {{message}}",
+      "disconnected": "Claude Stats : déconnecté.",
+      "noBackendUrl": "Claude Stats : aucune URL de backend configurée. Connectez-vous d'abord pour utiliser le tableau de bord d'équipe.",
+      "backendError": "Le backend a retourné {{status}}. Vérifiez l'URL et réessayez."
+    }
+  },
+  "errors": {
+    "sqliteRequired": "Claude Stats nécessite Node.js 22.5+ avec le support node:sqlite. {{message}}",
+    "generic": "Claude Stats : {{message}}"
+  },
+  "mcp": {
+    "registered": "Serveur MCP Claude Stats enregistré dans ~/.claude.json. Redémarrez Claude Code pour qu'il prenne effet, afin que votre agent puisse interroger directement les statistiques d'utilisation.",
+    "updated": "Chemin du serveur MCP Claude Stats mis à jour (la version de l'extension a changé). Redémarrez Claude Code pour que le serveur MCP fonctionne à nouveau.",
+    "failure": {
+      "noNode": "Claude Stats n'a pas pu enregistrer son serveur MCP : aucun binaire Node.js trouvé dans votre PATH. Installez Node.js 22.5 ou plus récent (par exemple via nvm, Homebrew ou nodejs.org) et assurez-vous que `node` est accessible depuis votre shell, puis rechargez cette fenêtre (Palette de commandes → « Developer: Reload Window »). En attendant, le tableau de bord fonctionne toujours, mais votre agent Claude ne pourra pas interroger les statistiques via MCP. Fichier de configuration cible : {{path}}",
+      "writeFailed": "Claude Stats n'a pas pu écrire dans {{path}} pour enregistrer son serveur MCP ({{message}}). Vérifiez que le fichier est accessible en écriture (il appartient à votre configuration Claude Code) et n'est pas actuellement ouvert/verrouillé par un autre processus, puis rechargez cette fenêtre. En attendant, le tableau de bord fonctionne toujours, mais votre agent Claude ne pourra pas interroger les statistiques via MCP.",
+      "generic": "Claude Stats n'a pas pu enregistrer son serveur MCP dans {{path}} : {{message}}. Le tableau de bord fonctionne toujours, mais votre agent Claude ne pourra pas interroger les statistiques via MCP tant que cela ne sera pas résolu. Rechargez cette fenêtre (Palette de commandes → « Developer: Reload Window ») pour réessayer."
+    }
+  },
+  "welcome": {
+    "noClaudeCode": {
+      "title": "Bienvenue sur Claude Stats",
+      "intro": "Claude Stats lit les fichiers de session locaux de Claude Code pour vous montrer combien de tokens vous avez utilisés, ce que cela coûte et où passe le temps. Pour l'instant, il ne trouve aucune donnée Claude Code sur cette machine, donc le tableau de bord est vide.",
+      "steps": [
+        {
+          "heading": "Installer Claude Code",
+          "body": "Installez le CLI Claude Code d'Anthropic depuis la documentation officielle d'Anthropic, puis connectez-vous une fois pour qu'il puisse écrire les fichiers de session dans votre répertoire personnel."
+        },
+        {
+          "heading": "Démarrer une conversation",
+          "body": "Ouvrez un terminal dans n'importe quel projet et exécutez `claude`. Envoyez au moins un message. Claude Code écrit un journal de session JSONL dès que la première réponse arrive."
+        },
+        {
+          "heading": "Revenez ici",
+          "body": "L'extension surveille les nouveaux fichiers de session en arrière-plan. Dès que le premier existe, il est détecté en quelques secondes — vous n'avez pas besoin de redémarrer VS Code."
+        }
+      ],
+      "whatNext": "Tant qu'aucune session n'existe, la barre d'état affiche l'icône inactive et le tableau de bord reste sur cet écran de bienvenue. Cliquez sur « Actualiser maintenant » une fois que vous avez envoyé un message à Claude Code."
+    },
+    "noSessions": {
+      "title": "Aucune session Claude Code pour l'instant",
+      "intro": "Claude Code est installé sur cette machine, mais aucune session n'a encore été enregistrée (ou le collecteur n'a pas terminé son premier passage). Le tableau de bord se remplira dès qu'une session existera.",
+      "steps": [
+        {
+          "heading": "Démarrer ou continuer une conversation",
+          "body": "Ouvrez un terminal et exécutez `claude` dans n'importe quel dossier de projet. Envoyez un message. Claude Code écrit un fichier journal JSONL par session dans le répertoire de projets indiqué ci-dessous."
+        },
+        {
+          "heading": "Laissez le collecteur rattraper",
+          "body": "L'extension surveille ~/.claude/projects/ pour les changements et exécute une collecte incrémentielle toutes les quelques secondes (avec anti-rebond). La collecte initiale sur de nombreuses sessions historiques peut prendre 10-30 secondes."
+        },
+        {
+          "heading": "Actualiser le tableau de bord",
+          "body": "Utilisez le bouton ci-dessous (ou cliquez sur l'élément Claude Stats dans la barre d'état) pour revérifier. Une fois les sessions collectées, cet écran est automatiquement remplacé par le tableau de bord complet."
+        }
+      ],
+      "whatNext": "Si vous utilisez déjà Claude Code et voyez encore cet écran après une minute, quelque chose empêche le collecteur de lire les fichiers de session. Vérifiez que les chemins ci-dessous existent et sont lisibles, puis rechargez la fenêtre (Palette de commandes → « Developer: Reload Window »)."
+    },
+    "stepsHeading": "Que faire",
+    "whatNextHeading": "Que se passe-t-il ensuite",
+    "refresh": "Actualiser maintenant",
+    "refreshHint": "Relit ~/.claude/projects/ et re-rend le tableau de bord.",
+    "projectsDirLabel": "Source des sessions :",
+    "dbPathLabel": "Base de données locale :",
+    "privacyNote": "Claude Stats ne quitte jamais votre machine. Aucun token ni identifiant n'est transmis — tout est lu localement depuis les journaux JSONL de Claude Code et agrégé dans une base de données SQLite dans votre répertoire personnel."
+  }
+}

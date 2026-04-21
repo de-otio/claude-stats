@@ -1,0 +1,79 @@
+{
+  "metrics": {
+    "sessions": "Sessions",
+    "prompts": "Prompts",
+    "inputTokens": "Tokens d'entrée",
+    "outputTokens": "Tokens de sortie",
+    "input": "Entrée",
+    "output": "Sortie",
+    "cache": "Cache",
+    "cacheEfficiency": "Efficacité du cache",
+    "estCost": "Coût estimé",
+    "planValue": "Valeur du forfait",
+    "planROI": "ROI du forfait",
+    "activeHours": "Heures actives",
+    "costPerPrompt": "Coût / Prompt",
+    "tokPerMin": "Tok / Min",
+    "throttleEvents": "Événements de limitation",
+    "velocity": "Vélocité",
+    "cost": "Coût",
+    "duration": "Durée",
+    "thinking": "Réflexion"
+  },
+  "periods": {
+    "day": "Jour",
+    "week": "Semaine",
+    "month": "Mois",
+    "all": "Tout",
+    "allTime": "toute la période"
+  },
+  "periodLabels": {
+    "daily": "Quotidien",
+    "weekly": "Hebdomadaire",
+    "monthly": "Mensuel",
+    "allTime": "Toute la période"
+  },
+  "models": {
+    "opus4": "Opus 4",
+    "sonnet4": "Sonnet 4",
+    "haiku4": "Haiku 4"
+  },
+  "plans": {
+    "pro": "Pro",
+    "max5x": "Max 5x",
+    "max20x": "Max 20x",
+    "teamStandard": "Team Standard",
+    "teamPremium": "Team Premium"
+  },
+  "verdicts": {
+    "goodValue": "Bon rapport qualité-prix",
+    "underusing": "Sous-utilisation",
+    "noPlanDetected": "Aucun forfait détecté"
+  },
+  "tableHeaders": {
+    "session": "Session",
+    "started": "Début",
+    "model": "Modèle",
+    "time": "Heure",
+    "stop": "Arrêt",
+    "tools": "Outils",
+    "total": "Total",
+    "totals": "Totaux"
+  },
+  "units": {
+    "tokens": "tokens",
+    "session_one": "{{count}} session",
+    "session_other": "{{count}} sessions",
+    "tokPerMin": "tok/min",
+    "promptsPerHr": "prompts/h",
+    "outputPerPrompt": "sortie/prompt"
+  },
+  "actions": {
+    "connect": "Connecter",
+    "disconnect": "Déconnecter",
+    "cancel": "Annuler",
+    "refresh": "Actualiser",
+    "save": "Enregistrer",
+    "send": "Envoyer"
+  }
+}

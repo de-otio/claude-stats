@@ -1,0 +1,293 @@
+{
+  "pageTitle": "Claude Stats — {{period}} ({{date}})",
+  "tabs": {
+    "overview": "Vue d'ensemble",
+    "models": "Modèles",
+    "projects": "Projets",
+    "sessions": "Sessions",
+    "plan": "Forfait",
+    "context": "Contexte",
+    "efficiency": "Efficacité",
+    "energy": "Énergie",
+    "settings": "Paramètres"
+  },
+  "toolbar": {
+    "period": "Période :",
+    "refresh": "Actualiser",
+    "autoOff": "Auto : désactivé",
+    "autoOn": "Auto : activé ({{seconds}} s)"
+  },
+  "summary": {
+    "sessions": "Sessions",
+    "prompts": "Prompts",
+    "inputTokens": "Tokens d'entrée",
+    "outputTokens": "Tokens de sortie",
+    "cacheEfficiency": "Efficacité du cache",
+    "estCost": "Coût estimé",
+    "planValue": "Valeur du forfait",
+    "ofPlanFee": "sur ${{fee}}/mois",
+    "activeHours": "Heures actives",
+    "costPerPrompt": "Coût / Prompt",
+    "tokPerMin": "Tok / Min",
+    "truncatedOutputs": "Sorties tronquées",
+    "periodRange": "{{start}} → aujourd'hui",
+    "allTime": "Toute la période"
+  },
+  "charts": {
+    "hourlyTokenUsage": "Utilisation horaire des tokens",
+    "dailyTokenUsage": "Utilisation quotidienne des tokens",
+    "tokenBreakdown": "Répartition des tokens",
+    "cacheUsage": "Utilisation du cache",
+    "cumulativeApiValue": "Valeur API cumulée vs frais du forfait",
+    "tokensByModel": "Tokens par modèle",
+    "stopReasons": "Raisons d'arrêt",
+    "topProjects": "Projets principaux",
+    "tokensByProject": "Part de tokens par projet",
+    "energyByProject": "Consommation d'énergie par projet",
+    "thinkingIntensity": "Intensité de réflexion par projet",
+    "natureOfWork": "Nature du travail par projet",
+    "sessionsByEntrypoint": "Sessions par point d'entrée",
+    "usageWindows": "Fenêtres d'utilisation de 5 heures",
+    "topConversations": "Principales conversations par coût API",
+    "windowLimitUsage": "Utilisation de la limite de fenêtre %",
+    "weeklyActivity": "Activité hebdomadaire",
+    "windowsPerWeek": "Fenêtres par semaine",
+    "conversationLengthDist": "Distribution de la longueur des conversations",
+    "contextGrowthCurve": "Courbe de croissance du contexte",
+    "cacheEfficiencyByLength": "Efficacité du cache par longueur de conversation",
+    "compactionEvents": "Événements de compactage",
+    "longSessions": "Sessions longues — opportunités de gestion de contexte",
+    "modelUsageByTier": "Utilisation des modèles par niveau de complexité",
+    "opusScoreDist": "Distribution des scores de complexité Opus",
+    "topOveruse": "Surutilisation principale : modèle coûteux sur tâches simples"
+  },
+  "plan": {
+    "account": "Compte",
+    "currentPlan": "Forfait actuel",
+    "planVerdict": "Verdict du forfait",
+    "suggestedPlan": "Forfait suggéré",
+    "avgWeeklyValue": "Valeur hebdomadaire moyenne",
+    "peakLabel": "pic : ${{value}}",
+    "windowsPerWeek": "Fenêtres / semaine",
+    "totalWindows": "{{count}} fenêtres au total",
+    "avgWindowCost": "Coût moyen par fenêtre",
+    "medianLabel": "médiane : ${{value}}",
+    "truncatedOutputWindows": "Fenêtres avec sortie tronquée",
+    "truncatedOutputWindowsHint": "contenaient une troncature max_tokens",
+    "accounts": "Comptes :",
+    "accountsDetected": "{{count}} comptes détectés",
+    "planNotDetected": "Forfait non détecté",
+    "setPlanFee": "Définissez --plan-fee ou enrichissez la télémétrie",
+    "basedOnAvg": "basé sur une valeur API moyenne de ${{value}}/semaine",
+    "feeManual": "${{fee}}/mois (manuel)",
+    "feeAutoDetected": "${{fee}}/mois (auto-détecté)",
+    "unknownPlan": "forfait inconnu",
+    "noData": "Aucune donnée",
+    "notEnoughData": "Pas assez de données d'utilisation pour analyser l'efficacité du forfait.",
+    "goodValue": "Bon rapport qualité-prix",
+    "underusing": "Sous-utilisation",
+    "noPlan": "Aucun forfait",
+    "noPlanDetected": "Aucun forfait détecté",
+    "planNames": {
+      "pro": "Pro ($20)",
+      "team_standard": "Team Std ($25)",
+      "max_5x": "Max 5x ($100)",
+      "team_premium": "Team Premium ($125)",
+      "max_20x": "Max 20x ($200)"
+    }
+  },
+  "context": {
+    "avgPromptsPerSession": "Moyenne de prompts/session",
+    "medianPrompts": "Médiane de prompts",
+    "compactionRate": "Taux de compactage",
+    "avgPeakInputTokens": "Moyenne des tokens d'entrée de pointe",
+    "needCompaction": "Nécessite un compactage",
+    "compactionsDetected": "compactages détectés sur {{count}} sessions",
+    "noCompactionEvents": "Aucun événement de compactage détecté. Envisagez d'utiliser /compact dans les longues conversations pour réduire la taille du contexte et le coût.",
+    "tableHeaders": {
+      "project": "Projet",
+      "prompts": "Prompts",
+      "duration": "Durée",
+      "peakInput": "Entrée de pointe",
+      "compacted": "Compacté ?",
+      "cost": "Coût",
+      "yes": "Oui",
+      "no": "Non"
+    }
+  },
+  "efficiency": {
+    "potentialSavings": "Économies potentielles",
+    "overuseRate": "Taux de surutilisation",
+    "overuseDescription": "tours envoyés à un modèle plus coûteux que nécessaire",
+    "turnsAnalyzed": "Tours analysés",
+    "ofTotalMessages": "sur {{count}} messages au total"
+  },
+  "energy": {
+    "totalEnergy": "Énergie totale",
+    "totalCO2": "Émissions de CO₂",
+    "co2Range": "Incertitude ±55% : {{low}} – {{high}}",
+    "region": "Région du réseau électrique",
+    "gridIntensity": "Intensité du réseau",
+    "gCO2perKWh": "gCO₂/kWh",
+    "cacheSaved": "Économisé par le cache",
+    "energySavedLabel": "vs. recalculer les entrées",
+    "thinkingSessions": "Sessions de réflexion",
+    "thinkingEnergyPct": "{{pct}}% de l'énergie",
+    "geoCoverage": "Couverture géographique",
+    "geoCoverageHint": "% de messages avec région d'inférence détectée",
+    "equivalents": "Contexte environnemental",
+    "periodRange": "{{start}} → {{end}} ({{days}} jours)",
+    "gasolineLiters": "litres d'essence",
+    "transitKm": "km en transport urbain",
+    "trainKm": "km en train longue distance",
+    "solarPanels": "panneaux solaires requis (période)",
+    "solarRegion": "en {{region}}",
+    "solarPanelsFootnote": "Surface de modules PV en toiture (~20 % d'efficacité, ratio de performance 0,75) qui, installés en {{region}}, mettraient exactement la période sélectionnée pour générer la consommation énergétique totale de cette période. Varie selon l'irradiation solaire annuelle régionale et la durée de la période choisie.",
+    "windRotations": "rotations d'éolienne",
+    "windTurbineRef": "3 MW terrestre, 35 % FC",
+    "windRotationsFootnote": "Rotations d'une éolienne terrestre moderne typique de 3 MW à ~15 tr/min avec un facteur de capacité de 35 % — ~1,17 kWh par rotation à la puissance moyenne. De façon équivalente, une telle éolienne aurait besoin de {{minutes}} min à sa puissance moyenne réelle (ou {{ratedMinutes}} min à la puissance nominale de 3 MW) pour générer l'énergie totale de votre période.",
+    "hydroTurbineLiters": "litres à travers une turbine hydro",
+    "hydroTurbineRef": "~100 m de hauteur, 90 % η",
+    "hydroTurbineFootnote": "Volume d'eau qui devrait passer à travers une turbine hydroélectrique moderne typique (~100 m de hauteur, ~90 % d'efficacité) pour générer l'énergie de cette période — environ 4 077 L par kWh, dérivé de E = m·g·h·η. Les centrales à haute chute en nécessitent moins (barrage Hoover, 180 m : ~2 200 L/kWh) ; les centrales au fil de l'eau à faible chute en nécessitent beaucoup plus.",
+    "nuclearWaste": "volume de déchets nucléaires",
+    "nuclearWasteFootnote": "Volume d'installation d'élimination conçue — et non de déchets bruts — si la même énergie provenait à 100 % du nucléaire (~4 mL/kWh). Mélange pondéré d'enfouissement de DHAVL selon Posiva KBS-3 (~1 500× le volume brut de combustible usé une fois comptés le conteneur en cuivre, le tampon bentonite et les tunnels de dépôt espacés thermiquement — Onkalo excave ~1 million de m³ de roche pour ~650 m³ de combustible usé), plus DMAVL (~5×) et DFAVL (~3×), en utilisant les parts volumétriques d'inventaire des déchets de l'AIEA. Les DHAVL doivent être isolés et surveillés en toute sécurité pendant ~100 000 ans avant que leur radioactivité ne décroisse au niveau du minerai d'uranium naturel.",
+    "journeyAnchor": "Votre empreinte carbone ≈ conduire {{name}} ({{km}} km).",
+    "journeys": {
+      "coffeeWalk": "aller-retour au café",
+      "bikeCrossTown": "une traversée de ville à vélo",
+      "crosstownCommute": "un trajet domicile-travail urbain",
+      "shortIntercity": "Londres → Brighton",
+      "berlinHamburg": "Berlin → Hambourg",
+      "berlinMunich": "Berlin → Munich",
+      "parisBerlin": "Paris → Berlin",
+      "coastToCoast": "Los Angeles → New York",
+      "halfEarth": "la moitié du tour de la Terre"
+    },
+    "disclaimer": "Estimations uniquement — incertitude ±55%. Anthropic ne publie pas de données énergétiques par requête. Non destiné à un usage réglementaire.",
+    "byModel": "Énergie par modèle",
+    "byDay": "Énergie et CO₂ quotidiens",
+    "byProject": "Énergie par projet",
+    "noData": "Aucune donnée énergétique disponible pour cette période.",
+    "calc": {
+      "title": "Méthode de calcul",
+      "clickToExpand": "cliquer pour développer",
+      "intro": "Chaque tuile de cet onglet est dérivée du nombre de tokens que l'API d'Anthropic renvoie pour chaque message. Voici exactement comment ces données au niveau du token deviennent les chiffres kWh, kg CO₂ et équivalents affichés ci-dessus, en utilisant les chiffres réels de votre période pour que vous puissiez auditer le calcul.",
+      "ratesHeader": "Taux d'énergie par modèle :",
+      "periodHeader": "Votre période ({{start}} → {{end}}) :",
+      "col": {
+        "class": "Classe",
+        "inputRate": "Entrée Wh/1K",
+        "outputRate": "Sortie Wh/1K",
+        "msgs": "Msgs",
+        "output": "Tokens sortie",
+        "input": "Tokens entrée",
+        "cacheWrite": "Écriture cache",
+        "cacheRead": "Lecture cache",
+        "rawEnergy": "Énergie brute",
+        "rawTotal": "Total brut"
+      },
+      "totals": "Total brut {{raw}} kWh × PUE {{pue}} = <strong>{{totalKwh}} kWh</strong> consommés. À l'intensité de réseau <strong>{{region}}</strong> de {{gridIntensity}} gCO₂/kWh, cela fait <strong>{{co2Kg}} kg CO₂</strong>.",
+      "equivHeader": "Comment les équivalents ont été dérivés de {{co2Kg}} kg CO₂ / {{totalKwh}} kWh :",
+      "eq": {
+        "gasoline": "Essence : {{co2Kg}} kg ÷ 2,31 kg CO₂/L = <strong>{{value}} L</strong>",
+        "train": "Train longue distance : {{co2Kg}} kg ÷ 0,006 kg CO₂/pkm = <strong>{{value}} km</strong>",
+        "transit": "Transport urbain : {{co2Kg}} kg ÷ 0,030 kg CO₂/pkm = <strong>{{value}} km</strong>",
+        "nuclearWaste": "Volume d'élimination nucléaire : {{totalKwh}} kWh × 4 mL/kWh (dépôt conçu DHAVL+DMAVL+DFAVL, pondéré) = <strong>{{value}}</strong>",
+        "wind": "Rotations d'éolienne : {{totalKwh}} kWh ÷ 1,17 kWh/rotation (éolienne 3 MW à 15 tr/min, 35 % FC) = <strong>{{value}} rotations</strong> ≈ {{minutes}} min de fonctionnement réel",
+        "hydro": "Volume d'eau turbine hydro : {{totalKwh}} kWh × 4 077 L/kWh (~100 m de hauteur, 90 % η via E = m·g·h·η) = <strong>{{value}}</strong>",
+        "solar": "Panneaux solaires : {{totalKwh}} kWh ÷ ({{regionYield}} kWh/m²/an en {{region}} × {{periodDays}}/365) = <strong>{{value}}</strong>"
+      }
+    },
+    "sources": {
+      "title": "Sources de données",
+      "items": {
+        "methodology": {
+          "label": "Taux d'énergie par modèle",
+          "value": "Dérivé du livre blanc d'inférence Gemini 2025 de Google (0,24 Wh/requête texte médiane) et des estimations au niveau du token d'Epoch AI 2024, mises à l'échelle par classe de modèle (Haiku/Sonnet/Opus). Détails des formules dans /doc/analysis/energy-dashboard/01-estimation-model.md."
+        },
+        "pue": {
+          "label": "Surcoût du centre de données",
+          "value": "PUE 1,2 — moyenne hyperscale Uptime Institute 2023 (Google, AWS, Azure publient 1,10–1,20)."
+        },
+        "gridIntensity": {
+          "label": "Intensité carbone du réseau",
+          "value": "US : EPA eGRID2022. UE : European Environment Agency (EEA) 2024. Asie-Pacifique et monde : IEA 2024. Agences nationales utilisées lorsque disponibles."
+        },
+        "solarYield": {
+          "label": "Rendement des panneaux solaires",
+          "value": "GHI annuel régional de PVGIS (Europe) / NREL NSRDB (Amériques) / World Bank GSA (mondial), multiplié par 20 % d'efficacité des panneaux × 0,75 ratio de performance. La tuile met ce rendement annuel à l'échelle de la période sélectionnée pour montrer la surface de panneaux nécessaire pour produire exactement l'énergie de cette période dans ce laps de temps."
+        },
+        "windTurbine": {
+          "label": "Référence éolienne",
+          "value": "Éolienne terrestre moderne de 3 MW à 15 tr/min et ~35 % de facteur de capacité (IRENA Renewable Power Generation Costs 2023, IEA Renewables 2024). Énergie par rotation = 3 MW × 4 s × 0,35 ≈ 1,17 kWh à la puissance moyenne (~3,33 kWh à la puissance nominale)."
+        },
+        "hydroTurbine": {
+          "label": "Référence turbine hydroélectrique",
+          "value": "Centrale hydroélectrique moderne représentative à ~100 m de hauteur nette avec une efficacité combinée turbine+générateur de ~90 %. Dérivé de la relation physique E = m·g·h·η avec g = 9,81 m/s², donnant 3 600 000 J ÷ (9,81 × 100 × 0,9) ≈ 4 077 L/kWh. Proche de la moyenne pondérée par capacité mondiale (Trois-Gorges ~95 m, Itaipu ~118 m) ; les centrales à haute chute comme Hoover Dam (180 m) nécessitent ~2 200 L/kWh."
+        },
+        "carKm": {
+          "label": "Émissions automobiles",
+          "value": "120 gCO₂/km — moyenne des véhicules neufs de la flotte UE, EEA 2024."
+        },
+        "transit": {
+          "label": "Émissions du transport urbain",
+          "value": "30 gCO₂/passager-km — mélange pondéré de bus urbain (~27), métro (~8) et tram/train léger depuis IEA Transport Emissions (2024) et EEA Transport & Environment Reporting Mechanism 2024."
+        },
+        "train": {
+          "label": "Émissions du train longue distance",
+          "value": "6 gCO₂/passager-km — moyenne européenne du rail intercités électrifié, UIC Railway Handbook on Energy and CO₂ Emissions et EEA 2024."
+        },
+        "tree": {
+          "label": "Absorption par un arbre",
+          "value": "21 kg de CO₂ absorbés par an par un arbre mature — US Forest Service / EPA."
+        },
+        "gasoline": {
+          "label": "Combustion d'essence",
+          "value": "2,31 kg de CO₂ par litre — facteur d'émissions à l'échappement US EPA."
+        },
+        "nuclearWaste": {
+          "label": "Volume d'élimination nucléaire",
+          "value": "~4 mL/kWh de volume de dépôt conçu — pas de déchets bruts. Pondéré sur l'enfouissement de DHAVL selon Posiva KBS-3 / Onkalo (~1 500× le volume brut de combustible usé après conteneur en cuivre, tampon bentonite et espacement thermique des tunnels), DMAVL (~5×) et DFAVL (~3×), en utilisant les parts volumiques de l'AIEA. Références : dossier de sûreté Posiva 2012, SKB TR-11-01, IAEA Radioactive Waste Inventory."
+        }
+      }
+    }
+  },
+  "settings": {
+    "configuration": "Configuration",
+    "settingsPath": "Les paramètres sont enregistrés dans <code style=\"background:#0f3460;padding:0.15rem 0.3rem;border-radius:3px;color:#ccc;\">~/.claude-stats/config.json</code>",
+    "planType": "Type de forfait",
+    "notSetAutoDetect": "Non défini (auto-détection)",
+    "planOptions": {
+      "pro": "Pro ($20/mois)",
+      "max_5x": "Max 5x ($100/mois)",
+      "max_20x": "Max 20x ($200/mois)",
+      "team_standard": "Team Standard ($25/mois)",
+      "team_premium": "Team Premium ($125/mois)",
+      "custom": "Personnalisé"
+    },
+    "planAutoDetectHint": "L'auto-détection dépend de données de télémétrie intermittentes et est souvent incapable de déterminer votre forfait. Il est recommandé de le définir manuellement.",
+    "monthlyFee": "Frais mensuels (USD)",
+    "monthlyFeePlaceholder": "Auto selon le type de forfait",
+    "monthlyFeeHint": "Remplace les frais par défaut pour votre type de forfait, ou définit un montant personnalisé.",
+    "costAlertThresholds": "Seuils d'alerte de coût (USD)",
+    "daily": "Quotidien",
+    "weekly": "Hebdomadaire",
+    "monthly": "Mensuel",
+    "save": "Enregistrer",
+    "savedReload": "Enregistré ! Rechargez pour voir le tableau de bord mis à jour.",
+    "networkError": "Erreur réseau.",
+    "errorSaving": "Erreur lors de l'enregistrement."
+  },
+  "pricing": {
+    "title": "Tarification des tokens (par 1M de tokens)",
+    "model": "Modèle",
+    "input": "Entrée",
+    "output": "Sortie",
+    "cacheRead": "Lecture cache",
+    "cacheWrite": "Écriture cache",
+    "source": "Source : tarification API Anthropic — dernière mise à jour {{date}} (actualisée automatiquement chaque semaine). Les coûts affichés sont des taux API équivalents, pas des frais d'abonnement."
+  },
+  "footer": {
+    "generated": "Généré le {{timestamp}} • Fuseau horaire : {{timezone}}"
+  }
+}
