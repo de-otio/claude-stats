@@ -279,6 +279,11 @@
     "sqliteRequired": "Claude Stats には node:sqlite サポート付きの Node.js 22.5+ が必要です。{{message}}",
     "generic": "Claude Stats: {{message}}"
   },
+  "upgrade": {
+    "message": "Claude Stats が {{previous}} から {{current}} に更新されました。開いているダッシュボードを新しい拡張機能に再接続するには、ウィンドウを再読み込みしてください。再読み込みしないと、更新ボタンや期間セレクターが静かに動作しなくなります。",
+    "reload": "ウィンドウを再読み込み",
+    "later": "後で"
+  },
   "mcp": {
     "registered": "Claude Stats MCP サーバーを ~/.claude.json に登録しました。エージェントが使用統計を直接クエリできるよう、Claude Code を再起動してください。",
     "updated": "Claude Stats MCP サーバーのパスを更新しました（拡張機能のバージョンが変更されました）。MCP サーバーを再び動作させるには Claude Code を再起動してください。",

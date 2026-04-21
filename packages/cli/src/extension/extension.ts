@@ -70,6 +70,9 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   }).then((instance: import("i18next").i18n) => {
     setT(instance.t.bind(instance));
+    // Check whether the extension was just upgraded and prompt the user to
+    // reload the window. Runs after i18n is ready so the prompt is localized.
+    promptReloadIfUpgraded(context);
   });
 
   // Load cached pricing (sync) and refresh in background if stale
@@ -124,4 +127,51 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {
   // Disposables registered via context.subscriptions handle cleanup
+}
+
+/** Key used in globalState to remember which version we last activated under. */
+const LAST_VERSION_KEY = "claude-stats.lastActivatedVersion";
+
+/**
+ * If the extension version changed since last activation, prompt the user to
+ * reload the window. VS Code keeps already-open webviews attached to the old
+ * extension host after an in-place update, which silently breaks message
+ * passing — clicking Refresh or changing the period does nothing until the
+ * window reloads. This surfaces that otherwise-invisible requirement.
+ *
+ * Exported (via the module) for direct testing. Skips on fresh install (no
+ * stored prior version) so we don't prompt on the very first activation.
+ */
+export function promptReloadIfUpgraded(context: vscode.ExtensionContext): void {
+  try {
+    const currentVersion =
+      (context.extension?.packageJSON as { version?: string } | undefined)?.version;
+    if (!currentVersion) return;
+
+    const previousVersion = context.globalState.get<string>(LAST_VERSION_KEY);
+
+    // Always record the current version, even if we skip the prompt, so a
+    // subsequent restart with the same version doesn't re-prompt.
+    void context.globalState.update(LAST_VERSION_KEY, currentVersion);
+
+    // No prompt on first install — only on real upgrades.
+    if (!previousVersion || previousVersion === currentVersion) return;
+
+    const reloadLabel = t("extension:upgrade.reload");
+    const laterLabel = t("extension:upgrade.later");
+    const message = t("extension:upgrade.message", {
+      previous: previousVersion,
+      current: currentVersion,
+    });
+
+    void vscode.window
+      .showInformationMessage(message, reloadLabel, laterLabel)
+      .then((choice) => {
+        if (choice === reloadLabel) {
+          void vscode.commands.executeCommand("workbench.action.reloadWindow");
+        }
+      });
+  } catch {
+    // Never let the upgrade prompt break activation.
+  }
 }

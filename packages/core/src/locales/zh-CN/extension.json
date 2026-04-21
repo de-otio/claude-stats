@@ -279,6 +279,11 @@
     "sqliteRequired": "Claude Stats 需要支持 node:sqlite 的 Node.js 22.5+。{{message}}",
     "generic": "Claude Stats: {{message}}"
   },
+  "upgrade": {
+    "message": "Claude Stats 已从 {{previous}} 更新到 {{current}}。请重新加载窗口，以便已打开的仪表板重新连接到新扩展 — 否则刷新按钮和时间段选择器将静默停止工作，直到您重新加载。",
+    "reload": "重新加载窗口",
+    "later": "稍后"
+  },
   "mcp": {
     "registered": "Claude Stats MCP 服务器已注册到 ~/.claude.json。请重启 Claude Code 以生效，这样您的代理即可直接查询使用统计。",
     "updated": "Claude Stats MCP 服务器路径已更新（扩展版本变更）。请重启 Claude Code 以使 MCP 服务器重新工作。",

@@ -2,6 +2,10 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.2.1 — 2026-04-21
+
+- Prompt to reload the window after extension upgrades, so already-open dashboards reconnect to the new extension host. Without reloading, the Refresh button and Period dropdown in an open dashboard silently stop working — VS Code keeps the old extension host attached to existing webviews after an in-place update. The prompt appears once on the activation after any version bump; "Later" dismisses it without reloading.
+
 ## 0.2.0 — 2026-04-21
 
 ### Added

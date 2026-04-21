@@ -263,6 +263,11 @@
     "sqliteRequired": "Claude Stats benötigt Node.js 22.5+ mit node:sqlite-Unterstützung. {{message}}",
     "generic": "Claude Stats: {{message}}"
   },
+  "upgrade": {
+    "message": "Claude Stats wurde von {{previous}} auf {{current}} aktualisiert. Laden Sie das Fenster neu, damit ein offenes Dashboard sich mit der neuen Erweiterung verbindet — andernfalls funktionieren der Aktualisierungsbutton und die Zeitraumauswahl stillschweigend nicht mehr, bis Sie neu laden.",
+    "reload": "Fenster neu laden",
+    "later": "Später"
+  },
   "mcp": {
     "registered": "Claude Stats MCP-Server wurde in ~/.claude.json registriert. Starten Sie Claude Code neu, damit Ihr Agent Nutzungsstatistiken direkt über MCP abfragen kann.",
     "updated": "Der Pfad des Claude Stats MCP-Servers wurde aktualisiert (Erweiterungsversion hat sich geändert). Starten Sie Claude Code neu, damit der MCP-Server wieder funktioniert.",

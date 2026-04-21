@@ -11,6 +11,7 @@ vi.mock("vscode", () => ({
       tooltip: "",
     }),
     createWebviewPanel: vi.fn(),
+    showInformationMessage: vi.fn(),
   },
   workspace: {
     getConfiguration: () => ({
@@ -19,6 +20,7 @@ vi.mock("vscode", () => ({
   },
   commands: {
     registerCommand: vi.fn(),
+    executeCommand: vi.fn(),
   },
   StatusBarAlignment: { Right: 2 },
   ViewColumn: { Two: 2 },
@@ -27,6 +29,8 @@ vi.mock("vscode", () => ({
 import { formatTokens } from "../extension/statusBar.js";
 import { patchForWebview, renderWelcome } from "../extension/panel.js";
 import { AutoCollector } from "../extension/collector.js";
+import { promptReloadIfUpgraded } from "../extension/extension.js";
+import * as vscode from "vscode";
 
 // ── formatTokens ──────────────────────────────────────────────────────────────
 
@@ -259,5 +263,126 @@ describe("AutoCollector", () => {
     await collector.collectNow();
     expect(bad).toHaveBeenCalledTimes(1);
     expect(good).toHaveBeenCalledTimes(1); // still called despite prior error
+  });
+});
+
+// ── promptReloadIfUpgraded ───────────────────────────────────────────────────
+
+describe("promptReloadIfUpgraded", () => {
+  function makeContext(
+    previousVersion: string | undefined,
+    currentVersion: string,
+  ): { ctx: vscode.ExtensionContext; updateSpy: ReturnType<typeof vi.fn> } {
+    const updateSpy = vi.fn().mockResolvedValue(undefined);
+    const ctx = {
+      extension: { packageJSON: { version: currentVersion } },
+      globalState: {
+        get: vi.fn().mockReturnValue(previousVersion),
+        update: updateSpy,
+      },
+    } as unknown as vscode.ExtensionContext;
+    return { ctx, updateSpy };
+  }
+
+  beforeEach(() => {
+    vi.mocked(vscode.window.showInformationMessage).mockReset();
+    vi.mocked(vscode.commands.executeCommand).mockReset();
+  });
+
+  it("does NOT prompt on fresh install (no stored previous version)", () => {
+    const { ctx, updateSpy } = makeContext(undefined, "0.2.1");
+    promptReloadIfUpgraded(ctx);
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+    // But still records the current version so the NEXT activation can detect drift.
+    expect(updateSpy).toHaveBeenCalledWith(
+      "claude-stats.lastActivatedVersion",
+      "0.2.1",
+    );
+  });
+
+  it("does NOT prompt when versions match", () => {
+    const { ctx } = makeContext("0.2.1", "0.2.1");
+    promptReloadIfUpgraded(ctx);
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+
+  it("prompts with Reload + Later when version changed", () => {
+    const { ctx } = makeContext("0.2.0", "0.2.1");
+    vi.mocked(vscode.window.showInformationMessage).mockResolvedValue(
+      undefined as unknown as vscode.MessageItem,
+    );
+
+    promptReloadIfUpgraded(ctx);
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(1);
+    const args = vi.mocked(vscode.window.showInformationMessage).mock.calls[0]! as unknown as [
+      string,
+      string,
+      string,
+    ];
+    const [message, reloadLabel, laterLabel] = args;
+    // Message contains both the old and new version so the user knows what
+    // changed without digging through the marketplace.
+    expect(message).toContain("0.2.0");
+    expect(message).toContain("0.2.1");
+    // The two action labels must be non-empty (localized) so clicking one is
+    // distinguishable from dismissing.
+    expect(typeof reloadLabel).toBe("string");
+    expect(reloadLabel.length).toBeGreaterThan(0);
+    expect(typeof laterLabel).toBe("string");
+    expect(laterLabel.length).toBeGreaterThan(0);
+    expect(reloadLabel).not.toBe(laterLabel);
+  });
+
+  it("executes workbench.action.reloadWindow when user clicks Reload", async () => {
+    const { ctx } = makeContext("0.1.4", "0.2.0");
+    // Capture the "reload" label we pass so we can echo it back as the choice.
+    let capturedReloadLabel = "";
+    vi.mocked(vscode.window.showInformationMessage).mockImplementation(
+      (async (_msg: string, ...items: string[]) => {
+        capturedReloadLabel = items[0]!;
+        return capturedReloadLabel; // simulate user clicking Reload
+      }) as unknown as typeof vscode.window.showInformationMessage,
+    );
+
+    promptReloadIfUpgraded(ctx);
+    // Let the promise resolve.
+    await new Promise((r) => setImmediate(r));
+
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+      "workbench.action.reloadWindow",
+    );
+  });
+
+  it("does NOT execute reload when user dismisses or clicks Later", async () => {
+    const { ctx } = makeContext("0.1.4", "0.2.0");
+    vi.mocked(vscode.window.showInformationMessage).mockImplementation(
+      (async (_msg: string, _reload: string, later: string) => {
+        return later; // clicking "Later"
+      }) as unknown as typeof vscode.window.showInformationMessage,
+    );
+
+    promptReloadIfUpgraded(ctx);
+    await new Promise((r) => setImmediate(r));
+
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+  });
+
+  it("updates stored version on every run (upgrade or not)", () => {
+    const { ctx, updateSpy } = makeContext("0.2.0", "0.2.1");
+    promptReloadIfUpgraded(ctx);
+    expect(updateSpy).toHaveBeenCalledWith(
+      "claude-stats.lastActivatedVersion",
+      "0.2.1",
+    );
+  });
+
+  it("does not throw if extension.packageJSON is missing", () => {
+    const ctx = {
+      extension: undefined,
+      globalState: { get: vi.fn(), update: vi.fn() },
+    } as unknown as vscode.ExtensionContext;
+    expect(() => promptReloadIfUpgraded(ctx)).not.toThrow();
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
   });
 });
