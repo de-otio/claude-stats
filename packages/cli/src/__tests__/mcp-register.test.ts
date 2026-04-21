@@ -16,6 +16,7 @@ const { tmpDir } = vi.hoisted(() => {
 vi.mock("vscode", () => ({
   window: {
     showInformationMessage: vi.fn(),
+    showWarningMessage: vi.fn(),
   },
 }));
 
@@ -48,6 +49,7 @@ describe("ensureMcpServer", () => {
     } catch { /* ignore */ }
 
     vi.mocked(vscode.window.showInformationMessage).mockReset();
+    vi.mocked(vscode.window.showWarningMessage).mockReset();
   });
 
   it("creates ~/.claude.json and registers MCP server when none exists", () => {
@@ -142,5 +144,29 @@ describe("ensureMcpServer", () => {
     const json = readClaudeJson();
     const servers = json.mcpServers as Record<string, unknown>;
     expect(servers["claude-stats"]).toBeDefined();
+  });
+
+  it("shows a warning toast when writing ~/.claude.json fails", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // Make the target path a directory so writeFileSync fails with EISDIR.
+    rmSync(CLAUDE_JSON_PATH, { force: true });
+    mkdirSync(CLAUDE_JSON_PATH);
+
+    try {
+      expect(() => ensureMcpServer(mockContext)).not.toThrow();
+
+      // Warning surface was used (not a silent failure).
+      expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+      const msg = vi.mocked(vscode.window.showWarningMessage).mock.calls[0]![0] as string;
+      // Message tells the user the MCP server couldn't be registered and
+      // mentions the target file so they can investigate.
+      expect(msg).toMatch(/MCP server/);
+      expect(msg).toContain(CLAUDE_JSON_PATH);
+      // Clean-path: no raw info toast when the write failed.
+      expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+    } finally {
+      rmSync(CLAUDE_JSON_PATH, { force: true, recursive: true });
+    }
   });
 });

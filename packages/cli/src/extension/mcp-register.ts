@@ -31,6 +31,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { execSync } from "node:child_process";
 import * as vscode from "vscode";
+import { t } from "./i18n.js";
 
 const CLAUDE_JSON_PATH = path.join(os.homedir(), ".claude.json");
 const MCP_KEY = "claude-stats";
@@ -45,6 +46,16 @@ interface McpEntry {
 interface ClaudeJson {
   mcpServers?: Record<string, McpEntry>;
   [key: string]: unknown;
+}
+
+/** Discriminator codes for registration failures. */
+type McpFailureCode = "noNode" | "writeFailed" | "generic";
+
+class McpRegistrationError extends Error {
+  constructor(public readonly code: McpFailureCode, message: string) {
+    super(message);
+    this.name = "McpRegistrationError";
+  }
 }
 
 /**
@@ -81,9 +92,9 @@ function findNodeBinary(): string {
     // ignore
   }
 
-  throw new Error(
-    "claude-stats: could not find a system Node.js binary. " +
-      "Install Node.js 22.5+ and ensure it is on your PATH.",
+  throw new McpRegistrationError(
+    "noNode",
+    "Could not find a system Node.js binary on PATH.",
   );
 }
 
@@ -131,15 +142,56 @@ export function ensureMcpServer(_context: vscode.ExtensionContext): void {
     if (!json.mcpServers) json.mcpServers = {};
     json.mcpServers[MCP_KEY] = entry;
 
-    fs.writeFileSync(CLAUDE_JSON_PATH, JSON.stringify(json, null, 2) + "\n");
+    try {
+      fs.writeFileSync(CLAUDE_JSON_PATH, JSON.stringify(json, null, 2) + "\n");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new McpRegistrationError("writeFailed", msg);
+    }
 
     const message = existing
-      ? "Claude Stats MCP server path updated (extension version changed). Restart Claude Code for the MCP server to work again."
-      : "Claude Stats MCP server registered in ~/.claude.json. Restart Claude Code for it to take effect.";
+      ? t("extension:mcp.updated")
+      : t("extension:mcp.registered");
     void vscode.window.showInformationMessage(message);
   } catch (err) {
-    // Non-fatal — don't block extension activation
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`claude-stats: failed to register MCP server: ${msg}`);
+    // Non-fatal — don't block extension activation, but surface the failure
+    // so the user knows the MCP server (and therefore `get_stats`-style
+    // queries from their agent) won't work until they resolve it.
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    console.warn(`claude-stats: failed to register MCP server: ${rawMsg}`);
+    notifyMcpFailure(err);
   }
+}
+
+/**
+ * Show a warning toast describing what went wrong registering the MCP server
+ * and, when possible, what the user needs to do to fix it.
+ *
+ * The toast is non-blocking — the rest of the extension (dashboard, status bar,
+ * auto-collection) continues to work. Only the MCP integration is broken.
+ */
+function notifyMcpFailure(err: unknown): void {
+  const code: McpFailureCode =
+    err instanceof McpRegistrationError ? err.code : "generic";
+  const detail = err instanceof Error ? err.message : String(err);
+
+  let message: string;
+  switch (code) {
+    case "noNode":
+      message = t("extension:mcp.failure.noNode", { path: CLAUDE_JSON_PATH });
+      break;
+    case "writeFailed":
+      message = t("extension:mcp.failure.writeFailed", {
+        path: CLAUDE_JSON_PATH,
+        message: detail,
+      });
+      break;
+    default:
+      message = t("extension:mcp.failure.generic", {
+        path: CLAUDE_JSON_PATH,
+        message: detail,
+      });
+  }
+
+  void vscode.window.showWarningMessage(message);
 }

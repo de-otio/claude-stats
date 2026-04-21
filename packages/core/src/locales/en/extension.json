@@ -2,7 +2,8 @@
   "statusBar": {
     "idle": "$(graph) Claude Stats",
     "withStats": "$(graph) {{tokens}} tokens \u00b7 ~${{cost}}",
-    "tooltip": "Open Claude Stats Dashboard"
+    "tooltip": "Open Claude Stats Dashboard",
+    "tooltipEmpty": "Claude Stats: no Claude Code sessions detected yet — click to see setup instructions"
   },
   "sidebar": {
     "openDashboard": "Open Dashboard",
@@ -277,5 +278,61 @@
   "errors": {
     "sqliteRequired": "Claude Stats requires Node.js 22.5+ with node:sqlite support. {{message}}",
     "generic": "Claude Stats: {{message}}"
+  },
+  "mcp": {
+    "registered": "Claude Stats MCP server registered in ~/.claude.json. Restart Claude Code for it to take effect so your agent can query usage stats directly.",
+    "updated": "Claude Stats MCP server path updated (extension version changed). Restart Claude Code for the MCP server to work again.",
+    "failure": {
+      "noNode": "Claude Stats could not register its MCP server: no Node.js binary was found on your PATH. Install Node.js 22.5 or newer (for example, via nvm, Homebrew, or nodejs.org) and ensure `node` is reachable from your shell, then reload this window (Command Palette → \"Developer: Reload Window\"). Until this is fixed, the dashboard still works, but your Claude agent will not be able to query stats via MCP. Target config file: {{path}}",
+      "writeFailed": "Claude Stats could not write to {{path}} to register its MCP server ({{message}}). Check that the file is writable (it belongs to your Claude Code config) and not currently open/locked by another process, then reload this window. Until this is fixed, the dashboard still works, but your Claude agent will not be able to query stats via MCP.",
+      "generic": "Claude Stats could not register its MCP server in {{path}}: {{message}}. The dashboard still works, but your Claude agent will not be able to query stats via MCP until this is resolved. Reload this window (Command Palette → \"Developer: Reload Window\") to try again."
+    }
+  },
+  "welcome": {
+    "noClaudeCode": {
+      "title": "Welcome to Claude Stats",
+      "intro": "Claude Stats reads Claude Code's local session files to show you how many tokens you used, what it costs, and where the time is going. Right now it can't find any Claude Code data on this machine, so the dashboard is empty.",
+      "steps": [
+        {
+          "heading": "Install Claude Code",
+          "body": "Install Anthropic's Claude Code CLI from the official Anthropic documentation, then sign in once so it can write session files to your home directory."
+        },
+        {
+          "heading": "Start a conversation",
+          "body": "Open a terminal in any project and run `claude`. Send at least one message. Claude Code writes a JSONL session log as soon as the first response arrives."
+        },
+        {
+          "heading": "Come back here",
+          "body": "The extension watches for new session files in the background. Once the first one exists, it is picked up within a few seconds — you don't need to restart VS Code."
+        }
+      ],
+      "whatNext": "Until a session exists, the status bar shows the idle icon and the dashboard stays on this welcome screen. Click \"Refresh now\" once you've sent a message to Claude Code."
+    },
+    "noSessions": {
+      "title": "No Claude Code sessions yet",
+      "intro": "Claude Code is installed on this machine, but no sessions have been recorded yet (or the collector hasn't finished its first pass). The dashboard will populate as soon as a session exists.",
+      "steps": [
+        {
+          "heading": "Start or continue a conversation",
+          "body": "Open a terminal and run `claude` in any project folder. Send a message. Claude Code writes a JSONL log file per session into the projects directory shown below."
+        },
+        {
+          "heading": "Let the collector catch up",
+          "body": "The extension watches ~/.claude/projects/ for changes and runs an incremental collection every few seconds (debounced). First-time collection over many historical sessions can take 10-30 seconds."
+        },
+        {
+          "heading": "Refresh the dashboard",
+          "body": "Use the button below (or click the Claude Stats item in the status bar) to re-check. Once sessions are collected, this screen is replaced by the full dashboard automatically."
+        }
+      ],
+      "whatNext": "If you've already been using Claude Code and still see this screen after a minute, something is preventing the collector from reading the session files. Check that the paths below exist and are readable, then reload the window (Command Palette → \"Developer: Reload Window\")."
+    },
+    "stepsHeading": "What to do",
+    "whatNextHeading": "What happens next",
+    "refresh": "Refresh now",
+    "refreshHint": "Re-reads ~/.claude/projects/ and re-renders the dashboard.",
+    "projectsDirLabel": "Session source:",
+    "dbPathLabel": "Local database:",
+    "privacyNote": "Claude Stats never leaves your machine. No tokens or credentials are transmitted — everything is read locally from Claude Code's JSONL logs and aggregated into a SQLite database in your home directory."
   }
 }

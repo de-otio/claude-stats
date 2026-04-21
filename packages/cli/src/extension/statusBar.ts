@@ -29,14 +29,24 @@ export class StatusBarManager implements vscode.Disposable {
       const store = new Store();
       try {
         const data = buildDashboard(store, { period: "day" });
+        // No data collected yet: keep the status bar in its "idle" state.
+        // Clicking it still opens the dashboard, which now shows a welcome
+        // screen explaining how to set up Claude Code.
+        if (data.summary.sessions === 0) {
+          this.item.text = t("extension:statusBar.idle");
+          this.item.tooltip = t("extension:statusBar.tooltipEmpty");
+          return;
+        }
         const tokens = data.summary.inputTokens + data.summary.outputTokens;
         const cost = data.summary.estimatedCost;
         this.item.text = t("extension:statusBar.withStats", { tokens: formatTokens(tokens), cost: cost.toFixed(2) });
+        this.item.tooltip = t("extension:statusBar.tooltip");
       } finally {
         store.close();
       }
     } catch {
       this.item.text = t("extension:statusBar.idle");
+      this.item.tooltip = t("extension:statusBar.tooltipEmpty");
     }
   }
 

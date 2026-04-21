@@ -25,7 +25,7 @@ vi.mock("vscode", () => ({
 }));
 
 import { formatTokens } from "../extension/statusBar.js";
-import { patchForWebview } from "../extension/panel.js";
+import { patchForWebview, renderWelcome } from "../extension/panel.js";
 import { AutoCollector } from "../extension/collector.js";
 
 // ── formatTokens ──────────────────────────────────────────────────────────────
@@ -159,6 +159,58 @@ describe("patchForWebview", () => {
     const result = patchForWebview(sampleHtml, CSP_SOURCE, LOCAL_CHART_URI);
     expect(result).not.toContain("cdn.jsdelivr.net");
     expect(result).toContain(`src="${LOCAL_CHART_URI}"`);
+  });
+});
+
+// ── renderWelcome ─────────────────────────────────────────────────────────────
+
+describe("renderWelcome", () => {
+  const CSP_SOURCE = "https://file+.vscode-resource.vscode-cdn.net";
+
+  it("produces a self-contained HTML page with nonce-based CSP", () => {
+    const html = renderWelcome(CSP_SOURCE);
+    expect(html.startsWith("<!DOCTYPE html>")).toBe(true);
+    expect(html).toContain('http-equiv="Content-Security-Policy"');
+    expect(html).toMatch(/script-src 'nonce-[A-Za-z0-9]+'/);
+    // No unsafe-inline for scripts.
+    expect(html).not.toMatch(/script-src[^;]*'unsafe-inline'/);
+  });
+
+  it("uses a single nonce consistently across CSP and script tags", () => {
+    const html = renderWelcome(CSP_SOURCE);
+    const cspNonce = html.match(/script-src 'nonce-([A-Za-z0-9]+)'/);
+    expect(cspNonce).not.toBeNull();
+    const nonce = cspNonce![1];
+    const tagNonces = [...html.matchAll(/nonce="([A-Za-z0-9]+)"/g)].map(m => m[1]);
+    expect(tagNonces.length).toBeGreaterThan(0);
+    for (const n of tagNonces) expect(n).toBe(nonce);
+  });
+
+  it("includes a refresh button wired to postMessage", () => {
+    const html = renderWelcome(CSP_SOURCE);
+    expect(html).toContain('id="refresh-btn"');
+    expect(html).toContain("acquireVsCodeApi");
+    expect(html).toContain("postMessage");
+    expect(html).toContain("command: 'refresh'");
+  });
+
+  it("explains what to do next with numbered steps", () => {
+    const html = renderWelcome(CSP_SOURCE);
+    // Steps are numbered ordered-list items rendered by the welcome template.
+    expect(html).toContain('class="step"');
+    // Should mention how to start using Claude Code.
+    expect(html.toLowerCase()).toContain("claude code");
+  });
+
+  it("surfaces the local paths so the user can self-serve", () => {
+    const html = renderWelcome(CSP_SOURCE);
+    expect(html).toContain(".claude");
+    expect(html).toContain(".claude-stats");
+  });
+
+  it("includes a privacy note so the user understands nothing is uploaded", () => {
+    const html = renderWelcome(CSP_SOURCE);
+    expect(html.toLowerCase()).toMatch(/local|leaves your machine|never leaves/);
   });
 });
 

@@ -2,7 +2,8 @@
   "statusBar": {
     "idle": "$(graph) Claude Stats",
     "withStats": "$(graph) {{tokens}} Token · ~${{cost}}",
-    "tooltip": "Claude Stats Dashboard öffnen"
+    "tooltip": "Claude Stats Dashboard öffnen",
+    "tooltipEmpty": "Claude Stats: Noch keine Claude-Code-Sitzungen erkannt – klicken für Einrichtungsanweisungen"
   },
   "sidebar": {
     "openDashboard": "Dashboard öffnen",
@@ -261,5 +262,61 @@
   "errors": {
     "sqliteRequired": "Claude Stats benötigt Node.js 22.5+ mit node:sqlite-Unterstützung. {{message}}",
     "generic": "Claude Stats: {{message}}"
+  },
+  "mcp": {
+    "registered": "Claude Stats MCP-Server wurde in ~/.claude.json registriert. Starten Sie Claude Code neu, damit Ihr Agent Nutzungsstatistiken direkt über MCP abfragen kann.",
+    "updated": "Der Pfad des Claude Stats MCP-Servers wurde aktualisiert (Erweiterungsversion hat sich geändert). Starten Sie Claude Code neu, damit der MCP-Server wieder funktioniert.",
+    "failure": {
+      "noNode": "Claude Stats konnte den MCP-Server nicht registrieren: Keine Node.js-Binärdatei im PATH gefunden. Installieren Sie Node.js 22.5 oder neuer (z. B. über nvm, Homebrew oder nodejs.org) und stellen Sie sicher, dass `node` von Ihrer Shell aus erreichbar ist. Laden Sie anschließend das Fenster neu (Befehlspalette → „Developer: Reload Window“). Das Dashboard funktioniert weiterhin, aber Ihr Claude-Agent kann bis zur Behebung keine Statistiken über MCP abfragen. Zieldatei: {{path}}",
+      "writeFailed": "Claude Stats konnte {{path}} nicht schreiben, um den MCP-Server zu registrieren ({{message}}). Prüfen Sie, ob die Datei beschreibbar ist (sie gehört zu Ihrer Claude-Code-Konfiguration) und derzeit nicht von einem anderen Prozess geöffnet oder gesperrt wird. Laden Sie danach das Fenster neu. Das Dashboard funktioniert weiterhin, aber Ihr Claude-Agent kann bis zur Behebung keine Statistiken über MCP abfragen.",
+      "generic": "Claude Stats konnte den MCP-Server nicht in {{path}} registrieren: {{message}}. Das Dashboard funktioniert weiterhin, aber Ihr Claude-Agent kann bis zur Behebung keine Statistiken über MCP abfragen. Laden Sie das Fenster neu (Befehlspalette → „Developer: Reload Window“), um es erneut zu versuchen."
+    }
+  },
+  "welcome": {
+    "noClaudeCode": {
+      "title": "Willkommen bei Claude Stats",
+      "intro": "Claude Stats liest die lokalen Sitzungsdateien von Claude Code, um anzuzeigen, wie viele Tokens Sie verwendet haben, was das kostet und wohin die Zeit fließt. Derzeit sind auf diesem Rechner keine Claude-Code-Daten zu finden, daher ist das Dashboard leer.",
+      "steps": [
+        {
+          "heading": "Claude Code installieren",
+          "body": "Installieren Sie Anthropics Claude-Code-CLI gemäß der offiziellen Anthropic-Dokumentation und melden Sie sich einmal an, damit Sitzungsdateien in Ihrem Home-Verzeichnis angelegt werden können."
+        },
+        {
+          "heading": "Ein Gespräch starten",
+          "body": "Öffnen Sie ein Terminal in einem beliebigen Projekt und führen Sie `claude` aus. Senden Sie mindestens eine Nachricht. Claude Code schreibt ein JSONL-Sitzungsprotokoll, sobald die erste Antwort eintrifft."
+        },
+        {
+          "heading": "Zurückkommen",
+          "body": "Die Erweiterung überwacht im Hintergrund neue Sitzungsdateien. Sobald die erste existiert, wird sie innerhalb weniger Sekunden erkannt — ein Neustart von VS Code ist nicht nötig."
+        }
+      ],
+      "whatNext": "Solange keine Sitzung existiert, zeigt die Statusleiste das Leerlauf-Symbol und das Dashboard bleibt auf diesem Willkommensbildschirm. Klicken Sie auf „Jetzt aktualisieren“, sobald Sie eine Nachricht an Claude Code gesendet haben."
+    },
+    "noSessions": {
+      "title": "Noch keine Claude-Code-Sitzungen",
+      "intro": "Claude Code ist auf diesem Rechner installiert, aber es wurden noch keine Sitzungen aufgezeichnet (oder der Sammler hat seinen ersten Durchlauf noch nicht abgeschlossen). Das Dashboard füllt sich, sobald eine Sitzung vorliegt.",
+      "steps": [
+        {
+          "heading": "Eine Unterhaltung beginnen oder fortsetzen",
+          "body": "Öffnen Sie ein Terminal und führen Sie `claude` in einem Projektordner aus. Senden Sie eine Nachricht. Claude Code schreibt pro Sitzung eine JSONL-Protokolldatei in das unten angegebene Projektverzeichnis."
+        },
+        {
+          "heading": "Den Sammler aufholen lassen",
+          "body": "Die Erweiterung überwacht ~/.claude/projects/ auf Änderungen und führt alle paar Sekunden (entprellt) eine inkrementelle Erfassung aus. Die erste Erfassung bei vielen historischen Sitzungen kann 10–30 Sekunden dauern."
+        },
+        {
+          "heading": "Dashboard aktualisieren",
+          "body": "Verwenden Sie den Button unten (oder klicken Sie auf den Claude-Stats-Eintrag in der Statusleiste), um erneut zu prüfen. Sobald Sitzungen erfasst sind, wird dieser Bildschirm automatisch durch das vollständige Dashboard ersetzt."
+        }
+      ],
+      "whatNext": "Wenn Sie Claude Code bereits verwenden und diesen Bildschirm nach einer Minute immer noch sehen, verhindert etwas, dass der Sammler die Sitzungsdateien liest. Prüfen Sie, ob die unten angegebenen Pfade existieren und lesbar sind, und laden Sie dann das Fenster neu (Befehlspalette → „Developer: Reload Window“)."
+    },
+    "stepsHeading": "Nächste Schritte",
+    "whatNextHeading": "Was als Nächstes passiert",
+    "refresh": "Jetzt aktualisieren",
+    "refreshHint": "Liest ~/.claude/projects/ neu und rendert das Dashboard erneut.",
+    "projectsDirLabel": "Quellordner:",
+    "dbPathLabel": "Lokale Datenbank:",
+    "privacyNote": "Claude Stats verlässt Ihren Rechner nie. Es werden keine Tokens oder Zugangsdaten übertragen — alles wird lokal aus den JSONL-Protokollen von Claude Code gelesen und in einer SQLite-Datenbank in Ihrem Home-Verzeichnis aggregiert."
   }
 }
