@@ -22,7 +22,14 @@ const defaultT: TranslateFn = (key: string) => key;
 export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT): string {
   const generatedDate = data.generated.slice(0, 10);
   const title = t("dashboard:pageTitle", { period: data.period, date: generatedDate });
-  const jsonData = JSON.stringify(data);
+  // Escape `<` in the JSON payload so attacker-controlled string values
+  // containing `</script>` cannot break out of the surrounding <script> block.
+  // Also neutralize `-->` in case the JSON ever ends up inside an HTML comment.
+  // Both replacements preserve JSON validity (escaped as < / > inside
+  // string literals) and are reversed transparently by JSON.parse at runtime.
+  const jsonData = JSON.stringify(data)
+    .replace(/</g, "\\u003c")
+    .replace(/-->/g, "--\\u003e");
 
   const formattedCost = `$${data.summary.estimatedCost.toFixed(2)}`;
   const cacheEff = `${data.summary.cacheEfficiency.toFixed(1)}%`;
@@ -390,8 +397,8 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
             return `
       <div class="summary-card" style="border-color:#4e79a7;">
         <div class="label">${t("dashboard:plan.account")}</div>
-        <div class="value" style="font-size:0.8rem;color:#4e79a7;">${displayName}</div>
-        <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${planName ? planName + (a.detectedPlanFee ? ` ($${a.detectedPlanFee}/mo)` : '') : t("dashboard:plan.planNotDetected")}</div>
+        <div class="value" style="font-size:0.8rem;color:#4e79a7;">${escapeHtml(displayName)}</div>
+        <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${planName ? escapeHtml(planName) + (a.detectedPlanFee ? ` ($${a.detectedPlanFee}/mo)` : '') : t("dashboard:plan.planNotDetected")}</div>
       </div>`;
           }).join('');
         }
@@ -456,9 +463,9 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         const acctDisplayName = acct.emailAddress || acct.accountId;
         return `
       <div class="summary-card" style="border-color:${acctVerdictColor};">
-        <div class="label">${acctDisplayName}</div>
+        <div class="label">${escapeHtml(acctDisplayName)}</div>
         <div class="value" style="font-size:0.85rem;">$${acct.estimatedCost.toFixed(2)}</div>
-        <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${acct.subscriptionType ?? t("dashboard:plan.unknownPlan")} &bull; ${acct.sessions} sessions${acct.detectedPlanFee ? ` &bull; $${acct.detectedPlanFee}/mo` : ''}</div>
+        <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${acct.subscriptionType ? escapeHtml(acct.subscriptionType) : t("dashboard:plan.unknownPlan")} &bull; ${acct.sessions} sessions${acct.detectedPlanFee ? ` &bull; $${acct.detectedPlanFee}/mo` : ''}</div>
         <div style="font-size:0.55rem;color:${acctVerdictColor};margin-top:0.1rem;">${acct.planVerdict === 'good-value' ? t("dashboard:plan.goodValue") : acct.planVerdict === 'underusing' ? t("dashboard:plan.underusing") : t("dashboard:plan.noPlan")}</div>
       </div>`;
       }).join('')}
@@ -562,7 +569,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           <tbody>
             ${data.contextAnalysis.longSessions.map(s => `
             <tr style="border-bottom:1px solid #0f346033;">
-              <td style="padding:0.4rem; color:#ccc; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${s.projectPath}">${s.projectPath.split('/').slice(-2).join('/')}</td>
+              <td style="padding:0.4rem; color:#ccc; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(s.projectPath)}">${escapeHtml(s.projectPath.split('/').slice(-2).join('/'))}</td>
               <td style="text-align:right; padding:0.4rem; color:#a0c4ff;">${s.promptCount}</td>
               <td style="text-align:right; padding:0.4rem; color:#ccc;">${s.durationMinutes}m</td>
               <td style="text-align:right; padding:0.4rem; color:#ccc;">${(s.peakInputTokens / 1000).toFixed(0)}K</td>
@@ -661,10 +668,10 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           <tbody>
             ${data.spending.topSessionsByCost.map(s => `
             <tr style="border-bottom:1px solid #222;">
-              <td style="padding:0.4rem;" title="${s.projectPath}">${s.projectPath}</td>
+              <td style="padding:0.4rem;" title="${escapeHtml(s.projectPath)}">${escapeHtml(s.projectPath)}</td>
               <td style="text-align:right;padding:0.4rem;color:#59a14f;">$${s.estimatedCost.toFixed(2)}</td>
               <td style="text-align:right;padding:0.4rem;">${s.promptCount}</td>
-              <td style="padding:0.4rem;font-size:0.6rem;color:#888;">${s.dominantModel.replace("claude-", "")}</td>
+              <td style="padding:0.4rem;font-size:0.6rem;color:#888;">${escapeHtml(s.dominantModel.replace("claude-", ""))}</td>
             </tr>`).join("")}
           </tbody>
         </table>
@@ -686,11 +693,11 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           <tbody>
             ${data.spending.expensivePrompts.map(p => `
             <tr style="border-bottom:1px solid #222;">
-              <td style="padding:0.4rem;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.promptPreview || "(no text)"}</td>
+              <td style="padding:0.4rem;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.promptPreview ? escapeHtml(p.promptPreview) : "(no text)"}</td>
               <td style="text-align:right;padding:0.4rem;">${(p.totalTokens / 1000).toFixed(0)}K</td>
               <td style="text-align:right;padding:0.4rem;color:#59a14f;">$${p.estimatedCost.toFixed(2)}</td>
               <td style="text-align:right;padding:0.4rem;color:#e15759;">${p.timesAvg}x</td>
-              <td style="padding:0.4rem;">${p.flags.map(f => `<span style="background:#333;padding:0.1rem 0.3rem;border-radius:3px;font-size:0.6rem;margin-right:0.2rem;">${f}</span>`).join("")}</td>
+              <td style="padding:0.4rem;">${p.flags.map(f => `<span style="background:#333;padding:0.1rem 0.3rem;border-radius:3px;font-size:0.6rem;margin-right:0.2rem;">${escapeHtml(f)}</span>`).join("")}</td>
             </tr>`).join("")}
           </tbody>
         </table>
@@ -715,13 +722,13 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           <tbody>
             ${data.spending.mcpServerUsage.map(s => `
             <tr style="border-bottom:1px solid #222;">
-              <td style="padding:0.4rem;font-weight:600;">${s.server}</td>
+              <td style="padding:0.4rem;font-weight:600;">${escapeHtml(s.server)}</td>
               <td style="text-align:right;padding:0.4rem;color:#59a14f;">$${s.estimatedCost.toFixed(2)}</td>
               <td style="text-align:right;padding:0.4rem;">${s.inputTokens >= 1000000 ? (s.inputTokens/1000000).toFixed(1)+'M' : s.inputTokens >= 1000 ? Math.round(s.inputTokens/1000)+'K' : s.inputTokens}</td>
               <td style="text-align:right;padding:0.4rem;">${s.outputTokens >= 1000000 ? (s.outputTokens/1000000).toFixed(1)+'M' : s.outputTokens >= 1000 ? Math.round(s.outputTokens/1000)+'K' : s.outputTokens}</td>
               <td style="text-align:right;padding:0.4rem;">${s.callCount}</td>
               <td style="text-align:right;padding:0.4rem;">${s.messageCount}</td>
-              <td style="padding:0.4rem;font-size:0.6rem;color:#aaa;">${s.tools.slice(0, 3).map(t => t.method + '(' + t.calls + ')').join(', ')}</td>
+              <td style="padding:0.4rem;font-size:0.6rem;color:#aaa;">${escapeHtml(s.tools.slice(0, 3).map(t => t.method + '(' + t.calls + ')').join(', '))}</td>
             </tr>`).join("")}
           </tbody>
         </table>
@@ -745,7 +752,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       </div>
       <div class="summary-card">
         <div class="label">${t("dashboard:energy.region")}</div>
-        <div class="value" style="font-size:0.75rem;">${data.energy.region}</div>
+        <div class="value" style="font-size:0.75rem;">${escapeHtml(data.energy.region)}</div>
         <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${data.energy.gridIntensity} ${t("dashboard:energy.gCO2perKWh")}</div>
       </div>
       <div class="summary-card">
@@ -851,7 +858,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <tbody>
           ${data.energy.byProject.slice(0, 10).map((p, i) => `
           <tr style="${i % 2 === 0 ? "background:#0f1429;" : ""}">
-            <td style="padding:0.4rem;color:#ccc;overflow:hidden;text-overflow:ellipsis;max-width:240px;white-space:nowrap;">${p.project}</td>
+            <td style="padding:0.4rem;color:#ccc;overflow:hidden;text-overflow:ellipsis;max-width:240px;white-space:nowrap;">${escapeHtml(p.project)}</td>
             <td style="padding:0.4rem;text-align:right;color:#fff;">${formatEnergy(p.energyWh)}</td>
             <td style="padding:0.4rem;text-align:right;color:#aaa;">${formatCO2(p.co2Grams)}</td>
           </tr>`).join("")}

@@ -683,4 +683,169 @@ describe("renderDashboard", () => {
     // Browser fallback path
     expect(html).toContain("fetch('/api/config'");
   });
+
+  // ─── XSS hardening (B6/SF15) ────────────────────────────────────────────────
+  describe("XSS hardening", () => {
+    /** Extract the substring of rendered HTML that's outside the inline JSON
+     *  payload between `window.__DASHBOARD__ = {…};</script>`. We want to
+     *  assert no raw attacker string appears in the HTML body; inside the JSON
+     *  it's fine because `<` is already \\u003c-escaped. */
+    const htmlOutsideJson = (html: string): string => {
+      const match = html.match(/window\.__DASHBOARD__\s*=\s*(\{[\s\S]*?\});\s*<\/script>/);
+      if (!match) return html;
+      return html.replace(match[1]!, "");
+    };
+
+    it("escapes projectPath so </script> breakout is neutralized in the DOM", () => {
+      const malicious: DashboardData = {
+        ...mockData,
+        spending: {
+          cacheEfficiency: { overallHitRate: 0, estimatedSavings: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalInputTokens: 0 },
+          subagentOverhead: { agentCount: 0, totalCost: 0, estimatedCost: 0 },
+          topSessionsByCost: [
+            {
+              sessionId: "abc",
+              projectPath: "</script><img src=x onerror=alert(1)>",
+              durationMs: 60000,
+              estimatedCost: 0.25,
+              percentOfPlanFee: 0,
+              dominantModel: "claude-opus-4",
+              promptCount: 5,
+              isSubagent: false,
+              childCount: 0,
+            },
+          ],
+          expensivePrompts: [],
+          mcpServerUsage: [],
+        } as unknown as DashboardData["spending"],
+      };
+      const html = renderDashboard(malicious, t);
+      const body = htmlOutsideJson(html);
+      // Raw attacker markup must NOT appear outside the JSON payload.
+      expect(body).not.toContain("</script><img src=x onerror=alert(1)>");
+      expect(body).not.toContain("<img src=x onerror=alert(1)>");
+      // The escaped form must be present — in the project cell AND the title attr.
+      expect(body).toContain("&lt;/script&gt;&lt;img src=x onerror=alert(1)&gt;");
+    });
+
+    it("escapes promptPreview so injected <script> does not appear as a real tag", () => {
+      const malicious: DashboardData = {
+        ...mockData,
+        spending: {
+          cacheEfficiency: { overallHitRate: 0, estimatedSavings: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalInputTokens: 0 },
+          subagentOverhead: { agentCount: 0, totalCost: 0, estimatedCost: 0 },
+          topSessionsByCost: [],
+          expensivePrompts: [
+            {
+              sessionId: "s1",
+              projectPath: "/p",
+              promptPreview: "<script>alert(1)</script>",
+              totalTokens: 1000,
+              estimatedCost: 0.5,
+              timesAvg: 2,
+              flags: ["<svg onload=alert(1)>"],
+            } as unknown as DashboardData["spending"] extends (infer U) ? U extends { expensivePrompts: (infer P)[] } ? P : never : never,
+          ],
+          mcpServerUsage: [],
+        } as unknown as DashboardData["spending"],
+      };
+      const html = renderDashboard(malicious, t);
+      const body = htmlOutsideJson(html);
+      // The attacker's literal opening tag must not round-trip to the body.
+      expect(body).not.toContain("<script>alert(1)</script>");
+      expect(body).not.toContain("<svg onload=alert(1)>");
+      // But the escaped form should be there.
+      expect(body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+      expect(body).toContain("&lt;svg onload=alert(1)&gt;");
+    });
+
+    it("escapes dominantModel so <img> in the model name is neutralized", () => {
+      const malicious: DashboardData = {
+        ...mockData,
+        spending: {
+          cacheEfficiency: { overallHitRate: 0, estimatedSavings: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalInputTokens: 0 },
+          subagentOverhead: { agentCount: 0, totalCost: 0, estimatedCost: 0 },
+          topSessionsByCost: [
+            {
+              sessionId: "abc",
+              projectPath: "/safe/project",
+              durationMs: 60000,
+              estimatedCost: 0.25,
+              percentOfPlanFee: 0,
+              dominantModel: "claude-<img src=x onerror=alert(1)>-evil",
+              promptCount: 5,
+              isSubagent: false,
+              childCount: 0,
+            },
+          ],
+          expensivePrompts: [],
+          mcpServerUsage: [],
+        } as unknown as DashboardData["spending"],
+      };
+      const html = renderDashboard(malicious, t);
+      const body = htmlOutsideJson(html);
+      expect(body).not.toContain("<img src=x onerror=alert(1)>");
+      // The literal "claude-" prefix is stripped (`.replace("claude-", "")`),
+      // so the remaining escaped payload should be present:
+      expect(body).toContain("&lt;img src=x onerror=alert(1)&gt;-evil");
+    });
+
+    it("JSON-in-script payload escapes `<` so </script> cannot break out", () => {
+      const malicious: DashboardData = {
+        ...mockData,
+        byProject: [
+          {
+            projectPath: "</script><img src=x onerror=alert(1)>",
+            sessions: 1,
+            prompts: 1,
+            inputTokens: 0,
+            outputTokens: 0,
+            estimatedCost: 0,
+            thinkingBlocks: 0,
+            workProfile: { exploring: 0, editing: 0, running: 0, researching: 0, planning: 0 },
+          },
+        ],
+      };
+      const html = renderDashboard(malicious, t);
+      // The JSON payload must not contain a raw </script> — the leading `<`
+      // must be escaped to < so the surrounding <script> block cannot
+      // be broken out of.
+      const jsonRegion = html.match(/window\.__DASHBOARD__\s*=\s*(\{[\s\S]*?\});\s*<\/script>/);
+      expect(jsonRegion).not.toBeNull();
+      const jsonText = jsonRegion![1]!;
+      expect(jsonText).not.toContain("</script>");
+      expect(jsonText).toContain("\\u003c/script>");
+      // And the payload must still parse back as valid JSON with the raw value preserved.
+      const parsed = JSON.parse(jsonText) as DashboardData;
+      expect(parsed.byProject[0]!.projectPath).toBe("</script><img src=x onerror=alert(1)>");
+    });
+
+    it("escapes MCP server name so injected markup is neutralized", () => {
+      const malicious: DashboardData = {
+        ...mockData,
+        spending: {
+          cacheEfficiency: { overallHitRate: 0, estimatedSavings: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalInputTokens: 0 },
+          subagentOverhead: { agentCount: 0, totalCost: 0, estimatedCost: 0 },
+          topSessionsByCost: [],
+          expensivePrompts: [],
+          mcpServerUsage: [
+            {
+              server: "<script>alert(1)</script>",
+              estimatedCost: 1,
+              inputTokens: 100,
+              outputTokens: 50,
+              callCount: 1,
+              messageCount: 1,
+              tools: [{ method: "<b>evil</b>", calls: 1 }],
+            } as unknown as NonNullable<DashboardData["spending"]>["mcpServerUsage"] extends (infer U)[] ? U : never,
+          ],
+        } as unknown as DashboardData["spending"],
+      };
+      const html = renderDashboard(malicious, t);
+      const body = htmlOutsideJson(html);
+      expect(body).not.toContain("<script>alert(1)</script>");
+      expect(body).not.toContain("<b>evil</b>");
+      expect(body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    });
+  });
 });

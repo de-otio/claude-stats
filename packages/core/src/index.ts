@@ -2,6 +2,7 @@
 export * from "./types.js";
 export * from "./pricing.js";
 export { paths, decodeProjectPath, encodeProjectPath } from "./paths.js";
+export { sanitizePromptText } from "./sanitize.js";
 export { parseSessionFile, hashFirstKb, toEpochMs } from "./parser/session.js";
 export type { ParseResult } from "./parser/session.js";
 export { collectAccountMap } from "./parser/telemetry.js";

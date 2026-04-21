@@ -165,6 +165,11 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
   );
 
   // 2. Add nonce to all remaining <script> tags (both inline and src-based)
+  // INVARIANT: renderDashboard() only emits <script> tags the template owns itself;
+  // all user-controlled data is HTML-escaped (and JSON payloads have `<` escaped to
+  // <) before interpolation. If that invariant ever changes, this blanket
+  // nonce rewrite becomes an XSS gift-wrap — an injected <script> would be handed
+  // a valid CSP nonce. Audit template.ts before relaxing its escaping.
   html = html.replace(/<script>/g, `<script nonce="${nonce}">`);
 
   // 3. Remove inline event handlers (nonce-based CSP blocks them)

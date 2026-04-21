@@ -5,6 +5,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@claude-stats/core/paths": path.resolve(__dirname, "packages/core/src/paths.ts"),
+      "@claude-stats/core/sanitize": path.resolve(__dirname, "packages/core/src/sanitize.ts"),
       "@claude-stats/core/types": path.resolve(__dirname, "packages/core/src/types.ts"),
       "@claude-stats/core/pricing": path.resolve(__dirname, "packages/core/src/pricing.ts"),
       "@claude-stats/core/parser/session": path.resolve(__dirname, "packages/core/src/parser/session.ts"),

@@ -107,6 +107,29 @@ function findNodeBinary(): string {
 function buildMcpEntry(): McpEntry {
   const mcpJs = path.join(__dirname, "mcp.js");
   const node = findNodeBinary();
+  // SECURITY INVARIANT — DO NOT VIOLATE.
+  //
+  // The string below is passed to `node -e` and is therefore parsed as
+  // JavaScript source the next time Claude Code starts. Anything
+  // interpolated into it runs with the user's privileges on every launch.
+  //
+  // Rules:
+  //   1. `JSON.stringify(value)` is the correct escape when embedding a
+  //      value as a JS string literal inside -e — it quotes, escapes
+  //      backslashes/newlines, and rejects `</script>`-style breakouts.
+  //      Keep using it for any path that must appear here.
+  //   2. NEVER interpolate workspace-controlled, user-input, or
+  //      network-sourced data into this template literal. Only values
+  //      derived from `__dirname` (which Node computes from the
+  //      extension bundle's own location at runtime) are acceptable.
+  //      A single workspace-controlled interpolation here is persistent
+  //      RCE every time Claude Code starts.
+  //   3. If you need to pass dynamic data to the MCP server, pass it
+  //      through the `env` field on the returned McpEntry or over stdin
+  //      — do NOT add a new interpolation here.
+  //
+  // `mcpJs` is safe today because it comes from `path.join(__dirname,
+  // "mcp.js")`; nothing workspace-controlled reaches it.
   const inline = `require(${JSON.stringify(mcpJs)}).startMcpServer().catch(e=>{console.error(e);process.exit(1)})`;
   return {
     type: "stdio",

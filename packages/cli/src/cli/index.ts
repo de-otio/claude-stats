@@ -541,7 +541,7 @@ export async function buildCli(): Promise<Command> {
     .action(async (opts: { port: string; open?: boolean }) => {
       const port = parseInt(opts.port, 10);
       const store = new Store();
-      const server = startServer(port, store);
+      const { server } = startServer(port, store);
 
       server.on("error", (err: NodeJS.ErrnoException) => {
         if (err.code === "EADDRINUSE") {
@@ -552,9 +552,11 @@ export async function buildCli(): Promise<Command> {
         throw err;
       });
 
+      // Bind to loopback only — do NOT bind to 0.0.0.0. The dashboard writes
+      // to ~/.claude-stats/config.json and must not be reachable from the LAN.
       server.listen(port, "127.0.0.1", () => {
         const addr = server.address() as import("node:net").AddressInfo;
-        const url = `http://localhost:${addr.port}`;
+        const url = `http://127.0.0.1:${addr.port}/`;
         console.log(t("cli:serve.listening", { url }));
         if (opts.open) openBrowser(url);
       });

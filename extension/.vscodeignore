@@ -13,3 +13,5 @@ dist/**/*.map
 ../tsconfig.json
 ../vitest.config.ts
 ../.claude/**
+.claude-flow/**
+../.claude-flow/**

@@ -5,6 +5,7 @@
  */
 import * as fs from "node:fs";
 import { paths } from "@claude-stats/core/paths";
+import { sanitizePromptText } from "@claude-stats/core/sanitize";
 
 export interface HistoryEntry {
   display: string;
@@ -53,12 +54,21 @@ export function searchHistory(opts: SearchOptions): SearchResult[] {
 
     if (typeof entry.display !== "string") continue;
 
-    const matchIndex = entry.display.toLowerCase().indexOf(queryLower);
+    // Neutralise prompt-injection vectors in stored history text BEFORE it
+    // leaves this function. `display` is attacker-controlled (the user pasted
+    // it, or it was forwarded from another tool). Downstream consumers — MCP
+    // caller agents, the React frontend — must never see raw `<system-reminder>`
+    // or `<|im_start|>` markers. See @claude-stats/core/sanitize.
+    const safeDisplay = sanitizePromptText(entry.display);
+    if (safeDisplay === null) continue;
+    const safeEntry: HistoryEntry = { ...entry, display: safeDisplay };
+
+    const matchIndex = safeDisplay.toLowerCase().indexOf(queryLower);
     if (matchIndex === -1) continue;
 
     if (opts.project && entry.project !== opts.project) continue;
 
-    matches.push({ entry, matchIndex });
+    matches.push({ entry: safeEntry, matchIndex });
   }
 
   // Sort by timestamp descending (most recent first)

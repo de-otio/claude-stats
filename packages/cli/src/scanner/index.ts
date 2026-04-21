@@ -34,10 +34,15 @@ export function discoverSessionFiles(): SessionFile[] {
     const projectDirPath = path.join(paths.projectsDir, projectDir);
     let stat: fs.Stats;
     try {
-      stat = fs.statSync(projectDirPath);
+      // lstatSync (not statSync) so we see symlinks themselves, not their
+      // targets. Defence-in-depth: refuse to traverse into symlinked
+      // directories so a symlink planted under ~/.claude/projects/ can't
+      // redirect the scan anywhere on disk.
+      stat = fs.lstatSync(projectDirPath);
     } catch {
       continue;
     }
+    if (stat.isSymbolicLink()) continue;
     if (!stat.isDirectory()) continue;
 
     const projectPath = decodeProjectPath(projectDir);
@@ -47,7 +52,17 @@ export function discoverSessionFiles(): SessionFile[] {
 
     // Subagent files
     const subagentsDir = path.join(projectDirPath, "subagents");
-    if (fs.existsSync(subagentsDir)) {
+    let subagentsStat: fs.Stats | null = null;
+    try {
+      subagentsStat = fs.lstatSync(subagentsDir);
+    } catch {
+      subagentsStat = null;
+    }
+    if (
+      subagentsStat &&
+      !subagentsStat.isSymbolicLink() &&
+      subagentsStat.isDirectory()
+    ) {
       collectJsonlFiles(subagentsDir, projectPath, projectDir, true, result);
     }
   }
@@ -71,8 +86,20 @@ function collectJsonlFiles(
 
   for (const entry of entries) {
     if (!entry.endsWith(".jsonl")) continue;
+    const entryPath = path.join(dir, entry);
+    // Skip symlinks: only include regular .jsonl files that live directly
+    // under ~/.claude/projects/. A symlink could point anywhere on disk
+    // and cause us to read (and later surface in the dashboard) arbitrary
+    // files the user didn't intend to share. Defence-in-depth.
+    try {
+      const entryStat = fs.lstatSync(entryPath);
+      if (entryStat.isSymbolicLink()) continue;
+      if (!entryStat.isFile()) continue;
+    } catch {
+      continue;
+    }
     result.push({
-      filePath: path.join(dir, entry),
+      filePath: entryPath,
       projectPath,
       projectDir,
       isSubagent,

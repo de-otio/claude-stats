@@ -17,6 +17,7 @@ import type {
   ToolUseCount,
   ParseError,
 } from "../types.js";
+import { sanitizePromptText } from "../sanitize.js";
 
 export interface ParseResult {
   session: SessionRecord | null;
@@ -308,6 +309,10 @@ export async function parseSessionFile(
  * Extract the user-typed prompt text from a message content field.
  * Strips system/IDE tags and tool_result blocks, keeping only actual user text.
  * Returns null if no meaningful text is found.
+ *
+ * Security: delegates to {@link sanitizePromptText} which performs
+ * strip-AND-escape before the length cap, so an attacker cannot smuggle a
+ * late-opening system tag past the cap. See sanitize.ts for rationale.
  */
 function extractPromptText(content: string | import("../types.js").ContentBlock[] | undefined): string | null {
   if (!content) return null;
@@ -323,17 +328,7 @@ function extractPromptText(content: string | import("../types.js").ContentBlock[
     return null;
   }
 
-  // Join text blocks, strip XML-like system tags, and trim
-  const raw = texts.join("\n");
-  const cleaned = raw
-    .replace(/<(?:system-reminder|local-command-caveat|ide_opened_file|ide_selection|ide_diagnostics|command-name|command-message|command-args|local-command-stdout|available-deferred-tools)>[\s\S]*?<\/(?:system-reminder|local-command-caveat|ide_opened_file|ide_selection|ide_diagnostics|command-name|command-message|command-args|local-command-stdout|available-deferred-tools)>/g, "")
-    .replace(/<(?:ide_opened_file|ide_selection|local-command-stdout)[^>]*\/>/g, "")
-    .trim();
-
-  // Return null if nothing meaningful remains
-  if (!cleaned || cleaned.length < 2) return null;
-  // Cap at 2000 chars to avoid storing huge tool results that leak through
-  return cleaned.length > 2000 ? cleaned.slice(0, 2000) : cleaned;
+  return sanitizePromptText(texts.join("\n"));
 }
 
 /**

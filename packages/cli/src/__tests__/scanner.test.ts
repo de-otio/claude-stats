@@ -131,4 +131,48 @@ describe("discoverSessionFiles", () => {
     const files = discoverSessionFiles();
     expect(files).toHaveLength(3);
   });
+
+  it("does not follow symlinks pointing outside the projects dir", () => {
+    // Real project + real jsonl — this one should appear.
+    const realProjDir = path.join(projectsDir, "-Users-alice-real");
+    fs.mkdirSync(realProjDir);
+    const realJsonl = path.join(realProjDir, "real.jsonl");
+    fs.writeFileSync(realJsonl, "{}");
+
+    // Out-of-tree target that a symlink will point at.
+    const outsideDir = path.join(
+      os.tmpdir(),
+      `cs-scanner-outside-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    fs.mkdirSync(outsideDir, { recursive: true });
+    const outsideFile = path.join(outsideDir, "secret.jsonl");
+    fs.writeFileSync(outsideFile, "SHOULD_NOT_BE_READ");
+
+    try {
+      // Case 1: symlinked .jsonl at top level of a project dir.
+      const linkedJsonl = path.join(realProjDir, "linked.jsonl");
+      fs.symlinkSync(outsideFile, linkedJsonl);
+
+      // Case 2: symlinked project directory at the root of projects dir.
+      const linkedProj = path.join(projectsDir, "-linked-project");
+      fs.symlinkSync(outsideDir, linkedProj);
+
+      // Case 3: symlinked subagents/ dir inside a real project.
+      const subagentHost = path.join(projectsDir, "-Users-alice-withsub");
+      fs.mkdirSync(subagentHost);
+      fs.symlinkSync(outsideDir, path.join(subagentHost, "subagents"));
+
+      const files = discoverSessionFiles();
+      const paths = files.map((f) => f.filePath);
+
+      // The real, non-symlinked jsonl is discovered.
+      expect(paths).toContain(realJsonl);
+      // None of the symlinked paths leak through.
+      expect(paths).not.toContain(linkedJsonl);
+      expect(paths.some((p) => p.startsWith(outsideDir))).toBe(false);
+      expect(paths.some((p) => p.startsWith(linkedProj))).toBe(false);
+    } finally {
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
 });
