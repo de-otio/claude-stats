@@ -1,0 +1,293 @@
+{
+  "pageTitle": "Claude Stats — {{period}} ({{date}})",
+  "tabs": {
+    "overview": "Przegląd",
+    "models": "Modele",
+    "projects": "Projekty",
+    "sessions": "Sesje",
+    "plan": "Plan",
+    "context": "Kontekst",
+    "efficiency": "Efektywność",
+    "energy": "Energia",
+    "settings": "Ustawienia"
+  },
+  "toolbar": {
+    "period": "Okres:",
+    "refresh": "Odśwież",
+    "autoOff": "Auto: wył.",
+    "autoOn": "Auto: wł. ({{seconds}} s)"
+  },
+  "summary": {
+    "sessions": "Sesje",
+    "prompts": "Prompty",
+    "inputTokens": "Tokeny wejściowe",
+    "outputTokens": "Tokeny wyjściowe",
+    "cacheEfficiency": "Efektywność cache",
+    "estCost": "Szac. koszt",
+    "planValue": "Wartość planu",
+    "ofPlanFee": "z ${{fee}}/mies",
+    "activeHours": "Aktywne godziny",
+    "costPerPrompt": "Koszt / Prompt",
+    "tokPerMin": "Tok / Min",
+    "truncatedOutputs": "Obcięte wyjścia",
+    "periodRange": "{{start}} → dzisiaj",
+    "allTime": "Cały okres"
+  },
+  "charts": {
+    "hourlyTokenUsage": "Godzinowe użycie tokenów",
+    "dailyTokenUsage": "Dzienne użycie tokenów",
+    "tokenBreakdown": "Podział tokenów",
+    "cacheUsage": "Użycie cache",
+    "cumulativeApiValue": "Skumulowana wartość API vs opłata planu",
+    "tokensByModel": "Tokeny według modelu",
+    "stopReasons": "Powody zatrzymania",
+    "topProjects": "Główne projekty",
+    "tokensByProject": "Udział tokenów według projektu",
+    "energyByProject": "Zużycie energii według projektu",
+    "thinkingIntensity": "Intensywność rozumowania według projektu",
+    "natureOfWork": "Charakter pracy według projektu",
+    "sessionsByEntrypoint": "Sesje według punktu wejścia",
+    "usageWindows": "Okna użycia 5-godzinne",
+    "topConversations": "Najdroższe konwersacje według kosztu API",
+    "windowLimitUsage": "Użycie limitu okna %",
+    "weeklyActivity": "Aktywność tygodniowa",
+    "windowsPerWeek": "Okna na tydzień",
+    "conversationLengthDist": "Rozkład długości konwersacji",
+    "contextGrowthCurve": "Krzywa wzrostu kontekstu",
+    "cacheEfficiencyByLength": "Efektywność cache według długości konwersacji",
+    "compactionEvents": "Zdarzenia kompakcji",
+    "longSessions": "Długie sesje — możliwości zarządzania kontekstem",
+    "modelUsageByTier": "Użycie modeli według poziomu złożoności",
+    "opusScoreDist": "Rozkład wyników złożoności Opus",
+    "topOveruse": "Główne nadużycia: drogi model do prostych zadań"
+  },
+  "plan": {
+    "account": "Konto",
+    "currentPlan": "Obecny plan",
+    "planVerdict": "Werdykt planu",
+    "suggestedPlan": "Sugerowany plan",
+    "avgWeeklyValue": "Średnia wartość tygodniowa",
+    "peakLabel": "szczyt: ${{value}}",
+    "windowsPerWeek": "Okna / tydzień",
+    "totalWindows": "{{count}} okien łącznie",
+    "avgWindowCost": "Średni koszt okna",
+    "medianLabel": "mediana: ${{value}}",
+    "truncatedOutputWindows": "Okna z obciętym wyjściem",
+    "truncatedOutputWindowsHint": "zawierały obcięcie max_tokens",
+    "accounts": "Konta:",
+    "accountsDetected": "Wykryto {{count}} kont",
+    "planNotDetected": "Nie wykryto planu",
+    "setPlanFee": "Ustaw --plan-fee lub wzbogać telemetrię",
+    "basedOnAvg": "na podstawie średnio ${{value}}/tydzień wartości API",
+    "feeManual": "${{fee}}/mies (ręcznie)",
+    "feeAutoDetected": "${{fee}}/mies (auto-wykryte)",
+    "unknownPlan": "nieznany plan",
+    "noData": "Brak danych",
+    "notEnoughData": "Za mało danych użycia, aby jeszcze przeanalizować efektywność planu.",
+    "goodValue": "Dobra wartość",
+    "underusing": "Niedostateczne użycie",
+    "noPlan": "Brak planu",
+    "noPlanDetected": "Nie wykryto planu",
+    "planNames": {
+      "pro": "Pro ($20)",
+      "team_standard": "Team Std ($25)",
+      "max_5x": "Max 5x ($100)",
+      "team_premium": "Team Premium ($125)",
+      "max_20x": "Max 20x ($200)"
+    }
+  },
+  "context": {
+    "avgPromptsPerSession": "Śr. promptów/sesję",
+    "medianPrompts": "Mediana promptów",
+    "compactionRate": "Współczynnik kompakcji",
+    "avgPeakInputTokens": "Śr. szczytowe tokeny wejściowe",
+    "needCompaction": "Wymaga kompakcji",
+    "compactionsDetected": "kompakcji wykryto w {{count}} sesjach",
+    "noCompactionEvents": "Nie wykryto zdarzeń kompakcji. Rozważ użycie /compact w długich konwersacjach aby zmniejszyć rozmiar kontekstu i koszt.",
+    "tableHeaders": {
+      "project": "Projekt",
+      "prompts": "Prompty",
+      "duration": "Czas trwania",
+      "peakInput": "Szczyt wejścia",
+      "compacted": "Kompakcja?",
+      "cost": "Koszt",
+      "yes": "Tak",
+      "no": "Nie"
+    }
+  },
+  "efficiency": {
+    "potentialSavings": "Potencjalne oszczędności",
+    "overuseRate": "Wskaźnik nadużycia",
+    "overuseDescription": "tury wysłane do droższego modelu niż potrzeba",
+    "turnsAnalyzed": "Przeanalizowane tury",
+    "ofTotalMessages": "z {{count}} wiadomości łącznie"
+  },
+  "energy": {
+    "totalEnergy": "Całkowita energia",
+    "totalCO2": "Emisja CO₂",
+    "co2Range": "Niepewność ±55%: {{low}} – {{high}}",
+    "region": "Region sieci energetycznej",
+    "gridIntensity": "Intensywność sieci",
+    "gCO2perKWh": "gCO₂/kWh",
+    "cacheSaved": "Zaoszczędzone przez cache",
+    "energySavedLabel": "w porównaniu do ponownego obliczenia wejść",
+    "thinkingSessions": "Sesje z rozumowaniem",
+    "thinkingEnergyPct": "{{pct}}% energii",
+    "geoCoverage": "Pokrycie geograficzne",
+    "geoCoverageHint": "% wiadomości z wykrytym regionem inferencji",
+    "equivalents": "Kontekst środowiskowy",
+    "periodRange": "{{start}} → {{end}} ({{days}} dni)",
+    "gasolineLiters": "litrów benzyny",
+    "transitKm": "km komunikacją miejską",
+    "trainKm": "km pociągiem dalekobieżnym",
+    "solarPanels": "paneli słonecznych potrzebnych (okres)",
+    "solarRegion": "w {{region}}",
+    "solarPanelsFootnote": "Powierzchnia modułów PV dachowych (~20% sprawności, współczynnik wydajności 0,75), które zainstalowane w {{region}} potrzebowałyby dokładnie wybranego okresu, aby wygenerować całkowite zużycie energii w tym okresie. Skaluje się z regionalnym rocznym nasłonecznieniem i długością wybranego okresu.",
+    "windRotations": "obrotów turbiny wiatrowej",
+    "windTurbineRef": "3 MW lądowa, 35 % CF",
+    "windRotationsFootnote": "Obroty typowej nowoczesnej lądowej turbiny wiatrowej 3 MW przy ~15 RPM przy współczynniku wykorzystania mocy 35 % — ~1,17 kWh na obrót przy średniej mocy. Równoważnie, taka turbina potrzebowałaby {{minutes}} min przy swojej rzeczywistej średniej mocy (lub {{ratedMinutes}} min przy nominalnej 3 MW) aby wygenerować całkowitą energię Twojego okresu.",
+    "hydroTurbineLiters": "litrów przez turbinę wodną",
+    "hydroTurbineRef": "~100 m spadu, 90 % η",
+    "hydroTurbineFootnote": "Objętość wody, która musiałaby przepłynąć przez typową nowoczesną turbinę hydroelektryczną (~100 m spadu, ~90 % sprawności) aby wygenerować energię tego okresu — około 4 077 L na kWh, wyprowadzone z E = m·g·h·η. Elektrownie wysokospadowe potrzebują mniej (zapora Hoovera, 180 m: ~2 200 L/kWh); niskospadowe i przepływowe potrzebują znacznie więcej.",
+    "nuclearWaste": "objętość odpadów jądrowych",
+    "nuclearWasteFootnote": "Objętość inżynieryjnego składowiska — nie surowego odpadu — jeśli ta sama energia pochodziła w 100 % z atomu (~4 mL/kWh). Ważona mieszanka składowania HLW według Posiva KBS-3 (~1 500× surowej objętości zużytego paliwa po uwzględnieniu pojemnika miedzianego, bufora bentonitowego i termicznie oddalonych tuneli repozytorium — Onkalo drąży ~1 milion m³ skały dla ~650 m³ zużytego paliwa), plus składowanie ILW (~5×) i LLW (~3×), przy użyciu udziałów objętościowych inwentarza odpadów MAEA. HLW musi być bezpiecznie izolowany i strzeżony przez ~100 000 lat, zanim jego radioaktywność opadnie do poziomu naturalnej rudy uranowej.",
+    "journeyAnchor": "Twój ślad węglowy ≈ jazda {{name}} ({{km}} km).",
+    "journeys": {
+      "coffeeWalk": "tam i z powrotem do kawiarni",
+      "bikeCrossTown": "przejażdżka rowerem przez miasto",
+      "crosstownCommute": "dojazd do pracy przez miasto",
+      "shortIntercity": "Londyn → Brighton",
+      "berlinHamburg": "Berlin → Hamburg",
+      "berlinMunich": "Berlin → Monachium",
+      "parisBerlin": "Paryż → Berlin",
+      "coastToCoast": "Los Angeles → Nowy Jork",
+      "halfEarth": "pół okrążenia Ziemi"
+    },
+    "disclaimer": "Tylko szacunki — niepewność ±55%. Anthropic nie publikuje danych energetycznych na żądanie. Nie do użytku regulacyjnego.",
+    "byModel": "Energia według modelu",
+    "byDay": "Dzienna energia i CO₂",
+    "byProject": "Energia według projektu",
+    "noData": "Brak dostępnych danych energetycznych dla tego okresu.",
+    "calc": {
+      "title": "Jak jest to obliczane",
+      "clickToExpand": "kliknij aby rozwinąć",
+      "intro": "Każdy kafelek w tej karcie pochodzi z liczb tokenów zwracanych przez API Anthropic dla każdej wiadomości. Oto dokładnie jak te dane na poziomie tokenów stają się wartościami kWh, kg CO₂ i ekwiwalentami pokazanymi powyżej, używając rzeczywistych liczb Twojego okresu, abyś mógł audytować obliczenia.",
+      "ratesHeader": "Wskaźniki energii według modelu:",
+      "periodHeader": "Twój okres ({{start}} → {{end}}):",
+      "col": {
+        "class": "Klasa",
+        "inputRate": "Wejście Wh/1K",
+        "outputRate": "Wyjście Wh/1K",
+        "msgs": "Wiadomości",
+        "output": "Tok wyjścia",
+        "input": "Tok wejścia",
+        "cacheWrite": "Zapis cache",
+        "cacheRead": "Odczyt cache",
+        "rawEnergy": "Surowa energia",
+        "rawTotal": "Suma surowa"
+      },
+      "totals": "Suma surowa {{raw}} kWh × PUE {{pue}} = <strong>{{totalKwh}} kWh</strong> zużyte. Przy intensywności sieci <strong>{{region}}</strong> {{gridIntensity}} gCO₂/kWh, to <strong>{{co2Kg}} kg CO₂</strong>.",
+      "equivHeader": "Jak ekwiwalenty zostały wyprowadzone z {{co2Kg}} kg CO₂ / {{totalKwh}} kWh:",
+      "eq": {
+        "gasoline": "Benzyna: {{co2Kg}} kg ÷ 2,31 kg CO₂/L = <strong>{{value}} L</strong>",
+        "train": "Pociąg dalekobieżny: {{co2Kg}} kg ÷ 0,006 kg CO₂/pkm = <strong>{{value}} km</strong>",
+        "transit": "Komunikacja miejska: {{co2Kg}} kg ÷ 0,030 kg CO₂/pkm = <strong>{{value}} km</strong>",
+        "nuclearWaste": "Objętość składowiska jądrowego: {{totalKwh}} kWh × 4 mL/kWh (inżynieryjne HLW+ILW+LLW, ważone) = <strong>{{value}}</strong>",
+        "wind": "Obroty turbiny wiatrowej: {{totalKwh}} kWh ÷ 1,17 kWh/obrót (turbina 3 MW przy 15 RPM, 35 % CF) = <strong>{{value}} obrotów</strong> ≈ {{minutes}} min rzeczywistej pracy",
+        "hydro": "Objętość wody przez turbinę wodną: {{totalKwh}} kWh × 4 077 L/kWh (~100 m spadu, 90 % η przez E = m·g·h·η) = <strong>{{value}}</strong>",
+        "solar": "Panele słoneczne: {{totalKwh}} kWh ÷ ({{regionYield}} kWh/m²/rok w {{region}} × {{periodDays}}/365) = <strong>{{value}}</strong>"
+      }
+    },
+    "sources": {
+      "title": "Źródła danych",
+      "items": {
+        "methodology": {
+          "label": "Wskaźniki energii według modelu",
+          "value": "Wyprowadzone z białej księgi inferencji Gemini 2025 firmy Google (0,24 Wh/mediana zapytania tekstowego) i szacunków na poziomie tokenów Epoch AI 2024, skalowane według klasy modelu (Haiku/Sonnet/Opus). Szczegóły wzorów w /doc/analysis/energy-dashboard/01-estimation-model.md."
+        },
+        "pue": {
+          "label": "Narzut centrum danych",
+          "value": "PUE 1,2 — średnia hyperscale Uptime Institute 2023 (Google, AWS, Azure publikują 1,10–1,20)."
+        },
+        "gridIntensity": {
+          "label": "Intensywność węglowa sieci",
+          "value": "USA: EPA eGRID2022. UE: European Environment Agency (EEA) 2024. Azja-Pacyfik i globalnie: IEA 2024. Agencje krajowe używane gdy dostępne."
+        },
+        "solarYield": {
+          "label": "Wydajność paneli słonecznych",
+          "value": "Regionalne roczne GHI z PVGIS (Europa) / NREL NSRDB (Ameryki) / World Bank GSA (globalnie), pomnożone przez 20% sprawności panelu × 0,75 współczynnika wydajności. Kafelek skaluje tę roczną wydajność do wybranego okresu, aby pokazać powierzchnię paneli potrzebną do wyprodukowania dokładnie energii tego okresu w tym czasie."
+        },
+        "windTurbine": {
+          "label": "Turbina wiatrowa referencyjna",
+          "value": "Nowoczesna lądowa turbina 3 MW przy 15 RPM i ~35 % współczynniku wykorzystania mocy (IRENA Renewable Power Generation Costs 2023, IEA Renewables 2024). Energia na obrót = 3 MW × 4 s × 0,35 ≈ 1,17 kWh przy średniej mocy (~3,33 kWh przy nominalnej)."
+        },
+        "hydroTurbine": {
+          "label": "Turbina hydroelektryczna referencyjna",
+          "value": "Reprezentatywna nowoczesna elektrownia hydroelektryczna o ~100 m spadu netto z ~90 % łącznej sprawności turbiny+generatora. Wyprowadzone z fizycznej relacji E = m·g·h·η z g = 9,81 m/s², dając 3 600 000 J ÷ (9,81 × 100 × 0,9) ≈ 4 077 L/kWh. Blisko średniej światowej ważonej mocą (Trzy Przełomy ~95 m, Itaipu ~118 m); elektrownie wysokospadowe jak zapora Hoovera (180 m) potrzebują ~2 200 L/kWh."
+        },
+        "carKm": {
+          "label": "Emisje samochodu",
+          "value": "120 gCO₂/km — średnia floty nowych aut UE, EEA 2024."
+        },
+        "transit": {
+          "label": "Emisje komunikacji miejskiej",
+          "value": "30 gCO₂/pasażer-km — ważona mieszanka autobusu miejskiego (~27), metra (~8) i tramwaju/lekkiej kolei z IEA Transport Emissions (2024) i EEA Transport & Environment Reporting Mechanism 2024."
+        },
+        "train": {
+          "label": "Emisje pociągu dalekobieżnego",
+          "value": "6 gCO₂/pasażer-km — średnia europejskiej elektryfikowanej kolei międzymiastowej, UIC Railway Handbook on Energy and CO₂ Emissions i EEA 2024."
+        },
+        "tree": {
+          "label": "Absorpcja drzew",
+          "value": "21 kg CO₂ absorbowane rocznie przez dojrzałe drzewo — US Forest Service / EPA."
+        },
+        "gasoline": {
+          "label": "Spalanie benzyny",
+          "value": "2,31 kg CO₂ na litr — współczynnik emisji spalin US EPA."
+        },
+        "nuclearWaste": {
+          "label": "Objętość składowiska jądrowego",
+          "value": "~4 mL/kWh inżynieryjnej objętości repozytorium — nie surowe odpady. Ważone między składowaniem HLW według Posiva KBS-3 / Onkalo (~1 500× surowej objętości zużytego paliwa po pojemniku miedzianym, buforze bentonitowym i termicznym odstępie tuneli), ILW (~5×) i LLW (~3×), używając udziałów objętościowych MAEA. Referencje: Posiva 2012 safety case, SKB TR-11-01, IAEA Radioactive Waste Inventory."
+        }
+      }
+    }
+  },
+  "settings": {
+    "configuration": "Konfiguracja",
+    "settingsPath": "Ustawienia są zapisane w <code style=\"background:#0f3460;padding:0.15rem 0.3rem;border-radius:3px;color:#ccc;\">~/.claude-stats/config.json</code>",
+    "planType": "Typ planu",
+    "notSetAutoDetect": "Nie ustawiono (auto-wykrywanie)",
+    "planOptions": {
+      "pro": "Pro ($20/mies)",
+      "max_5x": "Max 5x ($100/mies)",
+      "max_20x": "Max 20x ($200/mies)",
+      "team_standard": "Team Standard ($25/mies)",
+      "team_premium": "Team Premium ($125/mies)",
+      "custom": "Niestandardowy"
+    },
+    "planAutoDetectHint": "Auto-wykrywanie opiera się na przerywanych danych telemetrii i często nie jest w stanie określić Twojego planu. Zalecane jest ustawienie ręczne.",
+    "monthlyFee": "Opłata miesięczna (USD)",
+    "monthlyFeePlaceholder": "Auto z typu planu",
+    "monthlyFeeHint": "Nadpisuje domyślną opłatę dla Twojego typu planu lub ustawia niestandardową kwotę.",
+    "costAlertThresholds": "Progi alertów kosztów (USD)",
+    "daily": "Dzienne",
+    "weekly": "Tygodniowe",
+    "monthly": "Miesięczne",
+    "save": "Zapisz",
+    "savedReload": "Zapisano! Przeładuj, aby zobaczyć zaktualizowany panel.",
+    "networkError": "Błąd sieci.",
+    "errorSaving": "Błąd podczas zapisywania."
+  },
+  "pricing": {
+    "title": "Cennik tokenów (za 1M tokenów)",
+    "model": "Model",
+    "input": "Wejście",
+    "output": "Wyjście",
+    "cacheRead": "Odczyt cache",
+    "cacheWrite": "Zapis cache",
+    "source": "Źródło: cennik API Anthropic — ostatnia aktualizacja {{date}} (auto-odświeżane co tydzień). Pokazane koszty to ekwiwalent stawek API, nie opłaty subskrypcji."
+  },
+  "footer": {
+    "generated": "Wygenerowano {{timestamp}} • Strefa czasowa: {{timezone}}"
+  }
+}

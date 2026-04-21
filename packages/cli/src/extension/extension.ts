@@ -39,6 +39,10 @@ export function activate(context: vscode.ExtensionContext): void {
   const esDash = _require("@claude-stats/core/locales/es/dashboard.json") as Record<string, unknown>;
   const ptBrExt = _require("@claude-stats/core/locales/pt-BR/extension.json") as Record<string, unknown>;
   const ptBrDash = _require("@claude-stats/core/locales/pt-BR/dashboard.json") as Record<string, unknown>;
+  const plExt = _require("@claude-stats/core/locales/pl/extension.json") as Record<string, unknown>;
+  const plDash = _require("@claude-stats/core/locales/pl/dashboard.json") as Record<string, unknown>;
+  const ukExt = _require("@claude-stats/core/locales/uk/extension.json") as Record<string, unknown>;
+  const ukDash = _require("@claude-stats/core/locales/uk/dashboard.json") as Record<string, unknown>;
 
   // VS Code returns lowercase locale codes (e.g. "zh-cn", "pt-br"). Normalize
   // the regionalized ones to match our resource keys (BCP 47 casing). All
@@ -61,6 +65,8 @@ export function activate(context: vscode.ExtensionContext): void {
       fr: { extension: frExt, dashboard: frDash },
       es: { extension: esExt, dashboard: esDash },
       "pt-BR": { extension: ptBrExt, dashboard: ptBrDash },
+      pl: { extension: plExt, dashboard: plDash },
+      uk: { extension: ukExt, dashboard: ukDash },
     },
   }).then((instance: import("i18next").i18n) => {
     setT(instance.t.bind(instance));

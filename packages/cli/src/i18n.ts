@@ -21,6 +21,8 @@ const zhCnCli = _require("@claude-stats/core/locales/zh-CN/cli.json") as Record<
 const frCli = _require("@claude-stats/core/locales/fr/cli.json") as Record<string, unknown>;
 const esCli = _require("@claude-stats/core/locales/es/cli.json") as Record<string, unknown>;
 const ptBrCli = _require("@claude-stats/core/locales/pt-BR/cli.json") as Record<string, unknown>;
+const plCli = _require("@claude-stats/core/locales/pl/cli.json") as Record<string, unknown>;
+const ukCli = _require("@claude-stats/core/locales/uk/cli.json") as Record<string, unknown>;
 
 let _t: TFunction;
 let _instance: I18nInstance;
@@ -42,6 +44,8 @@ export async function initCliI18n(locale?: string): Promise<void> {
       fr: { cli: frCli as unknown as object },
       es: { cli: esCli as unknown as object },
       "pt-BR": { cli: ptBrCli as unknown as object },
+      pl: { cli: plCli as unknown as object },
+      uk: { cli: ukCli as unknown as object },
     },
   });
   _t = _instance.t.bind(_instance);
