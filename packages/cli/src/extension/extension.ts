@@ -29,13 +29,26 @@ export function activate(context: vscode.ExtensionContext): void {
   const enDash = _require("@claude-stats/core/locales/en/dashboard.json") as Record<string, unknown>;
   const deExt = _require("@claude-stats/core/locales/de/extension.json") as Record<string, unknown>;
   const deDash = _require("@claude-stats/core/locales/de/dashboard.json") as Record<string, unknown>;
+  const jaExt = _require("@claude-stats/core/locales/ja/extension.json") as Record<string, unknown>;
+  const jaDash = _require("@claude-stats/core/locales/ja/dashboard.json") as Record<string, unknown>;
+  const zhCnExt = _require("@claude-stats/core/locales/zh-CN/extension.json") as Record<string, unknown>;
+  const zhCnDash = _require("@claude-stats/core/locales/zh-CN/dashboard.json") as Record<string, unknown>;
+
+  // VS Code's language code is e.g. "zh-cn" for Simplified Chinese — normalize
+  // to match our resource keys, which use the BCP 47 casing "zh-CN".
+  const rawLang = vscode.env.language;
+  const lng = rawLang.toLowerCase().startsWith("zh-cn")
+    ? "zh-CN"
+    : rawLang.split("-")[0];
 
   void initI18n({
-    lng: vscode.env.language.split("-")[0],
+    lng,
     ns: ["extension", "dashboard", "common"],
     resources: {
       en: { extension: enExt, dashboard: enDash },
       de: { extension: deExt, dashboard: deDash },
+      ja: { extension: jaExt, dashboard: jaDash },
+      "zh-CN": { extension: zhCnExt, dashboard: zhCnDash },
     },
   }).then((instance: import("i18next").i18n) => {
     setT(instance.t.bind(instance));

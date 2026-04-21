@@ -1,0 +1,79 @@
+{
+  "metrics": {
+    "sessions": "セッション",
+    "prompts": "プロンプト",
+    "inputTokens": "入力トークン",
+    "outputTokens": "出力トークン",
+    "input": "入力",
+    "output": "出力",
+    "cache": "キャッシュ",
+    "cacheEfficiency": "キャッシュ効率",
+    "estCost": "推定コスト",
+    "planValue": "プラン価値",
+    "planROI": "プラン ROI",
+    "activeHours": "アクティブ時間",
+    "costPerPrompt": "コスト / プロンプト",
+    "tokPerMin": "トークン / 分",
+    "throttleEvents": "スロットリングイベント",
+    "velocity": "速度",
+    "cost": "コスト",
+    "duration": "所要時間",
+    "thinking": "思考"
+  },
+  "periods": {
+    "day": "日",
+    "week": "週",
+    "month": "月",
+    "all": "すべて",
+    "allTime": "全期間"
+  },
+  "periodLabels": {
+    "daily": "日次",
+    "weekly": "週次",
+    "monthly": "月次",
+    "allTime": "全期間"
+  },
+  "models": {
+    "opus4": "Opus 4",
+    "sonnet4": "Sonnet 4",
+    "haiku4": "Haiku 4"
+  },
+  "plans": {
+    "pro": "Pro",
+    "max5x": "Max 5x",
+    "max20x": "Max 20x",
+    "teamStandard": "Team Standard",
+    "teamPremium": "Team Premium"
+  },
+  "verdicts": {
+    "goodValue": "お得",
+    "underusing": "使用不足",
+    "noPlanDetected": "プランが検出されませんでした"
+  },
+  "tableHeaders": {
+    "session": "セッション",
+    "started": "開始",
+    "model": "モデル",
+    "time": "時刻",
+    "stop": "停止",
+    "tools": "ツール",
+    "total": "合計",
+    "totals": "合計"
+  },
+  "units": {
+    "tokens": "トークン",
+    "session_one": "{{count}} セッション",
+    "session_other": "{{count}} セッション",
+    "tokPerMin": "トークン/分",
+    "promptsPerHr": "プロンプト/時",
+    "outputPerPrompt": "出力/プロンプト"
+  },
+  "actions": {
+    "connect": "接続",
+    "disconnect": "切断",
+    "cancel": "キャンセル",
+    "refresh": "更新",
+    "save": "保存",
+    "send": "送信"
+  }
+}

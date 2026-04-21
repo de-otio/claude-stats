@@ -4,8 +4,12 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 
 import enCommon from '../../core/src/locales/en/common.json';
 import deCommon from '../../core/src/locales/de/common.json';
+import jaCommon from '../../core/src/locales/ja/common.json';
+import zhCnCommon from '../../core/src/locales/zh-CN/common.json';
 import enFrontend from '../../core/src/locales/en/frontend.json';
 import deFrontend from '../../core/src/locales/de/frontend.json';
+import jaFrontend from '../../core/src/locales/ja/frontend.json';
+import zhCnFrontend from '../../core/src/locales/zh-CN/frontend.json';
 
 i18next
   .use(LanguageDetector)
@@ -22,6 +26,14 @@ i18next
       de: {
         common: deCommon,
         frontend: deFrontend,
+      },
+      ja: {
+        common: jaCommon,
+        frontend: jaFrontend,
+      },
+      'zh-CN': {
+        common: zhCnCommon,
+        frontend: zhCnFrontend,
       },
     },
     detection: {

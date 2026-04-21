@@ -1,0 +1,293 @@
+{
+  "pageTitle": "Claude Stats — {{period}} ({{date}})",
+  "tabs": {
+    "overview": "概览",
+    "models": "模型",
+    "projects": "项目",
+    "sessions": "会话",
+    "plan": "套餐",
+    "context": "上下文",
+    "efficiency": "效率",
+    "energy": "能耗",
+    "settings": "设置"
+  },
+  "toolbar": {
+    "period": "时间段:",
+    "refresh": "刷新",
+    "autoOff": "自动: 关闭",
+    "autoOn": "自动: 开启 ({{seconds}} 秒)"
+  },
+  "summary": {
+    "sessions": "会话",
+    "prompts": "提示词",
+    "inputTokens": "输入 Token",
+    "outputTokens": "输出 Token",
+    "cacheEfficiency": "缓存效率",
+    "estCost": "预估费用",
+    "planValue": "套餐价值",
+    "ofPlanFee": "占 ${{fee}}/月 的比例",
+    "activeHours": "活跃时长",
+    "costPerPrompt": "费用 / 提示词",
+    "tokPerMin": "Token / 分钟",
+    "truncatedOutputs": "被截断的输出",
+    "periodRange": "{{start}} → 今天",
+    "allTime": "全部时间"
+  },
+  "charts": {
+    "hourlyTokenUsage": "每小时 Token 使用量",
+    "dailyTokenUsage": "每日 Token 使用量",
+    "tokenBreakdown": "Token 构成",
+    "cacheUsage": "缓存使用情况",
+    "cumulativeApiValue": "累计 API 价值 vs 套餐费用",
+    "tokensByModel": "按模型分布的 Token",
+    "stopReasons": "停止原因",
+    "topProjects": "热门项目",
+    "tokensByProject": "按项目分布的 Token 占比",
+    "energyByProject": "按项目分布的能耗",
+    "thinkingIntensity": "按项目分布的思考强度",
+    "natureOfWork": "按项目分布的工作性质",
+    "sessionsByEntrypoint": "按入口点分布的会话",
+    "usageWindows": "5 小时使用窗口",
+    "topConversations": "按 API 费用排序的热门对话",
+    "windowLimitUsage": "窗口限额使用率 %",
+    "weeklyActivity": "每周活跃度",
+    "windowsPerWeek": "每周窗口数",
+    "conversationLengthDist": "对话长度分布",
+    "contextGrowthCurve": "上下文增长曲线",
+    "cacheEfficiencyByLength": "按对话长度的缓存效率",
+    "compactionEvents": "压缩事件",
+    "longSessions": "长会话 — 上下文管理机会",
+    "modelUsageByTier": "按复杂度等级的模型使用情况",
+    "opusScoreDist": "Opus 复杂度得分分布",
+    "topOveruse": "过度使用排行: 将昂贵模型用于简单任务"
+  },
+  "plan": {
+    "account": "账户",
+    "currentPlan": "当前套餐",
+    "planVerdict": "套餐判定",
+    "suggestedPlan": "推荐套餐",
+    "avgWeeklyValue": "平均每周价值",
+    "peakLabel": "峰值: ${{value}}",
+    "windowsPerWeek": "窗口 / 周",
+    "totalWindows": "共 {{count}} 个窗口",
+    "avgWindowCost": "平均窗口费用",
+    "medianLabel": "中位数: ${{value}}",
+    "truncatedOutputWindows": "含截断输出的窗口",
+    "truncatedOutputWindowsHint": "包含 max_tokens 截断",
+    "accounts": "账户:",
+    "accountsDetected": "检测到 {{count}} 个账户",
+    "planNotDetected": "未检测到套餐",
+    "setPlanFee": "设置 --plan-fee 或补充遥测数据",
+    "basedOnAvg": "基于平均每周 ${{value}} 的 API 价值",
+    "feeManual": "${{fee}}/月（手动）",
+    "feeAutoDetected": "${{fee}}/月（自动检测）",
+    "unknownPlan": "未知套餐",
+    "noData": "暂无数据",
+    "notEnoughData": "使用数据不足，无法分析套餐效率。",
+    "goodValue": "物超所值",
+    "underusing": "使用不足",
+    "noPlan": "无套餐",
+    "noPlanDetected": "未检测到套餐",
+    "planNames": {
+      "pro": "Pro ($20)",
+      "team_standard": "Team Std ($25)",
+      "max_5x": "Max 5x ($100)",
+      "team_premium": "Team Premium ($125)",
+      "max_20x": "Max 20x ($200)"
+    }
+  },
+  "context": {
+    "avgPromptsPerSession": "平均提示词/会话",
+    "medianPrompts": "提示词中位数",
+    "compactionRate": "压缩率",
+    "avgPeakInputTokens": "平均峰值输入 Token",
+    "needCompaction": "需要压缩",
+    "compactionsDetected": "在 {{count}} 个会话中检测到压缩",
+    "noCompactionEvents": "未检测到压缩事件。长对话中建议使用 /compact 降低上下文大小和费用。",
+    "tableHeaders": {
+      "project": "项目",
+      "prompts": "提示词",
+      "duration": "时长",
+      "peakInput": "峰值输入",
+      "compacted": "已压缩？",
+      "cost": "费用",
+      "yes": "是",
+      "no": "否"
+    }
+  },
+  "efficiency": {
+    "potentialSavings": "潜在节省",
+    "overuseRate": "过度使用率",
+    "overuseDescription": "轮次被发送到比所需更昂贵的模型",
+    "turnsAnalyzed": "已分析轮次",
+    "ofTotalMessages": "共 {{count}} 条消息"
+  },
+  "energy": {
+    "totalEnergy": "总能耗",
+    "totalCO2": "CO₂ 排放",
+    "co2Range": "±55% 不确定度: {{low}} – {{high}}",
+    "region": "电网区域",
+    "gridIntensity": "电网碳强度",
+    "gCO2perKWh": "gCO₂/kWh",
+    "cacheSaved": "缓存节省",
+    "energySavedLabel": "相比重新计算输入",
+    "thinkingSessions": "思考会话",
+    "thinkingEnergyPct": "占能耗的 {{pct}}%",
+    "geoCoverage": "地理覆盖率",
+    "geoCoverageHint": "检测到推理区域的消息百分比",
+    "equivalents": "环境上下文",
+    "periodRange": "{{start}} → {{end}} ({{days}} 天)",
+    "gasolineLiters": "升汽油",
+    "transitKm": "公里城市交通",
+    "trainKm": "公里长途火车",
+    "solarPanels": "所需太阳能板（周期）",
+    "solarRegion": "在 {{region}}",
+    "solarPanelsFootnote": "屋顶 PV 组件面积（约 20% 效率，0.75 性能比），安装在 {{region}} 时，在所选时间窗口内恰好生成本期间的总能耗。随区域年太阳辐照度和所选周期长度而缩放。",
+    "windRotations": "风力涡轮机旋转次数",
+    "windTurbineRef": "3 MW 陆上，35% CF",
+    "windRotationsFootnote": "典型现代 3 MW 陆上风力涡轮机在 15 RPM、35% 容量系数下的旋转次数 — 平均输出下每转约 1.17 kWh。等效而言，这样一台涡轮机在其实际平均输出下需要 {{minutes}} 分钟（额定 3 MW 下为 {{ratedMinutes}} 分钟）才能生成本期间的总能耗。",
+    "hydroTurbineLiters": "升水通过水轮机",
+    "hydroTurbineRef": "约 100 m 水头，90% η",
+    "hydroTurbineFootnote": "为生成本期间能耗需要通过典型现代水电涡轮机（约 100 m 水头，约 90% 效率）的水量 — 由 E = m·g·h·η 推导出每 kWh 约 4,077 L。高水头电站需要更少（胡佛大坝 180 m: 约 2,200 L/kWh），低水头径流式电站则需要更多。",
+    "nuclearWaste": "核废料体积",
+    "nuclearWasteFootnote": "工程处置设施体积 — 非原始废料 — 若同等能耗全部来自核能（约 4 mL/kWh）。基于 Posiva KBS-3 的 HLW 封装加权平均（考虑铜罐、膨润土缓冲层和热间距处置隧道后，为原始乏燃料体积的约 1,500 倍 — Onkalo 挖掘约 100 万 m³ 岩石以处置 650 m³ 乏燃料），加上 ILW（约 5 倍）和 LLW（约 3 倍）处置，使用 IAEA 废料清单的体积份额。HLW 必须被安全隔离和守护约 10 万年，直到其放射性衰减至天然铀矿水平。",
+    "journeyAnchor": "您的碳排放 ≈ 驾车 {{name}}（{{km}} km）。",
+    "journeys": {
+      "coffeeWalk": "去咖啡店往返",
+      "bikeCrossTown": "穿城骑行",
+      "crosstownCommute": "穿城通勤",
+      "shortIntercity": "伦敦 → 布莱顿",
+      "berlinHamburg": "柏林 → 汉堡",
+      "berlinMunich": "柏林 → 慕尼黑",
+      "parisBerlin": "巴黎 → 柏林",
+      "coastToCoast": "洛杉矶 → 纽约",
+      "halfEarth": "绕地球半周"
+    },
+    "disclaimer": "仅为估算 — ±55% 不确定度。Anthropic 未公开逐请求能耗数据。不适用于监管用途。",
+    "byModel": "按模型分布的能耗",
+    "byDay": "每日能耗与 CO₂",
+    "byProject": "按项目分布的能耗",
+    "noData": "此期间没有可用的能耗数据。",
+    "calc": {
+      "title": "计算方式",
+      "clickToExpand": "点击展开",
+      "intro": "此选项卡上的每个图块都来自 Anthropic API 为每条消息返回的 Token 数。以下展示了这些 Token 级数据如何转化为上面显示的 kWh、kg CO₂ 和等价值，使用您实际期间的数字，以便您审核计算过程。",
+      "ratesHeader": "按模型的能耗率:",
+      "periodHeader": "您的期间 ({{start}} → {{end}}):",
+      "col": {
+        "class": "类别",
+        "inputRate": "输入 Wh/1K",
+        "outputRate": "输出 Wh/1K",
+        "msgs": "消息数",
+        "output": "输出 Token",
+        "input": "输入 Token",
+        "cacheWrite": "缓存写入",
+        "cacheRead": "缓存读取",
+        "rawEnergy": "原始能耗",
+        "rawTotal": "原始合计"
+      },
+      "totals": "原始合计 {{raw}} kWh × PUE {{pue}} = 消耗 <strong>{{totalKwh}} kWh</strong>。在 <strong>{{region}}</strong> 电网强度 {{gridIntensity}} gCO₂/kWh 下，这相当于 <strong>{{co2Kg}} kg CO₂</strong>。",
+      "equivHeader": "如何从 {{co2Kg}} kg CO₂ / {{totalKwh}} kWh 推导出等价值:",
+      "eq": {
+        "gasoline": "汽油: {{co2Kg}} kg ÷ 2.31 kg CO₂/L = <strong>{{value}} L</strong>",
+        "train": "长途火车: {{co2Kg}} kg ÷ 0.006 kg CO₂/pkm = <strong>{{value}} km</strong>",
+        "transit": "城市交通: {{co2Kg}} kg ÷ 0.030 kg CO₂/pkm = <strong>{{value}} km</strong>",
+        "nuclearWaste": "核处置体积: {{totalKwh}} kWh × 4 mL/kWh（工程 HLW+ILW+LLW 仓库加权）= <strong>{{value}}</strong>",
+        "wind": "风力涡轮机转数: {{totalKwh}} kWh ÷ 1.17 kWh/转（15 RPM、35% CF 的 3 MW 涡轮机）= <strong>{{value}} 转</strong> ≈ 实际旋转 {{minutes}} 分钟",
+        "hydro": "水轮机水量: {{totalKwh}} kWh × 4,077 L/kWh（约 100 m 水头，90% η，通过 E = m·g·h·η）= <strong>{{value}}</strong>",
+        "solar": "太阳能板: {{totalKwh}} kWh ÷ ({{regionYield}} kWh/m²/年 在 {{region}} × {{periodDays}}/365) = <strong>{{value}}</strong>"
+      }
+    },
+    "sources": {
+      "title": "数据来源",
+      "items": {
+        "methodology": {
+          "label": "模型能耗率",
+          "value": "基于 Google 2025 年 Gemini 推理白皮书（文本查询中位数 0.24 Wh）和 Epoch AI 2024 的 Token 级估算，按模型类别（Haiku/Sonnet/Opus）缩放。公式详见 /doc/analysis/energy-dashboard/01-estimation-model.md。"
+        },
+        "pue": {
+          "label": "数据中心开销",
+          "value": "PUE 1.2 — Uptime Institute 2023 超大规模平均值（Google、AWS、Azure 公布 1.10–1.20）。"
+        },
+        "gridIntensity": {
+          "label": "电网碳强度",
+          "value": "美国: EPA eGRID2022。欧盟: European Environment Agency (EEA) 2024。亚太及全球: IEA 2024。可用时使用各国机构数据。"
+        },
+        "solarYield": {
+          "label": "太阳能板产量",
+          "value": "区域年 GHI 取自 PVGIS（欧洲）/ NREL NSRDB（美洲）/ World Bank GSA（全球），乘以 20% 面板效率 × 0.75 性能比。图块将该年产量按所选周期缩放，显示在该时间段内恰好生成本期间能耗所需的面板面积。"
+        },
+        "windTurbine": {
+          "label": "风力涡轮机参考",
+          "value": "现代 3 MW 陆上涡轮机，15 RPM，容量系数约 35%（IRENA Renewable Power Generation Costs 2023、IEA Renewables 2024）。每转能耗 = 3 MW × 4 s × 0.35 ≈ 平均输出 1.17 kWh（额定约 3.33 kWh）。"
+        },
+        "hydroTurbine": {
+          "label": "水电涡轮机参考",
+          "value": "代表性现代水电站，约 100 m 净水头，约 90% 涡轮+发电机综合效率。由物理关系 E = m·g·h·η 推导，g = 9.81 m/s²，得到 3,600,000 J ÷ (9.81 × 100 × 0.9) ≈ 4,077 L/kWh。接近全球容量加权平均值（三峡约 95 m、伊泰普约 118 m）；胡佛大坝（180 m）等高水头电站需要约 2,200 L/kWh。"
+        },
+        "carKm": {
+          "label": "汽车排放",
+          "value": "120 gCO₂/km — 欧盟新车平均，EEA 2024。"
+        },
+        "transit": {
+          "label": "城市交通排放",
+          "value": "30 gCO₂/人·km — 城市公交（约 27）、地铁（约 8）、有轨电车/轻轨的加权混合。来源: IEA Transport Emissions (2024) 和 EEA Transport & Environment Reporting Mechanism 2024。"
+        },
+        "train": {
+          "label": "长途火车排放",
+          "value": "6 gCO₂/人·km — 欧洲电气化城际铁路平均，来源: UIC Railway Handbook on Energy and CO₂ Emissions 和 EEA 2024。"
+        },
+        "tree": {
+          "label": "树木吸收",
+          "value": "成熟树木每年吸收 21 kg CO₂ — 美国林业局/EPA。"
+        },
+        "gasoline": {
+          "label": "汽油燃烧",
+          "value": "每升 2.31 kg CO₂ — 美国 EPA 尾气排放系数。"
+        },
+        "nuclearWaste": {
+          "label": "核处置体积",
+          "value": "约 4 mL/kWh 工程仓库体积 — 非原始废料。Posiva KBS-3 / Onkalo 的 HLW 处置（考虑铜罐、膨润土缓冲层和热隧道间距后为原始乏燃料体积的约 1,500 倍）、ILW（约 5 倍）、LLW（约 3 倍）处置加权平均，使用 IAEA 体积份额。参考: Posiva 2012 安全案例、SKB TR-11-01、IAEA Radioactive Waste Inventory。"
+        }
+      }
+    }
+  },
+  "settings": {
+    "configuration": "配置",
+    "settingsPath": "设置保存在 <code style=\"background:#0f3460;padding:0.15rem 0.3rem;border-radius:3px;color:#ccc;\">~/.claude-stats/config.json</code>",
+    "planType": "套餐类型",
+    "notSetAutoDetect": "未设置（自动检测）",
+    "planOptions": {
+      "pro": "Pro ($20/月)",
+      "max_5x": "Max 5x ($100/月)",
+      "max_20x": "Max 20x ($200/月)",
+      "team_standard": "Team Standard ($25/月)",
+      "team_premium": "Team Premium ($125/月)",
+      "custom": "自定义"
+    },
+    "planAutoDetectHint": "自动检测依赖间歇性遥测数据，通常无法确定您的套餐。建议手动设置。",
+    "monthlyFee": "月费（USD）",
+    "monthlyFeePlaceholder": "根据套餐类型自动",
+    "monthlyFeeHint": "覆盖套餐类型的默认费用，或设置自定义金额。",
+    "costAlertThresholds": "费用警报阈值（USD）",
+    "daily": "每日",
+    "weekly": "每周",
+    "monthly": "每月",
+    "save": "保存",
+    "savedReload": "已保存！重新加载以查看更新后的仪表板。",
+    "networkError": "网络错误。",
+    "errorSaving": "保存错误。"
+  },
+  "pricing": {
+    "title": "Token 定价（每 100 万 Token）",
+    "model": "模型",
+    "input": "输入",
+    "output": "输出",
+    "cacheRead": "缓存读取",
+    "cacheWrite": "缓存写入",
+    "source": "来源: Anthropic API 定价 — 最后更新 {{date}}（每周自动刷新）。显示的费用为等价 API 费率，非订阅费用。"
+  },
+  "footer": {
+    "generated": "生成于 {{timestamp}} • 时区: {{timezone}}"
+  }
+}

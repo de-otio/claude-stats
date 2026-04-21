@@ -1,0 +1,338 @@
+{
+  "statusBar": {
+    "idle": "$(graph) Claude Stats",
+    "withStats": "$(graph) {{tokens}} Token · ~${{cost}}",
+    "tooltip": "打开 Claude Stats 仪表板",
+    "tooltipEmpty": "Claude Stats: 尚未检测到 Claude Code 会话 — 点击查看安装说明"
+  },
+  "sidebar": {
+    "openDashboard": "打开仪表板",
+    "tabTitle": "{{title}} 选项卡"
+  },
+  "tabHelp": {
+    "overview": {
+      "title": "概览",
+      "sections": [
+        {
+          "heading": "您看到的内容",
+          "body": "所选期间的高层使用统计: 会话、提示词、Token、缓存效率和预估 API 费用。"
+        },
+        {
+          "heading": "每日/每小时 Token 使用量",
+          "body": "按时间显示输出 Token、非缓存输入、缓存读取和缓存创建的堆叠柱状图。当时间段为「日」时，显示每小时细分。"
+        },
+        {
+          "heading": "Token 构成",
+          "body": "四类 Token（输出、输入、缓存读取、缓存创建）总分布的环形图。"
+        },
+        {
+          "heading": "缓存使用情况",
+          "body": "显示提示词缓存的效果。更高的缓存读取比例意味着更少的冗余 Token 处理和更低的费用。"
+        },
+        {
+          "heading": "累计 API 价值 vs 套餐费用",
+          "body": "跟踪您随时间消耗的 API 价值相对于月度套餐费用。如果线超过虚线的套餐费用线，说明您从订阅中获得了 1× 以上的价值。"
+        }
+      ]
+    },
+    "models": {
+      "title": "模型",
+      "sections": [
+        {
+          "heading": "按模型分布的 Token",
+          "body": "显示每个模型的输入和输出 Token 消耗的堆叠柱状图。帮助您了解哪些模型使用最频繁。"
+        },
+        {
+          "heading": "停止原因",
+          "body": "每种停止原因的发生频率。「end_turn」表示模型自然结束，「tool_use」表示它调用了工具，「max_tokens」表示达到输出限制。"
+        }
+      ]
+    },
+    "projects": {
+      "title": "项目",
+      "sections": [
+        {
+          "heading": "热门项目",
+          "body": "Token 消耗最多项目的水平柱状图。有助于了解您的使用量集中在哪里。"
+        },
+        {
+          "heading": "按项目分布的 Token 占比",
+          "body": "显示每个项目占总 Token 百分比的饼图。快速识别主导您使用量的项目。"
+        },
+        {
+          "heading": "按项目分布的能耗",
+          "body": "按项目估算的能耗消费饼图。仅在有能耗数据时显示。"
+        },
+        {
+          "heading": "按项目分布的思考强度",
+          "body": "衡量每个项目每条提示词的扩展思考块数。较高的值表示需要更深入推理的项目 — 复杂调试、架构决策或细致的代码生成。较低的值表示直接的任务。突然上升可能表明代码库复杂性在增加。"
+        },
+        {
+          "heading": "按项目分布的工作性质",
+          "body": "显示每个项目 Claude 的工作如何分解为五类: 探索（读取和搜索代码）、编辑（编写和修改文件）、运行（shell 命令和构建）、研究（Web 搜索）和规划（计划和任务）。揭示项目是以探索、积极开发还是调试为主。"
+        }
+      ]
+    },
+    "sessions": {
+      "title": "会话",
+      "sections": [
+        {
+          "heading": "5 小时使用窗口",
+          "body": "Claude 在滚动 5 小时窗口中跟踪使用量。每根柱子显示该窗口中消耗的 API 价值。红色柱子表示发生了限流的窗口。"
+        },
+        {
+          "heading": "按 API 费用排序的热门对话",
+          "body": "您最昂贵的单次对话。悬停可查看包括提示词数量、主导模型和占套餐费用百分比在内的详情。"
+        },
+        {
+          "heading": "按入口点分布的会话",
+          "body": "显示会话如何分布在各入口点（CLI、VS Code 扩展、API 等）的饼图。"
+        }
+      ]
+    },
+    "plan": {
+      "title": "套餐",
+      "sections": [
+        {
+          "heading": "此选项卡的衡量内容",
+          "body": "将您的 Claude 使用量的 API 等价价值与您的订阅套餐费用进行比较。有助于回答: 「我应该升级还是降级？」"
+        },
+        {
+          "heading": "套餐判定",
+          "body": "「物超所值」表示您的 API 等价使用量超过了套餐费用（您获得的价值超过支付金额）。「使用不足」表示您支付的金额超过了等价 API 费用。"
+        },
+        {
+          "heading": "推荐套餐",
+          "body": "基于您的平均每周 API 等价费用，外推到每月。与 Pro ($20)、Team Standard ($25)、Max 5x ($100)、Team Premium ($125) 和 Max 20x ($200) 等级进行比较。"
+        },
+        {
+          "heading": "每周活跃度",
+          "body": "显示每周会话和提示词的柱状图。帮助您了解使用模式以及活跃度水平是否与当前套餐相符。"
+        },
+        {
+          "heading": "每 5 小时窗口的 API 费用",
+          "body": "显示每 5 小时窗口的绝对 API 等价费用。对于包含在输出 Token 限制处被截断的助手响应（「截断输出」）的窗口，柱状图为橙色。注意: Anthropic 的 5 小时速率限制拒绝永远不会进入会话日志，因此我们无法可靠地显示真正的「限制百分比」值。"
+        },
+        {
+          "heading": "每周窗口数",
+          "body": "显示每周 5 小时使用窗口总数的堆叠柱状图。橙色部分统计包含截断输出响应的窗口 — 这通常是一个非关键信号，表明一个长响应在输出 Token 限制处被截断。"
+        },
+        {
+          "heading": "多账户支持",
+          "body": "如果您使用多个 Claude 账户（如工作团队 + 个人），每个账户都会被单独检测，拥有自己的套餐判定和费用明细。"
+        }
+      ]
+    },
+    "context": {
+      "title": "上下文",
+      "sections": [
+        {
+          "heading": "此选项卡的衡量内容",
+          "body": "分析您的上下文管理习惯: 对话长度、上下文窗口增长、压缩使用和缓存效率。帮助您回答: 「我在最优地管理上下文吗？」"
+        },
+        {
+          "heading": "对话长度分布",
+          "body": "显示您的会话包含多少提示词的直方图。非常长的会话（15+ 提示词）在没有压缩时可能随着上下文窗口填满而导致更高的费用和更慢的响应。"
+        },
+        {
+          "heading": "上下文增长曲线",
+          "body": "显示输入 Token 如何随对话中连续提示词增长。陡峭的曲线意味着上下文快速累积 — 对于不相关的任务，考虑使用 /compact 或开始新对话。"
+        },
+        {
+          "heading": "按长度的缓存效率",
+          "body": "比较短会话与长会话的缓存命中率。如果较长会话中缓存效率下降，可能表明上下文被过于频繁地重建，或者 /compact 丢弃了有用的缓存上下文。"
+        },
+        {
+          "heading": "压缩事件",
+          "body": "检测到消息之间输入 Token 显著下降（超过 40% 减少）的实例，表示使用了 /compact。显示前后 Token 数以可视化回收了多少上下文。"
+        },
+        {
+          "heading": "长会话表",
+          "body": "包含 15+ 提示词的会话，按峰值输入 Token 排序。「已压缩？」列显示是否检测到压缩。标记为「否」的会话可能可以通过运行 /compact 来减少上下文大小和费用。"
+        }
+      ]
+    },
+    "efficiency": {
+      "title": "效率",
+      "sections": [
+        {
+          "heading": "此选项卡的衡量内容",
+          "body": "分析您是否将提示词发送到比必要更昂贵的模型。每个用户提示词（「轮次」）都会评分复杂度，然后分类到推荐等级: Haiku、Sonnet 或 Opus。"
+        },
+        {
+          "heading": "潜在节省",
+          "body": "如果每个轮次都被路由到能胜任的最便宜模型时可节省的金额。仅统计使用了比分类等级更昂贵模型的情况。"
+        },
+        {
+          "heading": "过度使用率",
+          "body": "实际模型比推荐等级更昂贵的分类轮次百分比。高过度使用率表示有机会对简单任务使用更便宜的模型。"
+        },
+        {
+          "heading": "按复杂度等级的模型使用情况",
+          "body": "按模型分组的堆叠柱状图，按分类等级着色（绿色 = Haiku、蓝色 = Sonnet、红色 = Opus）。如果 Opus 有大片绿色或蓝色部分，那些轮次本可以使用更便宜的模型。"
+        },
+        {
+          "heading": "Opus 复杂度得分分布",
+          "body": "发送给 Opus 的轮次的复杂度得分（0–100）直方图。得分由四个信号计算得出:\n\n• 输出 Token（0–25 分）— 更长的响应表示更困难的任务\n• 思考块（0–30 分）— 扩展思考是最强的复杂度信号\n• 工具复杂度（0–25 分）— Agent、Write、NotebookEdit 得分最高\n• 提示词文本分析（0–20 分）— 「refactor」或「architect」等关键词加分；「fix typo」或「rename」减分\n\n柱状图按等级着色: 绿色（0–20，Haiku 级别）、蓝色（20–40，Sonnet 级别）、红色（40+，Opus 级别）。绿色和蓝色柱代表可能不需要 Opus 的 Opus 轮次。"
+        },
+        {
+          "heading": "过度使用排行",
+          "body": "潜在节省最大的具体轮次 — 将昂贵模型用于被分类为较简单任务的情况。显示提示词文本预览和使用等级适当模型时可节省的金额。"
+        }
+      ]
+    },
+    "energy": {
+      "title": "能耗",
+      "sections": [
+        {
+          "heading": "此选项卡的衡量内容",
+          "body": "估算您的 Claude 使用量的电力和 CO₂ 足迹。使用模型类别能耗系数（Haiku/Sonnet/Opus）和检测到的或按区域设置推断的电网区域逐条消息计算。不确定度为 ±55% — Anthropic 未公开逐请求能耗数据。"
+        },
+        {
+          "heading": "电网区域",
+          "body": "能耗到 CO₂ 的换算使用检测到的推理区域（来自每条消息的 inference_geo）的碳强度。如果未检测到地理信息，则回退到您的区域设置。您可以查看覆盖百分比和看到了哪些区域。"
+        },
+        {
+          "heading": "缓存节省",
+          "body": "缓存读取 Token 的能耗成本约为将其作为输入 Token 重新计算的 3%。本节显示提示词缓存节省的估算能耗和 CO₂。"
+        },
+        {
+          "heading": "环境上下文",
+          "body": "将总能耗和 CO₂ 转换为并排显示在一条带中的具体单位: 燃烧汽油升数（2.31 kgCO₂/L）、检测到的电网区域内在所选期间内生成相同能耗所需的太阳能板面积（约 20% 效率 × 0.75 性能比，从年产量缩减）、风力涡轮机转数（3 MW 陆上涡轮机在 35% 容量系数下每转约 1.17 kWh）、通过水电涡轮机的水量升数（在约 100 m 水头、90% 效率的代表值下约 4,077 L/kWh，通过 E = m·g·h·η）、工程核设施体积（罐体 + 缓冲层 + 隧道开挖，HLW+ILW+LLW 加权平均，约 4 mL/kWh）、城市交通行驶 km（30 gCO₂/pkm — 公交/地铁/有轨电车混合）和长途电气化火车（6 gCO₂/pkm）。带下方的旅程锚点将该期间的驾车 km 等价值对应到可识别的行程。"
+        },
+        {
+          "heading": "计算方式",
+          "body": "等价值带下方的可折叠面板显示使用您的期间实际数字的完整推导: 按模型类别的 Token 数、按类别的能耗率（每 1K 输入/输出 Token 的 Wh）、PUE 开销、电网强度以及每个等价值背后的计算。您可以从 API 返回的 Token 审核或复现每个数字。"
+        },
+        {
+          "heading": "数据来源",
+          "body": "列出每个系数背后的上游引用: Google 2025 Gemini 推理白皮书和 Epoch AI 2024（模型能耗率）；Uptime Institute（PUE）；EPA eGRID / EEA / IEA（电网强度）；PVGIS/NREL/World Bank GSA（太阳能产量）；IRENA/IEA（风力涡轮机）；Posiva KBS-3 / SKB / IAEA（核处置）；UIC 和 EEA（交通排放）。"
+        },
+        {
+          "heading": "每日和按模型图表",
+          "body": "等价值带下方的两张图表: 期间的每日能耗和 CO₂（左），按模型的总能耗（右）。两者均以 kWh 报告能耗。"
+        }
+      ]
+    },
+    "settings": {
+      "title": "设置",
+      "sections": [
+        {
+          "heading": "您可以配置的内容",
+          "body": "套餐类型（Pro、Max、Team、自定义）和月费。这些用于「套餐」选项卡上的套餐利用率计算。如未设置，工具会从遥测数据自动检测。"
+        },
+        {
+          "heading": "费用警报阈值",
+          "body": "设置每日、每周和每月费用阈值。当预估 API 费用超过阈值时，会在收集后显示警报。"
+        },
+        {
+          "heading": "设置存储位置",
+          "body": "所有设置保存在 ~/.claude-stats/config.json。您也可以直接编辑此文件。"
+        }
+      ]
+    }
+  },
+  "panel": {
+    "title": "Claude Stats",
+    "errors": {
+      "failedToLoadConfig": "加载配置失败",
+      "failedToSaveConfig": "保存配置失败"
+    }
+  },
+  "sync": {
+    "status": {
+      "connectedText": "$(cloud) 同步",
+      "connectedTooltip": "Claude Stats: 已同步 - 点击立即同步",
+      "disconnectedText": "$(cloud-upload) 同步已关闭",
+      "disconnectedTooltip": "Claude Stats: 未连接 - 点击同步",
+      "syncingText": "$(sync~spin) 同步中...",
+      "syncingTooltip": "Claude Stats: 正在同步会话数据...",
+      "errorText": "$(cloud-upload) 同步错误",
+      "errorTooltip": "Claude Stats: 同步错误 - 点击重试"
+    },
+    "dialogs": {
+      "notConfigured": "Claude Stats 同步未配置。您想连接吗？",
+      "authExpired": "Claude Stats: 认证已过期。请重新连接。",
+      "disconnectConfirm": "断开与 Claude Stats 同步的连接？这将删除您的认证令牌。",
+      "enterBackendUrl": "输入 Claude Stats 后端 URL",
+      "backendUrlPlaceholder": "https://your-team-instance.example.com",
+      "enterEmail": "输入您的邮箱地址进行认证",
+      "emailPlaceholder": "you@example.com",
+      "checkEmailOrBrowser": "Claude Stats: 请查看邮件或浏览器以完成认证。代码: {{code}}",
+      "checkEmail": "Claude Stats: 请查看邮件中的登录链接。"
+    },
+    "progress": {
+      "syncing": "Claude Stats: 正在同步会话...",
+      "connecting": "Claude Stats: 正在连接..."
+    },
+    "messages": {
+      "syncComplete": "Claude Stats: 同步完成。",
+      "syncFailed": "Claude Stats 同步失败: {{message}}",
+      "connectedSuccess": "Claude Stats: 连接成功！",
+      "connectionFailed": "Claude Stats: 连接失败 - {{message}}",
+      "disconnected": "Claude Stats: 已断开连接。",
+      "noBackendUrl": "Claude Stats: 未配置后端 URL。请先连接以使用团队仪表板。",
+      "backendError": "后端返回 {{status}}。检查 URL 并重试。"
+    }
+  },
+  "errors": {
+    "sqliteRequired": "Claude Stats 需要支持 node:sqlite 的 Node.js 22.5+。{{message}}",
+    "generic": "Claude Stats: {{message}}"
+  },
+  "mcp": {
+    "registered": "Claude Stats MCP 服务器已注册到 ~/.claude.json。请重启 Claude Code 以生效，这样您的代理即可直接查询使用统计。",
+    "updated": "Claude Stats MCP 服务器路径已更新（扩展版本变更）。请重启 Claude Code 以使 MCP 服务器重新工作。",
+    "failure": {
+      "noNode": "Claude Stats 无法注册其 MCP 服务器: 您的 PATH 中未找到 Node.js 二进制文件。安装 Node.js 22.5 或更新版本（例如通过 nvm、Homebrew 或 nodejs.org），并确保可以从 shell 访问到 `node`，然后重新加载此窗口（命令面板 → 「Developer: Reload Window」）。在修复之前，仪表板仍可工作，但您的 Claude 代理将无法通过 MCP 查询统计数据。目标配置文件: {{path}}",
+      "writeFailed": "Claude Stats 无法写入 {{path}} 以注册 MCP 服务器 ({{message}})。请检查文件是否可写（它属于您的 Claude Code 配置），以及当前是否未被其他进程打开/锁定，然后重新加载此窗口。在修复之前，仪表板仍可工作，但您的 Claude 代理将无法通过 MCP 查询统计数据。",
+      "generic": "Claude Stats 无法在 {{path}} 注册其 MCP 服务器: {{message}}。仪表板仍可工作，但在解决此问题之前您的 Claude 代理将无法通过 MCP 查询统计数据。重新加载此窗口（命令面板 → 「Developer: Reload Window」）以重试。"
+    }
+  },
+  "welcome": {
+    "noClaudeCode": {
+      "title": "欢迎使用 Claude Stats",
+      "intro": "Claude Stats 读取 Claude Code 的本地会话文件，向您显示使用了多少 Token、费用是多少以及时间花在哪里。目前它无法在此机器上找到任何 Claude Code 数据，因此仪表板为空。",
+      "steps": [
+        {
+          "heading": "安装 Claude Code",
+          "body": "从 Anthropic 的官方文档安装 Claude Code CLI，然后登录一次，使其可以将会话文件写入您的主目录。"
+        },
+        {
+          "heading": "开始对话",
+          "body": "在任意项目中打开终端并运行 `claude`。至少发送一条消息。Claude Code 会在第一个响应到达后立即写入 JSONL 会话日志。"
+        },
+        {
+          "heading": "回到这里",
+          "body": "扩展在后台监视新的会话文件。一旦第一个文件存在，几秒内就会被识别 — 您无需重启 VS Code。"
+        }
+      ],
+      "whatNext": "在会话存在之前，状态栏显示空闲图标，仪表板保持在此欢迎屏幕。向 Claude Code 发送消息后，点击「立即刷新」。"
+    },
+    "noSessions": {
+      "title": "尚无 Claude Code 会话",
+      "intro": "Claude Code 已安装在此机器上，但尚未记录任何会话（或者收集器尚未完成首次扫描）。一旦有会话存在，仪表板将立即填充。",
+      "steps": [
+        {
+          "heading": "开始或继续对话",
+          "body": "打开终端并在任意项目文件夹中运行 `claude`。发送一条消息。Claude Code 会为每个会话在下面显示的项目目录中写入一个 JSONL 日志文件。"
+        },
+        {
+          "heading": "让收集器追上",
+          "body": "扩展监视 ~/.claude/projects/ 的变更，每隔几秒运行一次增量收集（带防抖）。对许多历史会话进行首次收集可能需要 10-30 秒。"
+        },
+        {
+          "heading": "刷新仪表板",
+          "body": "使用下面的按钮（或点击状态栏中的 Claude Stats 项）重新检查。一旦收集到会话，此屏幕会自动被完整仪表板替换。"
+        }
+      ],
+      "whatNext": "如果您已经在使用 Claude Code，但一分钟后仍看到此屏幕，说明有东西阻止了收集器读取会话文件。请检查下面的路径是否存在且可读，然后重新加载窗口（命令面板 → 「Developer: Reload Window」）。"
+    },
+    "stepsHeading": "应做的步骤",
+    "whatNextHeading": "接下来会发生什么",
+    "refresh": "立即刷新",
+    "refreshHint": "重新读取 ~/.claude/projects/ 并重新渲染仪表板。",
+    "projectsDirLabel": "会话来源:",
+    "dbPathLabel": "本地数据库:",
+    "privacyNote": "Claude Stats 永远不会离开您的机器。不传输任何 Token 或凭证 — 一切都是从 Claude Code 的 JSONL 日志本地读取并聚合到您主目录中的 SQLite 数据库。"
+  }
+}
