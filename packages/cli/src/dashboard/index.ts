@@ -970,11 +970,15 @@ function buildRecommendations(input: {
   // Anthropic 5-hour rate-limit rejections — those never make it into the JSONL.
   // See `truncatedOutputs` and the note in DashboardSummary.
 
-  // 2. Underusing plan — clearly spending far less than the plan fee
+  // 2. Underusing plan — clearly spending far less than the plan fee.
+  // Gate on totalWeeks >= 4 so a short period filter (e.g. "Day" or "Week",
+  // which yield a single partial week) can't extrapolate one day's cost into
+  // a full-month downgrade recommendation.
   if (planUtilization) {
     if (
       planUtilization.currentPlanVerdict === "underusing" &&
       planUtilization.weeklyPlanBudget > 0 &&
+      planUtilization.totalWeeks >= 4 &&
       planUtilization.avgWeeklyCost < planUtilization.weeklyPlanBudget * 0.5 &&
       planUtilization.recommendedPlan
     ) {
