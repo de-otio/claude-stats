@@ -8,6 +8,33 @@ export interface DailyDigestOptions {
   date?: string;
   tz?: string;
   includeUnpushed?: boolean;
+  /**
+   * When true, attempt to patch a previous digest rather than doing a full
+   * rebuild when the snapshot hash changes.  Defaults false (feature flag:
+   * ship with false, flip to true after a week of canary).
+   */
+  patchCache?: boolean;
+  /**
+   * When true, always skip the patcher path and do a full rebuild.
+   * Useful for tests and emergency recovery.
+   */
+  forceRebuild?: boolean;
+}
+
+/**
+ * A cache entry that carries both the stored DailyDigest and the
+ * SnapshotHashInputs that produced it.  Used by the incremental-digest
+ * patcher (v3.06) to diff the previous inputs against the new ones and
+ * decide which sessions / projects need to be re-processed.
+ *
+ * Back-compat: entries written by v1/v2 (without inputs) will not
+ * satisfy this type.  Use CacheClient.readWithInputs which returns null
+ * for legacy entries.
+ */
+export interface CachedEntry {
+  digest: DailyDigest;
+  /** The SnapshotHashInputs that were used to build this digest. */
+  inputs: import('./cache.js').SnapshotHashInputs;
 }
 
 export interface DailyDigestTotals {
@@ -47,6 +74,17 @@ export interface DailyDigestItem {
   git: ProjectGitActivity | null;
   score: number;
   confidence: Confidence;
+  /**
+   * User-supplied label from a 'rename' correction (v3.09).
+   * Rendered inside backticks per SR-2. Null/undefined = use default firstPrompt heading.
+   */
+  label?: string | null;
+  /**
+   * When true, this item was hidden by a user correction (v3.09).
+   * Still included in the digest payload (for MCP callers) but reporters
+   * skip it by default unless --all is passed.
+   */
+  hidden?: boolean;
 }
 
 export interface DailyDigest {

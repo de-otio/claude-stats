@@ -8,6 +8,7 @@
 
 import type { Segment } from './types.js';
 import type { EmbeddingProvider } from './embeddings.js';
+import type { CorrectionAction, CorrectionSignature } from './corrections.js';
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
@@ -18,6 +19,18 @@ export interface SegmentWithProject extends Segment {
 export interface SegmentCluster {
   projectPath: string;
   segments: readonly SegmentWithProject[];
+  /** User-supplied label from a 'rename' correction. */
+  label?: string | null;
+  /** When true, this cluster was hidden by a user correction. */
+  hidden?: boolean;
+}
+
+/**
+ * Minimal interface for corrections lookup, used to avoid circular deps.
+ * The full CorrectionsClient from corrections.ts satisfies this.
+ */
+export interface CorrectionsLookup {
+  forSignature(sig: CorrectionSignature): readonly CorrectionAction[];
 }
 
 /**
@@ -31,6 +44,8 @@ export interface SegmentCluster {
  *       - With embeddingProvider: cosine(embed(a), embed(b)) ≥ 0.65
  *       - Without embeddingProvider: normalised bigram Jaccard ≥ 0.4 (v1 behaviour)
  *  4. Merge when time windows overlap (within 5 min tolerance) AND share ≥ 1 file.
+ *  5. (Optional) Apply user corrections (merge/split/rename/hide) when
+ *     correctionsClient is supplied.
  *
  * When embeddingProvider is supplied, the function is async (embedding requires
  * I/O for SQLite cache lookups and/or model inference). When the provider is
@@ -41,7 +56,10 @@ export interface SegmentCluster {
  */
 export async function clusterSegments(
   segments: readonly SegmentWithProject[],
-  opts?: { embeddingProvider?: EmbeddingProvider | null },
+  opts?: {
+    embeddingProvider?: EmbeddingProvider | null;
+    correctionsClient?: CorrectionsLookup | null;
+  },
 ): Promise<readonly SegmentCluster[]> {
   if (segments.length === 0) return [];
 
@@ -74,7 +92,163 @@ export async function clusterSegments(
     return earliestTs(a.segments) - earliestTs(b.segments);
   });
 
+  // Step 5: Apply user corrections if a corrections client is provided
+  const correctionsClient = opts?.correctionsClient ?? null;
+  if (correctionsClient !== null) {
+    return applyCorrections(allClusters, correctionsClient);
+  }
+
   return allClusters;
+}
+
+// ─── Corrections application ────────────────────────────────────────────────
+
+/**
+ * Build a CorrectionSignature from a cluster's segments.
+ * Re-exported as a helper so CLI handlers can build the same signature.
+ */
+export function computeClusterSignature(cluster: SegmentCluster): CorrectionSignature {
+  // Collect all unique file paths from all segments, sorted
+  const filePathSet = new Set<string>();
+  let allPromptParts: string[] = [];
+
+  for (const seg of cluster.segments) {
+    for (const fp of seg.filePaths) {
+      filePathSet.add(fp);
+    }
+    if (seg.openingPromptText !== null) {
+      allPromptParts.push(seg.openingPromptText);
+    }
+  }
+
+  // Use the earliest segment's prompt as the prefix
+  const sortedByTs = [...cluster.segments].sort((a, b) => a.startTs - b.startTs);
+  const rawPrompt = sortedByTs.find(s => s.openingPromptText !== null)?.openingPromptText ?? '';
+  const promptPrefix = normalisePrompt(rawPrompt).slice(0, 80);
+
+  return {
+    projectPath: cluster.projectPath,
+    filePaths: [...filePathSet].sort(),
+    promptPrefix,
+  };
+}
+
+/**
+ * Apply corrections (merge/split/rename/hide) to the cluster list.
+ * Returns a new array with corrections applied.
+ */
+function applyCorrections(
+  clusters: SegmentCluster[],
+  correctionsClient: CorrectionsLookup,
+): readonly SegmentCluster[] {
+  // Build a signature-to-index map for merge lookups
+  const buildSigKey = (sig: CorrectionSignature): string =>
+    `${sig.projectPath}\x1f${sig.filePaths.join(',')}\x1f${sig.promptPrefix}`;
+
+  // Work on a mutable copy
+  let result: SegmentCluster[] = [...clusters];
+
+  // Track which clusters have been merged-into (absorbed) and should be removed
+  const absorbed = new Set<number>();
+
+  // First pass: apply rename and hide corrections
+  for (let i = 0; i < result.length; i++) {
+    const cluster = result[i]!;
+    const sig = computeClusterSignature(cluster);
+    const corrections = correctionsClient.forSignature(sig);
+
+    let updated = { ...cluster };
+
+    for (const action of corrections) {
+      if (action.kind === 'rename') {
+        updated = { ...updated, label: action.label };
+      } else if (action.kind === 'hide') {
+        updated = { ...updated, hidden: true };
+      }
+    }
+
+    result[i] = updated;
+  }
+
+  // Second pass: apply merge corrections
+  // Build sig-key → cluster index map for efficient lookup
+  const sigToIndex = new Map<string, number>();
+  for (let i = 0; i < result.length; i++) {
+    const sig = computeClusterSignature(result[i]!);
+    sigToIndex.set(buildSigKey(sig), i);
+  }
+
+  for (let i = 0; i < result.length; i++) {
+    if (absorbed.has(i)) continue;
+    const cluster = result[i]!;
+    const sig = computeClusterSignature(cluster);
+    const corrections = correctionsClient.forSignature(sig);
+
+    for (const action of corrections) {
+      if (action.kind === 'merge') {
+        const otherKey = buildSigKey(action.otherSignature);
+        const otherIdx = sigToIndex.get(otherKey);
+        if (otherIdx !== undefined && otherIdx !== i && !absorbed.has(otherIdx)) {
+          const other = result[otherIdx]!;
+          // Merge other into this cluster
+          result[i] = {
+            ...cluster,
+            segments: [...cluster.segments, ...other.segments].sort(
+              (a, b) => a.startTs - b.startTs,
+            ),
+          };
+          absorbed.add(otherIdx);
+        }
+      }
+    }
+  }
+
+  // Third pass: apply split corrections
+  const extra: SegmentCluster[] = [];
+
+  for (let i = 0; i < result.length; i++) {
+    if (absorbed.has(i)) continue;
+    const cluster = result[i]!;
+    const sig = computeClusterSignature(cluster);
+    const corrections = correctionsClient.forSignature(sig);
+
+    for (const action of corrections) {
+      if (action.kind === 'split') {
+        const targetSegIdx = cluster.segments.findIndex(
+          (s) => s.segmentId === action.segmentId,
+        );
+        if (targetSegIdx !== -1) {
+          const target = cluster.segments[targetSegIdx]!;
+          // Remove the segment from this cluster
+          const remaining = cluster.segments.filter((_, idx) => idx !== targetSegIdx);
+          result[i] = { ...cluster, segments: remaining };
+          // Create a new single-segment cluster for the split segment
+          extra.push({
+            projectPath: cluster.projectPath,
+            segments: [target],
+          });
+        }
+      }
+    }
+  }
+
+  // Build final list: non-absorbed + extras
+  const finalResult: SegmentCluster[] = [];
+  for (let i = 0; i < result.length; i++) {
+    if (!absorbed.has(i) && result[i]!.segments.length > 0) {
+      finalResult.push(result[i]!);
+    }
+  }
+  finalResult.push(...extra);
+
+  // Re-sort
+  finalResult.sort((a, b) => {
+    const projCmp = a.projectPath.localeCompare(b.projectPath);
+    if (projCmp !== 0) return projCmp;
+    return earliestTs(a.segments) - earliestTs(b.segments);
+  });
+
+  return finalResult;
 }
 
 // ─── Clustering within a single project ────────────────────────────────────
@@ -118,8 +292,8 @@ async function clusterWithinProject(
 
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
-        const ei = embeddings[i];
-        const ej = embeddings[j];
+        const ei = embeddings[i] ?? null;
+        const ej = embeddings[j] ?? null;
         if (ei !== null && ej !== null) {
           if (embeddingProvider.cosine(ei, ej) >= EMBEDDING_COSINE_THRESHOLD) {
             uf.union(i, j);

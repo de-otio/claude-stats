@@ -300,13 +300,13 @@ async function loadProvider(
     // In production, the model is pre-downloaded to modelFilePath; in test
     // environments, a stub is injected instead.
 
+    // @huggingface/transformers v3 replaced the legacy `quantized: true`
+    // option with the `dtype` parameter ('q8' is the int8 quantized variant
+    // we pin via MODEL_SHA256).
     const pipeline = await transformers.pipeline(
       'feature-extraction',
       'Xenova/all-MiniLM-L6-v2',
-      {
-        // c8 ignore next 1 — quantized model option
-        quantized: true,
-      },
+      { dtype: 'q8' },
     );
 
     // Verify the model file that was loaded by the library.

@@ -50,6 +50,7 @@ function makeItem(overrides: Partial<DailyDigestItem> = {}): DailyDigestItem {
     segmentIds: ["seg-0001" as SegmentId],
     firstPrompt: wrap("hello world"),
     characterVerb: "Drafted",
+    confidence: "medium",
     duration: { wallMs: 3_600_000, activeMs: 3_600_000 },
     estimatedCost: 0.5,
     toolHistogram: {},
@@ -117,6 +118,7 @@ describe("printDailyRecap — single item with pushed commits", () => {
     const item = makeItem({
       firstPrompt: wrap("i want to add russian"),
       characterVerb: "Shipped",
+      confidence: "high",
       git: {
         commitsToday: 4,
         filesChanged: 3,
@@ -139,6 +141,7 @@ describe("printDailyRecap — single item with pushed commits", () => {
     const item = makeItem({
       project: "/home/user/projects/claude-stats",
       characterVerb: "Shipped",
+      confidence: "high",
       git: {
         commitsToday: 1,
         filesChanged: 2,
@@ -510,5 +513,85 @@ describe("printDailyRecap — duration line", () => {
     printDailyRecap(digest, out);
     // 1h 00m from wallMs
     expect(out.getOutput()).toContain("~1h 00m");
+  });
+});
+
+// ─── v3.04: Confidence-based filtering (new tests) ───────────────────────────
+
+describe("printDailyRecap — confidence-based item filtering (v3.04)", () => {
+  it("default renders high and medium items but hides low items in body", () => {
+    const out = new MemoryWritable();
+    const highItem = makeItem({
+      id: "high-001" as ItemId,
+      firstPrompt: wrap("high confidence work"),
+      confidence: "high",
+      git: {
+        commitsToday: 2,
+        filesChanged: 3,
+        linesAdded: 50,
+        linesRemoved: 5,
+        subjects: ["feat: ship it"],
+        pushed: true,
+        prMerged: null,
+      },
+    });
+    const medItem = makeItem({
+      id: "med-001" as ItemId,
+      firstPrompt: wrap("medium confidence work"),
+      confidence: "medium",
+    });
+    const lowItem = makeItem({
+      id: "low-001" as ItemId,
+      firstPrompt: wrap("low confidence work"),
+      confidence: "low",
+    });
+    const digest = makeDigest({ items: [highItem, medItem, lowItem] });
+    printDailyRecap(digest, out); // default: no showAll
+    const output = out.getOutput();
+
+    // High and medium items should appear in the body
+    expect(output).toContain("high confidence work");
+    expect(output).toContain("medium confidence work");
+
+    // Low item should NOT appear in the body
+    expect(output).not.toContain("low confidence work");
+  });
+
+  it("showAll: true renders low-confidence items in the body", () => {
+    const out = new MemoryWritable();
+    const lowItem = makeItem({
+      id: "low-002" as ItemId,
+      firstPrompt: wrap("brief investigation"),
+      confidence: "low",
+    });
+    const digest = makeDigest({ items: [lowItem] });
+    printDailyRecap(digest, out, { showAll: true });
+    const output = out.getOutput();
+
+    // With showAll, low item appears in the body
+    expect(output).toContain("brief investigation");
+    // Brief template is used
+    expect(output).toContain("Brief:");
+  });
+
+  it("summary line shows count of hidden low items", () => {
+    const out = new MemoryWritable();
+    const low1 = makeItem({
+      id: "low-003" as ItemId,
+      firstPrompt: wrap("low item one"),
+      confidence: "low",
+    });
+    const low2 = makeItem({
+      id: "low-004" as ItemId,
+      firstPrompt: wrap("low item two"),
+      confidence: "low",
+    });
+    const digest = makeDigest({ items: [low1, low2] });
+    printDailyRecap(digest, out); // default: no showAll
+    const output = out.getOutput();
+
+    // Summary line: +2 brief items (use --all to show)
+    expect(output).toContain("+2 brief items");
+    expect(output).toContain("use --all to show");
   });
 });

@@ -5,10 +5,11 @@
  */
 import type { Store, SessionRow, MessageRow, StatusInfo, SpendingReport } from "../store/index.js";
 import type { SearchResult } from "../history/index.js";
-import type { DailyDigest } from "../recap/index.js";
+import type { DailyDigest, DailyDigestItem } from "../recap/index.js";
 import { estimateCost, formatCost } from "@claude-stats/core/pricing";
 import { attributeToolCosts, groupByMcpServer, detectAnomalies } from "../spending.js";
 import { t } from "../i18n.js";
+import { renderItem } from "../recap/templates.js";
 
 export interface ReportOptions {
   projectPath?: string;
@@ -1081,9 +1082,15 @@ function renderFooter(digest: DailyDigest): string {
 /**
  * Print a daily digest as a human-readable markdown recap to the given stream.
  *
- * SR-2: The `firstPrompt` field arrives with the untrusted-content envelope.
- * This function strips the envelope, escapes backticks in the inner content,
- * truncates to 80 chars, and re-wraps in single backticks before printing.
+ * SR-2: All untrusted slot rendering (firstPrompt) is delegated to the
+ * template bank in recap/templates.ts, which strips the envelope, escapes
+ * backticks, truncates to 80 chars, and re-wraps in single backticks.
+ *
+ * Default rendering rules:
+ * - high + medium confidence items are shown in the body.
+ * - low confidence items are hidden by default; pass opts.showAll = true
+ *   (e.g. from --all CLI flag) to include them.
+ * - A summary line counts hidden low items: "+N brief items (use --all to show)".
  *
  * JSON output (--json CLI flag) is handled upstream in the CLI action by
  * emitting the digest verbatim; this function is not called in that path.
@@ -1091,8 +1098,10 @@ function renderFooter(digest: DailyDigest): string {
 export function printDailyRecap(
   digest: DailyDigest,
   out: NodeJS.WritableStream = process.stdout,
+  opts?: { showAll?: boolean },
 ): void {
   const write = (line: string) => out.write(line + "\n");
+  const showAll = opts?.showAll ?? false;
 
   if (digest.items.length === 0) {
     write("No recorded work today.");
@@ -1105,12 +1114,17 @@ export function printDailyRecap(
   write(`${dateLabel} (${humanDate})`);
   write("");
 
-  for (const item of digest.items) {
-    const projectBasename = item.project.split("/").pop() ?? item.project;
-    const promptRendered = renderFirstPrompt(item.firstPrompt);
+  // Partition items by confidence
+  const visibleItems: readonly DailyDigestItem[] = digest.items.filter(
+    (item) => showAll || item.confidence !== "low",
+  );
+  const hiddenCount = digest.items.length - visibleItems.length;
 
-    // Line 1: "  \u25b8 Verb `prompt text` (project)"
-    write(`  \u25b8 ${item.characterVerb} ${promptRendered} (${projectBasename})`);
+  for (const item of visibleItems) {
+    const rendered = renderItem(item);
+
+    // Line 1: "  \u25b8 <template output>"
+    write(`  \u25b8 ${rendered}`);
 
     // Line 2: git activity
     write(`      ${renderGitLine(item)}`);
@@ -1118,6 +1132,12 @@ export function printDailyRecap(
     // Line 3: duration + session count
     write(`      ${renderDurationLine(item)}`);
 
+    write("");
+  }
+
+  // Summary line for hidden low-confidence items
+  if (hiddenCount > 0) {
+    write(`  +${hiddenCount} brief item${hiddenCount !== 1 ? "s" : ""} (use --all to show)`);
     write("");
   }
 

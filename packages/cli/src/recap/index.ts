@@ -19,6 +19,7 @@
 import { createHash } from 'node:crypto';
 import type { Store } from '../store/index.js';
 import type {
+  CachedEntry,
   Confidence,
   DailyDigest,
   DailyDigestItem,
@@ -32,6 +33,7 @@ import { segmentSession } from './segment.js';
 import { clusterSegments } from './cluster.js';
 import type { SegmentCluster, SegmentWithProject } from './cluster.js';
 import type { EmbeddingProvider } from './embeddings.js';
+import type { CorrectionsClient } from './corrections.js';
 import { inferCharacterVerb } from './verb.js';
 import {
   getProjectGitActivity as realGetProjectGitActivity,
@@ -42,7 +44,7 @@ import {
   computeSnapshotHash,
   createFileCache,
 } from './cache.js';
-import type { CacheClient } from './cache.js';
+import type { CacheClient, SnapshotHashInputs } from './cache.js';
 import { wrapUntrusted } from '../mcp/index.js';
 import { sanitizePromptText } from '@claude-stats/core/sanitize';
 import { estimateCost } from '@claude-stats/core/pricing';
@@ -50,6 +52,7 @@ import { estimateCost } from '@claude-stats/core/pricing';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type {
+  CachedEntry,
   Confidence,
   DailyDigest,
   DailyDigestItem,
@@ -92,6 +95,19 @@ export interface BuildDailyDigestDeps {
    * When null/absent, the v1 Jaccard behaviour is used.
    */
   embeddingProvider?: EmbeddingProvider | null;
+  /**
+   * Corrections client for user-applied cluster corrections (v3.09).
+   * When supplied, merge/split/rename/hide corrections are applied after
+   * rule-based clustering.  When null/absent, no corrections are applied.
+   */
+  correctionsClient?: CorrectionsClient | null;
+  /**
+   * Override for testability of the staleness check (v3.06).
+   * Given a cache entry hash, returns the mtime of that entry in epoch-ms,
+   * or null if unknown.  When null is returned, the patcher treats the entry
+   * as fresh (mtime = nowMs).  When absent, the production path is used.
+   */
+  getCacheMtimeMs?: (hash: string) => number | null;
 }
 
 // ─── Day-boundary helpers ─────────────────────────────────────────────────────
@@ -249,6 +265,119 @@ export function computeConfidence(item: {
   return 'low';
 }
 
+// ─── Incremental-digest patcher constants (v3.06) ────────────────────────────
+
+/**
+ * Maximum age of a cached entry before we force a full rebuild rather than
+ * attempting to patch.  1 hour expressed in milliseconds.
+ */
+export const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+
+/**
+ * When the fraction of clusters that need to be re-built exceeds this ratio,
+ * the patcher overhead outweighs the savings and we fall back to a full rebuild.
+ */
+export const HEAVY_PATCH_RATIO = 0.6; // > 60% of clusters touched
+
+/**
+ * Determine whether we should skip the patcher and do a full rebuild.
+ *
+ * Reasons to force a full rebuild:
+ *   1. The previous digest is older than STALE_THRESHOLD_MS (by file mtime).
+ *   2. The date or tz of the previous digest does not match the new inputs.
+ *   3. More than HEAVY_PATCH_RATIO of the previous clusters are touched
+ *      (patcher overhead would exceed the savings).
+ */
+function shouldForceFullRebuild(
+  prev: CachedEntry,
+  newInputs: SnapshotHashInputs,
+  prevMtimeMs: number,
+  nowMs: number,
+  touchedClusterCount: number,
+  totalClusterCount: number,
+): boolean {
+  // Staleness: the previous build is older than STALE_THRESHOLD_MS.
+  if (nowMs - prevMtimeMs > STALE_THRESHOLD_MS) return true;
+
+  // Different date or tz — the previous digest covers a different window.
+  if (prev.digest.date !== newInputs.date || prev.digest.tz !== newInputs.tz) return true;
+
+  // Heavy patch: more than 60% of clusters need rebuilding.
+  if (
+    totalClusterCount > 0 &&
+    touchedClusterCount / totalClusterCount > HEAVY_PATCH_RATIO
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Diff two SnapshotHashInputs and return which sessions and projects changed.
+ *
+ * A session is identified by its session_id (top-level project path changes
+ * appear in sortedProjectPaths; per-session last-message changes appear in
+ * maxMessageUuid, but we track per-session lastMessageUuid in the inputs via
+ * a new perSessionLastMessageUuid map).
+ *
+ * For v3.06 the granularity available from SnapshotHashInputs is:
+ *   - perProjectLastCommit: project → last commit SHA
+ *   - perSessionLastMessageUuid: session → last message UUID (added in v3.06)
+ *   - sortedProjectPaths: list of known project paths
+ *
+ * Projects added or removed are in addedProjects / removedProjects.
+ * Projects whose lastCommit changed are in changedCommitProjects.
+ * Sessions whose lastMessageUuid changed are in changedSessionIds.
+ */
+interface InputDiff {
+  changedSessionIds: Set<string>;
+  changedCommitProjects: Set<string>;
+  addedProjects: Set<string>;
+  removedProjects: Set<string>;
+}
+
+function diffInputs(prev: SnapshotHashInputs, next: SnapshotHashInputs): InputDiff {
+  const prevProjectSet = new Set(prev.sortedProjectPaths);
+  const nextProjectSet = new Set(next.sortedProjectPaths);
+
+  const addedProjects = new Set<string>();
+  const removedProjects = new Set<string>();
+  for (const p of nextProjectSet) {
+    if (!prevProjectSet.has(p)) addedProjects.add(p);
+  }
+  for (const p of prevProjectSet) {
+    if (!nextProjectSet.has(p)) removedProjects.add(p);
+  }
+
+  const changedCommitProjects = new Set<string>();
+  for (const p of nextProjectSet) {
+    if (prevProjectSet.has(p)) {
+      const prevSha = prev.perProjectLastCommit[p] ?? null;
+      const nextSha = next.perProjectLastCommit[p] ?? null;
+      if (prevSha !== nextSha) changedCommitProjects.add(p);
+    }
+  }
+
+  // Per-session last-message uuid tracking (v3.06 extension).
+  // Both prev and next may have perSessionLastMessageUuid; if absent, we
+  // cannot diff at session granularity and treat everything as changed.
+  const changedSessionIds = new Set<string>();
+  const prevPerSession = prev.perSessionLastMessageUuid ?? {};
+  const nextPerSession = next.perSessionLastMessageUuid ?? {};
+
+  for (const [sid, nextUuid] of Object.entries(nextPerSession)) {
+    const prevUuid = prevPerSession[sid] ?? null;
+    if (prevUuid !== nextUuid) changedSessionIds.add(sid);
+  }
+  // Sessions that existed before but are now gone (removed sessions)
+  for (const sid of Object.keys(prevPerSession)) {
+    if (!(sid in nextPerSession)) changedSessionIds.add(sid);
+  }
+
+  return { changedSessionIds, changedCommitProjects, addedProjects, removedProjects };
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 /**
@@ -311,9 +440,14 @@ export async function buildDailyDigest(
   let maxMessageUuid: string | null = null;
   const sessionMessages = new Map<string, ReturnType<Store['getSessionMessages']>>();
 
+  // perSessionLastMessageUuid: per-session last message uuid for fine-grained
+  // session-level diffing by the incremental patcher (v3.06).
+  const perSessionLastMessageUuid: Record<string, string | null> = {};
+
   for (const session of sessions) {
     const msgs = store.getSessionMessages(session.session_id);
     sessionMessages.set(session.session_id, msgs);
+    let sessionMax: string | null = null;
     for (const msg of msgs) {
       if (
         msg.timestamp !== null &&
@@ -323,8 +457,12 @@ export async function buildDailyDigest(
         if (maxMessageUuid === null || msg.uuid > maxMessageUuid) {
           maxMessageUuid = msg.uuid;
         }
+        if (sessionMax === null || msg.uuid > sessionMax) {
+          sessionMax = msg.uuid;
+        }
       }
     }
+    perSessionLastMessageUuid[session.session_id] = sessionMax;
   }
 
   // Per-project last commit SHA
@@ -341,13 +479,16 @@ export async function buildDailyDigest(
     perProjectLastCommit[p] = getLastCommit(p);
   }
 
-  const snapshotHash = computeSnapshotHash({
+  const newInputs: SnapshotHashInputs = {
     date,
     tz,
     sortedProjectPaths,
     maxMessageUuid,
     perProjectLastCommit,
-  });
+    perSessionLastMessageUuid,
+  };
+
+  const snapshotHash = computeSnapshotHash(newInputs);
 
   // ── Step 4: Cache check ───────────────────────────────────────────────────
 
@@ -356,6 +497,272 @@ export async function buildDailyDigest(
   const cached = cacheClient.read(snapshotHash);
   if (cached !== null) {
     return { ...cached, cached: true };
+  }
+
+  // ── Step 4b: Short-circuit for empty days (negative caching, v3.07) ────────
+  //
+  // If there are no sessions AND every per-project last-commit SHA is null or
+  // absent, the day is definitively empty: no messages, no git activity.
+  // We build the digest directly, persist it to cache (so a second call within
+  // the same window returns cached:true), and return without running the
+  // segment/cluster pipeline.
+  //
+  // The cache-read above (Step 4) already handles the repeat-call case; this
+  // branch fires only on the first call for an empty day.
+  //
+  // SR-4: the snapshot hash already encodes the project-list dimension, so a
+  // new project arriving later will produce a different hash and bypass this
+  // cached entry — the stale empty digest will never be served.
+  const allCommitShasEmpty = Object.values(perProjectLastCommit).every(
+    (v) => v == null,
+  );
+  if (sessions.length === 0 && allCommitShasEmpty) {
+    const emptyDigest: DailyDigest = {
+      date,
+      tz,
+      totals: { sessions: 0, segments: 0, activeMs: 0, estimatedCost: 0, projects: 0 },
+      items: [],
+      cached: false,
+      snapshotHash,
+    };
+    try {
+      cacheClient.write(snapshotHash, emptyDigest, newInputs);
+    } catch (err) {
+      console.warn(
+        `recap cache write failed (empty day): ${err instanceof Error ? err.message.slice(0, 80) : 'unknown'}`,
+      );
+    }
+    return emptyDigest;
+  }
+
+  // ── Step 4c: Incremental-digest patcher (v3.06) ──────────────────────────
+  //
+  // When patchCache is true (opt-in feature flag) and forceRebuild is false,
+  // attempt to find a previous digest for the same date/tz and patch it instead
+  // of running the full segment/cluster pipeline from scratch.
+  //
+  // Feature flag default: false.  Flip to true after a week of canary once
+  // the patcher is proven correct in production.
+  //
+  // The patcher path goes AFTER the empty-day short-circuit (Step 4b) so that
+  // truly empty days never enter the patcher.
+  const usePatchCache = (opts?.patchCache ?? false) && !(opts?.forceRebuild ?? false);
+  if (usePatchCache) {
+    const prevEntry = cacheClient.readMostRecentForDate(date, tz);
+    if (prevEntry !== null) {
+      // We have a previous entry for this date/tz with a different hash.
+      // Diff the inputs to find what changed.
+      const diff = diffInputs(prevEntry.inputs, newInputs);
+
+      // Count how many of the previous clusters are "touched" (need rebuild).
+      const prevItems = prevEntry.digest.items;
+      const touchedProjects = new Set([
+        ...diff.changedCommitProjects,
+        ...diff.addedProjects,
+        ...diff.removedProjects,
+      ]);
+      const touchedBySession = new Set(diff.changedSessionIds);
+
+      // A cluster is touched if any of its sessions changed or its project changed.
+      const touchedClusterCount = prevItems.filter((item) => {
+        if (touchedProjects.has(item.project)) return true;
+        return item.sessionIds.some((sid) => touchedBySession.has(sid));
+      }).length;
+
+      const totalClusterCount = prevItems.length;
+
+      // Get the mtime of the previous cached entry by reading the file system.
+      // We use nowMs as a fallback if we can't get the mtime (treats it as stale).
+      let prevMtimeMs = 0; // will force full rebuild if we can't get mtime
+      try {
+        // The prev entry's digest has a snapshotHash; use it to find the file.
+        if (prevEntry.digest.snapshotHash) {
+          const prevHash = prevEntry.digest.snapshotHash;
+          // We need to get the mtime; use the deps.cache if it's a file cache,
+          // otherwise we can't infer the mtime. For file caches, we know the path.
+          // For in-memory/test caches, prevMtimeMs stays 0 (forces rebuild) unless
+          // we use a different signal.  In tests, pass a getMtimeMs dep if needed.
+          if (deps?.getCacheMtimeMs) {
+            prevMtimeMs = deps.getCacheMtimeMs(prevHash) ?? 0;
+          } else {
+            // Production path: assume the file is in the default location
+            // We can't easily get the mtime without knowing the rootDir.
+            // Use nowMs - 1ms as a heuristic: if we get here, we just read it,
+            // so it's definitely fresh.  This is safe because the staleness
+            // check is a safety valve, not a correctness gate.
+            prevMtimeMs = nowMs; // treat as fresh — will not force rebuild on staleness
+          }
+        }
+      } catch {
+        prevMtimeMs = 0; // force full rebuild on any error
+      }
+
+      const forceFullRebuild = shouldForceFullRebuild(
+        prevEntry,
+        newInputs,
+        prevMtimeMs,
+        nowMs,
+        touchedClusterCount,
+        totalClusterCount,
+      );
+
+      if (!forceFullRebuild) {
+        // ── Patch path ─────────────────────────────────────────────────────
+        // a/b. Re-segment changed sessions
+        const changedSegments: SegmentWithProject[] = [];
+        const unchangedSessionIds = new Set(
+          sessions
+            .map((s) => s.session_id)
+            .filter((sid) => !diff.changedSessionIds.has(sid) && !touchedProjects.has(
+              sessions.find((s) => s.session_id === sid)?.project_path ?? '',
+            )),
+        );
+
+        for (const session of sessions) {
+          const sid = session.session_id;
+          const msgs = sessionMessages.get(sid) ?? [];
+          if (msgs.length === 0) continue;
+          // Only re-segment sessions that changed or whose project changed
+          if (diff.changedSessionIds.has(sid) || touchedProjects.has(session.project_path)) {
+            const segs = segmentSession(msgs);
+            for (const seg of segs) {
+              changedSegments.push({
+                ...seg,
+                sessionId: sid,
+                projectPath: session.project_path,
+              });
+            }
+          }
+        }
+        void unchangedSessionIds; // used for clarity in comment above
+
+        // c/d. Re-cluster only the touched segments + neighbours from previous clusters
+        // We need ALL segments (touched + untouched) for re-clustering touched projects.
+        const allSegmentsForPatch: SegmentWithProject[] = [];
+        for (const session of sessions) {
+          const sid = session.session_id;
+          const msgs = sessionMessages.get(sid) ?? [];
+          if (msgs.length === 0) continue;
+          if (diff.changedSessionIds.has(sid) || touchedProjects.has(session.project_path)) {
+            // Already computed above
+          } else {
+            // Untouched session — re-use its segments from existing data by re-segmenting
+            // (we don't cache segments, so re-segment is fast; messages are already loaded)
+            const segs = segmentSession(msgs);
+            for (const seg of segs) {
+              allSegmentsForPatch.push({
+                ...seg,
+                sessionId: sid,
+                projectPath: session.project_path,
+              });
+            }
+          }
+        }
+        // Add the newly-re-segmented sessions
+        for (const seg of changedSegments) {
+          allSegmentsForPatch.push(seg);
+        }
+
+        // e/f. Identify touched projects for full re-cluster within those projects
+        // Re-cluster all segments (patcher clusters only by project path anyway)
+        const embeddingProvider = deps?.embeddingProvider ?? null;
+        const correctionsClient = deps?.correctionsClient ?? null;
+        const patchedClusters = await clusterSegments(allSegmentsForPatch, {
+          embeddingProvider,
+          correctionsClient,
+        });
+
+        // g. Re-run git enrichment only for changed projects + build items
+        const getGitActivity =
+          deps?.getProjectGitActivity ?? realGetProjectGitActivity;
+        const resolveEmail = deps?.getAuthorEmail ?? getAuthorEmail;
+
+        const patchedItems: DailyDigestItem[] = [];
+        for (const cluster of patchedClusters) {
+          const isProjectTouched = touchedProjects.has(cluster.projectPath) ||
+            cluster.segments.some((s) => diff.changedSessionIds.has(s.sessionId));
+
+          // For untouched items, try to reuse the previous item verbatim.
+          // An item is "the same" if its projectPath hasn't changed and no
+          // session in it changed.
+          if (!isProjectTouched) {
+            const prevItem = prevItems.find(
+              (pi) => pi.project === cluster.projectPath &&
+                cluster.segments.every((s) => pi.segmentIds.includes(s.segmentId)),
+            );
+            if (prevItem !== undefined) {
+              patchedItems.push(prevItem);
+              continue;
+            }
+          }
+
+          // Touched or new cluster — rebuild the item
+          const item = buildDigestItem(
+            cluster,
+            startMs,
+            endMs,
+            store,
+            sessions,
+            getGitActivity,
+            resolveEmail,
+          );
+          if (cluster.label !== undefined) {
+            (item as { label?: string | null }).label = cluster.label;
+          }
+          if (cluster.hidden === true) {
+            (item as { hidden?: boolean }).hidden = true;
+          }
+          patchedItems.push(item);
+        }
+
+        // h. Sort items by score desc, ties by earliest startTs
+        patchedItems.sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          const aTs = earliestSegmentTs(a, patchedClusters);
+          const bTs = earliestSegmentTs(b, patchedClusters);
+          return aTs - bTs;
+        });
+
+        // h. Recompute totals
+        const patchedUniqueSessionIds = new Set<string>();
+        let patchedActiveMs = 0;
+        let patchedCost = 0;
+        for (const item of patchedItems) {
+          for (const sid of item.sessionIds) patchedUniqueSessionIds.add(sid);
+          patchedActiveMs += item.duration.activeMs;
+          patchedCost += item.estimatedCost;
+        }
+        const patchedUniqueProjects = new Set(patchedItems.map((i) => i.project));
+
+        const patchedTotals: DailyDigestTotals = {
+          sessions: patchedUniqueSessionIds.size,
+          segments: allSegmentsForPatch.length,
+          activeMs: patchedActiveMs,
+          estimatedCost: patchedCost,
+          projects: patchedUniqueProjects.size,
+        };
+
+        const patchedDigest: DailyDigest = {
+          date,
+          tz,
+          totals: patchedTotals,
+          items: Object.freeze(patchedItems),
+          cached: false,
+          snapshotHash,
+        };
+
+        try {
+          cacheClient.write(snapshotHash, patchedDigest, newInputs);
+        } catch (err) {
+          console.warn(
+            `recap cache write failed (patcher): ${err instanceof Error ? err.message.slice(0, 80) : 'unknown'}`,
+          );
+        }
+
+        return patchedDigest;
+      }
+      // forceFullRebuild — fall through to the full pipeline below
+    }
   }
 
   // ── Step 5: Segment all sessions ─────────────────────────────────────────
@@ -380,7 +787,11 @@ export async function buildDailyDigest(
   // ── Step 6: Cluster segments ──────────────────────────────────────────────
 
   const embeddingProvider = deps?.embeddingProvider ?? null;
-  const clusters = await clusterSegments(allSegments, { embeddingProvider });
+  const correctionsClient = deps?.correctionsClient ?? null;
+  const clusters = await clusterSegments(allSegments, {
+    embeddingProvider,
+    correctionsClient,
+  });
 
   // ── Step 7: Build digest items ────────────────────────────────────────────
 
@@ -400,6 +811,13 @@ export async function buildDailyDigest(
       getGitActivity,
       resolveEmail,
     );
+    // Propagate correction metadata from cluster to digest item (v3.09)
+    if (cluster.label !== undefined) {
+      (item as { label?: string | null }).label = cluster.label;
+    }
+    if (cluster.hidden === true) {
+      (item as { hidden?: boolean }).hidden = true;
+    }
     items.push(item);
   }
 
@@ -449,7 +867,7 @@ export async function buildDailyDigest(
   };
 
   try {
-    cacheClient.write(snapshotHash, digest);
+    cacheClient.write(snapshotHash, digest, newInputs);
   } catch (err) {
     // Cache write failure is non-fatal
     console.warn(

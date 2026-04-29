@@ -10,9 +10,16 @@
  * Weights are tunable; see ShiftWeights / DEFAULT_SHIFT_WEIGHTS so that
  * the v3 offline-judge task (C1) can rewrite them without touching
  * this file's logic.
+ *
+ * Weights are loaded at module initialisation from segment-weights.json
+ * in this directory (produced by scripts/tune-segmenter.ts). If the file
+ * is absent or malformed, DEFAULT_SHIFT_WEIGHTS from types.ts is used.
  */
 
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { MessageRow } from "../store/index.js";
 import {
   type Segment,
@@ -20,6 +27,58 @@ import {
   type ShiftWeights,
   DEFAULT_SHIFT_WEIGHTS,
 } from "./types.js";
+
+// ─── Weight loader ────────────────────────────────────────────────────────────
+
+/**
+ * Load shift weights from segment-weights.json at module initialisation.
+ *
+ * Validates that the parsed object has a `weights` key containing all six
+ * numeric fields (gap, path, vocab, marker, commit, threshold). On any
+ * error — file missing, JSON parse failure, wrong shape — falls back to
+ * DEFAULT_SHIFT_WEIGHTS from types.ts so the segmenter always has a
+ * working default.
+ */
+function loadWeights(): ShiftWeights {
+  try {
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const jsonPath = join(dir, "segment-weights.json");
+    const raw = readFileSync(jsonPath, "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      "weights" in parsed &&
+      parsed.weights !== null &&
+      typeof parsed.weights === "object"
+    ) {
+      const w = parsed.weights as Record<string, unknown>;
+      if (
+        typeof w["gap"] === "number" &&
+        typeof w["path"] === "number" &&
+        typeof w["vocab"] === "number" &&
+        typeof w["marker"] === "number" &&
+        typeof w["commit"] === "number" &&
+        typeof w["threshold"] === "number"
+      ) {
+        return {
+          gap: w["gap"],
+          path: w["path"],
+          vocab: w["vocab"],
+          marker: w["marker"],
+          commit: w["commit"],
+          threshold: w["threshold"],
+        };
+      }
+    }
+    return { ...DEFAULT_SHIFT_WEIGHTS };
+  } catch {
+    return { ...DEFAULT_SHIFT_WEIGHTS };
+  }
+}
+
+/** Module-level weights: loaded once from segment-weights.json, else defaults. */
+const FILE_WEIGHTS: ShiftWeights = loadWeights();
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -158,7 +217,7 @@ export function segmentSession(
 ): readonly Segment[] {
   if (messages.length === 0) return [];
 
-  const weights: ShiftWeights = opts?.weights ?? DEFAULT_SHIFT_WEIGHTS;
+  const weights: ShiftWeights = opts?.weights ?? FILE_WEIGHTS;
   const commitTs: readonly number[] = opts?.commitTimestamps ?? [];
 
   // Boundary indices: index of the first message in each segment.
