@@ -577,7 +577,12 @@ export async function buildCli(): Promise<Command> {
       await startMcpServer();
     });
 
-  program
+  // Hold a reference to the parent `recap` command so v3.05/v3.09 nested
+  // subcommands (`recap precompute`, `recap correct …`) attach via Commander's
+  // proper nested-subcommand syntax. Registering them as separate top-level
+  // entries via `program.command("recap precompute")` would conflict with the
+  // already-registered `recap` command.
+  const recapCmd = program
     .command("recap")
     .description("What did I get done today? — clustered day summary")
     .option("--date <date>", "YYYY-MM-DD (defaults to today)")
@@ -621,12 +626,12 @@ export async function buildCli(): Promise<Command> {
         console.log(JSON.stringify(digest, null, 2));
         return;
       }
-      printDailyRecap(digest);
+      printDailyRecap(digest, process.stdout, { showAll: opts.all === true });
     });
 
   // ── recap precompute ──────────────────────────────────────────────────────
-  program
-    .command("recap precompute")
+  recapCmd
+    .command("precompute")
     .description(
       "Pre-build the daily-recap cache for prior days (manual install — does not modify crontab)",
     )
@@ -738,8 +743,13 @@ export async function buildCli(): Promise<Command> {
     return null;
   }
 
-  program
-    .command("recap correct list")
+  // Parent command for `recap correct …` subcommands
+  const correctCmd = recapCmd
+    .command("correct")
+    .description("Manage user corrections to clustered recap items");
+
+  correctCmd
+    .command("list")
     .description("List all user corrections stored in the corrections database")
     .action(async () => {
       const { openCorrections } = await import("../recap/corrections.js");
@@ -769,8 +779,8 @@ export async function buildCli(): Promise<Command> {
       }
     });
 
-  program
-    .command("recap correct remove <correctionId>")
+  correctCmd
+    .command("remove <correctionId>")
     .description("Remove a correction by its numeric id (from `recap correct list`)")
     .action(async (correctionIdStr: string) => {
       const { openCorrections } = await import("../recap/corrections.js");
@@ -794,8 +804,8 @@ export async function buildCli(): Promise<Command> {
       }
     });
 
-  program
-    .command("recap correct hide <item>")
+  correctCmd
+    .command("hide <item>")
     .description("Hide a digest item from future recaps (by id prefix or prompt substring)")
     .action(async (itemSelector: string) => {
       const { Store: StoreCH } = await import("../store/index.js");
@@ -826,8 +836,8 @@ export async function buildCli(): Promise<Command> {
       }
     });
 
-  program
-    .command("recap correct rename <item> <label>")
+  correctCmd
+    .command("rename <item> <label>")
     .description("Rename a digest item with a custom label")
     .action(async (itemSelector: string, label: string) => {
       const { Store: StoreCR } = await import("../store/index.js");
@@ -861,8 +871,8 @@ export async function buildCli(): Promise<Command> {
       }
     });
 
-  program
-    .command("recap correct merge <itemA> <itemB>")
+  correctCmd
+    .command("merge <itemA> <itemB>")
     .description("Merge two digest items into one for all future recaps")
     .action(async (itemASelector: string, itemBSelector: string) => {
       const { Store: StoreCM } = await import("../store/index.js");
@@ -899,8 +909,8 @@ export async function buildCli(): Promise<Command> {
       }
     });
 
-  program
-    .command("recap correct split <item> <segmentId>")
+  correctCmd
+    .command("split <item> <segmentId>")
     .description("Split a named segment out of a digest item into its own item")
     .action(async (itemSelector: string, segmentIdStr: string) => {
       const { Store: StoreCS } = await import("../store/index.js");

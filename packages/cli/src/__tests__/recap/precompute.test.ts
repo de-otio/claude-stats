@@ -304,6 +304,8 @@ describe('precomputeDigests', () => {
           return realCache.read(hash);
         },
         write: realCache.write.bind(realCache),
+        readWithInputs: realCache.readWithInputs.bind(realCache),
+        readMostRecentForDate: realCache.readMostRecentForDate.bind(realCache),
       };
 
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});

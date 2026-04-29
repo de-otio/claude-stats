@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   redactAuthHeader,
   type TunerStore,
-} from "../../../../../scripts/tune-segmenter.js";
+} from "../../recap/tune-segmenter.js";
 
 // ─── node:fs mock (module-level, required for ESM) ─────────────────────────────
 //
@@ -34,15 +34,15 @@ vi.mock("node:fs", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:fs")>();
   return {
     ...original,
-    writeFileSync: (...args: unknown[]) => fsMocks.writeFileSync(...args),
-    existsSync: (...args: unknown[]) => fsMocks.existsSync(...args),
-    readFileSync: (...args: unknown[]) => {
+    writeFileSync: ((...args: unknown[]) => (fsMocks.writeFileSync as (...a: unknown[]) => unknown)(...args)) as typeof original.writeFileSync,
+    existsSync: ((...args: unknown[]) => (fsMocks.existsSync as (...a: unknown[]) => unknown)(...args)) as typeof original.existsSync,
+    readFileSync: ((...args: unknown[]) => {
       // Only intercept the non-segment-weights reads (those that come from tests).
       // The segment.ts module load reads segment-weights.json at import time — that
       // already happened before our mock is active, so we only need to handle
       // the tune-segmenter's own existsSync/writeFileSync calls.
-      return fsMocks.readFileSync(...args);
-    },
+      return (fsMocks.readFileSync as (...a: unknown[]) => unknown)(...args);
+    }) as typeof original.readFileSync,
   };
 });
 
@@ -115,7 +115,7 @@ function makeMockStore(options: {
     getSessionIdsByTag: vi.fn((tag: string) =>
       tag === "sensitive" ? [...sensitiveIds] : []
     ),
-    close: vi.fn(),
+    close: vi.fn() as unknown as (() => void) & ReturnType<typeof vi.fn>,
   };
 }
 
@@ -150,7 +150,7 @@ function makeApiClient(labels: Array<"same" | "different" | "parse-error">) {
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
 async function getMain() {
-  const mod = await import("../../../../../scripts/tune-segmenter.js");
+  const mod = await import("../../recap/tune-segmenter.js");
   return mod.main;
 }
 

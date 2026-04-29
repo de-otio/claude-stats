@@ -45,13 +45,49 @@
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { createInterface } from "node:readline";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, dirname, basename, resolve } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
-import { Store } from "../packages/cli/src/store/index.js";
-import type { ShiftWeights } from "../packages/cli/src/recap/types.js";
+
+// Node 22+ exposes __dirname even in ESM, but the cli tsconfig (which pulls
+// this file in via the test import) compiles to CommonJS where __dirname is
+// always available. Avoid `import.meta.url` so the script type-checks under
+// both ESM and CJS resolution.
+const SCRIPT_DIR = __dirname;
+const SCRIPT_PATH = __filename;
+
+// Note: the recap module is ESM-only (cli tsconfig uses Node16 module
+// resolution). This script's typecheck context is CommonJS, so we cannot
+// use static `import` here for ESM specifiers — instead we lazy-import
+// inside main() and use a structural type for the parts we touch.
+type ShiftWeights = {
+  gap: number;
+  path: number;
+  vocab: number;
+  marker: number;
+  commit: number;
+  threshold: number;
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+/**
+ * Minimal contract for the Anthropic client we depend on. Defined here (rather
+ * than `Pick<Anthropic, "messages">`) so test mocks can satisfy it without
+ * implementing every internal method on `Anthropic.Messages` (batches, parse,
+ * stream, countTokens, _client). Production callers pass the real Anthropic
+ * client, which structurally satisfies this interface via duck typing.
+ */
+export interface MinimalAnthropicClient {
+  messages: {
+    create(params: {
+      model: string;
+      max_tokens: number;
+      temperature?: number;
+      system?: string;
+      messages: Array<{ role: string; content: string }>;
+    }): Promise<{ content: Array<{ type: string; text?: string }> }>;
+  };
+}
 
 interface MessagePair {
   sessionId: string;
@@ -112,10 +148,7 @@ function parseArgs(argv: string[]): Args {
     dryRun: true,
     iHaveReviewedTheData: false,
     sampleSize: 500,
-    output: join(
-      dirname(fileURLToPath(import.meta.url)),
-      "../packages/cli/src/recap/segment-weights.json"
-    ),
+    output: join(SCRIPT_DIR, "segment-weights.json"),
     holdOut: 0.2,
   };
 
@@ -401,7 +434,7 @@ export function redactAuthHeader(text: string): string {
 }
 
 async function labelPair(
-  client: Pick<Anthropic, "messages">,
+  client: MinimalAnthropicClient,
   pair: MessagePair
 ): Promise<LabelledPair | null> {
   try {
@@ -414,7 +447,7 @@ async function labelPair(
     });
 
     const textBlock = response.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") return null;
+    if (!textBlock || textBlock.type !== "text" || typeof textBlock.text !== "string") return null;
 
     // Extract JSON from the response (may be wrapped in markdown code fences).
     const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
@@ -557,7 +590,7 @@ async function askForConsent(samples: MessagePair[]): Promise<boolean> {
  */
 export async function main(
   argv: string[] = process.argv.slice(2),
-  apiClient?: Pick<Anthropic, "messages">,
+  apiClient?: MinimalAnthropicClient,
   stdinLines?: string[],
   storeFactory?: () => TunerStore
 ): Promise<void> {
@@ -566,7 +599,14 @@ export async function main(
   // ── Step 1: Load store and sample pairs ─────────────────────────────────────
   let store: TunerStore;
   try {
-    store = storeFactory ? storeFactory() : new Store();
+    if (storeFactory) {
+      store = storeFactory();
+    } else {
+      const storeModule: { Store: new () => TunerStore } = await import(
+        "../store/index.js"
+      );
+      store = new storeModule.Store();
+    }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`Failed to open store: ${redactAuthHeader(msg)}`);
@@ -639,13 +679,18 @@ export async function main(
   }
 
   // ── Step 4: Build API client ─────────────────────────────────────────────────
-  const client: Pick<Anthropic, "messages"> = apiClient ?? (() => {
+  // The real Anthropic client has overload signatures that don't structurally
+  // satisfy `MinimalAnthropicClient.messages.create` (different param shapes,
+  // wider `role` type). Cast through `unknown` to bridge — duck-typing
+  // confirms the runtime shape is compatible (we only call .create with the
+  // parameters declared in MinimalAnthropicClient).
+  const client: MinimalAnthropicClient = apiClient ?? (() => {
     const apiKey = process.env["ANTHROPIC_API_KEY"];
     if (!apiKey) {
       console.error("ERROR: ANTHROPIC_API_KEY is not set.");
       process.exit(1);
     }
-    return new Anthropic({ apiKey });
+    return new Anthropic({ apiKey }) as unknown as MinimalAnthropicClient;
   })();
 
   // ── Step 5: Label pairs ──────────────────────────────────────────────────────
@@ -740,9 +785,10 @@ export async function main(
 // ─── Entry point ─────────────────────────────────────────────────────────────
 
 // Only run main() when invoked directly (not when imported by tests).
+// Compare resolved paths so symlinks and relative invocations match.
 if (
   process.argv[1] !== undefined &&
-  fileURLToPath(import.meta.url).endsWith(process.argv[1].replace(/^.*[\\/]/, ""))
+  resolve(process.argv[1]) === SCRIPT_PATH
 ) {
   main().catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err);

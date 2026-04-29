@@ -67,12 +67,13 @@ function makeSession(
     lastTimestamp?: number;
   },
 ): SessionRecord {
+  const { sessionId, projectPath, firstTimestamp, lastTimestamp, ...rest } = overrides;
   return {
-    sessionId: overrides.sessionId ?? nextSid(),
-    projectPath: overrides.projectPath,
-    sourceFile: `/tmp/src/${overrides.sessionId ?? 'x'}.jsonl`,
-    firstTimestamp: overrides.firstTimestamp ?? DAY_START_UTC,
-    lastTimestamp: overrides.lastTimestamp ?? DAY_START_UTC + 600_000,
+    sessionId: sessionId ?? nextSid(),
+    projectPath,
+    sourceFile: `/tmp/src/${sessionId ?? 'x'}.jsonl`,
+    firstTimestamp: firstTimestamp ?? DAY_START_UTC,
+    lastTimestamp: lastTimestamp ?? DAY_START_UTC + 600_000,
     claudeVersion: '2.1.70',
     entrypoint: null,
     gitBranch: 'main',
@@ -99,7 +100,7 @@ function makeSession(
     throttleEvents: 0,
     activeDurationMs: 300_000,
     medianResponseTimeMs: null,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -108,10 +109,11 @@ function makeMessage(
     uuid?: string;
   },
 ): MessageRecord {
+  const { uuid, sessionId, timestamp, ...rest } = overrides;
   return {
-    uuid: overrides.uuid ?? nextMid(),
-    sessionId: overrides.sessionId,
-    timestamp: overrides.timestamp,
+    uuid: uuid ?? nextMid(),
+    sessionId,
+    timestamp,
     claudeVersion: null,
     model: 'claude-sonnet-4-6',
     stopReason: 'end_turn',
@@ -126,14 +128,19 @@ function makeMessage(
     ephemeral5mCacheTokens: 0,
     ephemeral1hCacheTokens: 0,
     promptText: null,
-    ...overrides,
+    ...rest,
   };
 }
 
 // ─── No-op cache ──────────────────────────────────────────────────────────────
 
 function noopCache(): BuildDailyDigestDeps['cache'] {
-  return { read: () => null, write: () => undefined };
+  return {
+    read: () => null,
+    write: () => undefined,
+    readWithInputs: () => null,
+    readMostRecentForDate: () => null,
+  };
 }
 
 // ─── No-op git deps ───────────────────────────────────────────────────────────
@@ -321,8 +328,10 @@ describe('Scenario 1 — single project happy path', () => {
 
     const mapCache = new Map<string, DailyDigest>();
     const cache: BuildDailyDigestDeps['cache'] = {
-      read: (h) => mapCache.get(h) ?? null,
-      write: (h, d) => { mapCache.set(h, d); },
+      read: (h: string) => mapCache.get(h) ?? null,
+      write: (h: string, d: DailyDigest) => { mapCache.set(h, d); },
+      readWithInputs: () => null,
+      readMostRecentForDate: () => null,
     };
 
     const digest = await buildDailyDigest(
@@ -640,8 +649,10 @@ describe('Scenario 6 — cache hit on second call (SR-4)', () => {
 
     const realCache = new Map<string, DailyDigest>();
     const cache: BuildDailyDigestDeps['cache'] = {
-      read: (h) => realCache.get(h) ?? null,
-      write: (h, d) => { realCache.set(h, d); },
+      read: (h: string) => realCache.get(h) ?? null,
+      write: (h: string, d: DailyDigest) => { realCache.set(h, d); },
+      readWithInputs: () => null,
+      readMostRecentForDate: () => null,
     };
 
     // First call — builds and caches
@@ -2279,8 +2290,8 @@ describe('v3 Scenario 30 — recap precompute seeds the cache', () => {
     // Use an in-memory cache so we don't touch the filesystem
     const memCache = new Map<string, DailyDigest>();
     const inMemoryCache: BuildDailyDigestDeps['cache'] = {
-      read: (h) => memCache.get(h) ?? null,
-      write: (h, d) => { memCache.set(h, d); },
+      read: (h: string) => memCache.get(h) ?? null,
+      write: (h: string, d: DailyDigest) => { memCache.set(h, d); },
       readWithInputs: () => null,
       readMostRecentForDate: () => null,
     } as unknown as BuildDailyDigestDeps['cache'];
@@ -2396,8 +2407,8 @@ describe('v3 Scenario 32 — incremental digest patcher preserves untouched item
     const cache = new Map<string, CacheEntry>();
 
     const patchCache: BuildDailyDigestDeps['cache'] = {
-      read: (h) => cache.get(h)?.digest ?? null,
-      write: (h, d, inputs) => {
+      read: (h: string) => cache.get(h)?.digest ?? null,
+      write: (h: string, d: DailyDigest, inputs?: import('../../recap/cache.js').SnapshotHashInputs) => {
         cache.set(h, { digest: d, inputs: inputs ?? {
           date: d.date, tz: d.tz,
           sortedProjectPaths: [],
@@ -2405,8 +2416,8 @@ describe('v3 Scenario 32 — incremental digest patcher preserves untouched item
           perProjectLastCommit: {},
         }});
       },
-      readWithInputs: (h) => cache.get(h) ?? null,
-      readMostRecentForDate: (date, tz) => {
+      readWithInputs: (h: string) => cache.get(h) ?? null,
+      readMostRecentForDate: (date: string, tz: string) => {
         // Return the most recently written entry for this date/tz
         let best: CacheEntry | null = null;
         for (const entry of cache.values()) {
@@ -2511,8 +2522,8 @@ describe('v3 Scenario 33 — incremental digest falls back to full rebuild after
     const cache = new Map<string, CacheEntry>();
 
     const patchableCache: BuildDailyDigestDeps['cache'] = {
-      read: (h) => cache.get(h)?.digest ?? null,
-      write: (h, d, inputs) => {
+      read: (h: string) => cache.get(h)?.digest ?? null,
+      write: (h: string, d: DailyDigest, inputs?: import('../../recap/cache.js').SnapshotHashInputs) => {
         cache.set(h, { digest: d, inputs: inputs ?? {
           date: d.date, tz: d.tz,
           sortedProjectPaths: [],
@@ -2520,8 +2531,8 @@ describe('v3 Scenario 33 — incremental digest falls back to full rebuild after
           perProjectLastCommit: {},
         }});
       },
-      readWithInputs: (h) => cache.get(h) ?? null,
-      readMostRecentForDate: (date, tz) => {
+      readWithInputs: (h: string) => cache.get(h) ?? null,
+      readMostRecentForDate: (date: string, tz: string) => {
         let best: CacheEntry | null = null;
         for (const entry of cache.values()) {
           if (entry.digest.date === date && entry.digest.tz === tz) {
@@ -2588,8 +2599,8 @@ describe('v3 Scenario 34 — empty-day cache hit', () => {
 
     const memCache = new Map<string, DailyDigest>();
     const inMemoryCache: BuildDailyDigestDeps['cache'] = {
-      read: (h) => memCache.get(h) ?? null,
-      write: (h, d) => { memCache.set(h, d); },
+      read: (h: string) => memCache.get(h) ?? null,
+      write: (h: string, d: DailyDigest) => { memCache.set(h, d); },
     } as unknown as BuildDailyDigestDeps['cache'];
 
     // First call — should produce an empty digest and write it to cache
@@ -2632,8 +2643,8 @@ describe('v3 Scenario 35 — empty-day cache invalidates when a new project appe
 
     const memCache = new Map<string, DailyDigest>();
     const inMemoryCache: BuildDailyDigestDeps['cache'] = {
-      read: (h) => memCache.get(h) ?? null,
-      write: (h, d) => { memCache.set(h, d); },
+      read: (h: string) => memCache.get(h) ?? null,
+      write: (h: string, d: DailyDigest) => { memCache.set(h, d); },
     } as unknown as BuildDailyDigestDeps['cache'];
 
     // First call: empty day (no sessions, no projects)
@@ -3059,7 +3070,7 @@ describe('SR-7 smoke — tune-segmenter makes no API calls without consent flag'
     // Import the main function from the tune-segmenter script.
     // We supply a mock apiClient so we can count calls, and a mock storeFactory
     // so no real SQLite database is opened.
-    const { main } = await import('../../../../../scripts/tune-segmenter.js');
+    const { main } = await import('../../recap/tune-segmenter.js');
 
     let apiCallCount = 0;
     const mockApiClient = {

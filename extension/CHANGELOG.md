@@ -2,6 +2,41 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.3.0 — 2026-04-29
+
+### Added — Daily-recap feature
+
+- **`claude-stats recap [--date | --tz | --json | --all]` CLI command** and a **`summarize_day` MCP tool** that return a structured digest of the user's day — clusters of topic segments across sessions joined to author-scoped git activity, ranked by outcome impact, with first prompts quoted verbatim. The pipeline is fully deterministic at the service layer (segment → cluster → git enrichment → cache); LLM synthesis is optional and lives in the calling agent.
+- **Confidence scores per item** (`high`/`medium`/`low`) drive default rendering: high+medium shown by default, low items collapsed into "+N brief items (use --all to show)". Computed deterministically — no LLM.
+- **Phrase-template bank** at `recap/templates.ts` selects rendering by confidence. Untrusted slots are mandatorily backtick-delimited; backticks in source values are escaped.
+- **Self-consistency guard** (`recap/guard.ts`) catches LLM hallucinations against the source digest — flags missing entities, count mismatches, unknown file paths, verb/confidence mismatches.
+- **Background pre-computation** via `claude-stats recap precompute --lookback-days N`; `--install-cron` prints a crontab snippet (does NOT modify crontab).
+- **User-correctable digests** via `claude-stats recap correct {merge,split,rename,hide,list,remove}`. Persists in `~/.claude-stats/recap-corrections.db` (mode `0o600`) keyed by signature so the same correction applies to recurring tasks across days.
+- **Optional local sentence embeddings** for semantic clustering. Pinned `Xenova/all-MiniLM-L6-v2` (int8, 23MB, Apache-2.0); SHA-256 verified before first use; mismatched models deleted, fallback to Jaccard. Opt-in via `--embeddings=on|off|auto`.
+- **Incremental digest patcher** (feature flag `--patch-cache`, default off) that splices new messages/commits into the prior digest. Determinism verified — byte-identical to full rebuild.
+- **MCP tool description guidance** for calling agents: prompt-caching pattern (`cache_control: ephemeral`), tier-routing (Haiku for classifiers, Sonnet for prose), `max_tokens` caps, and entity-presence post-check.
+- **Offline LLM-as-judge tuning script** (`packages/cli/src/recap/tune-segmenter.ts`, maintainer tool). Strict opt-in: `--dry-run` default, sample preview, typed `yes` confirmation, no automatic invocation, redacted auth headers.
+- **Parser enrichment** captures `tool_use.input.file_path` (`Edit`/`Write`/`Read`/`MultiEdit`), dirname of `Glob.pattern`, and `Bash.cwd` into the new `messages.file_paths` column. Schema migration v9 → v10, additive and idempotent.
+
+### Security
+
+23+ dedicated negative tests verify every recap-feature gate:
+
+- **Subprocess argument injection (SR-1):** `execFile` with `--` separators and validated email regex; malicious `user.email` (`--output=…`, newlines, leading `-`) cannot inject arguments.
+- **Untrusted-slot rendering (SR-2):** every templating path wraps in single backticks and escapes embedded backticks. Markdown injection (`# OWNED`) and envelope-escape attempts blocked.
+- **File permissions (SR-3):** all writes under `~/.claude-stats/` go through a shared `fs-secure` helper (`0o700` dirs, `0o600` files, `chmod`-after-write). Pre-existing loose perms tightened.
+- **Cache-key correctness (SR-4):** snapshot hash includes sorted project paths and `Intl`-derived TZ. New-project-on-empty-day invalidates correctly.
+- **Embedding model integrity (SR-5):** SHA-256 pinned in source; tampered files deleted; no user-supplied model paths.
+- **Corrections SQL injection (SR-6):** parameterised queries exclusively; SQL-injection labels stored verbatim, control characters rejected, 200-char cap.
+- **LLM-as-judge privacy (SR-7):** tuning script makes 0 API calls without explicit consent; `Authorization` header redacted from error output.
+- **Wrap-untrusted preservation (SR-8):** envelope preserved through builder, MCP, JSON CLI, cache, and patcher.
+
+### Internal
+
+- 14 new files under `packages/cli/src/recap/`, 9 new test files. **1,111 project-wide tests passing** (+194 from prior baseline).
+- Three-release implementation plan documented under `plans/daily-recap/` (gitignored); full design + security review under `doc/analysis/daily-recap/`.
+- New optional dependency: `@huggingface/transformers@^3.0.0` — only loaded when embeddings are enabled and a hash-verified model is on disk.
+
 ## 0.2.2 — 2026-04-21
 
 ### Security hardening

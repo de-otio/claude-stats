@@ -578,7 +578,7 @@ describe("parseSessionFile", () => {
     const result = await parseSessionFile(filePath, "/proj");
     expect(result.messages[0]!.filePaths).toHaveLength(1);
     // dirname("src/**/*.ts") == "src/**"
-    expect(result.messages[0]!.filePaths[0]).toBe("src/**");
+    expect(result.messages[0]!.filePaths![0]).toBe("src/**");
   });
 
   it("Bash tool with input.cwd → cwd captured in filePaths", async () => {
