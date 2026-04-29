@@ -10,6 +10,7 @@
 import fs from "fs";
 import crypto from "crypto";
 import readline from "readline";
+import { dirname } from "node:path";
 import type {
   RawSessionEntry,
   MessageRecord,
@@ -198,6 +199,7 @@ export async function parseSessionFile(
       const content = entry.message?.content;
       const contentArr = Array.isArray(content) ? content : [];
       const msgTools: string[] = [];
+      const msgFilePathsSet = new Set<string>();
       let thinkingBlockCount = 0;
       for (const block of contentArr) {
         if (block.type === "tool_use" && block.name) {
@@ -206,12 +208,46 @@ export async function parseSessionFile(
             (toolUseCounts.get(block.name) ?? 0) + 1
           );
           msgTools.push(block.name);
+
+          // Extract file paths from tool_use block.input (defensive)
+          try {
+            const input = block.input as Record<string, unknown> | undefined;
+            if (input != null && typeof input === "object") {
+              const name = block.name as string;
+              if (
+                name === "Read" ||
+                name === "Edit" ||
+                name === "Write" ||
+                name === "MultiEdit"
+              ) {
+                const fp = input["file_path"];
+                if (typeof fp === "string" && fp.length > 0) {
+                  msgFilePathsSet.add(fp);
+                }
+              } else if (name === "Glob") {
+                const pattern = input["pattern"];
+                if (typeof pattern === "string" && pattern.includes("/")) {
+                  const dir = dirname(pattern);
+                  if (dir.length > 0) msgFilePathsSet.add(dir);
+                }
+              } else if (name === "Bash") {
+                const cwd = input["cwd"];
+                if (typeof cwd === "string" && cwd.length > 0) {
+                  msgFilePathsSet.add(cwd);
+                }
+              }
+              // All other tools: no path contribution
+            }
+          } catch {
+            // Defensive: never throw on malformed input
+          }
         }
         if (block.type === "thinking") {
           thinkingBlockCount++;
         }
       }
       totalThinkingBlocks += thinkingBlockCount;
+      const msgFilePaths = Array.from(msgFilePathsSet);
 
       // Store per-message record for detailed analysis
       const msgUuid = entry.uuid;
@@ -228,6 +264,7 @@ export async function parseSessionFile(
           cacheCreationTokens: usage?.cache_creation_input_tokens ?? 0,
           cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
           tools: msgTools,
+          filePaths: msgFilePaths,
           thinkingBlocks: thinkingBlockCount,
           serviceTier: usage?.service_tier ?? null,
           inferenceGeo: usage?.inference_geo ?? null,

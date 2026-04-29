@@ -13,7 +13,6 @@
  */
 
 import { createHash } from "node:crypto";
-import { dirname } from "node:path";
 import type { MessageRow } from "../store/index.js";
 import {
   type Segment,
@@ -50,85 +49,20 @@ const STOP_WORDS = new Set([
 // ─── Private helpers ──────────────────────────────────────────────────────────
 
 /**
- * Extract file-system paths from a message's `tools` JSON column.
+ * Parse a message's dedicated `file_paths` JSON column (added in schema v10).
  *
- * The column is stored as a JSON array. Two possible shapes are handled:
- *
- * 1. Legacy / current shape: `string[]` — just tool names, no params.
- *    In this case no paths can be extracted; returns [].
- *
- * 2. Richer shape (if future data includes it):
- *    `Array<{ name: string; params: Record<string, unknown> }>`.
- *    Extracts file_path from Read, Edit, Write, MultiEdit;
- *    dirname of pattern from Glob; cwd from Bash.
- *
- * Unknown tools contribute nothing. Any parse error returns [].
+ * The column is stored as a JSON array of strings produced at parse time
+ * from tool_use block.input fields (file_path, cwd, Glob pattern dirname).
+ * Any parse error returns [] so old / malformed rows degrade gracefully.
  */
-function extractFilePaths(toolsJson: string): readonly string[] {
-  let parsed: unknown;
+function parseFilePaths(filePathsJson: string): readonly string[] {
   try {
-    parsed = JSON.parse(toolsJson);
+    const parsed = JSON.parse(filePathsJson);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((p): p is string => typeof p === "string");
   } catch {
     return [];
   }
-
-  if (!Array.isArray(parsed) || parsed.length === 0) {
-    return [];
-  }
-
-  const paths: string[] = [];
-
-  for (const entry of parsed) {
-    // Current store shape: plain string tool names only — no paths available.
-    if (typeof entry === "string") {
-      continue;
-    }
-
-    // Richer future shape: { name: string; params: Record<string, unknown> }
-    if (
-      typeof entry !== "object" ||
-      entry === null ||
-      typeof (entry as Record<string, unknown>)["name"] !== "string"
-    ) {
-      continue;
-    }
-
-    const obj = entry as Record<string, unknown>;
-    const name = obj["name"] as string;
-    const params = (obj["params"] ?? {}) as Record<string, unknown>;
-
-    switch (name) {
-      case "Read":
-      case "Edit":
-      case "Write":
-      case "MultiEdit": {
-        const fp = params["file_path"];
-        if (typeof fp === "string" && fp.length > 0) {
-          paths.push(fp);
-        }
-        break;
-      }
-      case "Glob": {
-        const pattern = params["pattern"];
-        if (typeof pattern === "string" && pattern.length > 0) {
-          paths.push(dirname(pattern));
-        }
-        break;
-      }
-      case "Bash": {
-        const cwd = params["cwd"];
-        if (typeof cwd === "string" && cwd.length > 0) {
-          paths.push(cwd);
-        }
-        break;
-      }
-      default:
-        // Unknown tools contribute nothing — degrade gracefully.
-        break;
-    }
-  }
-
-  return paths;
 }
 
 /**
@@ -178,12 +112,14 @@ function computeSegmentId(
 
 /**
  * Collect file paths from a window of messages around a boundary.
+ * Reads from the dedicated `file_paths` JSON column (schema v10+),
+ * which is populated at parse time from tool_use block.input fields.
  * windowMessages is already the slice to inspect.
  */
 function pathSetFromWindow(messages: readonly MessageRow[]): Set<string> {
   const paths: string[] = [];
   for (const msg of messages) {
-    for (const p of extractFilePaths(msg.tools)) {
+    for (const p of parseFilePaths(msg.file_paths)) {
       paths.push(p);
     }
   }
@@ -323,10 +259,11 @@ export function segmentSession(
       }
     }
 
-    // File paths: union of all paths extracted from all messages in segment.
+    // File paths: union of all paths from the dedicated file_paths column across
+    // all messages in segment. Column populated at parse time from tool_use input.
     const filePathSet = new Set<string>();
     for (const msg of segMessages) {
-      for (const p of extractFilePaths(msg.tools)) {
+      for (const p of parseFilePaths(msg.file_paths)) {
         filePathSet.add(p);
       }
     }

@@ -11,7 +11,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import { Store } from '../../store/index.js';
 import type { SessionRecord, MessageRecord } from '@claude-stats/core/types';
-import { buildDailyDigest } from '../../recap/index.js';
+import { buildDailyDigest, computeConfidence } from '../../recap/index.js';
 import type { BuildDailyDigestDeps } from '../../recap/index.js';
 import type { DailyDigest, ProjectGitActivity } from '../../recap/types.js';
 
@@ -165,8 +165,8 @@ describe('buildDailyDigest — empty day', () => {
     fs.unlinkSync(dbPath);
   });
 
-  it('returns empty items and zero totals when no sessions exist', () => {
-    const digest = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, defaultDeps());
+  it('returns empty items and zero totals when no sessions exist', async () => {
+    const digest = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, defaultDeps());
     expect(digest.items).toHaveLength(0);
     expect(digest.totals.sessions).toBe(0);
     expect(digest.totals.segments).toBe(0);
@@ -213,8 +213,8 @@ describe('buildDailyDigest — single session, no git', () => {
     fs.unlinkSync(dbPath);
   });
 
-  it('produces one item with null git and characterVerb from histogram', () => {
-    const digest = buildDailyDigest(
+  it('produces one item with null git and characterVerb from histogram', async () => {
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps({ getProjectGitActivity: vi.fn(() => null) }),
@@ -267,8 +267,8 @@ describe('buildDailyDigest — long session, three topics', () => {
     fs.unlinkSync(dbPath);
   });
 
-  it('produces three items from three topic segments', () => {
-    const digest = buildDailyDigest(
+  it('produces three items from three topic segments', async () => {
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps(),
@@ -332,8 +332,8 @@ describe('buildDailyDigest — cross-session cluster (same project)', () => {
     fs.unlinkSync(dbPath);
   });
 
-  it('merges sessions on the same project into clusters', () => {
-    const digest = buildDailyDigest(
+  it('merges sessions on the same project into clusters', async () => {
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps(),
@@ -385,8 +385,8 @@ describe('buildDailyDigest — SR-8: firstPrompt wrapped', () => {
     fs.unlinkSync(dbPath);
   });
 
-  it('wraps every non-null firstPrompt with untrusted-stored-content marker', () => {
-    const digest = buildDailyDigest(
+  it('wraps every non-null firstPrompt with untrusted-stored-content marker', async () => {
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps(),
@@ -435,8 +435,8 @@ describe('buildDailyDigest — firstPrompt truncated at 280 code points', () => 
     fs.unlinkSync(dbPath);
   });
 
-  it('truncates firstPrompt to 280 code points plus ellipsis', () => {
-    const digest = buildDailyDigest(
+  it('truncates firstPrompt to 280 code points plus ellipsis', async () => {
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps(),
@@ -515,8 +515,8 @@ describe('buildDailyDigest — day boundary in non-UTC TZ', () => {
     fs.unlinkSync(dbPath);
   });
 
-  it('uses Auckland day boundaries not UTC when tz is Pacific/Auckland', () => {
-    const digest = buildDailyDigest(
+  it('uses Auckland day boundaries not UTC when tz is Pacific/Auckland', async () => {
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'Pacific/Auckland' },
       defaultDeps({ intlTz: () => 'Pacific/Auckland', now: () => Date.UTC(2024, 0, 15, 15, 0, 0) }),
@@ -572,7 +572,7 @@ describe('buildDailyDigest — score ordering', () => {
     fs.unlinkSync(dbPath);
   });
 
-  it('sorts items by score descending', () => {
+  it('sorts items by score descending', async () => {
     const highScoreGit: ProjectGitActivity = {
       commitsToday: 5,
       filesChanged: 10,
@@ -587,7 +587,7 @@ describe('buildDailyDigest — score ordering', () => {
       return null;
     });
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps({ getProjectGitActivity: noGitActivity }),
@@ -635,7 +635,7 @@ describe('buildDailyDigest — verb upgrade to Shipped', () => {
     fs.unlinkSync(dbPath);
   });
 
-  it('upgrades characterVerb to Shipped when commits > 0 and pushed', () => {
+  it('upgrades characterVerb to Shipped when commits > 0 and pushed', async () => {
     const shippedGit: ProjectGitActivity = {
       commitsToday: 2,
       filesChanged: 5,
@@ -646,7 +646,7 @@ describe('buildDailyDigest — verb upgrade to Shipped', () => {
       prMerged: null,
     };
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps({ getProjectGitActivity: vi.fn(() => shippedGit) }),
@@ -654,9 +654,10 @@ describe('buildDailyDigest — verb upgrade to Shipped', () => {
 
     expect(digest.items.length).toBe(1);
     expect(digest.items[0]!.characterVerb).toBe('Shipped');
+    expect(digest.items[0]!.confidence).toBe('high');
   });
 
-  it('does NOT upgrade to Shipped when pushed is false', () => {
+  it('does NOT upgrade to Shipped when pushed is false', async () => {
     const unpushedGit: ProjectGitActivity = {
       commitsToday: 2,
       filesChanged: 5,
@@ -667,7 +668,7 @@ describe('buildDailyDigest — verb upgrade to Shipped', () => {
       prMerged: null,
     };
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps({ getProjectGitActivity: vi.fn(() => unpushedGit) }),
@@ -677,7 +678,7 @@ describe('buildDailyDigest — verb upgrade to Shipped', () => {
     expect(digest.items[0]!.characterVerb).not.toBe('Shipped');
   });
 
-  it('does NOT upgrade to Shipped when commitsToday is 0', () => {
+  it('does NOT upgrade to Shipped when commitsToday is 0', async () => {
     const noCommitsGit: ProjectGitActivity = {
       commitsToday: 0,
       filesChanged: 0,
@@ -688,7 +689,7 @@ describe('buildDailyDigest — verb upgrade to Shipped', () => {
       prMerged: null,
     };
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps({ getProjectGitActivity: vi.fn(() => noCommitsGit) }),
@@ -727,7 +728,7 @@ describe('buildDailyDigest — snapshot cache hit', () => {
     fs.unlinkSync(dbPath);
   });
 
-  it('returns cached:true and identical contents on cache hit', () => {
+  it('returns cached:true and identical contents on cache hit', async () => {
     // First run to compute the real digest
     const realCache = new Map<string, DailyDigest>();
     const cache1: BuildDailyDigestDeps['cache'] = {
@@ -735,7 +736,7 @@ describe('buildDailyDigest — snapshot cache hit', () => {
       write: (hash, d) => { realCache.set(hash, d); },
     };
 
-    const digest1 = buildDailyDigest(
+    const digest1 = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps({ cache: cache1 }),
@@ -748,7 +749,7 @@ describe('buildDailyDigest — snapshot cache hit', () => {
       write: vi.fn(),
     };
 
-    const digest2 = buildDailyDigest(
+    const digest2 = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps({ cache: cache2 }),
@@ -791,9 +792,9 @@ describe('buildDailyDigest — cache invalidation on new message', () => {
     fs.unlinkSync(dbPath);
   });
 
-  it('produces a different snapshotHash after adding a new message', () => {
+  it('produces a different snapshotHash after adding a new message', async () => {
     const cache = noopCache();
-    const digest1 = buildDailyDigest(
+    const digest1 = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps({ cache }),
@@ -811,7 +812,7 @@ describe('buildDailyDigest — cache invalidation on new message', () => {
       }),
     ]);
 
-    const digest2 = buildDailyDigest(
+    const digest2 = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps({ cache }),
@@ -863,14 +864,14 @@ describe('buildDailyDigest — determinism', () => {
     fs.unlinkSync(dbPath);
   });
 
-  it('produces byte-identical output on two successive runs (excluding cached flag)', () => {
+  it('produces byte-identical output on two successive runs (excluding cached flag)', async () => {
     const cache = noopCache();
-    const d1 = buildDailyDigest(
+    const d1 = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps({ cache }),
     );
-    const d2 = buildDailyDigest(
+    const d2 = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps({ cache }),
@@ -916,23 +917,23 @@ describe('SR-4 — snapshot hash inputs', () => {
     fs.unlinkSync(dbPath);
   });
 
-  it('changes hash when date changes', () => {
+  it('changes hash when date changes', async () => {
     const deps = defaultDeps();
-    const d1 = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps);
-    const d2 = buildDailyDigest(store, { date: '2024-01-16', tz: 'UTC' }, deps);
+    const d1 = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps);
+    const d2 = await buildDailyDigest(store, { date: '2024-01-16', tz: 'UTC' }, deps);
     expect(d1.snapshotHash).not.toBe(d2.snapshotHash);
   });
 
-  it('changes hash when tz changes', () => {
+  it('changes hash when tz changes', async () => {
     const deps = defaultDeps();
-    const d1 = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps);
-    const d2 = buildDailyDigest(store, { date: '2024-01-15', tz: 'America/New_York' }, deps);
+    const d1 = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps);
+    const d2 = await buildDailyDigest(store, { date: '2024-01-15', tz: 'America/New_York' }, deps);
     expect(d1.snapshotHash).not.toBe(d2.snapshotHash);
   });
 
-  it('changes hash when project list changes (new session added)', () => {
+  it('changes hash when project list changes (new session added)', async () => {
     const deps1 = defaultDeps();
-    const d1 = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps1);
+    const d1 = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps1);
 
     // Add a second project
     const sess2 = nextSessionId();
@@ -947,13 +948,13 @@ describe('SR-4 — snapshot hash inputs', () => {
     ]);
 
     const deps2 = defaultDeps();
-    const d2 = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps2);
+    const d2 = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps2);
     expect(d1.snapshotHash).not.toBe(d2.snapshotHash);
   });
 
-  it('changes hash when maxMessageUuid changes (new message added)', () => {
+  it('changes hash when maxMessageUuid changes (new message added)', async () => {
     const deps = defaultDeps();
-    const d1 = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps);
+    const d1 = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps);
 
     const sessions = store.getSessions({ since: min(0), until: min(100) });
     store.upsertMessages([
@@ -965,11 +966,11 @@ describe('SR-4 — snapshot hash inputs', () => {
       }),
     ]);
 
-    const d2 = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps);
+    const d2 = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps);
     expect(d1.snapshotHash).not.toBe(d2.snapshotHash);
   });
 
-  it('is stable regardless of project path insertion order (sorted defensively)', () => {
+  it('is stable regardless of project path insertion order (sorted defensively)', async () => {
     // Add another session so multiple projects are present
     const sess2 = nextSessionId();
     store.upsertSession(makeSessionRecord({
@@ -984,8 +985,8 @@ describe('SR-4 — snapshot hash inputs', () => {
 
     const deps = defaultDeps();
     // Run twice — project insertion order might differ but hash should be same
-    const d1 = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps);
-    const d2 = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps);
+    const d1 = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps);
+    const d2 = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, deps);
     expect(d1.snapshotHash).toBe(d2.snapshotHash);
   });
 });
@@ -1015,7 +1016,7 @@ describe('SR-4 — TZ source is Intl, not process.env.TZ', () => {
     }
   });
 
-  it('uses deps.intlTz and ignores process.env.TZ', () => {
+  it('uses deps.intlTz and ignores process.env.TZ', async () => {
     // Set process.env.TZ to UTC
     process.env['TZ'] = 'UTC';
 
@@ -1023,13 +1024,13 @@ describe('SR-4 — TZ source is Intl, not process.env.TZ', () => {
     const depsAuckland = defaultDeps({
       intlTz: () => 'Pacific/Auckland',
     });
-    const digestAuckland = buildDailyDigest(store, {}, depsAuckland);
+    const digestAuckland = await buildDailyDigest(store, {}, depsAuckland);
 
     // Build with intlTz returning UTC (same as process.env.TZ)
     const depsUtc = defaultDeps({
       intlTz: () => 'UTC',
     });
-    const digestUtc = buildDailyDigest(store, {}, depsUtc);
+    const digestUtc = await buildDailyDigest(store, {}, depsUtc);
 
     // The TZ in the digest must come from intlTz, not process.env.TZ
     expect(digestAuckland.tz).toBe('Pacific/Auckland');
@@ -1081,8 +1082,8 @@ describe('SR-8 — every non-null firstPrompt contains untrusted marker', () => 
     fs.unlinkSync(dbPath);
   });
 
-  it('wraps every non-null firstPrompt with <untrusted-stored-content>', () => {
-    const digest = buildDailyDigest(
+  it('wraps every non-null firstPrompt with <untrusted-stored-content>', async () => {
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps(),
@@ -1105,7 +1106,7 @@ describe('SR-8 — every non-null firstPrompt contains untrusted marker', () => 
     expect(wrappedCount).toBeGreaterThan(0);
   });
 
-  it('sets firstPrompt to null for sessions with no prompt text', () => {
+  it('sets firstPrompt to null for sessions with no prompt text', async () => {
     const store2 = new Store(tmpDb());
     const sessionId = nextSessionId();
     store2.upsertSession(makeSessionRecord({
@@ -1118,7 +1119,7 @@ describe('SR-8 — every non-null firstPrompt contains untrusted marker', () => 
       makeMessageRecord({ sessionId, timestamp: min(0), promptText: null }),
     ]);
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store2,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps(),
@@ -1140,7 +1141,7 @@ describe('SR-8 — every non-null firstPrompt contains untrusted marker', () => 
 // ─── Additional: filePathsTouched capped at 20 ───────────────────────────────
 
 describe('buildDailyDigest — filePathsTouched capped at 20', () => {
-  it('limits filePathsTouched to 20 entries', () => {
+  it('limits filePathsTouched to 20 entries', async () => {
     // This is a unit-level assertion on the implementation behaviour.
     // In v1 filePaths are empty (known limitation), so we verify the cap
     // is enforced by the code path rather than by data.
@@ -1158,7 +1159,7 @@ describe('buildDailyDigest — filePathsTouched capped at 20', () => {
       makeMessageRecord({ sessionId, timestamp: min(0), promptText: 'test' }),
     ]);
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store2,
       { date: '2024-01-15', tz: 'UTC' },
       defaultDeps(),
@@ -1170,5 +1171,108 @@ describe('buildDailyDigest — filePathsTouched capped at 20', () => {
 
     store2.close();
     fs.unlinkSync(dbPath2);
+  });
+});
+
+// ─── computeConfidence unit tests (v2.02) ────────────────────────────────────
+
+describe('computeConfidence', () => {
+  const noGitBase = { git: null, duration: { wallMs: 0, activeMs: 0 }, filePathsTouched: [] };
+
+  // Test 1: pushed commits → high
+  it('returns high when git has commits today and pushed=true', () => {
+    const git: ProjectGitActivity = {
+      commitsToday: 2,
+      filesChanged: 3,
+      linesAdded: 50,
+      linesRemoved: 10,
+      subjects: ['feat: something'],
+      pushed: true,
+      prMerged: null,
+    };
+    expect(computeConfidence({ git, duration: { wallMs: 0, activeMs: 0 }, filePathsTouched: [] })).toBe('high');
+  });
+
+  // Test 2: merged PR → high
+  it('returns high when git has a merged PR', () => {
+    const git: ProjectGitActivity = {
+      commitsToday: 0,
+      filesChanged: 0,
+      linesAdded: 0,
+      linesRemoved: 0,
+      subjects: [],
+      pushed: false,
+      prMerged: 1,
+    };
+    expect(computeConfidence({ git, duration: { wallMs: 0, activeMs: 0 }, filePathsTouched: [] })).toBe('high');
+  });
+
+  // Test 3: local commits, not pushed → medium
+  it('returns medium when git has commits but pushed=false', () => {
+    const git: ProjectGitActivity = {
+      commitsToday: 2,
+      filesChanged: 3,
+      linesAdded: 40,
+      linesRemoved: 5,
+      subjects: ['fix: local'],
+      pushed: false,
+      prMerged: null,
+    };
+    expect(computeConfidence({ git, duration: { wallMs: 0, activeMs: 0 }, filePathsTouched: [] })).toBe('medium');
+  });
+
+  // Test 4: 1 hour active, 100 lines changed → medium
+  it('returns medium when active >= 30 min and lines changed >= 50', () => {
+    const git: ProjectGitActivity = {
+      commitsToday: 0,
+      filesChanged: 5,
+      linesAdded: 80,
+      linesRemoved: 20,
+      subjects: [],
+      pushed: false,
+      prMerged: null,
+    };
+    expect(computeConfidence({ git, duration: { wallMs: 0, activeMs: 3_600_000 }, filePathsTouched: [] })).toBe('medium');
+  });
+
+  // Test 5: 45 min active, 6 files, no commits → medium
+  it('returns medium when active >= 30 min and filePathsTouched >= 5', () => {
+    expect(computeConfidence({
+      ...noGitBase,
+      duration: { wallMs: 0, activeMs: 2_700_000 },
+      filePathsTouched: ['a', 'b', 'c', 'd', 'e', 'f'],
+    })).toBe('medium');
+  });
+
+  // Test 6: 10 min active, 1 file, no commits → low
+  it('returns low when active < 30 min and no commits', () => {
+    expect(computeConfidence({
+      ...noGitBase,
+      duration: { wallMs: 0, activeMs: 600_000 },
+      filePathsTouched: ['a'],
+    })).toBe('low');
+  });
+
+  // Test 7: all zeros / no git → low
+  it('returns low when all values are zero and no git', () => {
+    expect(computeConfidence(noGitBase)).toBe('low');
+  });
+
+  // Test 8: threshold edge — exactly 30 min, exactly 5 files, no commits → medium
+  it('returns medium at exactly the 30-min / 5-file threshold', () => {
+    expect(computeConfidence({
+      ...noGitBase,
+      duration: { wallMs: 0, activeMs: 30 * 60 * 1000 },
+      filePathsTouched: ['a', 'b', 'c', 'd', 'e'],
+    })).toBe('medium');
+  });
+
+  // Test 9: threshold edge — 29 min, 100 files, no commits → low
+  it('returns low at 29 min even with 100 files (active duration required)', () => {
+    expect(computeConfidence({
+      ...noGitBase,
+      duration: { wallMs: 0, activeMs: 29 * 60 * 1000 },
+      filePathsTouched: Array.from({ length: 100 }, (_, i) => `file-${i}`),
+    })).toBe('low');
   });
 });

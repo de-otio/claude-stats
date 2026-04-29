@@ -584,16 +584,38 @@ export async function buildCli(): Promise<Command> {
     .option("--tz <tz>", "IANA timezone (defaults to system TZ)")
     .option("--all", "Include low-confidence items (currently shown by default in v1)")
     .option("--json", "Machine-readable JSON output")
-    .action(async (opts: { date?: string; tz?: string; all?: boolean; json?: boolean }) => {
+    .option("--embeddings <mode>", "on|off|auto — enable local sentence embeddings for clustering", "auto")
+    .action(async (opts: { date?: string; tz?: string; all?: boolean; json?: boolean; embeddings?: string }) => {
       const { Store } = await import("../store/index.js");
       const { collect } = await import("../aggregator/index.js");
       const { buildDailyDigest } = await import("../recap/index.js");
+      const { createEmbeddingProvider } = await import("../recap/embeddings.js");
       const { printDailyRecap } = await import("../reporter/index.js");
       const store = new Store();
       await collect(store);
-      const digest = buildDailyDigest(store, {
+
+      // Parse and validate --embeddings flag
+      const rawMode = opts.embeddings ?? 'auto';
+      const embeddingsMode: 'on' | 'off' | 'auto' =
+        rawMode === 'on' || rawMode === 'off' || rawMode === 'auto'
+          ? rawMode
+          : 'auto';
+
+      // Create embedding provider (may return null if mode=auto and model not cached,
+      // or mode=off, or the model is missing/invalid)
+      let embeddingProvider = null;
+      try {
+        embeddingProvider = await createEmbeddingProvider({ mode: embeddingsMode });
+      } catch {
+        // createEmbeddingProvider never throws, but be defensive
+        embeddingProvider = null;
+      }
+
+      const digest = await buildDailyDigest(store, {
         date: opts.date,
         tz: opts.tz,
+      }, {
+        embeddingProvider,
       });
       if (opts.json) {
         console.log(JSON.stringify(digest, null, 2));
