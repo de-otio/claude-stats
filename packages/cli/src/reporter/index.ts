@@ -5,6 +5,7 @@
  */
 import type { Store, SessionRow, MessageRow, StatusInfo, SpendingReport } from "../store/index.js";
 import type { SearchResult } from "../history/index.js";
+import type { DailyDigest } from "../recap/index.js";
 import { estimateCost, formatCost } from "@claude-stats/core/pricing";
 import { attributeToolCosts, groupByMcpServer, detectAnomalies } from "../spending.js";
 import { t } from "../i18n.js";
@@ -905,4 +906,221 @@ export function printStatus(info: StatusInfo): void {
     `${t("cli:status.lastCollected").padEnd(16)}: ${info.lastCollected ? new Date(info.lastCollected).toLocaleString() : t("cli:status.never")}`
   );
   console.log();
+}
+
+// \u2500\u2500 Daily Recap Reporter \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+/**
+ * The untrusted-content envelope added by wrapUntrusted() in recap/index.ts.
+ * The open tag is preceded by an advisory note line; the content sits between
+ * <untrusted-stored-content> and </untrusted-stored-content>.
+ */
+const UNTRUSTED_OPEN = "<untrusted-stored-content>";
+const UNTRUSTED_CLOSE = "</untrusted-stored-content>";
+
+/**
+ * Strip the wrapUntrusted() envelope from a firstPrompt value, returning
+ * only the inner text.  Returns null if input is null.
+ *
+ * SR-2: The stripped value must still be escaped and re-quoted in backticks
+ * before being printed \u2014 see renderFirstPrompt().
+ */
+function stripUntrustedEnvelope(s: string | null): string | null {
+  if (s === null) return null;
+  const start = s.indexOf(UNTRUSTED_OPEN);
+  const end = s.indexOf(UNTRUSTED_CLOSE);
+  if (start === -1 || end === -1 || end <= start) return s;
+  return s.slice(start + UNTRUSTED_OPEN.length, end);
+}
+
+/**
+ * Escape backtick characters inside a string so the value cannot break out
+ * of a single-backtick delimiter when rendered in markdown.
+ *
+ * SR-2: All untrusted prompt content must pass through this before being
+ * wrapped in backticks in the output.
+ */
+function escapeBacktick(s: string): string {
+  return s.replace(/`/g, "\\`");
+}
+
+/**
+ * Render the firstPrompt field for terminal output.
+ *
+ * 1. Strip the untrusted envelope.
+ * 2. Escape any backticks (SR-2).
+ * 3. Truncate to 80 chars (terminal display limit; digest itself caps at 280).
+ * 4. Wrap in single backticks.
+ *
+ * Returns `(no prompt)` (without backticks) when prompt is null.
+ */
+function renderFirstPrompt(firstPrompt: string | null): string {
+  const inner = stripUntrustedEnvelope(firstPrompt);
+  if (inner === null || inner.trim() === "") return "(no prompt)";
+  const escaped = escapeBacktick(inner);
+  // Truncate at 80 characters (code-point-safe via spread)
+  const codePoints = [...escaped];
+  const truncated = codePoints.length > 80
+    ? codePoints.slice(0, 80).join("") + "\u2026"
+    : escaped;
+  return `\`${truncated}\``;
+}
+
+/**
+ * Compute the header date label (Today / Yesterday / day-of-week) relative to
+ * the current wall-clock moment in the digest's timezone.
+ */
+function recapDateLabel(digestDate: string, tz: string, nowMs: number = Date.now()): string {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const todayStr = fmt.format(nowMs);
+  const yesterdayStr = fmt.format(nowMs - 86_400_000);
+
+  if (digestDate === todayStr) return "Today";
+  if (digestDate === yesterdayStr) return "Yesterday";
+
+  // Fall back to day-of-week
+  const [yearStr, monthStr, dayStr] = digestDate.split("-");
+  const year = parseInt(yearStr!, 10);
+  const month = parseInt(monthStr!, 10); // 1-based
+  const day = parseInt(dayStr!, 10);
+
+  // Use UTC noon on the date to get the right day-of-week label in the tz
+  const candidate = Date.UTC(year, month - 1, day, 12, 0, 0);
+  const dowFmt = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long" });
+  return dowFmt.format(candidate);
+}
+
+/**
+ * Format the digest date into a human-readable short form, e.g. "Sun Apr 26".
+ */
+function recapHumanDate(digestDate: string, tz: string): string {
+  const [yearStr, monthStr, dayStr] = digestDate.split("-");
+  const year = parseInt(yearStr!, 10);
+  const month = parseInt(monthStr!, 10);
+  const day = parseInt(dayStr!, 10);
+  // UTC noon on the date \u2014 gives us the right calendar date in any timezone
+  const candidate = Date.UTC(year, month - 1, day, 12, 0, 0);
+  const humanFmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  return humanFmt.format(candidate);
+}
+
+/**
+ * Format a duration in milliseconds as a human-friendly string for the recap,
+ * e.g. "1h 12m" or "38m".  Returns "< 1m" for durations under a minute.
+ */
+function recapDuration(ms: number): string {
+  return formatDuration(ms);
+}
+
+/**
+ * Render the git activity line (line 2 of each recap item).
+ *
+ * Variants:
+ *   commitsToday > 0 && pushed    \u2192 "N commits on <branch>, F files changed, +A \u2212R"
+ *   commitsToday > 0 && !pushed   \u2192 "N local commits, F files changed, +A \u2212R (not pushed)"
+ *   git null && files touched     \u2192 "No commits \u2014 N files touched"
+ *   git null && no files          \u2192 "No commits, no file changes \u2014 looks like investigation work"
+ */
+function renderGitLine(item: DailyDigest["items"][number]): string {
+  const { git, filePathsTouched } = item;
+  if (git !== null && git.commitsToday > 0) {
+    const n = git.commitsToday;
+    const f = git.filesChanged;
+    const additions = git.linesAdded;
+    const removals = git.linesRemoved;
+    const diffPart = `${f} files changed, +${additions} \u2212${removals}`;
+    if (git.pushed) {
+      return `${n} commit${n !== 1 ? "s" : ""}, ${diffPart}`;
+    } else {
+      return `${n} local commit${n !== 1 ? "s" : ""}, ${diffPart} (not pushed)`;
+    }
+  }
+  if (git === null && filePathsTouched.length > 0) {
+    return `No commits \u2014 ${filePathsTouched.length} file${filePathsTouched.length !== 1 ? "s" : ""} touched`;
+  }
+  return "No commits, no file changes \u2014 looks like investigation work";
+}
+
+/**
+ * Render the session count line (line 3 of each recap item).
+ * e.g. "~1h 12m across 2 sessions"  or  "~38m, 1 session"
+ */
+function renderDurationLine(item: DailyDigest["items"][number]): string {
+  const durationStr = recapDuration(item.duration.activeMs > 0 ? item.duration.activeMs : item.duration.wallMs);
+  const n = item.sessionIds.length;
+  const sessionStr = n === 1 ? "1 session" : `${n} sessions`;
+  if (n === 1) {
+    return `~${durationStr}, ${sessionStr}`;
+  }
+  return `~${durationStr} across ${sessionStr}`;
+}
+
+/**
+ * Render the footer totals line.
+ * e.g. "3 projects \u00b7 4 sessions \u00b7 2h 12m active \u00b7 ~$1.84"
+ */
+function renderFooter(digest: DailyDigest): string {
+  const { projects, sessions, activeMs, estimatedCost } = digest.totals;
+  const durationStr = recapDuration(activeMs);
+  const costStr = formatCost(estimatedCost);
+  const projectStr = `${projects} project${projects !== 1 ? "s" : ""}`;
+  const sessionStr = `${sessions} session${sessions !== 1 ? "s" : ""}`;
+  return `${projectStr} \u00b7 ${sessionStr} \u00b7 ${durationStr} active \u00b7 ~${costStr}`;
+}
+
+/**
+ * Print a daily digest as a human-readable markdown recap to the given stream.
+ *
+ * SR-2: The `firstPrompt` field arrives with the untrusted-content envelope.
+ * This function strips the envelope, escapes backticks in the inner content,
+ * truncates to 80 chars, and re-wraps in single backticks before printing.
+ *
+ * JSON output (--json CLI flag) is handled upstream in the CLI action by
+ * emitting the digest verbatim; this function is not called in that path.
+ */
+export function printDailyRecap(
+  digest: DailyDigest,
+  out: NodeJS.WritableStream = process.stdout,
+): void {
+  const write = (line: string) => out.write(line + "\n");
+
+  if (digest.items.length === 0) {
+    write("No recorded work today.");
+    return;
+  }
+
+  // Header: "Today (Sun Apr 26)"
+  const dateLabel = recapDateLabel(digest.date, digest.tz);
+  const humanDate = recapHumanDate(digest.date, digest.tz);
+  write(`${dateLabel} (${humanDate})`);
+  write("");
+
+  for (const item of digest.items) {
+    const projectBasename = item.project.split("/").pop() ?? item.project;
+    const promptRendered = renderFirstPrompt(item.firstPrompt);
+
+    // Line 1: "  \u25b8 Verb `prompt text` (project)"
+    write(`  \u25b8 ${item.characterVerb} ${promptRendered} (${projectBasename})`);
+
+    // Line 2: git activity
+    write(`      ${renderGitLine(item)}`);
+
+    // Line 3: duration + session count
+    write(`      ${renderDurationLine(item)}`);
+
+    write("");
+  }
+
+  // Footer
+  write(`  ${renderFooter(digest)}`);
 }
