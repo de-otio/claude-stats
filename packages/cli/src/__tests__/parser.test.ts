@@ -511,6 +511,148 @@ describe("parseSessionFile", () => {
     expect(result.session!.parentSessionId).toBeNull();
     expect(result.session!.isSubagent).toBe(false);
   });
+
+  // ── filePaths extraction ────────────────────────────────────────────────────
+
+  it("Edit tool with input.file_path → message has filePaths: [path]", async () => {
+    const entry = assistantEntry({});
+    (entry as Record<string, unknown>).message = {
+      ...((entry as Record<string, unknown>).message as Record<string, unknown>),
+      content: [
+        { type: "tool_use", name: "Edit", id: "t1", input: { file_path: "/src/auth/login.ts" } },
+      ],
+    };
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.messages[0]!.filePaths).toEqual(["/src/auth/login.ts"]);
+  });
+
+  it("Write tool with input.file_path → captured in filePaths", async () => {
+    const entry = assistantEntry({});
+    (entry as Record<string, unknown>).message = {
+      ...((entry as Record<string, unknown>).message as Record<string, unknown>),
+      content: [
+        { type: "tool_use", name: "Write", id: "t1", input: { file_path: "/src/output.ts" } },
+      ],
+    };
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.messages[0]!.filePaths).toEqual(["/src/output.ts"]);
+  });
+
+  it("Read tool with input.file_path → captured in filePaths", async () => {
+    const entry = assistantEntry({});
+    (entry as Record<string, unknown>).message = {
+      ...((entry as Record<string, unknown>).message as Record<string, unknown>),
+      content: [
+        { type: "tool_use", name: "Read", id: "t1", input: { file_path: "/src/types.ts" } },
+      ],
+    };
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.messages[0]!.filePaths).toEqual(["/src/types.ts"]);
+  });
+
+  it("MultiEdit tool with input.file_path → captured in filePaths", async () => {
+    const entry = assistantEntry({});
+    (entry as Record<string, unknown>).message = {
+      ...((entry as Record<string, unknown>).message as Record<string, unknown>),
+      content: [
+        { type: "tool_use", name: "MultiEdit", id: "t1", input: { file_path: "/src/complex.ts" } },
+      ],
+    };
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.messages[0]!.filePaths).toEqual(["/src/complex.ts"]);
+  });
+
+  it("Glob tool with pattern containing '/' → dirname captured in filePaths", async () => {
+    const entry = assistantEntry({});
+    (entry as Record<string, unknown>).message = {
+      ...((entry as Record<string, unknown>).message as Record<string, unknown>),
+      content: [
+        { type: "tool_use", name: "Glob", id: "t1", input: { pattern: "src/**/*.ts" } },
+      ],
+    };
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.messages[0]!.filePaths).toHaveLength(1);
+    // dirname("src/**/*.ts") == "src/**"
+    expect(result.messages[0]!.filePaths[0]).toBe("src/**");
+  });
+
+  it("Bash tool with input.cwd → cwd captured in filePaths", async () => {
+    const entry = assistantEntry({});
+    (entry as Record<string, unknown>).message = {
+      ...((entry as Record<string, unknown>).message as Record<string, unknown>),
+      content: [
+        { type: "tool_use", name: "Bash", id: "t1", input: { cwd: "/repo/sub", command: "ls" } },
+      ],
+    };
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.messages[0]!.filePaths).toEqual(["/repo/sub"]);
+  });
+
+  it("tool without input.file_path or cwd → filePaths is empty array", async () => {
+    const entry = assistantEntry({});
+    (entry as Record<string, unknown>).message = {
+      ...((entry as Record<string, unknown>).message as Record<string, unknown>),
+      content: [
+        { type: "tool_use", name: "WebSearch", id: "t1", input: { query: "test" } },
+      ],
+    };
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.messages[0]!.filePaths).toEqual([]);
+  });
+
+  it("multiple tool_use blocks in one message → deduplicated filePaths", async () => {
+    const entry = assistantEntry({});
+    (entry as Record<string, unknown>).message = {
+      ...((entry as Record<string, unknown>).message as Record<string, unknown>),
+      content: [
+        { type: "tool_use", name: "Read",  id: "t1", input: { file_path: "/src/foo.ts" } },
+        { type: "tool_use", name: "Edit",  id: "t2", input: { file_path: "/src/foo.ts" } }, // duplicate
+        { type: "tool_use", name: "Write", id: "t3", input: { file_path: "/src/bar.ts" } },
+      ],
+    };
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    // /src/foo.ts appears twice but should be deduplicated
+    expect(result.messages[0]!.filePaths).toHaveLength(2);
+    expect(result.messages[0]!.filePaths).toContain("/src/foo.ts");
+    expect(result.messages[0]!.filePaths).toContain("/src/bar.ts");
+  });
+
+  it("malformed block.input (non-object) → no throw, filePaths is empty", async () => {
+    const entry = assistantEntry({});
+    (entry as Record<string, unknown>).message = {
+      ...((entry as Record<string, unknown>).message as Record<string, unknown>),
+      content: [
+        { type: "tool_use", name: "Edit", id: "t1", input: null },
+        { type: "tool_use", name: "Read", id: "t2", input: "not-an-object" },
+      ],
+    };
+    writeLines(filePath, [entry]);
+    await expect(parseSessionFile(filePath, "/proj")).resolves.not.toThrow();
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.messages[0]!.filePaths).toEqual([]);
+  });
+
+  it("Glob pattern without '/' → not captured in filePaths", async () => {
+    const entry = assistantEntry({});
+    (entry as Record<string, unknown>).message = {
+      ...((entry as Record<string, unknown>).message as Record<string, unknown>),
+      content: [
+        { type: "tool_use", name: "Glob", id: "t1", input: { pattern: "*.ts" } },
+      ],
+    };
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    // Pattern has no '/' → not captured
+    expect(result.messages[0]!.filePaths).toEqual([]);
+  });
 });
 
 // ── extractPromptText (exercised via parseSessionFile → messages[].promptText)

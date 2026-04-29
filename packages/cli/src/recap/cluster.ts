@@ -1,11 +1,13 @@
 /**
  * Cluster topic-segments across sessions into digest items.
  *
- * Pure function — no LLM, no embeddings (those land in v2), no I/O.
- * Only imports from types.ts within the recap module.
+ * Pure function (except when an EmbeddingProvider is supplied — that path is
+ * async and performs SQLite cache lookups). Only imports from types.ts and
+ * embeddings.ts within the recap module.
  */
 
 import type { Segment } from './types.js';
+import type { EmbeddingProvider } from './embeddings.js';
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
@@ -25,16 +27,25 @@ export interface SegmentCluster {
  * Rules applied in order within each project bucket:
  *  1. Group by projectPath.
  *  2. Merge when filePaths Jaccard similarity ≥ 0.3 (union-find, transitive).
- *  3. Merge when normalised openingPromptText prefixes share ≥ 40% similarity.
+ *  3. Merge when prompt similarity ≥ threshold:
+ *       - With embeddingProvider: cosine(embed(a), embed(b)) ≥ 0.65
+ *       - Without embeddingProvider: normalised bigram Jaccard ≥ 0.4 (v1 behaviour)
  *  4. Merge when time windows overlap (within 5 min tolerance) AND share ≥ 1 file.
+ *
+ * When embeddingProvider is supplied, the function is async (embedding requires
+ * I/O for SQLite cache lookups and/or model inference). When the provider is
+ * null/absent, the function resolves synchronously via a Promise.resolve().
  *
  * Output sorted by (projectPath, earliestStartTs).
  * Segments within a cluster sorted by startTs.
  */
-export function clusterSegments(
+export async function clusterSegments(
   segments: readonly SegmentWithProject[],
-): readonly SegmentCluster[] {
+  opts?: { embeddingProvider?: EmbeddingProvider | null },
+): Promise<readonly SegmentCluster[]> {
   if (segments.length === 0) return [];
+
+  const embeddingProvider = opts?.embeddingProvider ?? null;
 
   // Step 1: group by projectPath
   const byProject = new Map<string, SegmentWithProject[]>();
@@ -50,7 +61,7 @@ export function clusterSegments(
   const allClusters: SegmentCluster[] = [];
 
   for (const [projectPath, projectSegs] of byProject) {
-    const clusters = clusterWithinProject(projectSegs);
+    const clusters = await clusterWithinProject(projectSegs, embeddingProvider);
     for (const segs of clusters) {
       allClusters.push({ projectPath, segments: segs });
     }
@@ -68,9 +79,13 @@ export function clusterSegments(
 
 // ─── Clustering within a single project ────────────────────────────────────
 
-function clusterWithinProject(
+/** Cosine similarity threshold for embedding-based prompt merging. */
+const EMBEDDING_COSINE_THRESHOLD = 0.65;
+
+async function clusterWithinProject(
   segs: readonly SegmentWithProject[],
-): readonly SegmentWithProject[][] {
+  embeddingProvider: EmbeddingProvider | null,
+): Promise<readonly SegmentWithProject[][]> {
   const n = segs.length;
   const uf = new UnionFind(n);
 
@@ -83,11 +98,42 @@ function clusterWithinProject(
     }
   }
 
-  // Rule 3: normalised prompt-prefix similarity ≥ 0.4
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      if (promptPrefixSimilarity(segs[i]!.openingPromptText, segs[j]!.openingPromptText) >= 0.4) {
-        uf.union(i, j);
+  // Rule 3: prompt similarity
+  //   With embeddings: cosine(embed(a), embed(b)) ≥ 0.65
+  //   Without embeddings (v1 behaviour): normalised bigram Jaccard ≥ 0.4
+  if (embeddingProvider !== null) {
+    // Compute embeddings for all segments with non-null prompt text
+    const embeddings = new Array<Float32Array | null>(n).fill(null);
+    for (let i = 0; i < n; i++) {
+      const promptText = segs[i]!.openingPromptText;
+      if (promptText !== null && promptText.trim().length > 0) {
+        try {
+          embeddings[i] = await embeddingProvider.embed(promptText);
+        } catch {
+          // Embedding failure is non-fatal — skip this segment in rule 3
+          embeddings[i] = null;
+        }
+      }
+    }
+
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const ei = embeddings[i];
+        const ej = embeddings[j];
+        if (ei !== null && ej !== null) {
+          if (embeddingProvider.cosine(ei, ej) >= EMBEDDING_COSINE_THRESHOLD) {
+            uf.union(i, j);
+          }
+        }
+      }
+    }
+  } else {
+    // v1 Jaccard fallback
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        if (promptPrefixSimilarity(segs[i]!.openingPromptText, segs[j]!.openingPromptText) >= 0.4) {
+          uf.union(i, j);
+        }
       }
     }
   }

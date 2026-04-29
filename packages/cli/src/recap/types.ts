@@ -28,6 +28,8 @@ export interface ProjectGitActivity {
   prMerged: number | null;
 }
 
+export type Confidence = 'high' | 'medium' | 'low';
+
 export interface DailyDigestItem {
   id: ItemId;
   project: string;
@@ -44,6 +46,7 @@ export interface DailyDigestItem {
   filePathsTouched: readonly string[];
   git: ProjectGitActivity | null;
   score: number;
+  confidence: Confidence;
 }
 
 export interface DailyDigest {

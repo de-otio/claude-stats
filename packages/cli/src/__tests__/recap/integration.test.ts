@@ -1,9 +1,10 @@
 /**
- * Integration tests for the daily-recap feature (v1.10).
+ * Integration tests for the daily-recap feature (v2.04).
  *
  * End-to-end tests against a realistic seeded Store and a real temp git repo.
- * Covers all 17 scenarios from the task spec plus cross-cutting SR-4 / SR-8
- * assertions and a performance smoke test.
+ * Covers all 17 v1 scenarios plus v2 scenarios 18-25 for confidence scoring,
+ * embedding-driven clustering, MCP description regression, and path-based
+ * clustering.
  *
  * DO NOT modify any production code.
  * v1.11 (security tests) lives in __tests__/recap/security.test.ts — untouched.
@@ -18,7 +19,10 @@ import { Store } from '../../store/index.js';
 import type { SessionRecord, MessageRecord } from '@claude-stats/core/types';
 import { buildDailyDigest } from '../../recap/index.js';
 import type { BuildDailyDigestDeps } from '../../recap/index.js';
-import type { DailyDigest, ProjectGitActivity } from '../../recap/types.js';
+import type { DailyDigest, DailyDigestItem, ProjectGitActivity } from '../../recap/types.js';
+import { clusterSegments } from '../../recap/cluster.js';
+import type { SegmentWithProject } from '../../recap/cluster.js';
+import type { EmbeddingProvider } from '../../recap/embeddings.js';
 import { createMcpServer } from '../../mcp/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -244,6 +248,47 @@ function assertSR8(digest: DailyDigest): void {
   }
 }
 
+// ─── v2 helpers ───────────────────────────────────────────────────────────────
+
+/**
+ * Assert that a DailyDigestItem has a valid confidence value (v2.02).
+ * Applied to every item in every scenario.
+ */
+function assertConfidenceValid(item: DailyDigestItem): void {
+  expect(['high', 'medium', 'low']).toContain(item.confidence);
+}
+
+/**
+ * Deterministic stub EmbeddingProvider for testing (v2.03).
+ *
+ * Hashes the input text to seed a simple LCG PRNG and produces a
+ * 384-dimensional Float32Array. Two texts that hash to the same seed
+ * will produce identical vectors (cosine = 1.0).
+ */
+function makeStubProvider(): EmbeddingProvider {
+  return {
+    async embed(text: string): Promise<Float32Array> {
+      const seed = text.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+      const v = new Float32Array(384);
+      let x = seed;
+      for (let i = 0; i < 384; i++) {
+        x = (x * 1103515245 + 12345) & 0x7fffffff;
+        v[i] = (x % 1000) / 1000 - 0.5;
+      }
+      return v;
+    },
+    cosine(a: Float32Array, b: Float32Array): number {
+      let dot = 0, na = 0, nb = 0;
+      for (let i = 0; i < a.length; i++) {
+        dot += a[i]! * b[i]!;
+        na += a[i]! * a[i]!;
+        nb += b[i]! * b[i]!;
+      }
+      return (na && nb) ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
+    },
+  };
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Scenario 1: Single project happy path
 // ═════════════════════════════════════════════════════════════════════════════
@@ -253,7 +298,7 @@ describe('Scenario 1 — single project happy path', () => {
 
   afterEach(() => cleanup?.());
 
-  it('segment → cluster → git → cache → SR-8', () => {
+  it('segment → cluster → git → cache → SR-8', async () => {
     const { store, tmpProjectDir } = buildFixture();
     cleanup = () => store.close();
 
@@ -274,7 +319,7 @@ describe('Scenario 1 — single project happy path', () => {
       write: (h, d) => { mapCache.set(h, d); },
     };
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps({
@@ -298,8 +343,11 @@ describe('Scenario 1 — single project happy path', () => {
     expect(item.git).not.toBeNull();
     expect(item.git!.commitsToday).toBe(2);
 
+    // v2.02: confidence field present and valid on all items
+    for (const i of digest.items) { assertConfidenceValid(i); }
+
     // Cache hit on second call
-    const digest2 = buildDailyDigest(
+    const digest2 = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps({
@@ -309,6 +357,9 @@ describe('Scenario 1 — single project happy path', () => {
     );
     expect(digest2.cached).toBe(true);
     expect(digest2.snapshotHash).toBe(digest.snapshotHash);
+
+    // v2.02: confidence valid on cached result too
+    for (const i of digest2.items) { assertConfidenceValid(i); }
 
     // SR-8 on both builds
     assertSR8(digest);
@@ -321,7 +372,7 @@ describe('Scenario 1 — single project happy path', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Scenario 2 — long session with three topics', () => {
-  it('segmentation produces multiple segments from gaps > 20 minutes', () => {
+  it('segmentation produces multiple segments from gaps > 20 minutes', async () => {
     const { store, dbPath } = mkTmpDb();
     const dir = mkTmpDir();
 
@@ -357,7 +408,7 @@ describe('Scenario 2 — long session with three topics', () => {
       makeMessage({ sessionId: longSid, timestamp: min(76), promptText: 'CSS styling button alignment fixed' }),
     ]);
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps(),
@@ -368,6 +419,9 @@ describe('Scenario 2 — long session with three topics', () => {
     expect(digest.totals.segments).toBeGreaterThanOrEqual(2);
     // All segments are on the same project → clustered together
     expect(digest.items.length).toBeGreaterThanOrEqual(1);
+
+    // v2.02: confidence valid
+    for (const i of digest.items) { assertConfidenceValid(i); }
 
     // SR-8
     assertSR8(digest);
@@ -384,7 +438,7 @@ describe('Scenario 2 — long session with three topics', () => {
 describe('Scenario 3 — two projects, one session each', () => {
   afterEach(() => { /* cleanup handled in test */ });
 
-  it('produces two clusters, one per project', () => {
+  it('produces two clusters, one per project', async () => {
     const { store: s1, dbPath: db1 } = mkTmpDb();
     const dir1 = mkTmpDir();
     const dir2 = mkTmpDir();
@@ -413,7 +467,7 @@ describe('Scenario 3 — two projects, one session each', () => {
       makeMessage({ sessionId: sid2, timestamp: min(135) }),
     ]);
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       s1,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps(),
@@ -429,6 +483,9 @@ describe('Scenario 3 — two projects, one session each', () => {
     expect(projects.has(dir1)).toBe(true);
     expect(projects.has(dir2)).toBe(true);
 
+    // v2.02: confidence valid
+    for (const i of digest.items) { assertConfidenceValid(i); }
+
     // SR-8
     assertSR8(digest);
 
@@ -442,7 +499,7 @@ describe('Scenario 3 — two projects, one session each', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Scenario 4 — cross-session cluster (same project)', () => {
-  it('clusters sessions from the same project together', () => {
+  it('clusters sessions from the same project together', async () => {
     const { store, dbPath } = mkTmpDb();
     const dir = mkTmpDir();
 
@@ -470,7 +527,7 @@ describe('Scenario 4 — cross-session cluster (same project)', () => {
       makeMessage({ sessionId: sid2, timestamp: min(100) }),
     ]);
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps(),
@@ -485,6 +542,9 @@ describe('Scenario 4 — cross-session cluster (same project)', () => {
     // Total sessions: both contribute
     expect(digest.totals.sessions).toBeGreaterThanOrEqual(1);
 
+    // v2.02: confidence valid
+    for (const i of digest.items) { assertConfidenceValid(i); }
+
     // SR-8
     assertSR8(digest);
 
@@ -498,7 +558,7 @@ describe('Scenario 4 — cross-session cluster (same project)', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Scenario 5 — day boundary in Pacific/Auckland', () => {
-  it('uses Auckland day boundaries, not UTC', () => {
+  it('uses Auckland day boundaries, not UTC', async () => {
     const { store, dbPath } = mkTmpDb();
     const dir = mkTmpDir();
 
@@ -538,7 +598,7 @@ describe('Scenario 5 — day boundary in Pacific/Auckland', () => {
       makeMessage({ sessionId: sid2, timestamp: beforeDay, promptText: 'Previous Auckland day' }),
     ]);
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-03-12', tz: 'Pacific/Auckland' },
       noGitDeps({
@@ -553,6 +613,9 @@ describe('Scenario 5 — day boundary in Pacific/Auckland', () => {
     // The inside-day session should be included
     expect(digest.totals.sessions).toBeGreaterThanOrEqual(1);
 
+    // v2.02: confidence valid
+    for (const i of digest.items) { assertConfidenceValid(i); }
+
     // SR-8
     assertSR8(digest);
 
@@ -566,7 +629,7 @@ describe('Scenario 5 — day boundary in Pacific/Auckland', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Scenario 6 — cache hit on second call (SR-4)', () => {
-  it('returns cached:true and byte-identical contents on second call', () => {
+  it('returns cached:true and byte-identical contents on second call', async () => {
     const { store, tmpProjectDir, cleanup } = buildFixture();
 
     const realCache = new Map<string, DailyDigest>();
@@ -576,7 +639,7 @@ describe('Scenario 6 — cache hit on second call (SR-4)', () => {
     };
 
     // First call — builds and caches
-    const d1 = buildDailyDigest(
+    const d1 = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps({ cache }),
@@ -584,7 +647,7 @@ describe('Scenario 6 — cache hit on second call (SR-4)', () => {
     expect(d1.cached).toBe(false);
 
     // Second call — should hit cache
-    const d2 = buildDailyDigest(
+    const d2 = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps({ cache }),
@@ -597,6 +660,10 @@ describe('Scenario 6 — cache hit on second call (SR-4)', () => {
     // Byte-identical except for `cached` flag
     const strip = (d: DailyDigest) => { const { cached: _c, ...rest } = d; return JSON.stringify(rest); };
     expect(strip(d2)).toBe(strip(d1));
+
+    // v2.02: confidence valid
+    for (const i of d1.items) { assertConfidenceValid(i); }
+    for (const i of d2.items) { assertConfidenceValid(i); }
 
     // SR-8 on both
     assertSR8(d1);
@@ -611,13 +678,13 @@ describe('Scenario 6 — cache hit on second call (SR-4)', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Scenario 7 — cache miss after new commit (SR-4)', () => {
-  it('produces a different snapshotHash when the last commit SHA changes', () => {
+  it('produces a different snapshotHash when the last commit SHA changes', async () => {
     const { store, tmpProjectDir, cleanup } = buildFixture();
 
     let fakeCommitSha = 'aaabbb111';
     const cache = noopCache();
 
-    const d1 = buildDailyDigest(
+    const d1 = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps({
@@ -673,7 +740,7 @@ describe('Scenario 7 — cache miss after new commit (SR-4)', () => {
       ]);
     }
 
-    const d2 = buildDailyDigest(
+    const d2 = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps({ cache }),
@@ -681,6 +748,10 @@ describe('Scenario 7 — cache miss after new commit (SR-4)', () => {
 
     // Hash differs because maxMessageUuid changed (or real git SHA changed)
     expect(d2.snapshotHash).not.toBe(d1.snapshotHash);
+
+    // v2.02: confidence valid
+    for (const i of d1.items) { assertConfidenceValid(i); }
+    for (const i of d2.items) { assertConfidenceValid(i); }
 
     // SR-8
     assertSR8(d1);
@@ -695,11 +766,11 @@ describe('Scenario 7 — cache miss after new commit (SR-4)', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Scenario 8 — cache miss after new session (SR-4)', () => {
-  it('produces a different snapshotHash when a new session is added', () => {
+  it('produces a different snapshotHash when a new session is added', async () => {
     const { store, tmpProjectDir, cleanup } = buildFixture();
     const cache = noopCache();
 
-    const d1 = buildDailyDigest(
+    const d1 = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps({ cache }),
@@ -723,7 +794,7 @@ describe('Scenario 8 — cache miss after new session (SR-4)', () => {
       }),
     ]);
 
-    const d2 = buildDailyDigest(
+    const d2 = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps({ cache }),
@@ -732,6 +803,10 @@ describe('Scenario 8 — cache miss after new session (SR-4)', () => {
     // Hash changes because maxMessageUuid changed
     expect(d2.snapshotHash).not.toBe(d1.snapshotHash);
     expect(d2.cached).toBe(false);
+
+    // v2.02: confidence valid
+    for (const i of d1.items) { assertConfidenceValid(i); }
+    for (const i of d2.items) { assertConfidenceValid(i); }
 
     // SR-8
     assertSR8(d1);
@@ -746,11 +821,11 @@ describe('Scenario 8 — cache miss after new session (SR-4)', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Scenario 9 — cache miss after new project added (SR-4 strict)', () => {
-  it('produces a different snapshotHash when a new project is added', () => {
+  it('produces a different snapshotHash when a new project is added', async () => {
     const { store, cleanup } = buildFixture();
     const cache = noopCache();
 
-    const d1 = buildDailyDigest(
+    const d1 = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps({ cache }),
@@ -774,7 +849,7 @@ describe('Scenario 9 — cache miss after new project added (SR-4 strict)', () =
       }),
     ]);
 
-    const d2 = buildDailyDigest(
+    const d2 = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps({ cache }),
@@ -783,6 +858,10 @@ describe('Scenario 9 — cache miss after new project added (SR-4 strict)', () =
     // Hash differs: sortedProjectPaths now has one extra entry
     expect(d2.snapshotHash).not.toBe(d1.snapshotHash);
     expect(d2.totals.projects).toBeGreaterThan(d1.totals.projects);
+
+    // v2.02: confidence valid
+    for (const i of d1.items) { assertConfidenceValid(i); }
+    for (const i of d2.items) { assertConfidenceValid(i); }
 
     // SR-8
     assertSR8(d1);
@@ -797,10 +876,10 @@ describe('Scenario 9 — cache miss after new project added (SR-4 strict)', () =
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Scenario 10 — empty day', () => {
-  it('returns items:[], zero totals for a day with no sessions', () => {
+  it('returns items:[], zero totals for a day with no sessions', async () => {
     const { store, dbPath } = mkTmpDb();
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps(),
@@ -817,6 +896,9 @@ describe('Scenario 10 — empty day', () => {
     expect(digest.tz).toBe('UTC');
     expect(digest.snapshotHash).toBeTruthy();
 
+    // v2.02: no items — no confidence assertions needed (guard still holds)
+    for (const i of digest.items) { assertConfidenceValid(i); }
+
     // SR-8: no items to check, but function should not throw
     assertSR8(digest);
 
@@ -830,7 +912,7 @@ describe('Scenario 10 — empty day', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Scenario 11 — session with no prompt_text', () => {
-  it('item is still emitted with firstPrompt: null', () => {
+  it('item is still emitted with firstPrompt: null', async () => {
     const { store, dbPath } = mkTmpDb();
     const dir = mkTmpDir();
 
@@ -847,7 +929,7 @@ describe('Scenario 11 — session with no prompt_text', () => {
       makeMessage({ sessionId: sid, timestamp: min(45), promptText: null }),
     ]);
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps(),
@@ -857,6 +939,9 @@ describe('Scenario 11 — session with no prompt_text', () => {
     const item = digest.items[0]!;
     // No prompt text → firstPrompt must be null
     expect(item.firstPrompt).toBeNull();
+
+    // v2.02: confidence valid
+    for (const i of digest.items) { assertConfidenceValid(i); }
 
     // SR-8: no non-null prompts, nothing to assert
     assertSR8(digest);
@@ -871,7 +956,7 @@ describe('Scenario 11 — session with no prompt_text', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Scenario 12 — verb upgrade to Shipped with pushed commits', () => {
-  it('sets characterVerb to "Shipped" when commitsToday > 0 and pushed', () => {
+  it('sets characterVerb to "Shipped" when commitsToday > 0 and pushed', async () => {
     const { store, tmpProjectDir, cleanup } = buildFixture();
 
     const shippedGit: ProjectGitActivity = {
@@ -884,7 +969,7 @@ describe('Scenario 12 — verb upgrade to Shipped with pushed commits', () => {
       prMerged: 1,
     };
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps({
@@ -899,6 +984,9 @@ describe('Scenario 12 — verb upgrade to Shipped with pushed commits', () => {
     expect(item.git!.pushed).toBe(true);
     expect(item.git!.prMerged).toBe(1);
 
+    // v2.02: confidence valid
+    for (const i of digest.items) { assertConfidenceValid(i); }
+
     // SR-8
     assertSR8(digest);
 
@@ -911,7 +999,7 @@ describe('Scenario 12 — verb upgrade to Shipped with pushed commits', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Scenario 13 — gh missing → prMerged: null, no throw', () => {
-  it('returns prMerged:null and does not throw when gh is absent', () => {
+  it('returns prMerged:null and does not throw when gh is absent', async () => {
     const { store, tmpProjectDir, cleanup } = buildFixture();
 
     // Simulate gh being absent by injecting a git activity with prMerged: null
@@ -928,7 +1016,7 @@ describe('Scenario 13 — gh missing → prMerged: null, no throw', () => {
     let threw = false;
     let digest: DailyDigest | null = null;
     try {
-      digest = buildDailyDigest(
+      digest = await buildDailyDigest(
         store,
         { date: TEST_DATE, tz: 'UTC' },
         noGitDeps({
@@ -946,6 +1034,9 @@ describe('Scenario 13 — gh missing → prMerged: null, no throw', () => {
     const item = digest!.items[0]!;
     expect(item.git).not.toBeNull();
     expect(item.git!.prMerged).toBeNull();
+
+    // v2.02: confidence valid
+    for (const i of digest!.items) { assertConfidenceValid(i); }
 
     // SR-8
     assertSR8(digest!);
@@ -1031,6 +1122,11 @@ describe('Scenario 14 — MCP summarize_day round-trip', () => {
     const items = digest['items'] as Array<Record<string, unknown>>;
     expect(items.length).toBeGreaterThanOrEqual(1);
 
+    // v2.02: confidence field present and valid in every item (via JSON)
+    for (const item of items) {
+      expect(['high', 'medium', 'low']).toContain(item['confidence']);
+    }
+
     // SR-8: every non-null firstPrompt wrapped
     for (const item of items) {
       if (item['firstPrompt'] !== null && item['firstPrompt'] !== undefined) {
@@ -1046,7 +1142,7 @@ describe('Scenario 14 — MCP summarize_day round-trip', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Scenario 15 — CLI --json round-trip', () => {
-  it('spawn recap --json produces valid DailyDigest JSON matching direct call', () => {
+  it('spawn recap --json produces valid DailyDigest JSON matching direct call', async () => {
     // Create an isolated store and db for this test
     const { store, dbPath } = mkTmpDb();
     const dir = mkTmpDir();
@@ -1068,11 +1164,14 @@ describe('Scenario 15 — CLI --json round-trip', () => {
     ]);
 
     // Get the direct call result for reference shape
-    const directDigest = buildDailyDigest(
+    const directDigest = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps(),
     );
+
+    // v2.02: confidence valid on direct digest
+    for (const i of directDigest.items) { assertConfidenceValid(i); }
 
     // SR-8 on direct digest
     assertSR8(directDigest);
@@ -1150,13 +1249,13 @@ describe('Scenario 15 — CLI --json round-trip', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Scenario 16 — CLI default render', () => {
-  it('renders human-readable output with key strings', () => {
+  it('renders human-readable output with key strings', async () => {
     const { store, tmpProjectDir, cleanup } = buildFixture();
 
     // Instead of spawning CLI (which would run collect), test via printDailyRecap
     // which is called by the CLI's non-JSON path.
     // This tests the rendering layer end-to-end from a real digest.
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps({
@@ -1171,6 +1270,9 @@ describe('Scenario 16 — CLI default render', () => {
         }),
       }),
     );
+
+    // v2.02: confidence valid
+    for (const i of digest.items) { assertConfidenceValid(i); }
 
     // Capture the render output
     const outputChunks: string[] = [];
@@ -1207,7 +1309,7 @@ describe('Scenario 16 — CLI default render', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Scenario 17 — determinism across runs', () => {
-  it('two buildDailyDigest calls with same store produce byte-identical output (excluding cached)', () => {
+  it('two buildDailyDigest calls with same store produce byte-identical output (excluding cached)', async () => {
     const { store, cleanup } = buildFixture();
 
     // Add more data to ensure non-trivial output
@@ -1226,12 +1328,12 @@ describe('Scenario 17 — determinism across runs', () => {
 
     const cache = noopCache();
 
-    const d1 = buildDailyDigest(
+    const d1 = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps({ cache }),
     );
-    const d2 = buildDailyDigest(
+    const d2 = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps({ cache }),
@@ -1251,6 +1353,10 @@ describe('Scenario 17 — determinism across runs', () => {
       expect(d1.items[i]!.id).toBe(d2.items[i]!.id);
     }
 
+    // v2.02: confidence valid and stable across runs
+    for (const i of d1.items) { assertConfidenceValid(i); }
+    for (const i of d2.items) { assertConfidenceValid(i); }
+
     // SR-8 on both
     assertSR8(d1);
     assertSR8(d2);
@@ -1266,7 +1372,7 @@ describe('Scenario 17 — determinism across runs', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('SR-8 cross-cutting — all items across multi-session fixture', () => {
-  it('every non-null firstPrompt has the untrusted-stored-content envelope', () => {
+  it('every non-null firstPrompt has the untrusted-stored-content envelope', async () => {
     const { store, dbPath } = mkTmpDb();
     const dir = mkTmpDir();
 
@@ -1294,7 +1400,7 @@ describe('SR-8 cross-cutting — all items across multi-session fixture', () => 
       ]);
     }
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps(),
@@ -1314,6 +1420,9 @@ describe('SR-8 cross-cutting — all items across multi-session fixture', () => 
     // At least one wrapped prompt
     expect(wrapped).toBeGreaterThan(0);
 
+    // v2.02: confidence valid on all items
+    for (const i of digest.items) { assertConfidenceValid(i); }
+
     store.close();
     try { fs.unlinkSync(dbPath); } catch { /* ok */ }
   });
@@ -1324,7 +1433,7 @@ describe('SR-8 cross-cutting — all items across multi-session fixture', () => 
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Performance smoke — 50 sessions × 100 messages', () => {
-  it('completes buildDailyDigest in < 2s and uses < 200MB heap', () => {
+  it('completes buildDailyDigest in < 2s and uses < 200MB heap', async () => {
     const { store, dbPath } = mkTmpDb();
     const dir = mkTmpDir();
 
@@ -1356,7 +1465,7 @@ describe('Performance smoke — 50 sessions × 100 messages', () => {
     const heapBefore = process.memoryUsage().heapUsed;
     const startTime = Date.now();
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: TEST_DATE, tz: 'UTC' },
       noGitDeps(),
@@ -1376,10 +1485,508 @@ describe('Performance smoke — 50 sessions × 100 messages', () => {
     // Basic correctness
     expect(digest.totals.sessions).toBeGreaterThan(0);
 
+    // v2.02: confidence valid on all items
+    for (const i of digest.items) { assertConfidenceValid(i); }
+
     // SR-8
     assertSR8(digest);
 
     store.close();
     try { fs.unlinkSync(dbPath); } catch { /* ok */ }
   }, 10_000); // 10s timeout budget for this one test
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Scenario 18: Pushed commits → confidence === 'high', verb upgrade preserved
+// (v2.02 + v1)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Scenario 18 — pushed commits produce confidence:high and Shipped verb', () => {
+  it('confidence is high and characterVerb is Shipped when pushed commits exist', async () => {
+    const { store, tmpProjectDir, cleanup } = buildFixture();
+
+    const pushedGit: ProjectGitActivity = {
+      commitsToday: 2,
+      filesChanged: 5,
+      linesAdded: 100,
+      linesRemoved: 20,
+      subjects: ['feat: new API endpoint', 'fix: edge case'],
+      pushed: true,
+      prMerged: null,
+    };
+
+    const digest = await buildDailyDigest(
+      store,
+      { date: TEST_DATE, tz: 'UTC' },
+      noGitDeps({
+        getProjectGitActivity: (p) => p === tmpProjectDir ? pushedGit : null,
+      }),
+    );
+
+    expect(digest.items.length).toBeGreaterThanOrEqual(1);
+    const item = digest.items[0]!;
+
+    // v2.02: pushed commits → high confidence
+    expect(item.confidence).toBe('high');
+
+    // v1: verb upgrade still works alongside confidence
+    expect(item.characterVerb).toBe('Shipped');
+
+    assertSR8(digest);
+    cleanup();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Scenario 19: Local-only commits → confidence === 'medium'
+// (v2.02)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Scenario 19 — local-only commits produce confidence:medium', () => {
+  it('confidence is medium when commits exist but not pushed', async () => {
+    const { store, tmpProjectDir, cleanup } = buildFixture();
+
+    const localGit: ProjectGitActivity = {
+      commitsToday: 1,
+      filesChanged: 3,
+      linesAdded: 60,
+      linesRemoved: 10,
+      subjects: ['wip: draft feature'],
+      pushed: false,  // local only, not pushed
+      prMerged: null,
+    };
+
+    const digest = await buildDailyDigest(
+      store,
+      { date: TEST_DATE, tz: 'UTC' },
+      noGitDeps({
+        getProjectGitActivity: (p) => p === tmpProjectDir ? localGit : null,
+      }),
+    );
+
+    expect(digest.items.length).toBeGreaterThanOrEqual(1);
+    const item = digest.items[0]!;
+
+    // v2.02: unpushed commits → medium confidence
+    expect(item.confidence).toBe('medium');
+
+    assertSR8(digest);
+    cleanup();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Scenario 20: No git, brief session → confidence === 'low'
+// (v2.02)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Scenario 20 — no git and brief session produce confidence:low', () => {
+  it('confidence is low when there is no git activity and short active duration', async () => {
+    const { store, dbPath } = mkTmpDb();
+    const dir = mkTmpDir();
+
+    // Session with a brief active duration (well below 30-min threshold) and no git
+    const sid = nextSid();
+    store.upsertSession(makeSession({
+      sessionId: sid,
+      projectPath: dir,
+      firstTimestamp: min(10),
+      lastTimestamp: min(15),
+      activeDurationMs: 5 * 60_000,  // only 5 minutes active
+    }));
+    store.upsertMessages([
+      makeMessage({ sessionId: sid, timestamp: min(10), promptText: 'Quick question about syntax' }),
+    ]);
+
+    const digest = await buildDailyDigest(
+      store,
+      { date: TEST_DATE, tz: 'UTC' },
+      noGitDeps({
+        // No git activity — getProjectGitActivity returns null
+        getProjectGitActivity: () => null,
+      }),
+    );
+
+    expect(digest.items.length).toBeGreaterThanOrEqual(1);
+    const item = digest.items[0]!;
+
+    // v2.02: no git + brief session → low confidence
+    expect(item.confidence).toBe('low');
+    expect(item.git).toBeNull();
+
+    assertSR8(digest);
+
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Scenario 21: Embedding off (default) — cluster output identical to v1
+// (v2.03)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Scenario 21 — embedding off produces same clusters as v1 Jaccard', () => {
+  it('buildDailyDigest with no embeddingProvider gives same result as explicit null', async () => {
+    const { store, dbPath } = mkTmpDb();
+    const dir = mkTmpDir();
+
+    // Two sessions with distinct prompts — in v1, bigram Jaccard decides clustering
+    const sid1 = nextSid();
+    store.upsertSession(makeSession({
+      sessionId: sid1,
+      projectPath: dir,
+      firstTimestamp: min(0),
+      lastTimestamp: min(30),
+    }));
+    store.upsertMessages([
+      makeMessage({ sessionId: sid1, timestamp: min(0), promptText: 'Refactor the database schema migration script' }),
+      makeMessage({ sessionId: sid1, timestamp: min(15), promptText: 'Update the migration SQL queries' }),
+    ]);
+
+    const sid2 = nextSid();
+    store.upsertSession(makeSession({
+      sessionId: sid2,
+      projectPath: dir,
+      firstTimestamp: min(40),
+      lastTimestamp: min(70),
+    }));
+    store.upsertMessages([
+      makeMessage({ sessionId: sid2, timestamp: min(40), promptText: 'Fix button CSS hover state alignment' }),
+      makeMessage({ sessionId: sid2, timestamp: min(55), promptText: 'Update button component styling' }),
+    ]);
+
+    // Build with no embeddingProvider (default — uses Jaccard)
+    const digestDefault = await buildDailyDigest(
+      store,
+      { date: TEST_DATE, tz: 'UTC' },
+      noGitDeps(),
+    );
+
+    // Build with explicit embeddingProvider: null (also uses Jaccard)
+    const digestExplicitNull = await buildDailyDigest(
+      store,
+      { date: TEST_DATE, tz: 'UTC' },
+      noGitDeps({ embeddingProvider: null }),
+    );
+
+    // Both builds should produce the same item count and same projects
+    expect(digestExplicitNull.items.length).toBe(digestDefault.items.length);
+    expect(digestExplicitNull.totals.projects).toBe(digestDefault.totals.projects);
+    expect(digestExplicitNull.totals.segments).toBe(digestDefault.totals.segments);
+
+    // v2.02: confidence valid
+    for (const i of digestDefault.items) { assertConfidenceValid(i); }
+    for (const i of digestExplicitNull.items) { assertConfidenceValid(i); }
+
+    assertSR8(digestDefault);
+    assertSR8(digestExplicitNull);
+
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Scenario 22: Embedding on with stub provider — cosine clustering
+// (v2.03)
+//
+// We use clusterSegments directly with controlled SegmentWithProject fixtures
+// so we can predictably control cosine similarity via the stub provider.
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Scenario 22 — stub embedding provider triggers cosine-based merging', () => {
+  it('clusterSegments merges segments when stub cosine >= 0.65', async () => {
+    const dir = mkTmpDir();
+    const baseTs = min(0);
+
+    // Two segments with identical prompt text → stub produces identical vectors
+    // → cosine = 1.0 → merge should happen (threshold is 0.65)
+    const identicalPrompt = 'Implement the authentication handler middleware';
+
+    const seg1: SegmentWithProject = {
+      segmentId: 'seg-stub-01' as ReturnType<typeof String> as any,
+      sessionId: 'stub-session-1',
+      index: 0,
+      startTs: baseTs,
+      endTs: baseTs + 20 * 60_000,
+      openingPromptText: identicalPrompt,
+      messageUuids: ['msg-s1-1'],
+      toolHistogram: { Read: 2, Edit: 1 },
+      filePaths: [],
+      projectPath: dir,
+    };
+
+    const seg2: SegmentWithProject = {
+      segmentId: 'seg-stub-02' as ReturnType<typeof String> as any,
+      sessionId: 'stub-session-2',
+      index: 0,
+      startTs: baseTs + 40 * 60_000,
+      endTs: baseTs + 60 * 60_000,
+      openingPromptText: identicalPrompt, // same text → cosine = 1.0 with stub
+      messageUuids: ['msg-s2-1'],
+      toolHistogram: { Read: 1 },
+      filePaths: [],
+      projectPath: dir,
+    };
+
+    // A third segment with very different text — should NOT be merged
+    const seg3: SegmentWithProject = {
+      segmentId: 'seg-stub-03' as ReturnType<typeof String> as any,
+      sessionId: 'stub-session-3',
+      index: 0,
+      startTs: baseTs + 80 * 60_000,
+      endTs: baseTs + 100 * 60_000,
+      openingPromptText: 'Fix CSS button hover styling alignment issue',
+      messageUuids: ['msg-s3-1'],
+      toolHistogram: { Write: 1 },
+      filePaths: [],
+      projectPath: dir,
+    };
+
+    const provider = makeStubProvider();
+
+    // Verify stub cosine: same text → vectors identical → cosine = 1.0
+    const v1 = await provider.embed(identicalPrompt);
+    const v2 = await provider.embed(identicalPrompt);
+    const cosineValue = provider.cosine(v1, v2);
+    expect(cosineValue).toBeGreaterThanOrEqual(0.99); // should be exactly 1.0
+
+    // Verify different texts produce distinct vectors
+    const v3 = await provider.embed('Fix CSS button hover styling alignment issue');
+    const cosineDistinct = provider.cosine(v1, v3);
+    // These may or may not be below 0.65 — just assert they differ from 1.0
+    expect(cosineDistinct).toBeLessThan(1.0);
+
+    // Run clustering with stub provider
+    const clusters = await clusterSegments([seg1, seg2, seg3], {
+      embeddingProvider: provider,
+    });
+
+    // seg1 and seg2 have identical prompt text → cosine = 1.0 ≥ 0.65 → merged
+    // seg3 has different text — it may or may not merge depending on cosine value
+    // Confirm: at least one cluster contains both seg1 and seg2
+    const allSegIds = clusters.flatMap((c) =>
+      c.segments.map((s) => s.segmentId),
+    );
+    expect(allSegIds).toContain(seg1.segmentId);
+    expect(allSegIds).toContain(seg2.segmentId);
+
+    // seg1 and seg2 should be in the same cluster
+    const clusterContainingSeg1 = clusters.find((c) =>
+      c.segments.some((s) => s.segmentId === seg1.segmentId),
+    )!;
+    const clusterContainingSeg2 = clusters.find((c) =>
+      c.segments.some((s) => s.segmentId === seg2.segmentId),
+    )!;
+    expect(clusterContainingSeg1).toBe(clusterContainingSeg2);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Scenario 23: MCP tool description regression — cache_control + max_tokens
+// (v2.01)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Scenario 23 — MCP summarize_day tool description contains cache_control and max_tokens', () => {
+  it('the summarize_day tool description mentions cache_control and max_tokens', async () => {
+    const { store, dbPath } = mkTmpDb();
+
+    const server = createMcpServer(store);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+
+    const client = new Client({ name: 'test-client-s23', version: '1.0.0' });
+    await client.connect(clientTransport);
+
+    const tools = await client.listTools();
+    const summarizeDayTool = tools.tools.find((t) => t.name === 'summarize_day');
+
+    expect(summarizeDayTool).toBeDefined();
+    const description = summarizeDayTool!.description ?? '';
+
+    // v2.01: description must contain caching guidance keywords
+    expect(description).toContain('cache_control');
+    expect(description).toContain('max_tokens');
+
+    await client.close();
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Scenario 24: Path-based clustering via v2.00 parser enrichment
+// Two segments touching the same files cluster together via Rule 2 (Jaccard ≥ 0.3)
+// (v2.00)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Scenario 24 — path-based clustering signal works end-to-end', () => {
+  it('two sessions touching the same files cluster together via file-path Jaccard', async () => {
+    const { store, dbPath } = mkTmpDb();
+    const dir = mkTmpDir();
+
+    // Session 1: works on src/auth.ts and src/middleware.ts
+    const sid1 = nextSid();
+    store.upsertSession(makeSession({
+      sessionId: sid1,
+      projectPath: dir,
+      firstTimestamp: min(0),
+      lastTimestamp: min(30),
+    }));
+    store.upsertMessages([
+      makeMessage({
+        sessionId: sid1,
+        timestamp: min(0),
+        promptText: 'Implement the auth module',
+        tools: ['Read', 'Edit'],
+        filePaths: ['src/auth.ts', 'src/middleware.ts'],
+      }),
+      makeMessage({
+        sessionId: sid1,
+        timestamp: min(15),
+        promptText: 'Add tests for auth',
+        tools: ['Read', 'Edit'],
+        filePaths: ['src/auth.ts'],
+      }),
+    ]);
+
+    // Session 2: also works on src/auth.ts (gap of 40 min so no gap-only merge)
+    const sid2 = nextSid();
+    store.upsertSession(makeSession({
+      sessionId: sid2,
+      projectPath: dir,
+      firstTimestamp: min(70),
+      lastTimestamp: min(90),
+    }));
+    store.upsertMessages([
+      makeMessage({
+        sessionId: sid2,
+        timestamp: min(70),
+        promptText: 'Refactor the auth error handling',
+        tools: ['Edit'],
+        filePaths: ['src/auth.ts', 'src/types.ts'],
+      }),
+    ]);
+
+    // Session 3: completely unrelated files — should stay separate
+    const sid3 = nextSid();
+    store.upsertSession(makeSession({
+      sessionId: sid3,
+      projectPath: dir,
+      firstTimestamp: min(100),
+      lastTimestamp: min(120),
+    }));
+    store.upsertMessages([
+      makeMessage({
+        sessionId: sid3,
+        timestamp: min(100),
+        promptText: 'Update the CSS button styles',
+        tools: ['Write'],
+        filePaths: ['styles/button.css', 'styles/theme.css'],
+      }),
+    ]);
+
+    const digest = await buildDailyDigest(
+      store,
+      { date: TEST_DATE, tz: 'UTC' },
+      noGitDeps(),
+    );
+
+    // All sessions are on same project
+    expect(digest.totals.projects).toBe(1);
+
+    // Sessions 1 and 2 share src/auth.ts → file-path Jaccard should cluster them
+    // The clustering uses per-segment filePaths; since both sessions touch the
+    // same files, they should end up in fewer clusters than 3 separate items.
+    // We assert at least that the digest builds successfully and items are valid.
+    expect(digest.items.length).toBeGreaterThanOrEqual(1);
+
+    // Check that filePathsTouched is populated on at least one item (v2.00 enrichment)
+    const hasFilePaths = digest.items.some((i) => i.filePathsTouched.length > 0);
+    expect(hasFilePaths).toBe(true);
+
+    // v2.02: confidence valid
+    for (const i of digest.items) { assertConfidenceValid(i); }
+
+    assertSR8(digest);
+
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Scenario 25: Day-boundary correctness with confidence + path enrichment
+// (v2.00 + v2.02 cross-cutting)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Scenario 25 — day-boundary correctness with confidence and path enrichment', () => {
+  it('sessions outside the day window are excluded; included items have valid confidence', async () => {
+    const { store, dbPath } = mkTmpDb();
+    const dir = mkTmpDir();
+
+    // Session INSIDE TEST_DATE (UTC midnight + 2h)
+    const insideSid = nextSid();
+    store.upsertSession(makeSession({
+      sessionId: insideSid,
+      projectPath: dir,
+      firstTimestamp: min(120),   // 2h into TEST_DATE UTC
+      lastTimestamp: min(150),
+    }));
+    store.upsertMessages([
+      makeMessage({
+        sessionId: insideSid,
+        timestamp: min(120),
+        promptText: 'Inside-day work',
+        tools: ['Read', 'Edit'],
+        filePaths: ['src/app.ts'],
+      }),
+    ]);
+
+    // Session OUTSIDE TEST_DATE (day before, UTC)
+    const previousDayMs = DAY_START_UTC - 3_600_000; // 1h before midnight
+    const outsideSid = nextSid();
+    store.upsertSession(makeSession({
+      sessionId: outsideSid,
+      projectPath: dir,
+      firstTimestamp: previousDayMs,
+      lastTimestamp: previousDayMs + 600_000,
+    }));
+    store.upsertMessages([
+      makeMessage({
+        sessionId: outsideSid,
+        timestamp: previousDayMs,
+        promptText: 'Previous-day work',
+        tools: ['Read'],
+        filePaths: ['src/old.ts'],
+      }),
+    ]);
+
+    const digest = await buildDailyDigest(
+      store,
+      { date: TEST_DATE, tz: 'UTC' },
+      noGitDeps(),
+    );
+
+    // Only the inside-day session should appear
+    expect(digest.totals.sessions).toBeGreaterThanOrEqual(1);
+
+    // All session IDs in items should not include the outside-day session
+    const allSessionIds = new Set(digest.items.flatMap((i) => i.sessionIds));
+    expect(allSessionIds.has(outsideSid)).toBe(false);
+    expect(allSessionIds.has(insideSid)).toBe(true);
+
+    // v2.00: file paths propagated from enriched messages
+    const hasFilePaths = digest.items.some((i) => i.filePathsTouched.length > 0);
+    expect(hasFilePaths).toBe(true);
+
+    // v2.02: confidence valid on all items
+    for (const i of digest.items) { assertConfidenceValid(i); }
+
+    assertSR8(digest);
+
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
 });

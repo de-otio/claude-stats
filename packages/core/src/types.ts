@@ -148,6 +148,7 @@ export interface MessageRecord {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   tools: string[];
+  filePaths?: string[];   // file paths extracted from tool_use block.input; optional for backward compat
   thinkingBlocks: number;
   serviceTier: string | null;
   inferenceGeo: string | null;

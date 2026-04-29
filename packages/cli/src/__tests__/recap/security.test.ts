@@ -224,7 +224,7 @@ describe('SR-1 — subprocess argument injection (integration)', () => {
   });
 
   // 1.a — Malicious user.email with --output=<path>
-  it('1.a: email "--output=/tmp/recap-evil-…" → git:null, no evil file created', () => {
+  it('1.a: email "--output=/tmp/recap-evil-…" → git:null, no evil file created', async () => {
     const evilPath = makeEvilPath();
     const evilEmail = `--output=${evilPath}`;
 
@@ -232,7 +232,7 @@ describe('SR-1 — subprocess argument injection (integration)', () => {
     store.upsertSession(makeSession({ sessionId: sessId, projectPath: gitRepo }));
     store.upsertMessages([makeMessage({ sessionId: sessId, timestamp: MIN(0), promptText: 'test' })]);
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       testDeps({
@@ -257,7 +257,7 @@ describe('SR-1 — subprocess argument injection (integration)', () => {
   });
 
   // 1.b — Email with newline injection
-  it('1.b: email with newline "x@y\\n--exec=touch …" → git:null, no evil file', () => {
+  it('1.b: email with newline "x@y\\n--exec=touch …" → git:null, no evil file', async () => {
     const evilPath = makeEvilPath();
     const evilEmail = `x@y\n--exec=touch ${evilPath}`;
 
@@ -265,7 +265,7 @@ describe('SR-1 — subprocess argument injection (integration)', () => {
     store.upsertSession(makeSession({ sessionId: sessId, projectPath: gitRepo }));
     store.upsertMessages([makeMessage({ sessionId: sessId, timestamp: MIN(0), promptText: 'test' })]);
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       testDeps({
@@ -283,14 +283,14 @@ describe('SR-1 — subprocess argument injection (integration)', () => {
   });
 
   // 1.c — Email starting with '-'
-  it('1.c: email starting with "-z foo@bar" → git:null, no evil file', () => {
+  it('1.c: email starting with "-z foo@bar" → git:null, no evil file', async () => {
     const evilEmail = '-z foo@bar.com';
 
     const sessId = nextSessId();
     store.upsertSession(makeSession({ sessionId: sessId, projectPath: gitRepo }));
     store.upsertMessages([makeMessage({ sessionId: sessId, timestamp: MIN(0), promptText: 'test' })]);
 
-    const digest = buildDailyDigest(
+    const digest = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       testDeps({
@@ -307,7 +307,7 @@ describe('SR-1 — subprocess argument injection (integration)', () => {
   });
 
   // 1.d — Long email (1000 chars)
-  it('1.d: 1000-char email → accepted or rejected gracefully; no crash', () => {
+  it('1.d: 1000-char email → accepted or rejected gracefully; no crash', async () => {
     // 'a'.repeat(491) + '@' + 'b'.repeat(504) + '.com'
     // 491 + 1 + 504 + 4 = 1000
     const longEmail = 'a'.repeat(491) + '@' + 'b'.repeat(504) + '.com';
@@ -318,9 +318,10 @@ describe('SR-1 — subprocess argument injection (integration)', () => {
     store.upsertMessages([makeMessage({ sessionId: sessId, timestamp: MIN(0), promptText: 'test' })]);
 
     // Must not throw
-    let digest: ReturnType<typeof buildDailyDigest> | undefined;
-    expect(() => {
-      digest = buildDailyDigest(
+    let digest: import('../../recap/types.js').DailyDigest | undefined;
+    let threw = false;
+    try {
+      digest = await buildDailyDigest(
         store,
         { date: '2024-01-15', tz: 'UTC' },
         testDeps({
@@ -328,7 +329,10 @@ describe('SR-1 — subprocess argument injection (integration)', () => {
           getProjectGitActivity: undefined,
         }),
       );
-    }).not.toThrow();
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(false);
 
     // Either the email passed validation and git is non-null,
     // or it was rejected and git is null — both are acceptable.
@@ -338,7 +342,7 @@ describe('SR-1 — subprocess argument injection (integration)', () => {
   });
 
   // 1.e — Project path traversal
-  it('1.e: project_path="../../../etc" → resolved path is a directory; returns null for non-git dir', () => {
+  it('1.e: project_path="../../../etc" → resolved path is a directory; returns null for non-git dir', async () => {
     // Insert a session whose project_path is a traversal string.
     // The store accepts any string; the safety check must happen inside
     // the git layer (resolveGitDir in git.ts).
@@ -359,7 +363,7 @@ describe('SR-1 — subprocess argument injection (integration)', () => {
       return getProjectGitActivity(p, startMs, endMs, email);
     };
 
-    buildDailyDigest(
+    await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       testDeps({
@@ -656,7 +660,7 @@ describe('SR-4 — snapshot-hash inputs (integration)', () => {
   }
 
   // 4.a — tz ignores $TZ; uses Intl source
-  it('4.a: opts.tz is Auckland regardless of process.env.TZ=UTC → hash stable across TZ envvar changes', () => {
+  it('4.a: opts.tz is Auckland regardless of process.env.TZ=UTC → hash stable across TZ envvar changes', async () => {
     seedSession('/tmp/sr4-project');
 
     // Set process.env.TZ to UTC — this must NOT affect the hash when
@@ -664,43 +668,43 @@ describe('SR-4 — snapshot-hash inputs (integration)', () => {
     process.env['TZ'] = 'UTC';
 
     const depsAuckland = testDeps({ intlTz: () => 'Pacific/Auckland' });
-    const hash1 = buildDailyDigest(
+    const hash1 = (await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'Pacific/Auckland' },
       depsAuckland,
-    ).snapshotHash;
+    )).snapshotHash;
 
     // Remove $TZ entirely — hash with same opts.tz must be identical.
     delete process.env['TZ'];
-    const hash2 = buildDailyDigest(
+    const hash2 = (await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'Pacific/Auckland' },
       testDeps({ intlTz: () => 'Pacific/Auckland' }),
-    ).snapshotHash;
+    )).snapshotHash;
 
     // With TZ=UTC and without, but with the same opts.tz, the hash must not change.
     expect(hash1).toBe(hash2);
 
     // And it must differ from a UTC digest (proves tz is actually in the hash).
-    const hashUtc = buildDailyDigest(
+    const hashUtc = (await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       testDeps({ intlTz: () => 'UTC' }),
-    ).snapshotHash;
+    )).snapshotHash;
     expect(hash1).not.toBe(hashUtc);
   });
 
   // 4.b — New project changes hash
-  it('4.b: adding a new project changes the snapshot hash', () => {
+  it('4.b: adding a new project changes the snapshot hash', async () => {
     seedSession('/tmp/sr4-proj-A');
-    const digest1 = buildDailyDigest(
+    const digest1 = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       testDeps(),
     );
 
     seedSession('/tmp/sr4-proj-B');
-    const digest2 = buildDailyDigest(
+    const digest2 = await buildDailyDigest(
       store,
       { date: '2024-01-15', tz: 'UTC' },
       testDeps(),
@@ -710,20 +714,20 @@ describe('SR-4 — snapshot-hash inputs (integration)', () => {
   });
 
   // 4.c — Reordered project list internally: hash must be the same
-  it('4.c: reordering of project paths is internal; hash is identical', () => {
+  it('4.c: reordering of project paths is internal; hash is identical', async () => {
     // Seed two sessions on different projects so there are two paths.
     seedSession('/tmp/sr4-proj-alpha');
     seedSession('/tmp/sr4-proj-beta');
 
-    const digest1 = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, testDeps());
+    const digest1 = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, testDeps());
     // Run again with the same data — computeSnapshotHash sorts internally.
-    const digest2 = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, testDeps());
+    const digest2 = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, testDeps());
 
     expect(digest1.snapshotHash).toBe(digest2.snapshotHash);
   });
 
   // 4.d — New commit on tracked project changes hash
-  it('4.d: a new commit on a tracked project changes the snapshot hash', () => {
+  it('4.d: a new commit on a tracked project changes the snapshot hash', async () => {
     // Use a real git repo so getLastCommitSha returns a real SHA.
     const gitRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'recap-sec-sr4-git-'));
     try {
@@ -743,7 +747,7 @@ describe('SR-4 — snapshot-hash inputs (integration)', () => {
         makeMessage({ sessionId: sessId, timestamp: MIN(0), promptText: 'before commit' }),
       ]);
 
-      const digest1 = buildDailyDigest(
+      const digest1 = await buildDailyDigest(
         store,
         { date: '2024-01-15', tz: 'UTC' },
         testDeps({ getProjectGitActivity: undefined }),
@@ -755,7 +759,7 @@ describe('SR-4 — snapshot-hash inputs (integration)', () => {
       execFileSync('git', ['-C', gitRepo, 'add', '--', f2]);
       execFileSync('git', ['-C', gitRepo, 'commit', '--no-gpg-sign', '-m', 'second']);
 
-      const digest2 = buildDailyDigest(
+      const digest2 = await buildDailyDigest(
         store,
         { date: '2024-01-15', tz: 'UTC' },
         testDeps({ getProjectGitActivity: undefined }),
@@ -768,10 +772,10 @@ describe('SR-4 — snapshot-hash inputs (integration)', () => {
   });
 
   // 4.e — New message in tracked session changes hash
-  it('4.e: adding a new message to a tracked session changes the snapshot hash', () => {
+  it('4.e: adding a new message to a tracked session changes the snapshot hash', async () => {
     const sessId = seedSession('/tmp/sr4-proj-msgs');
 
-    const digest1 = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, testDeps());
+    const digest1 = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, testDeps());
 
     // Insert a message with a lexically-larger UUID so maxMessageUuid changes.
     store.upsertMessages([
@@ -783,7 +787,7 @@ describe('SR-4 — snapshot-hash inputs (integration)', () => {
       }),
     ]);
 
-    const digest2 = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, testDeps());
+    const digest2 = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, testDeps());
 
     expect(digest1.snapshotHash).not.toBe(digest2.snapshotHash);
   });
@@ -825,9 +829,9 @@ describe('SR-8 — wrap-untrusted at every emission point', () => {
   });
 
   // 8.a — Direct builder call
-  it('8.a: every non-null firstPrompt from buildDailyDigest contains <untrusted-stored-content>', () => {
+  it('8.a: every non-null firstPrompt from buildDailyDigest contains <untrusted-stored-content>', async () => {
     seedStore('Direct builder test prompt');
-    const digest = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, testDeps());
+    const digest = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, testDeps());
 
     expect(digest.items.length).toBeGreaterThan(0);
     let wrappedCount = 0;
@@ -886,10 +890,10 @@ describe('SR-8 — wrap-untrusted at every emission point', () => {
   //
   // We call that path directly (without spawning a subprocess) to avoid
   // depending on tsx/PATH while still verifying the full serialization path.
-  it('8.c: JSON CLI output path — every non-null firstPrompt in serialized digest contains marker', () => {
+  it('8.c: JSON CLI output path — every non-null firstPrompt in serialized digest contains marker', async () => {
     seedStore('JSON CLI test prompt for SR-8');
 
-    const digest = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, testDeps());
+    const digest = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, testDeps());
     // Simulate what the CLI --json flag does
     const jsonOutput = JSON.stringify(digest, null, 2);
     const parsed = JSON.parse(jsonOutput) as {
@@ -908,7 +912,7 @@ describe('SR-8 — wrap-untrusted at every emission point', () => {
   });
 
   // 8.d — Cached digest: marker preserved through cache round-trip
-  it('8.d: cached digest preserves <untrusted-stored-content> marker', () => {
+  it('8.d: cached digest preserves <untrusted-stored-content> marker', async () => {
     seedStore('Cache round-trip test prompt SR-8');
 
     const cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'recap-sec-sr8-cache-'));
@@ -916,7 +920,7 @@ describe('SR-8 — wrap-untrusted at every emission point', () => {
       const fileCache = createFileCache({ rootDir: cacheRoot });
 
       // First build — writes to file cache
-      const digest1 = buildDailyDigest(
+      const digest1 = await buildDailyDigest(
         store,
         { date: '2024-01-15', tz: 'UTC' },
         testDeps({ cache: fileCache }),
@@ -924,7 +928,7 @@ describe('SR-8 — wrap-untrusted at every emission point', () => {
       expect(digest1.cached).toBe(false);
 
       // Second build — reads from file cache
-      const digest2 = buildDailyDigest(
+      const digest2 = await buildDailyDigest(
         store,
         { date: '2024-01-15', tz: 'UTC' },
         testDeps({ cache: fileCache }),
@@ -947,7 +951,7 @@ describe('SR-8 — wrap-untrusted at every emission point', () => {
   });
 
   // 8.e — Empty prompt → null, not an envelope around nothing
-  it('8.e: session with prompt_text:null → firstPrompt:null (not an empty envelope)', () => {
+  it('8.e: session with prompt_text:null → firstPrompt:null (not an empty envelope)', async () => {
     const sessId = nextSessId();
     store.upsertSession(makeSession({ sessionId: sessId, projectPath: '/tmp/sr8-empty' }));
     store.upsertMessages([
@@ -955,7 +959,7 @@ describe('SR-8 — wrap-untrusted at every emission point', () => {
       makeMessage({ sessionId: sessId, timestamp: MIN(0), promptText: null }),
     ]);
 
-    const digest = buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, testDeps());
+    const digest = await buildDailyDigest(store, { date: '2024-01-15', tz: 'UTC' }, testDeps());
 
     for (const item of digest.items) {
       // firstPrompt must be null — not an envelope around empty/whitespace content

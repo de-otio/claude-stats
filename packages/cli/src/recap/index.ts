@@ -19,6 +19,7 @@
 import { createHash } from 'node:crypto';
 import type { Store } from '../store/index.js';
 import type {
+  Confidence,
   DailyDigest,
   DailyDigestItem,
   DailyDigestOptions,
@@ -30,6 +31,7 @@ import type {
 import { segmentSession } from './segment.js';
 import { clusterSegments } from './cluster.js';
 import type { SegmentCluster, SegmentWithProject } from './cluster.js';
+import type { EmbeddingProvider } from './embeddings.js';
 import { inferCharacterVerb } from './verb.js';
 import {
   getProjectGitActivity as realGetProjectGitActivity,
@@ -48,6 +50,7 @@ import { estimateCost } from '@claude-stats/core/pricing';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type {
+  Confidence,
   DailyDigest,
   DailyDigestItem,
   DailyDigestOptions,
@@ -82,6 +85,13 @@ export interface BuildDailyDigestDeps {
    * SR-4: MUST NOT read from process.env.TZ.
    */
   intlTz?: () => string;
+  /**
+   * Embedding provider for semantic clustering (v2.03).
+   * When supplied, the prompt-prefix Jaccard rule (Rule 3) is replaced with
+   * cosine similarity over local sentence embeddings.
+   * When null/absent, the v1 Jaccard behaviour is used.
+   */
+  embeddingProvider?: EmbeddingProvider | null;
 }
 
 // ─── Day-boundary helpers ─────────────────────────────────────────────────────
@@ -196,6 +206,49 @@ function truncateCodePoints(text: string, maxCodePoints: number): string {
   return codePoints.slice(0, maxCodePoints).join('') + '…';
 }
 
+// ─── Confidence scoring ───────────────────────────────────────────────────────
+
+export const CONFIDENCE_DURATION_MS = 30 * 60 * 1000; // 30 min
+export const CONFIDENCE_LINES_THRESHOLD = 50;
+export const CONFIDENCE_FILES_THRESHOLD = 5;
+
+/**
+ * Compute a deterministic confidence level for a digest item.
+ *
+ * - 'high':   shipped work — pushed commits or merged PR
+ * - 'medium': substantial work in flight — local commits, or long active
+ *             session with significant code changes or file breadth
+ * - 'low':    thin work with no concrete outcome
+ *
+ * Exported for unit testing; no I/O, no LLM.
+ */
+export function computeConfidence(item: {
+  git: ProjectGitActivity | null;
+  duration: { wallMs: number; activeMs: number };
+  filePathsTouched: readonly string[];
+}): Confidence {
+  const { git, duration, filePathsTouched } = item;
+
+  // High: shipped — pushed commits or merged PR
+  if (git && git.commitsToday > 0 && git.pushed) return 'high';
+  if (git && (git.prMerged ?? 0) > 0) return 'high';
+
+  // Medium: substantial work in flight
+  if (git && git.commitsToday > 0) return 'medium'; // commits, not pushed
+  if (
+    duration.activeMs >= CONFIDENCE_DURATION_MS &&
+    (git?.linesAdded ?? 0) + (git?.linesRemoved ?? 0) >= CONFIDENCE_LINES_THRESHOLD
+  ) {
+    return 'medium';
+  }
+  if (duration.activeMs >= CONFIDENCE_DURATION_MS && filePathsTouched.length >= CONFIDENCE_FILES_THRESHOLD) {
+    return 'medium';
+  }
+
+  // Low: thin work, no concrete outcome
+  return 'low';
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 /**
@@ -208,11 +261,11 @@ function truncateCodePoints(text: string, maxCodePoints: number): string {
  * @returns      A complete DailyDigest. Never throws — errors in git
  *               enrichment, cache I/O, or cost estimation degrade gracefully.
  */
-export function buildDailyDigest(
+export async function buildDailyDigest(
   store: Store,
   opts?: DailyDigestOptions,
   deps?: BuildDailyDigestDeps,
-): DailyDigest {
+): Promise<DailyDigest> {
   // ── Step 1: Resolve date and timezone ────────────────────────────────────
 
   // SR-4: TZ MUST come from Intl, never from process.env.TZ
@@ -326,7 +379,8 @@ export function buildDailyDigest(
 
   // ── Step 6: Cluster segments ──────────────────────────────────────────────
 
-  const clusters = clusterSegments(allSegments);
+  const embeddingProvider = deps?.embeddingProvider ?? null;
+  const clusters = await clusterSegments(allSegments, { embeddingProvider });
 
   // ── Step 7: Build digest items ────────────────────────────────────────────
 
@@ -519,6 +573,13 @@ function buildDigestItem(
     console.warn(`recap git enrichment failed for ${projectPath}`);
   }
 
+  // confidence: deterministic signal strength for this item
+  const confidence = computeConfidence({
+    git,
+    duration: { wallMs, activeMs },
+    filePathsTouched,
+  });
+
   // score = (commits*3) + (linesChanged/100) + (activeMinutes/30) +
   //         (prMerged?5:0) + (pushed?1:0)
   const activeMinutes = activeMs / 60_000;
@@ -571,6 +632,7 @@ function buildDigestItem(
     filePathsTouched,
     git,
     score,
+    confidence,
   };
 }
 

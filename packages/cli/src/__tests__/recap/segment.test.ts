@@ -24,6 +24,7 @@ function makeMsg(overrides: Partial<MessageRow> & { timestamp: number }): Messag
     cache_creation_tokens: 0,
     cache_read_tokens: 0,
     tools: "[]",
+    file_paths: "[]",
     thinking_blocks: 0,
     service_tier: null,
     inference_geo: null,
@@ -38,11 +39,61 @@ function makeMsg(overrides: Partial<MessageRow> & { timestamp: number }): Messag
 const T0 = 1_700_000_000_000;
 const min = (n: number): number => T0 + n * 60_000;
 
-/** Build a tools JSON string with rich params (future shape for file-path extraction). */
+/**
+ * Build a tools JSON string (plain string-array format used by the store).
+ * Tool histograms are computed from this column.
+ */
+function toolsJson(names: string[]): string {
+  return JSON.stringify(names);
+}
+
+/**
+ * Build a file_paths JSON string for a MessageRow.
+ * The segmenter reads file paths from this dedicated column (schema v10+),
+ * which is populated at parse time from tool_use block.input fields.
+ */
+function filePathsJson(paths: string[]): string {
+  return JSON.stringify(paths);
+}
+
+/**
+ * Build tool entries in the old rich-params format for tests that need
+ * to verify tool histogram behaviour (tool names are still read from `tools`).
+ * NOTE: file paths are now read from `file_paths`, not `tools`.
+ */
 function richTools(
   entries: Array<{ name: string; params: Record<string, unknown> }>,
 ): string {
   return JSON.stringify(entries);
+}
+
+/**
+ * Derive the `file_paths` JSON that the parser would have produced from
+ * a set of rich tool entries (mirrors parser logic for test convenience).
+ */
+function filePathsFromRich(
+  entries: Array<{ name: string; params: Record<string, unknown> }>,
+): string {
+  const paths: string[] = [];
+  for (const { name, params } of entries) {
+    if (["Read", "Edit", "Write", "MultiEdit"].includes(name)) {
+      const fp = params["file_path"];
+      if (typeof fp === "string" && fp.length > 0) paths.push(fp);
+    } else if (name === "Glob") {
+      const pattern = params["pattern"];
+      if (typeof pattern === "string" && pattern.includes("/")) {
+        // Replicate node:path dirname behaviour inline
+        const lastSlash = pattern.lastIndexOf("/");
+        const dir = lastSlash > 0 ? pattern.slice(0, lastSlash) : ".";
+        if (dir.length > 0) paths.push(dir);
+      }
+    } else if (name === "Bash") {
+      const cwd = params["cwd"];
+      if (typeof cwd === "string" && cwd.length > 0) paths.push(cwd);
+    }
+  }
+  // Deduplicate (mirrors Set usage in parser)
+  return JSON.stringify([...new Set(paths)]);
 }
 
 /**
@@ -110,13 +161,14 @@ describe("segmentSession", () => {
   // Test 3: Short session, no shifts → one segment, all messages
   it("keeps short sessions with similar content as one segment", () => {
     const sessionId = "sess-short";
-    const tools = richTools([{ name: "Edit", params: { file_path: "src/auth/login.ts" } }]);
+    // Same file on all messages → path signal = 0 → no split
+    const fp = filePathsJson(["src/auth/login.ts"]);
     const messages = [
-      makeMsg({ session_id: sessionId, timestamp: min(0), tools, prompt_text: "fix the login function" }),
-      makeMsg({ session_id: sessionId, timestamp: min(1), tools, prompt_text: "update the auth check" }),
-      makeMsg({ session_id: sessionId, timestamp: min(2), tools, prompt_text: "add error handling to login" }),
-      makeMsg({ session_id: sessionId, timestamp: min(3), tools, prompt_text: "write a test for the auth module" }),
-      makeMsg({ session_id: sessionId, timestamp: min(4), tools, prompt_text: "refactor the login handler" }),
+      makeMsg({ session_id: sessionId, timestamp: min(0), file_paths: fp, prompt_text: "fix the login function" }),
+      makeMsg({ session_id: sessionId, timestamp: min(1), file_paths: fp, prompt_text: "update the auth check" }),
+      makeMsg({ session_id: sessionId, timestamp: min(2), file_paths: fp, prompt_text: "add error handling to login" }),
+      makeMsg({ session_id: sessionId, timestamp: min(3), file_paths: fp, prompt_text: "write a test for the auth module" }),
+      makeMsg({ session_id: sessionId, timestamp: min(4), file_paths: fp, prompt_text: "refactor the login handler" }),
     ];
     const result = segmentSession(messages);
     expect(result).toHaveLength(1);
@@ -148,16 +200,16 @@ describe("segmentSession", () => {
   // the correct file groups end up in each segment.
   it("splits when edited files switch from src/auth to src/render", () => {
     const sessionId = "sess-path";
-    const authTools = richTools([{ name: "Edit", params: { file_path: "src/auth/login.ts" } }]);
-    const renderTools = richTools([{ name: "Edit", params: { file_path: "src/render/template.ts" } }]);
+    const authFp = filePathsJson(["src/auth/login.ts"]);
+    const renderFp = filePathsJson(["src/render/template.ts"]);
     const messages = [
-      makeMsg({ session_id: sessionId, timestamp: min(0),  tools: authTools, prompt_text: "auth work" }),
-      makeMsg({ session_id: sessionId, timestamp: min(1),  tools: authTools, prompt_text: "more auth" }),
-      makeMsg({ session_id: sessionId, timestamp: min(2),  tools: authTools, prompt_text: "still auth" }),
+      makeMsg({ session_id: sessionId, timestamp: min(0),  file_paths: authFp, prompt_text: "auth work" }),
+      makeMsg({ session_id: sessionId, timestamp: min(1),  file_paths: authFp, prompt_text: "more auth" }),
+      makeMsg({ session_id: sessionId, timestamp: min(2),  file_paths: authFp, prompt_text: "still auth" }),
       // >20-min gap + file switch: gap signal (0.4) + path signal (0.25 * 1.0) = 0.65 ≥ 0.5
-      makeMsg({ session_id: sessionId, timestamp: min(25), tools: renderTools, prompt_text: "render work" }),
-      makeMsg({ session_id: sessionId, timestamp: min(26), tools: renderTools, prompt_text: "more render" }),
-      makeMsg({ session_id: sessionId, timestamp: min(27), tools: renderTools, prompt_text: "still render" }),
+      makeMsg({ session_id: sessionId, timestamp: min(25), file_paths: renderFp, prompt_text: "render work" }),
+      makeMsg({ session_id: sessionId, timestamp: min(26), file_paths: renderFp, prompt_text: "more render" }),
+      makeMsg({ session_id: sessionId, timestamp: min(27), file_paths: renderFp, prompt_text: "still render" }),
     ];
     const result = segmentSession(messages);
     expect(result).toHaveLength(2);
@@ -228,22 +280,22 @@ describe("segmentSession", () => {
   // Combines gap + commit signals to trigger two splits.
   it("produces three segments for three distinct file sets and distinct prompts", () => {
     const sessionId = "sess-three";
-    const authTools = richTools([{ name: "Edit", params: { file_path: "src/auth/login.ts" } }]);
-    const renderTools = richTools([{ name: "Edit", params: { file_path: "src/render/template.ts" } }]);
-    const dbTools = richTools([{ name: "Edit", params: { file_path: "src/db/migrations.ts" } }]);
+    const authFp   = filePathsJson(["src/auth/login.ts"]);
+    const renderFp = filePathsJson(["src/render/template.ts"]);
+    const dbFp     = filePathsJson(["src/db/migrations.ts"]);
 
     const messages = [
       // Topic 1: auth
-      makeMsg({ session_id: sessionId, timestamp: min(0),  tools: authTools, prompt_text: "auth login" }),
-      makeMsg({ session_id: sessionId, timestamp: min(1),  tools: authTools, prompt_text: "auth session" }),
-      makeMsg({ session_id: sessionId, timestamp: min(2),  tools: authTools, prompt_text: "auth token" }),
+      makeMsg({ session_id: sessionId, timestamp: min(0),  file_paths: authFp,   prompt_text: "auth login" }),
+      makeMsg({ session_id: sessionId, timestamp: min(1),  file_paths: authFp,   prompt_text: "auth session" }),
+      makeMsg({ session_id: sessionId, timestamp: min(2),  file_paths: authFp,   prompt_text: "auth token" }),
       // Topic 2: render (30-min gap from topic 1)
-      makeMsg({ session_id: sessionId, timestamp: min(25), tools: renderTools, prompt_text: "render layout" }),
-      makeMsg({ session_id: sessionId, timestamp: min(26), tools: renderTools, prompt_text: "render view" }),
-      makeMsg({ session_id: sessionId, timestamp: min(27), tools: renderTools, prompt_text: "render template" }),
+      makeMsg({ session_id: sessionId, timestamp: min(25), file_paths: renderFp, prompt_text: "render layout" }),
+      makeMsg({ session_id: sessionId, timestamp: min(26), file_paths: renderFp, prompt_text: "render view" }),
+      makeMsg({ session_id: sessionId, timestamp: min(27), file_paths: renderFp, prompt_text: "render template" }),
       // Topic 3: db (30-min gap from topic 2)
-      makeMsg({ session_id: sessionId, timestamp: min(55), tools: dbTools, prompt_text: "database migration" }),
-      makeMsg({ session_id: sessionId, timestamp: min(56), tools: dbTools, prompt_text: "database schema" }),
+      makeMsg({ session_id: sessionId, timestamp: min(55), file_paths: dbFp,     prompt_text: "database migration" }),
+      makeMsg({ session_id: sessionId, timestamp: min(56), file_paths: dbFp,     prompt_text: "database schema" }),
     ];
 
     // Use weights that allow gap (>20 min) alone to trigger a split
@@ -257,12 +309,13 @@ describe("segmentSession", () => {
   // Same file, overlapping vocab, no markers, no commit, 5-min gaps (below 20-min threshold).
   it("keeps messages as one segment when all signals are below threshold", () => {
     const sessionId = "sess-weak";
-    const tools = richTools([{ name: "Edit", params: { file_path: "src/utils/helpers.ts" } }]);
+    // Same file on all messages → path signal = 0 → no split from path
+    const fp = filePathsJson(["src/utils/helpers.ts"]);
     const messages = [
-      makeMsg({ session_id: sessionId, timestamp: min(0),  tools, prompt_text: "update helpers utility function" }),
-      makeMsg({ session_id: sessionId, timestamp: min(5),  tools, prompt_text: "modify helpers utility method" }),
-      makeMsg({ session_id: sessionId, timestamp: min(10), tools, prompt_text: "refactor helpers utility class" }),
-      makeMsg({ session_id: sessionId, timestamp: min(15), tools, prompt_text: "improve helpers utility code" }),
+      makeMsg({ session_id: sessionId, timestamp: min(0),  file_paths: fp, prompt_text: "update helpers utility function" }),
+      makeMsg({ session_id: sessionId, timestamp: min(5),  file_paths: fp, prompt_text: "modify helpers utility method" }),
+      makeMsg({ session_id: sessionId, timestamp: min(10), file_paths: fp, prompt_text: "refactor helpers utility class" }),
+      makeMsg({ session_id: sessionId, timestamp: min(15), file_paths: fp, prompt_text: "improve helpers utility code" }),
     ];
     const result = segmentSession(messages);
     expect(result).toHaveLength(1);
@@ -291,13 +344,13 @@ describe("segmentSession", () => {
   // Test 12: Determinism — byte-identical output across two runs.
   it("produces byte-identical output for the same input (determinism)", () => {
     const sessionId = "sess-determinism";
-    const authTools = richTools([{ name: "Edit", params: { file_path: "src/auth/login.ts" } }]);
-    const renderTools = richTools([{ name: "Edit", params: { file_path: "src/render/template.ts" } }]);
+    const authFp   = filePathsJson(["src/auth/login.ts"]);
+    const renderFp = filePathsJson(["src/render/template.ts"]);
     const messages: MessageRow[] = [
-      makeMsg({ session_id: sessionId, timestamp: min(0),  tools: authTools, prompt_text: "auth work here" }),
-      makeMsg({ session_id: sessionId, timestamp: min(1),  tools: authTools, prompt_text: "more auth changes" }),
-      makeMsg({ session_id: sessionId, timestamp: min(31), tools: renderTools, prompt_text: "render refactor now" }),
-      makeMsg({ session_id: sessionId, timestamp: min(32), tools: renderTools, prompt_text: "render template update" }),
+      makeMsg({ session_id: sessionId, timestamp: min(0),  file_paths: authFp,   prompt_text: "auth work here" }),
+      makeMsg({ session_id: sessionId, timestamp: min(1),  file_paths: authFp,   prompt_text: "more auth changes" }),
+      makeMsg({ session_id: sessionId, timestamp: min(31), file_paths: renderFp, prompt_text: "render refactor now" }),
+      makeMsg({ session_id: sessionId, timestamp: min(32), file_paths: renderFp, prompt_text: "render template update" }),
     ];
     const commitTs = [min(15)] as const;
 
@@ -431,12 +484,11 @@ describe("segmentSession", () => {
 
   it("filePaths within a segment are sorted for determinism", () => {
     const sessionId = "sess-sorted-paths";
-    const tools = richTools([
-      { name: "Edit", params: { file_path: "src/z-last.ts" } },
-      { name: "Read", params: { file_path: "src/a-first.ts" } },
-    ]);
+    // file_paths column carries the extracted paths; order within JSON is preserved
+    // but segment.ts sorts the union set for determinism.
+    const fp = filePathsJson(["src/z-last.ts", "src/a-first.ts"]);
     const messages = [
-      makeMsg({ session_id: sessionId, timestamp: min(0), tools, prompt_text: "work" }),
+      makeMsg({ session_id: sessionId, timestamp: min(0), file_paths: fp, prompt_text: "work" }),
     ];
     const result = segmentSession(messages);
     const paths = result[0]!.filePaths;
@@ -448,9 +500,10 @@ describe("segmentSession", () => {
 
   it("Glob tool extracts directory portion of the pattern", () => {
     const sessionId = "sess-glob";
-    const tools = richTools([{ name: "Glob", params: { pattern: "src/utils/*.ts" } }]);
+    // Parser would have extracted dirname("src/utils/*.ts") = "src/utils" into file_paths
+    const fp = filePathsFromRich([{ name: "Glob", params: { pattern: "src/utils/*.ts" } }]);
     const messages = [
-      makeMsg({ session_id: sessionId, timestamp: min(0), tools, prompt_text: "glob work" }),
+      makeMsg({ session_id: sessionId, timestamp: min(0), file_paths: fp, prompt_text: "glob work" }),
     ];
     const result = segmentSession(messages);
     expect(result[0]!.filePaths).toContain("src/utils");
@@ -458,9 +511,10 @@ describe("segmentSession", () => {
 
   it("Bash tool extracts cwd when present", () => {
     const sessionId = "sess-bash-cwd";
-    const tools = richTools([{ name: "Bash", params: { cwd: "/home/user/project", command: "ls" } }]);
+    // Parser would have extracted cwd into file_paths at parse time
+    const fp = filePathsFromRich([{ name: "Bash", params: { cwd: "/home/user/project", command: "ls" } }]);
     const messages = [
-      makeMsg({ session_id: sessionId, timestamp: min(0), tools, prompt_text: "bash work" }),
+      makeMsg({ session_id: sessionId, timestamp: min(0), file_paths: fp, prompt_text: "bash work" }),
     ];
     const result = segmentSession(messages);
     expect(result[0]!.filePaths).toContain("/home/user/project");
@@ -468,9 +522,10 @@ describe("segmentSession", () => {
 
   it("unknown tools contribute no file paths", () => {
     const sessionId = "sess-unknown-tools";
-    const tools = richTools([{ name: "WebSearch", params: { query: "how to sort" } }]);
+    // WebSearch has no file_path/cwd/pattern → file_paths column is empty
+    const fp = filePathsFromRich([{ name: "WebSearch", params: { query: "how to sort" } }]);
     const messages = [
-      makeMsg({ session_id: sessionId, timestamp: min(0), tools, prompt_text: "search work" }),
+      makeMsg({ session_id: sessionId, timestamp: min(0), file_paths: fp, prompt_text: "search work" }),
     ];
     const result = segmentSession(messages);
     expect(result[0]!.filePaths).toEqual([]);
@@ -502,9 +557,10 @@ describe("segmentSession", () => {
 
   it("handles rich tools with MultiEdit shape", () => {
     const sessionId = "sess-multiedit";
-    const tools = richTools([{ name: "MultiEdit", params: { file_path: "src/complex.ts" } }]);
+    // Parser extracts file_path from MultiEdit block.input into file_paths column
+    const fp = filePathsFromRich([{ name: "MultiEdit", params: { file_path: "src/complex.ts" } }]);
     const messages = [
-      makeMsg({ session_id: sessionId, timestamp: min(0), tools, prompt_text: "multi-edit work" }),
+      makeMsg({ session_id: sessionId, timestamp: min(0), file_paths: fp, prompt_text: "multi-edit work" }),
     ];
     const result = segmentSession(messages);
     expect(result[0]!.filePaths).toContain("src/complex.ts");
@@ -536,7 +592,52 @@ describe("segmentSession", () => {
     // Should not throw; bad entries are skipped, valid string entry is counted
     const result = segmentSession(messages);
     expect(result[0]!.toolHistogram["Read"]).toBe(1);
-    // No file paths from any of the malformed entries
+    // No file paths (file_paths defaults to "[]")
+    expect(result[0]!.filePaths).toEqual([]);
+  });
+
+  // ── file_paths column tests (v10 schema) ───────────────────────────────────
+
+  it("reads file paths from file_paths column, not from tools column", () => {
+    // This is the key v2 behaviour: file paths come from file_paths, not tools
+    const sessionId = "sess-fp-col";
+    // tools column has plain names (no params) — would yield no paths if parsed for paths
+    const tools = JSON.stringify(["Edit", "Read"]);
+    // file_paths column has the actual paths extracted at parse time
+    const fp = filePathsJson(["/src/auth/login.ts", "/src/types.ts"]);
+    const messages = [
+      makeMsg({ session_id: sessionId, timestamp: min(0), tools, file_paths: fp, prompt_text: "work" }),
+    ];
+    const result = segmentSession(messages);
+    expect(result[0]!.filePaths).toContain("/src/auth/login.ts");
+    expect(result[0]!.filePaths).toContain("/src/types.ts");
+  });
+
+  it("file-path divergence alone (path signal only) triggers split with PATH_ONLY_WEIGHTS", () => {
+    // The v1 file-path-divergence test now passes cleanly using the file_paths column.
+    // Uses exactly two messages so there is one boundary: Jaccard(auth, render) = 1.0 ≥ threshold.
+    // With PATH_ONLY_WEIGHTS (gap=0, all other signals=0) only path signal drives the split.
+    const sessionId = "sess-fp-diverge";
+    const authFp   = filePathsJson(["src/auth/login.ts"]);
+    const renderFp = filePathsJson(["src/render/template.ts"]);
+    const messages = [
+      makeMsg({ session_id: sessionId, timestamp: min(0), file_paths: authFp,   prompt_text: "auth work" }),
+      makeMsg({ session_id: sessionId, timestamp: min(1), file_paths: renderFp, prompt_text: "render work" }),
+    ];
+    const result = segmentSession(messages, { weights: PATH_ONLY_WEIGHTS });
+    expect(result).toHaveLength(2);
+    expect(result[0]!.filePaths.some((p) => p.includes("auth"))).toBe(true);
+    expect(result[1]!.filePaths.some((p) => p.includes("render"))).toBe(true);
+  });
+
+  it("malformed file_paths JSON defaults to empty paths (no throw)", () => {
+    const sessionId = "sess-bad-fp";
+    const messages = [
+      makeMsg({ session_id: sessionId, timestamp: min(0), file_paths: "not-json", prompt_text: "first" }),
+      makeMsg({ session_id: sessionId, timestamp: min(1), file_paths: "}",        prompt_text: "second" }),
+    ];
+    expect(() => segmentSession(messages)).not.toThrow();
+    const result = segmentSession(messages);
     expect(result[0]!.filePaths).toEqual([]);
   });
 });

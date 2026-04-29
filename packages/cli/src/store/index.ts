@@ -20,7 +20,7 @@ import type {
 } from "@claude-stats/core/types";
 import { estimateCost } from "@claude-stats/core/pricing";
 
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 export class Store {
   private db: DatabaseSync;
@@ -62,6 +62,7 @@ export class Store {
     if (current < 7) this.migrateToV7();
     if (current < 8) this.migrateToV8();
     if (current < 9) this.migrateToV9();
+    if (current < 10) this.migrateToV10();
 
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
@@ -249,6 +250,18 @@ export class Store {
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions (parent_session_id)`);
   }
 
+  private migrateToV10(): void {
+    const addColumn = (table: string, column: string, def: string): void => {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === column)) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+      }
+    };
+    // Dedicated column for file paths extracted from tool_use block.input at parse time.
+    // Stored as a JSON array of strings; defaults to '[]' so old rows are still valid.
+    addColumn("messages", "file_paths", "TEXT NOT NULL DEFAULT '[]'");
+  }
+
   // ─── Transaction wrapper ────────────────────────────────────────────────────
 
   transaction<T>(fn: () => T): T {
@@ -434,10 +447,10 @@ export class Store {
       INSERT INTO messages (
         uuid, session_id, timestamp, claude_version, model, stop_reason,
         input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
-        tools, thinking_blocks,
+        tools, file_paths, thinking_blocks,
         service_tier, inference_geo, ephemeral_5m_cache_tokens, ephemeral_1h_cache_tokens,
         prompt_text
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (uuid) DO UPDATE SET
         model                       = excluded.model,
         input_tokens                = excluded.input_tokens,
@@ -445,6 +458,7 @@ export class Store {
         cache_creation_tokens       = excluded.cache_creation_tokens,
         cache_read_tokens           = excluded.cache_read_tokens,
         tools                       = excluded.tools,
+        file_paths                  = COALESCE(excluded.file_paths, messages.file_paths),
         thinking_blocks             = excluded.thinking_blocks,
         service_tier                = excluded.service_tier,
         inference_geo               = excluded.inference_geo,
@@ -457,7 +471,8 @@ export class Store {
         r.uuid, r.sessionId, r.timestamp, r.claudeVersion,
         r.model, r.stopReason, r.inputTokens, r.outputTokens,
         r.cacheCreationTokens, r.cacheReadTokens,
-        JSON.stringify(r.tools), r.thinkingBlocks,
+        JSON.stringify(r.tools), JSON.stringify(r.filePaths ?? []),
+        r.thinkingBlocks,
         r.serviceTier, r.inferenceGeo, r.ephemeral5mCacheTokens, r.ephemeral1hCacheTokens,
         r.promptText ?? null
       );
@@ -1236,6 +1251,7 @@ export interface MessageRow {
   cache_creation_tokens: number;
   cache_read_tokens: number;
   tools: string; // JSON array
+  file_paths: string; // JSON array of file paths extracted from tool_use block.input
   thinking_blocks: number;
   service_tier: string | null;
   inference_geo: string | null;
