@@ -577,6 +577,31 @@ export async function buildCli(): Promise<Command> {
       await startMcpServer();
     });
 
+  program
+    .command("recap")
+    .description("What did I get done today? — clustered day summary")
+    .option("--date <date>", "YYYY-MM-DD (defaults to today)")
+    .option("--tz <tz>", "IANA timezone (defaults to system TZ)")
+    .option("--all", "Include low-confidence items (currently shown by default in v1)")
+    .option("--json", "Machine-readable JSON output")
+    .action(async (opts: { date?: string; tz?: string; all?: boolean; json?: boolean }) => {
+      const { Store } = await import("../store/index.js");
+      const { collect } = await import("../aggregator/index.js");
+      const { buildDailyDigest } = await import("../recap/index.js");
+      const { printDailyRecap } = await import("../reporter/index.js");
+      const store = new Store();
+      await collect(store);
+      const digest = buildDailyDigest(store, {
+        date: opts.date,
+        tz: opts.tz,
+      });
+      if (opts.json) {
+        console.log(JSON.stringify(digest, null, 2));
+        return;
+      }
+      printDailyRecap(digest);
+    });
+
   return program;
 }
 

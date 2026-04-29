@@ -30,6 +30,7 @@ Read in order for full context, or jump to 07 and 02 to start implementing.
 
 | Directory | Purpose |
 |-----------|---------|
+| [daily-recap/](daily-recap/) | "What did I get done today?" — hybrid AI + deterministic pipeline for token-efficient day summaries |
 | [energy-dashboard/](energy-dashboard/) | Energy consumption and carbon footprint estimation dashboard |
 
 ## Architecture Summary
