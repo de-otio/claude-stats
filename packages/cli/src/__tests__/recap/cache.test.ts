@@ -7,7 +7,7 @@ import {
   createFileCache,
   type SnapshotHashInputs,
 } from '../../recap/cache.js';
-import type { DailyDigest } from '../../recap/types.js';
+import type { DailyDigest, CachedEntry } from '../../recap/types.js';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -254,5 +254,240 @@ describe('createFileCache', () => {
     expect(remaining).not.toContain(`${hashes[0]}.json`);
     expect(remaining).toContain(`${hashes[1]}.json`);
     expect(remaining).toContain(`${hashes[2]}.json`);
+  });
+
+  // v3.07: Empty digest serialises and deserialises losslessly
+  it('empty digest serialises and deserialises losslessly (byte-identical round-trip)', () => {
+    tmpDir = createTmpDir();
+    const cache = createFileCache({ rootDir: tmpDir });
+
+    // An empty digest: no items, zero totals — as produced by the negative-caching
+    // short-circuit path in buildDailyDigest for days with no sessions.
+    const emptyDigest: DailyDigest = {
+      date: '2026-04-26',
+      tz: 'UTC',
+      totals: { sessions: 0, segments: 0, activeMs: 0, estimatedCost: 0, projects: 0 },
+      items: [],
+      cached: false,
+      snapshotHash: 'abc123',
+    };
+
+    const hash = computeSnapshotHash({
+      date: '2026-04-26',
+      tz: 'UTC',
+      sortedProjectPaths: [],
+      maxMessageUuid: null,
+      perProjectLastCommit: {},
+    });
+
+    cache.write(hash, emptyDigest);
+    const result = cache.read(hash);
+
+    // Byte-identical round-trip: every field must match exactly.
+    expect(result).not.toBeNull();
+    expect(result!.date).toBe(emptyDigest.date);
+    expect(result!.tz).toBe(emptyDigest.tz);
+    expect(result!.totals).toEqual(emptyDigest.totals);
+    expect(result!.items).toHaveLength(0);
+    expect(result!.cached).toBe(false);
+    expect(result!.snapshotHash).toBe(emptyDigest.snapshotHash);
+    // Serialise both to JSON to confirm byte-identity
+    expect(JSON.stringify(result)).toBe(JSON.stringify(emptyDigest));
+  });
+
+  // v3.07: LRU prune treats empty digests like any other entry
+  it('LRU prune counts empty digests toward maxEntries (no special treatment)', () => {
+    tmpDir = createTmpDir();
+    const cache = createFileCache({ rootDir: tmpDir, maxEntries: 2 });
+
+    const hashes: string[] = [];
+
+    // Write two empty-digest entries and one regular entry (3 total, maxEntries=2)
+    for (let i = 0; i < 3; i++) {
+      const isEmptyDigest = i < 2;
+      const digest: DailyDigest = isEmptyDigest
+        ? {
+            date: `2026-04-${String(i + 1).padStart(2, '0')}`,
+            tz: 'UTC',
+            totals: { sessions: 0, segments: 0, activeMs: 0, estimatedCost: 0, projects: 0 },
+            items: [],
+            cached: false,
+            snapshotHash: `empty-${i}`,
+          }
+        : baseDigest();
+
+      const inputs: SnapshotHashInputs = {
+        ...baseInputs(),
+        date: `2026-04-${String(i + 1).padStart(2, '0')}`,
+      };
+      const hash = computeSnapshotHash(inputs);
+      hashes.push(hash);
+      cache.write(hash, { ...digest, snapshotHash: hash });
+
+      // Assign distinct mtimes so the sort is stable: i=0 oldest.
+      const filePath = path.join(tmpDir, `${hash}.json`);
+      const baseTime = new Date('2026-04-01T00:00:00Z');
+      const t = new Date(baseTime.getTime() + i);
+      fs.utimesSync(filePath, t, t);
+    }
+
+    const remaining = fs.readdirSync(tmpDir).filter(f => f.endsWith('.json'));
+    // Prune must have reduced count to maxEntries regardless of whether entries
+    // are empty digests or regular digests.
+    expect(remaining.length).toBe(2);
+    // Oldest (i=0) must be gone — it was an empty digest, but that doesn't exempt it.
+    expect(remaining).not.toContain(`${hashes[0]}.json`);
+  });
+});
+
+// ── v3.06: readWithInputs and readMostRecentForDate ───────────────────────────
+
+describe('createFileCache — v3.06 readWithInputs', () => {
+  it('write with inputs, readWithInputs returns full CachedEntry', () => {
+    tmpDir = createTmpDir();
+    const cache = createFileCache({ rootDir: tmpDir });
+    const digest = baseDigest();
+    const inputs = baseInputs();
+    const hash = computeSnapshotHash(inputs);
+
+    cache.write(hash, digest, inputs);
+    const entry: CachedEntry | null = cache.readWithInputs(hash);
+
+    expect(entry).not.toBeNull();
+    expect(entry!.digest).toEqual(digest);
+    expect(entry!.inputs).toEqual(inputs);
+  });
+
+  it('write without inputs (legacy), readWithInputs returns null (no inputs persisted)', () => {
+    tmpDir = createTmpDir();
+    const cache = createFileCache({ rootDir: tmpDir });
+    const digest = baseDigest();
+    const hash = computeSnapshotHash(baseInputs());
+
+    // Legacy write: no inputs argument
+    cache.write(hash, digest);
+    const entry = cache.readWithInputs(hash);
+
+    // No inputs were stored → null
+    expect(entry).toBeNull();
+    // But read() (legacy path) still works
+    expect(cache.read(hash)).toEqual(digest);
+  });
+
+  it('readWithInputs returns null for a corrupt cache file', () => {
+    tmpDir = createTmpDir();
+    const cache = createFileCache({ rootDir: tmpDir });
+    const hash = 'bbbb' + '0'.repeat(60);
+
+    fs.writeFileSync(path.join(tmpDir, `${hash}.json`), 'not json +++');
+    expect(cache.readWithInputs(hash)).toBeNull();
+  });
+
+  it('inputs are preserved across re-serialisation (round-trip)', () => {
+    tmpDir = createTmpDir();
+    const cache = createFileCache({ rootDir: tmpDir });
+    const inputs: SnapshotHashInputs = {
+      ...baseInputs(),
+      perSessionLastMessageUuid: {
+        'sess-aaa': 'uuid-1',
+        'sess-bbb': null,
+      },
+    };
+    const digest = baseDigest();
+    const hash = computeSnapshotHash(inputs);
+
+    cache.write(hash, digest, inputs);
+    const entry = cache.readWithInputs(hash);
+
+    expect(entry).not.toBeNull();
+    expect(entry!.inputs.perSessionLastMessageUuid).toEqual({
+      'sess-aaa': 'uuid-1',
+      'sess-bbb': null,
+    });
+  });
+});
+
+describe('createFileCache — v3.06 readMostRecentForDate', () => {
+  it('finds entry by date and tz, returning the one with the latest mtime', () => {
+    tmpDir = createTmpDir();
+    const cache = createFileCache({ rootDir: tmpDir });
+    const inputs = baseInputs(); // date: 2026-04-26, tz: Europe/Berlin
+
+    const hash1 = computeSnapshotHash({ ...inputs, maxMessageUuid: 'uuid-aaa' });
+    const hash2 = computeSnapshotHash({ ...inputs, maxMessageUuid: 'uuid-bbb' });
+
+    const digest1: DailyDigest = { ...baseDigest(), snapshotHash: hash1 };
+    const digest2: DailyDigest = { ...baseDigest(), snapshotHash: hash2 };
+
+    cache.write(hash1, digest1, { ...inputs, maxMessageUuid: 'uuid-aaa' });
+    cache.write(hash2, digest2, { ...inputs, maxMessageUuid: 'uuid-bbb' });
+
+    // Assign distinct mtimes: hash1 is older, hash2 is newer
+    const baseTime = new Date('2026-04-26T00:00:00Z');
+    fs.utimesSync(path.join(tmpDir, `${hash1}.json`), new Date(baseTime.getTime() + 1), new Date(baseTime.getTime() + 1));
+    fs.utimesSync(path.join(tmpDir, `${hash2}.json`), new Date(baseTime.getTime() + 2), new Date(baseTime.getTime() + 2));
+
+    const result = cache.readMostRecentForDate('2026-04-26', 'Europe/Berlin');
+    expect(result).not.toBeNull();
+    // Should return hash2 (newer mtime)
+    expect(result!.digest.snapshotHash).toBe(hash2);
+    expect(result!.inputs.maxMessageUuid).toBe('uuid-bbb');
+  });
+
+  it('returns null when no entry matches date+tz', () => {
+    tmpDir = createTmpDir();
+    const cache = createFileCache({ rootDir: tmpDir });
+    const inputs = baseInputs(); // date: 2026-04-26, tz: Europe/Berlin
+    const hash = computeSnapshotHash(inputs);
+    cache.write(hash, baseDigest(), inputs);
+
+    // Query a different date
+    expect(cache.readMostRecentForDate('2026-04-27', 'Europe/Berlin')).toBeNull();
+    // Query a different tz
+    expect(cache.readMostRecentForDate('2026-04-26', 'UTC')).toBeNull();
+  });
+
+  it('returns null when the matching entry has no inputs (legacy entry)', () => {
+    tmpDir = createTmpDir();
+    const cache = createFileCache({ rootDir: tmpDir });
+    const hash = computeSnapshotHash(baseInputs());
+    // Write without inputs (legacy)
+    cache.write(hash, baseDigest());
+
+    const result = cache.readMostRecentForDate('2026-04-26', 'Europe/Berlin');
+    // Entry matches date+tz but has no inputs — cannot be used for patching
+    expect(result).toBeNull();
+  });
+
+  it('returns null when cache directory does not exist', () => {
+    tmpDir = createTmpDir();
+    // Use a non-existent subdirectory
+    const nonExistentDir = path.join(tmpDir, 'does-not-exist');
+    const cache = createFileCache({ rootDir: nonExistentDir });
+
+    const result = cache.readMostRecentForDate('2026-04-26', 'Europe/Berlin');
+    expect(result).toBeNull();
+  });
+
+  it('skips corrupt cache files when scanning for date match', () => {
+    tmpDir = createTmpDir();
+    const cache = createFileCache({ rootDir: tmpDir });
+    const inputs = baseInputs();
+    const goodHash = computeSnapshotHash(inputs);
+    const badHash = 'cccc' + '0'.repeat(60);
+
+    // Write one good entry and one corrupt file
+    cache.write(goodHash, baseDigest(), inputs);
+    fs.writeFileSync(path.join(tmpDir, `${badHash}.json`), 'not json +++', { mode: 0o600 });
+
+    // Set mtime of corrupt file to be newer than the good file
+    const baseTime = new Date('2026-04-26T00:00:00Z');
+    fs.utimesSync(path.join(tmpDir, `${goodHash}.json`), new Date(baseTime.getTime() + 1), new Date(baseTime.getTime() + 1));
+    fs.utimesSync(path.join(tmpDir, `${badHash}.json`), new Date(baseTime.getTime() + 2), new Date(baseTime.getTime() + 2));
+
+    // Should find the good entry, not the corrupt one
+    const result = cache.readMostRecentForDate('2026-04-26', 'Europe/Berlin');
+    expect(result).not.toBeNull();
+    expect(result!.digest.snapshotHash).toBe('placeholder'); // from baseDigest()
   });
 });

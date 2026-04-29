@@ -624,6 +624,316 @@ export async function buildCli(): Promise<Command> {
       printDailyRecap(digest);
     });
 
+  // ── recap precompute ──────────────────────────────────────────────────────
+  program
+    .command("recap precompute")
+    .description(
+      "Pre-build the daily-recap cache for prior days (manual install — does not modify crontab)",
+    )
+    .option("--lookback-days <n>", "Days to pre-build", "7")
+    .option("--date <YYYY-MM-DD>", "Build a single date only")
+    .option(
+      "--install-cron",
+      "Print a crontab/launchd snippet and exit (does not modify crontab)",
+    )
+    .action(
+      async (opts: {
+        lookbackDays?: string;
+        date?: string;
+        installCron?: boolean;
+      }) => {
+        if (opts.installCron) {
+          const binPath = process.argv[1] ?? "claude-stats";
+          console.log(
+            "# claude-stats: pre-compute daily recap at 00:05 local time",
+          );
+          console.log(`5 0 * * * ${binPath} recap precompute --lookback-days 1`);
+          if (process.platform === "darwin") {
+            console.log(
+              "\n# Alternative: launchd plist (macOS) — save as ~/Library/LaunchAgents/com.claude-stats.recap.plist",
+            );
+            console.log("# and run: launchctl load ~/Library/LaunchAgents/com.claude-stats.recap.plist");
+          } else if (process.platform === "win32") {
+            console.log(
+              "\n# Windows Task Scheduler: schtasks /create /tn claude-stats-recap /tr \"" +
+                binPath +
+                " recap precompute --lookback-days 1\" /sc DAILY /st 00:05",
+            );
+          }
+          console.log(
+            "\n# Note: copy the line above and add it manually with `crontab -e`.",
+          );
+          return;
+        }
+
+        const { Store: StorePC } = await import("../store/index.js");
+        const { collect: collectPC } = await import("../aggregator/index.js");
+        const { precomputeDigests } = await import("../recap/precompute.js");
+        const store = new StorePC();
+        await collectPC(store);
+        try {
+          const result = await precomputeDigests(
+            store,
+            opts.date
+              ? { date: opts.date }
+              : { lookbackDays: parseInt(opts.lookbackDays ?? "7", 10) },
+          );
+          console.log(
+            `pre-computed ${result.precomputed}, skipped ${result.skipped}, failures ${result.failures}`,
+          );
+        } finally {
+          store.close();
+        }
+      },
+    );
+
+  // ── recap correct * ───────────────────────────────────────────────────────
+
+  /**
+   * Helper: look up a DailyDigestItem by an id prefix (16-char hex) or a
+   * substring of its firstPrompt. Returns null if not found, throws if
+   * ambiguous.
+   */
+  async function resolveItem(
+    digest: import("../recap/types.js").DailyDigest,
+    selector: string,
+  ): Promise<import("../recap/types.js").DailyDigestItem | null> {
+    const { items } = digest;
+
+    // First: try id prefix match
+    const idMatches = items.filter((i) => i.id.startsWith(selector));
+    if (idMatches.length === 1) return idMatches[0]!;
+    if (idMatches.length > 1) {
+      process.stderr.write(
+        `Ambiguous id prefix "${selector}" — matches: ${idMatches.map((i) => i.id).join(", ")}\n`,
+      );
+      process.exit(1);
+    }
+
+    // Second: substring match on firstPrompt
+    const lowerSel = selector.toLowerCase();
+    const promptMatches = items.filter((i) => {
+      if (i.firstPrompt === null) return false;
+      // Strip untrusted markers for matching
+      const plain = i.firstPrompt
+        .replace(/<untrusted-stored-content>/g, "")
+        .replace(/<\/untrusted-stored-content>/g, "")
+        .trim()
+        .toLowerCase();
+      return plain.includes(lowerSel);
+    });
+
+    if (promptMatches.length === 1) return promptMatches[0]!;
+    if (promptMatches.length > 1) {
+      process.stderr.write(
+        `Ambiguous selector "${selector}" — candidates:\n` +
+          promptMatches
+            .map((i) => `  ${i.id}: ${(i.firstPrompt ?? "").slice(0, 60)}`)
+            .join("\n") +
+          "\n",
+      );
+      process.exit(1);
+    }
+
+    return null;
+  }
+
+  program
+    .command("recap correct list")
+    .description("List all user corrections stored in the corrections database")
+    .action(async () => {
+      const { openCorrections } = await import("../recap/corrections.js");
+      const client = openCorrections();
+      try {
+        const entries = client.list();
+        if (entries.length === 0) {
+          console.log("No corrections stored.");
+          return;
+        }
+        for (const entry of entries) {
+          const { id, sig, action } = entry;
+          const actionStr =
+            action.kind === "rename"
+              ? `rename → \`${action.label}\``
+              : action.kind === "merge"
+                ? `merge with ${action.otherSignature.projectPath}`
+                : action.kind === "split"
+                  ? `split segment ${action.segmentId}`
+                  : "hide";
+          console.log(
+            `[${id}] ${sig.projectPath} | \`${sig.promptPrefix}\` | ${actionStr}`,
+          );
+        }
+      } finally {
+        client.close();
+      }
+    });
+
+  program
+    .command("recap correct remove <correctionId>")
+    .description("Remove a correction by its numeric id (from `recap correct list`)")
+    .action(async (correctionIdStr: string) => {
+      const { openCorrections } = await import("../recap/corrections.js");
+      const correctionId = parseInt(correctionIdStr, 10);
+      if (isNaN(correctionId)) {
+        process.stderr.write(`Invalid correction id: "${correctionIdStr}"\n`);
+        process.exit(1);
+      }
+      const client = openCorrections();
+      try {
+        const entries = client.list();
+        const entry = entries.find((e) => e.id === correctionId);
+        if (!entry) {
+          process.stderr.write(`Correction ${correctionId} not found.\n`);
+          process.exit(1);
+        }
+        client.remove(entry.sig, entry.action);
+        console.log(`Removed correction ${correctionId}.`);
+      } finally {
+        client.close();
+      }
+    });
+
+  program
+    .command("recap correct hide <item>")
+    .description("Hide a digest item from future recaps (by id prefix or prompt substring)")
+    .action(async (itemSelector: string) => {
+      const { Store: StoreCH } = await import("../store/index.js");
+      const { collect: collectCH } = await import("../aggregator/index.js");
+      const { buildDailyDigest } = await import("../recap/index.js");
+      const { openCorrections, computeSignature } = await import(
+        "../recap/corrections.js"
+      );
+      const store = new StoreCH();
+      await collectCH(store);
+      try {
+        const digest = await buildDailyDigest(store, {});
+        const item = await resolveItem(digest, itemSelector);
+        if (!item) {
+          process.stderr.write(`No item matching "${itemSelector}" in today's digest.\n`);
+          process.exit(1);
+        }
+        const sig = computeSignature(item);
+        const client = openCorrections();
+        try {
+          client.add(sig, { kind: "hide" });
+          console.log(`Correction added: hide "${item.id}".`);
+        } finally {
+          client.close();
+        }
+      } finally {
+        store.close();
+      }
+    });
+
+  program
+    .command("recap correct rename <item> <label>")
+    .description("Rename a digest item with a custom label")
+    .action(async (itemSelector: string, label: string) => {
+      const { Store: StoreCR } = await import("../store/index.js");
+      const { collect: collectCR } = await import("../aggregator/index.js");
+      const { buildDailyDigest } = await import("../recap/index.js");
+      const { openCorrections, computeSignature } = await import(
+        "../recap/corrections.js"
+      );
+      const store = new StoreCR();
+      await collectCR(store);
+      try {
+        const digest = await buildDailyDigest(store, {});
+        const item = await resolveItem(digest, itemSelector);
+        if (!item) {
+          process.stderr.write(`No item matching "${itemSelector}" in today's digest.\n`);
+          process.exit(1);
+        }
+        const sig = computeSignature(item);
+        const client = openCorrections();
+        try {
+          client.add(sig, { kind: "rename", label });
+          console.log(`Correction added: rename "${item.id}" to \`${label}\`.`);
+        } catch (err) {
+          process.stderr.write(`${(err as Error).message}\n`);
+          process.exit(1);
+        } finally {
+          client.close();
+        }
+      } finally {
+        store.close();
+      }
+    });
+
+  program
+    .command("recap correct merge <itemA> <itemB>")
+    .description("Merge two digest items into one for all future recaps")
+    .action(async (itemASelector: string, itemBSelector: string) => {
+      const { Store: StoreCM } = await import("../store/index.js");
+      const { collect: collectCM } = await import("../aggregator/index.js");
+      const { buildDailyDigest } = await import("../recap/index.js");
+      const { openCorrections, computeSignature } = await import(
+        "../recap/corrections.js"
+      );
+      const store = new StoreCM();
+      await collectCM(store);
+      try {
+        const digest = await buildDailyDigest(store, {});
+        const itemA = await resolveItem(digest, itemASelector);
+        const itemB = await resolveItem(digest, itemBSelector);
+        if (!itemA) {
+          process.stderr.write(`No item matching "${itemASelector}" in today's digest.\n`);
+          process.exit(1);
+        }
+        if (!itemB) {
+          process.stderr.write(`No item matching "${itemBSelector}" in today's digest.\n`);
+          process.exit(1);
+        }
+        const sigA = computeSignature(itemA);
+        const sigB = computeSignature(itemB);
+        const client = openCorrections();
+        try {
+          client.add(sigA, { kind: "merge", otherSignature: sigB });
+          console.log(`Correction added: merge "${itemA.id}" with "${itemB.id}".`);
+        } finally {
+          client.close();
+        }
+      } finally {
+        store.close();
+      }
+    });
+
+  program
+    .command("recap correct split <item> <segmentId>")
+    .description("Split a named segment out of a digest item into its own item")
+    .action(async (itemSelector: string, segmentIdStr: string) => {
+      const { Store: StoreCS } = await import("../store/index.js");
+      const { collect: collectCS } = await import("../aggregator/index.js");
+      const { buildDailyDigest } = await import("../recap/index.js");
+      const { openCorrections, computeSignature } = await import(
+        "../recap/corrections.js"
+      );
+      const store = new StoreCS();
+      await collectCS(store);
+      try {
+        const digest = await buildDailyDigest(store, {});
+        const item = await resolveItem(digest, itemSelector);
+        if (!item) {
+          process.stderr.write(`No item matching "${itemSelector}" in today's digest.\n`);
+          process.exit(1);
+        }
+        const sig = computeSignature(item);
+        const client = openCorrections();
+        try {
+          client.add(sig, {
+            kind: "split",
+            segmentId: segmentIdStr as import("../recap/types.js").SegmentId,
+          });
+          console.log(`Correction added: split segment "${segmentIdStr}" from "${item.id}".`);
+        } finally {
+          client.close();
+        }
+      } finally {
+        store.close();
+      }
+    });
+
   return program;
 }
 
