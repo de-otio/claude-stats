@@ -1,0 +1,79 @@
+{
+  "metrics": {
+    "sessions": "Сессии",
+    "prompts": "Запросы",
+    "inputTokens": "Входные токены",
+    "outputTokens": "Выходные токены",
+    "input": "Вход",
+    "output": "Выход",
+    "cache": "Кэш",
+    "cacheEfficiency": "Эффективность кэша",
+    "estCost": "Оценка стоимости",
+    "planValue": "Ценность плана",
+    "planROI": "ROI плана",
+    "activeHours": "Активные часы",
+    "costPerPrompt": "Стоимость / запрос",
+    "tokPerMin": "Ток / мин",
+    "throttleEvents": "События ограничений",
+    "velocity": "Скорость",
+    "cost": "Стоимость",
+    "duration": "Длительность",
+    "thinking": "Размышления"
+  },
+  "periods": {
+    "day": "День",
+    "week": "Неделя",
+    "month": "Месяц",
+    "all": "Всё",
+    "allTime": "за всё время"
+  },
+  "periodLabels": {
+    "daily": "Ежедневно",
+    "weekly": "Еженедельно",
+    "monthly": "Ежемесячно",
+    "allTime": "За всё время"
+  },
+  "models": {
+    "opus4": "Opus 4",
+    "sonnet4": "Sonnet 4",
+    "haiku4": "Haiku 4"
+  },
+  "plans": {
+    "pro": "Pro",
+    "max5x": "Max 5x",
+    "max20x": "Max 20x",
+    "teamStandard": "Team Standard",
+    "teamPremium": "Team Premium"
+  },
+  "verdicts": {
+    "goodValue": "Выгодно",
+    "underusing": "Недоиспользование",
+    "noPlanDetected": "План не обнаружен"
+  },
+  "tableHeaders": {
+    "session": "Сессия",
+    "started": "Начало",
+    "model": "Модель",
+    "time": "Время",
+    "stop": "Остановка",
+    "tools": "Инструменты",
+    "total": "Итого",
+    "totals": "Итоги"
+  },
+  "units": {
+    "tokens": "токенов",
+    "session_one": "{{count}} сессия",
+    "session_other": "{{count}} сессий",
+    "tokPerMin": "ток/мин",
+    "promptsPerHr": "запросов/час",
+    "outputPerPrompt": "вывод/запрос"
+  },
+  "actions": {
+    "connect": "Подключить",
+    "disconnect": "Отключить",
+    "cancel": "Отмена",
+    "refresh": "Обновить",
+    "save": "Сохранить",
+    "send": "Отправить"
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "metrics": {
+    "sessions": "会话",
+    "prompts": "提示词",
+    "inputTokens": "输入 Token",
+    "outputTokens": "输出 Token",
+    "input": "输入",
+    "output": "输出",
+    "cache": "缓存",
+    "cacheEfficiency": "缓存效率",
+    "estCost": "预估费用",
+    "planValue": "套餐价值",
+    "planROI": "套餐 ROI",
+    "activeHours": "活跃时长",
+    "costPerPrompt": "费用 / 提示词",
+    "tokPerMin": "Token / 分钟",
+    "throttleEvents": "限流事件",
+    "velocity": "速率",
+    "cost": "费用",
+    "duration": "时长",
+    "thinking": "思考"
+  },
+  "periods": {
+    "day": "日",
+    "week": "周",
+    "month": "月",
+    "all": "全部",
+    "allTime": "全部时间"
+  },
+  "periodLabels": {
+    "daily": "每日",
+    "weekly": "每周",
+    "monthly": "每月",
+    "allTime": "全部时间"
+  },
+  "models": {
+    "opus4": "Opus 4",
+    "sonnet4": "Sonnet 4",
+    "haiku4": "Haiku 4"
+  },
+  "plans": {
+    "pro": "Pro",
+    "max5x": "Max 5x",
+    "max20x": "Max 20x",
+    "teamStandard": "Team Standard",
+    "teamPremium": "Team Premium"
+  },
+  "verdicts": {
+    "goodValue": "物超所值",
+    "underusing": "使用不足",
+    "noPlanDetected": "未检测到套餐"
+  },
+  "tableHeaders": {
+    "session": "会话",
+    "started": "开始时间",
+    "model": "模型",
+    "time": "时间",
+    "stop": "停止",
+    "tools": "工具",
+    "total": "合计",
+    "totals": "合计"
+  },
+  "units": {
+    "tokens": "Token",
+    "session_one": "{{count}} 个会话",
+    "session_other": "{{count}} 个会话",
+    "tokPerMin": "Token/分钟",
+    "promptsPerHr": "提示词/小时",
+    "outputPerPrompt": "输出/提示词"
+  },
+  "actions": {
+    "connect": "连接",
+    "disconnect": "断开连接",
+    "cancel": "取消",
+    "refresh": "刷新",
+    "save": "保存",
+    "send": "发送"
+  }
+}

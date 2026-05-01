@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "model": "claude-haiku-4-5",
+  "sampledAt": null,
+  "sampleSize": 0,
+  "trainSize": 0,
+  "testSize": 0,
+  "testF1": null,
+  "weights": { "gap": 0.4, "path": 0.25, "vocab": 0.15, "marker": 0.15, "commit": 0.30, "threshold": 0.5 }
+}

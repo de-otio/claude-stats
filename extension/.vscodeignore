@@ -1,0 +1,35 @@
+# Source files (bundled into dist/)
+../src/**
+../scripts/**
+../doc/**
+../coverage/**
+../node_modules/**
+
+# Build artifacts we don't need
+dist/**/*.map
+
+# Dev / config files
+../.gitignore
+../tsconfig.json
+../vitest.config.ts
+../.claude/**
+.claude-flow/**
+../.claude-flow/**
+
+# Drop onnxruntime-web entirely — @huggingface/transformers v3 only loads it
+# when the WASM/web backend is selected, which never happens in our Node-host
+# bundle. Saves ~91 MB.
+node_modules/onnxruntime-web/**
+
+# Trim noise from dependency trees (~tens of MB across all deps)
+node_modules/**/*.md
+node_modules/**/*.markdown
+node_modules/**/test/**
+node_modules/**/tests/**
+node_modules/**/docs/**
+node_modules/**/example/**
+node_modules/**/examples/**
+node_modules/**/.github/**
+node_modules/**/.bin/**
+node_modules/**/*.ts
+!node_modules/**/*.d.ts

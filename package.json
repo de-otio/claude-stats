@@ -1,0 +1,39 @@
+{
+  "name": "claude-stats",
+  "version": "0.1.0",
+  "description": "Collect and analyse Claude Code usage statistics from local session data",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/de-otio/claude-stats"
+  },
+  "license": "MIT",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "build:ext": "node scripts/build-extension.mjs",
+    "build:all": "npm run build && node scripts/build-extension.mjs",
+    "package:ext": "node scripts/package-vsix.mjs",
+    "dev": "tsx packages/cli/src/index.ts",
+    "start": "node --experimental-sqlite packages/cli/dist/index.js",
+    "typecheck": "tsc --build",
+    "locales:check": "node scripts/check-locale-parity.mjs",
+    "locales:fill": "node scripts/fill-locales.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "chart.js": "^4.5.1",
+    "esbuild": "^0.27.3",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "vitest": "^4.0.18"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "name": "claude-stats-vscode",
+  "displayName": "Claude Stats by de-otio",
+  "description": "View Claude Code usage statistics in VS Code",
+  "version": "0.4.2",
+  "publisher": "de-otio",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/de-otio/claude-stats"
+  },
+  "bugs": {
+    "url": "https://github.com/de-otio/claude-stats/issues"
+  },
+  "homepage": "https://github.com/de-otio/claude-stats#readme",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.0.0",
+    "onnxruntime-node": "1.21.0"
+  },
+  "categories": ["Visualization", "Other"],
+  "keywords": ["claude", "claude-code", "statistics", "usage", "tokens", "mcp", "dashboard"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claude-stats",
+          "title": "Claude Stats",
+          "icon": "media/icon-activity-bar.svg"
+        }
+      ]
+    },
+    "views": {
+      "claude-stats": [
+        {
+          "id": "claude-stats.dashboardView",
+          "name": "Dashboard",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "claude-stats.openDashboard",
+        "title": "Open Dashboard",
+        "category": "Claude Stats"
+      }
+    ],
+    "configuration": {
+      "title": "Claude Stats",
+      "properties": {
+        "claude-stats.port": {
+          "type": "number",
+          "default": 9120,
+          "description": "Port for the local dashboard server (used by the serve command)."
+        },
+        "claude-stats.autoRefreshSeconds": {
+          "type": "number",
+          "default": 30,
+          "minimum": 0,
+          "description": "Auto-refresh interval in seconds for the dashboard panel. Set to 0 to disable."
+        },
+        "claude-stats.recap.embeddings": {
+          "type": "string",
+          "enum": ["auto", "off"],
+          "default": "auto",
+          "markdownDescription": "Semantic clustering for the daily-recap digest. `auto` uses local embeddings when a model is available and falls back to lexical clustering otherwise. `off` always uses lexical clustering. All inference runs on your machine; no data leaves your computer. Restart Claude Code after changing this setting for it to take effect."
+        }
+      }
+    }
+  }
+}
