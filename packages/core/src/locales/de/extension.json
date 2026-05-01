@@ -1,0 +1,331 @@
+{
+  "statusBar": {
+    "idle": "$(graph) Claude Stats",
+    "withStats": "$(graph) {{tokens}} Token · ~${{cost}}",
+    "tooltip": "Claude Stats Dashboard öffnen",
+    "tooltipEmpty": "Claude Stats: Noch keine Claude-Code-Sitzungen erkannt – klicken für Einrichtungsanweisungen"
+  },
+  "sidebar": {
+    "openDashboard": "Dashboard öffnen",
+    "tabTitle": "Tab {{title}}"
+  },
+  "tabHelp": {
+    "overview": {
+      "title": "Übersicht",
+      "sections": [
+        {
+          "heading": "Was Sie hier sehen",
+          "body": "Übergeordnete Nutzungsstatistiken für den gewählten Zeitraum: Sessions, Prompts, Token, Cache-Effizienz und geschätzte API-Kosten."
+        },
+        {
+          "heading": "Tägliche / Stündliche Token-Nutzung",
+          "body": "Gestapeltes Balkendiagramm mit Ausgabe-Token, nicht gecachtem Input, Cache-Lesevorgängen und Cache-Erstellung über die Zeit. Bei Zeitraum «Tag» wird eine stündliche Aufschlüsselung angezeigt."
+        },
+        {
+          "heading": "Token-Verteilung",
+          "body": "Ringdiagramm der gesamten Token-Verteilung über die vier Kategorien: Ausgabe, Eingabe, Cache-Lesen und Cache-Erstellung."
+        },
+        {
+          "heading": "Cache-Nutzung",
+          "body": "Zeigt, wie effektiv das Prompt-Caching funktioniert. Ein höherer Cache-Lese-Anteil bedeutet weniger redundante Token-Verarbeitung und geringere Kosten."
+        },
+        {
+          "heading": "Kumulativer API-Wert vs. Abogebühr",
+          "body": "Verfolgt, wie viel API-Wert Sie im Laufe der Zeit verbraucht haben, im Vergleich zu Ihrer monatlichen Abogebühr. Wenn die Linie die gestrichelte Abogebühr-Linie übersteigt, erhalten Sie mehr als den 1-fachen Wert aus Ihrem Abonnement."
+        }
+      ]
+    },
+    "models": {
+      "title": "Modelle",
+      "sections": [
+        {
+          "heading": "Token nach Modell",
+          "body": "Gestapelter Balken mit Eingabe- und Ausgabe-Token-Verbrauch pro Modell. Hilft Ihnen zu erkennen, welche Modelle Sie am intensivsten nutzen."
+        },
+        {
+          "heading": "Abbruchgründe",
+          "body": "Wie häufig jeder Abbruchgrund auftritt. «end_turn» bedeutet, das Modell hat regulär beendet, «tool_use» bedeutet, es hat ein Tool aufgerufen, «max_tokens» bedeutet, es hat das Ausgabelimit erreicht."
+        }
+      ]
+    },
+    "projects": {
+      "title": "Projekte",
+      "sections": [
+        {
+          "heading": "Top-Projekte",
+          "body": "Horizontales Balkendiagramm Ihrer Token-intensivsten Projekte. Nützlich, um zu verstehen, wo sich Ihre Nutzung konzentriert."
+        },
+        {
+          "heading": "Sessions nach Einstiegspunkt",
+          "body": "Kreisdiagramm, das zeigt, wie sich Sessions über Einstiegspunkte verteilen (CLI, VS Code-Erweiterung, API usw.)."
+        }
+      ]
+    },
+    "sessions": {
+      "title": "Sessions",
+      "sections": [
+        {
+          "heading": "5-Stunden-Nutzungsfenster",
+          "body": "Claude erfasst die Nutzung in rollierenden 5-Stunden-Fenstern. Jeder Balken zeigt den verbrauchten API-Wert in diesem Fenster. Rote Balken zeigen Fenster an, in denen eine Drosselung stattfand."
+        },
+        {
+          "heading": "Top-Gespräche nach API-Kosten",
+          "body": "Ihre teuersten einzelnen Gespräche. Hovern Sie für Details wie Prompt-Anzahl, vorherrschendes Modell und Prozentsatz der Abogebühr."
+        }
+      ]
+    },
+    "plan": {
+      "title": "Abo",
+      "sections": [
+        {
+          "heading": "Was dieser Tab misst",
+          "body": "Vergleicht den API-äquivalenten Wert Ihrer Claude-Nutzung mit Ihren Abonnementkosten. Hilft bei der Frage: «Sollte ich upgraden oder downgraden?»"
+        },
+        {
+          "heading": "Abo-Bewertung",
+          "body": "«Guter Wert» bedeutet, dass Ihre API-äquivalente Nutzung Ihre Abogebühr übersteigt (Sie erhalten mehr als Sie zahlen). «Unternutzung» bedeutet, dass Sie mehr zahlen als die entsprechenden API-Kosten."
+        },
+        {
+          "heading": "Empfohlenes Abo",
+          "body": "Basierend auf Ihren durchschnittlichen wöchentlichen API-äquivalenten Kosten, hochgerechnet auf den Monat. Vergleicht mit Pro ($20), Team Standard ($25), Max 5x ($100), Team Premium ($125) und Max 20x ($200)."
+        },
+        {
+          "heading": "Wöchentliche Aktivität",
+          "body": "Balkendiagramm mit Sessions und Prompts pro Woche. Hilft Ihnen, Ihre Nutzungsmuster zu erkennen und ob Ihr Aktivitätsniveau Ihr aktuelles Abo rechtfertigt."
+        },
+        {
+          "heading": "API-Kosten pro 5-Stunden-Fenster",
+          "body": "Zeigt die absoluten API-Äquivalentkosten pro 5-Stunden-Fenster. Orange Balken markieren Fenster, die eine am Output-Token-Limit abgeschnittene Antwort enthielten. Hinweis: Die 5-Stunden-Ratenlimit-Ablehnungen von Anthropic erscheinen nie in den Session-Logs, daher kann kein echter Prozentsatz eines Limits ausgegeben werden."
+        },
+        {
+          "heading": "Fenster pro Woche",
+          "body": "Gestapelter Balken mit der Gesamtzahl der 5-Stunden-Fenster pro Woche. Der orange Anteil zählt Fenster, die eine abgeschnittene Antwort enthielten — ein unkritisches Signal, meist verursacht durch eine einzelne lange Antwort, die am Output-Token-Limit gestoppt wurde."
+        },
+        {
+          "heading": "Multi-Account-Unterstützung",
+          "body": "Wenn Sie mehrere Claude-Konten nutzen (z. B. Team-Arbeitskonto + privat), wird jedes Konto separat mit eigener Abo-Bewertung und Kostenaufschlüsselung erkannt."
+        }
+      ]
+    },
+    "context": {
+      "title": "Kontext",
+      "sections": [
+        {
+          "heading": "Was dieser Tab misst",
+          "body": "Analysiert Ihre Kontextmanagement-Gewohnheiten: Gesprächslänge, Kontextfenster-Wachstum, Kompaktierungsnutzung und Cache-Effizienz. Hilft Ihnen bei der Frage: «Verwalte ich meinen Kontext optimal?»"
+        },
+        {
+          "heading": "Gesprächslängenverteilung",
+          "body": "Histogramm der Prompt-Anzahl pro Session. Sehr lange Sessions (15+ Prompts) ohne Kompaktierung können zu höheren Kosten und langsameren Antworten führen, da sich das Kontextfenster füllt."
+        },
+        {
+          "heading": "Kontextwachstumskurve",
+          "body": "Zeigt, wie Eingabe-Token mit jedem weiteren Prompt in einem Gespräch wachsen. Eine steile Kurve bedeutet, dass sich Kontext schnell ansammelt – erwägen Sie /compact oder starten Sie neue Gespräche für unabhängige Aufgaben."
+        },
+        {
+          "heading": "Cache-Effizienz nach Länge",
+          "body": "Vergleicht Cache-Trefferquoten zwischen kurzen und langen Gesprächen. Wenn die Cache-Effizienz in längeren Sessions sinkt, kann dies darauf hindeuten, dass der Kontext zu oft neu aufgebaut wird oder /compact nützlichen gecachten Kontext verwirft."
+        },
+        {
+          "heading": "Kompaktierungsereignisse",
+          "body": "Erkannte Fälle, in denen Eingabe-Token zwischen Nachrichten deutlich gesunken sind (>40% Reduktion), was auf die Verwendung von /compact hinweist. Zeigt die Token-Zahlen vorher/nachher, um zu visualisieren, wie viel Kontext zurückgewonnen wurde."
+        },
+        {
+          "heading": "Lange Sessions – Tabelle",
+          "body": "Sessions mit 15+ Prompts, sortiert nach Spitzen-Eingabe-Token. Die Spalte «Kompaktiert?» zeigt, ob eine Kompaktierung erkannt wurde. Sessions mit «Nein» hätten möglicherweise von /compact profitiert, um Kontextgröße und Kosten zu reduzieren."
+        }
+      ]
+    },
+    "efficiency": {
+      "title": "Effizienz",
+      "sections": [
+        {
+          "heading": "Was dieser Tab misst",
+          "body": "Analysiert, ob Sie Prompts an ein teureres Modell senden als nötig. Jeder Benutzer-Prompt («Turn») wird nach Komplexität bewertet und dann einer empfohlenen Stufe zugeordnet: Haiku, Sonnet oder Opus."
+        },
+        {
+          "heading": "Mögliche Einsparungen",
+          "body": "Dollarbetrag, den Sie sparen könnten, wenn jeder Turn an das günstigste geeignete Modell geleitet worden wäre. Es werden nur Fälle gezählt, in denen ein teureres Modell als die klassifizierte Stufe verwendet wurde."
+        },
+        {
+          "heading": "Übernutzungsrate",
+          "body": "Prozentsatz der klassifizierten Turns, bei denen das tatsächlich genutzte Modell teurer war als die empfohlene Stufe. Eine hohe Übernutzungsrate deutet auf Möglichkeiten hin, günstigere Modelle für einfache Aufgaben zu verwenden."
+        },
+        {
+          "heading": "Modellnutzung nach Komplexitätsstufe",
+          "body": "Gestapelter Balken pro Modell, farblich nach klassifizierter Stufe (grün=Haiku, blau=Sonnet, rot=Opus). Wenn Opus einen großen grünen oder blauen Anteil hat, hätten diese Turns ein günstigeres Modell nutzen können."
+        },
+        {
+          "heading": "Opus-Komplexitätsverteilung",
+          "body": "Histogramm der Komplexitätswerte (0–100) für Turns, die an Opus gesendet wurden. Werte werden aus vier Signalen berechnet:\n\n• Ausgabe-Token (0–25 Pkt.) — längere Antworten deuten auf schwierigere Aufgaben hin\n• Denkblöcke (0–30 Pkt.) — erweitertes Denken ist das stärkste Komplexitätssignal\n• Tool-Komplexität (0–25 Pkt.) — Agent, Write, NotebookEdit erzielen die höchsten Werte\n• Prompt-Textanalyse (0–20 Pkt.) — Schlüsselwörter wie «refactor» oder «architect» geben Punkte; «fix typo» oder «rename» ziehen ab\n\nBalken sind nach Stufe gefärbt: grün (0–20, Haiku-Niveau), blau (20–40, Sonnet-Niveau), rot (40+, Opus-Niveau). Grüne und blaue Balken stellen Opus-Turns dar, die Opus möglicherweise nicht benötigt haben."
+        },
+        {
+          "heading": "Top-Übernutzung",
+          "body": "Die konkreten Turns mit dem höchsten Einsparpotenzial – Fälle, in denen ein teures Modell für eine als einfacher klassifizierte Aufgabe verwendet wurde. Zeigt eine Vorschau des Prompt-Texts und die Dollarersparnis, wenn das stufengerechte Modell verwendet worden wäre."
+        }
+      ]
+    },
+    "energy": {
+      "title": "Energie",
+      "sections": [
+        {
+          "heading": "Was dieser Tab misst",
+          "body": "Schätzt den Strom- und CO₂-Fußabdruck Ihrer Claude-Nutzung. Berechnet pro Nachricht mit modellklassenspezifischen Energiekoeffizienten (Haiku/Sonnet/Opus) und Ihrer erkannten oder locale-abgeleiteten Netzregion. Unsicherheit ±55% — Anthropic veröffentlicht keine anforderungsbezogenen Energiedaten."
+        },
+        {
+          "heading": "Netzregion",
+          "body": "Die Energie-zu-CO₂-Umrechnung verwendet die Kohlenstoffintensität der erkannten Inferenzregion (aus inference_geo jeder Nachricht). Fällt auf Ihr Locale zurück, wenn keine Geo erkannt wird."
+        },
+        {
+          "heading": "Cache-Einsparungen",
+          "body": "Cache-Read-Token verbrauchen ~3% der Energie im Vergleich zur Neuberechnung als Eingabe-Token. Dieser Abschnitt zeigt die durch Prompt-Caching eingesparte Energie und CO₂."
+        },
+        {
+          "heading": "Umwelt-Kontext",
+          "body": "Wandelt Gesamtenergie und CO₂ in greifbare Einheiten nebeneinander in einer Leiste: Liter Benzin (2,31 kgCO₂/L), Solarmodul-Fläche, die im erkannten Stromnetz den gewählten Zeitraum bräuchte, um dieselbe Energie zu erzeugen (~20 % Wirkungsgrad × 0,75 Performance-Ratio, aus dem Jahresertrag heruntergerechnet), Windrad-Umdrehungen (~1,17 kWh pro Umdrehung bei 3-MW-Onshore-Windrad, 35 % NLF), Liter Wasser durch eine Wasserturbine (~4.077 L/kWh bei repräsentativen 100 m Fallhöhe und 90 % Wirkungsgrad, über E = m·g·h·η), gebautes Endlager-Volumen (Behälter + Puffer + Tunnelausbruch, gewichtet über HLW+ILW+LLW, ~4 mL/kWh) sowie Nahverkehrs-Kilometer (30 gCO₂/pkm, Mittel aus Bus, U-Bahn und Straßenbahn) und Fernverkehrs-Kilometer elektrifizierter Züge (6 gCO₂/pkm). Ein Reise-Anker unter der Leiste rechnet den Auto-Kilometer-Äquivalentwert des Zeitraums in eine bekannte Strecke um."
+        },
+        {
+          "heading": "Wie das berechnet wird",
+          "body": "Ein ausklappbares Panel unter der Äquivalente-Leiste zeigt die vollständige Herleitung anhand Ihrer tatsächlichen Zeitraum-Zahlen: Token-Summen pro Modellklasse, Energieraten pro Klasse (Wh pro 1K Input-/Output-Token), PUE-Overhead, Netz-Intensität und die Arithmetik hinter jedem Äquivalent. Jede Kennzahl lässt sich so aus den von der API zurückgegebenen Token auditieren."
+        },
+        {
+          "heading": "Datenquellen",
+          "body": "Listet die vorgelagerten Quellen hinter jedem Koeffizienten: Googles Gemini-Inference-Whitepaper 2025 und Epoch AI 2024 für Modell-Energieraten; Uptime Institute für PUE; EPA eGRID / EEA / IEA für Netz-Intensität; PVGIS/NREL/World Bank GSA für Solar-Ertrag; IRENA/IEA für das Windrad; Posiva KBS-3 / SKB / IAEA für nukleare Endlagerung; UIC und EEA für Verkehrs-Emissionen."
+        },
+        {
+          "heading": "Tages- und Modell-Diagramme",
+          "body": "Zwei Diagramme unter der Äquivalente-Leiste: Energie und CO₂ pro Tag über den Zeitraum (links) und Gesamtenergie pro Modell (rechts). Beide zeigen Energie in kWh."
+        }
+      ]
+    },
+    "settings": {
+      "title": "Einstellungen",
+      "sections": [
+        {
+          "heading": "Was Sie konfigurieren können",
+          "body": "Abo-Typ (Pro, Max, Team, Benutzerdefiniert) und monatliche Gebühr. Diese werden für die Abo-Auslastungsberechnungen im Abo-Tab verwendet. Ohne Einstellung erkennt das Tool den Typ automatisch aus Telemetriedaten."
+        },
+        {
+          "heading": "Kostenwarnschwellen",
+          "body": "Legen Sie tägliche, wöchentliche und monatliche Kostenschwellen fest. Wenn die geschätzten API-Kosten einen Schwellenwert überschreiten, werden nach der Datenerfassung Warnungen angezeigt."
+        },
+        {
+          "heading": "Wo Einstellungen gespeichert werden",
+          "body": "Alle Einstellungen werden in ~/.claude-stats/config.json gespeichert. Sie können diese Datei auch direkt bearbeiten."
+        }
+      ]
+    }
+  },
+  "panel": {
+    "title": "Claude Stats",
+    "errors": {
+      "failedToLoadConfig": "Konfiguration konnte nicht geladen werden",
+      "failedToSaveConfig": "Konfiguration konnte nicht gespeichert werden"
+    }
+  },
+  "sync": {
+    "status": {
+      "connectedText": "$(cloud) Sync",
+      "connectedTooltip": "Claude Stats: Synchronisiert – Klicken, um jetzt zu synchronisieren",
+      "disconnectedText": "$(cloud-upload) Sync aus",
+      "disconnectedTooltip": "Claude Stats: Nicht verbunden – Klicken zum Synchronisieren",
+      "syncingText": "$(sync~spin) Synchronisiere...",
+      "syncingTooltip": "Claude Stats: Session-Daten werden synchronisiert...",
+      "errorText": "$(cloud-upload) Sync-Fehler",
+      "errorTooltip": "Claude Stats: Synchronisierungsfehler – Klicken zum Wiederholen"
+    },
+    "dialogs": {
+      "notConfigured": "Claude Stats Sync ist nicht konfiguriert. Möchten Sie eine Verbindung herstellen?",
+      "authExpired": "Claude Stats: Authentifizierung abgelaufen. Bitte erneut verbinden.",
+      "disconnectConfirm": "Verbindung zu Claude Stats Sync trennen? Dadurch werden Ihre Authentifizierungstoken entfernt.",
+      "enterBackendUrl": "Geben Sie die Claude Stats Backend-URL ein",
+      "backendUrlPlaceholder": "https://ihre-team-instanz.example.com",
+      "enterEmail": "Geben Sie Ihre E-Mail-Adresse zur Authentifizierung ein",
+      "emailPlaceholder": "sie@example.com",
+      "checkEmailOrBrowser": "Claude Stats: Prüfen Sie Ihre E-Mail oder Ihren Browser, um die Authentifizierung abzuschließen. Code: {{code}}",
+      "checkEmail": "Claude Stats: Prüfen Sie Ihre E-Mail für einen Anmeldelink."
+    },
+    "progress": {
+      "syncing": "Claude Stats: Sessions werden synchronisiert...",
+      "connecting": "Claude Stats: Verbindung wird hergestellt..."
+    },
+    "messages": {
+      "syncComplete": "Claude Stats: Synchronisierung abgeschlossen.",
+      "syncFailed": "Claude Stats Synchronisierung fehlgeschlagen: {{message}}",
+      "connectedSuccess": "Claude Stats: Erfolgreich verbunden!",
+      "connectionFailed": "Claude Stats: Verbindung fehlgeschlagen – {{message}}",
+      "disconnected": "Claude Stats: Verbindung getrennt.",
+      "noBackendUrl": "Claude Stats: Keine Backend-URL konfiguriert. Verbinden Sie sich zuerst, um das Team-Dashboard zu nutzen.",
+      "backendError": "Backend hat {{status}} zurückgegeben. Überprüfen Sie die URL und versuchen Sie es erneut."
+    }
+  },
+  "errors": {
+    "sqliteRequired": "Claude Stats benötigt Node.js 22.5+ mit node:sqlite-Unterstützung. {{message}}",
+    "generic": "Claude Stats: {{message}}"
+  },
+  "upgrade": {
+    "message": "Claude Stats wurde von {{previous}} auf {{current}} aktualisiert. Laden Sie das Fenster neu, damit ein offenes Dashboard sich mit der neuen Erweiterung verbindet — andernfalls funktionieren der Aktualisierungsbutton und die Zeitraumauswahl stillschweigend nicht mehr, bis Sie neu laden.",
+    "reload": "Fenster neu laden",
+    "later": "Später"
+  },
+  "embeddings": {
+    "settingChanged": "Claude Stats: clustering setting updated. Restart Claude Code (or start a new conversation) for the change to take effect.",
+    "tampered": "Claude Stats: bundled embedding model failed integrity verification. Falling back to lexical clustering. This may indicate a tampered extension installation — try reinstalling from the Marketplace."
+  },
+  "mcp": {
+    "registered": "Claude Stats MCP-Server wurde in ~/.claude.json registriert. Starten Sie Claude Code neu, damit Ihr Agent Nutzungsstatistiken direkt über MCP abfragen kann.",
+    "updated": "Der Pfad des Claude Stats MCP-Servers wurde aktualisiert (Erweiterungsversion hat sich geändert). Starten Sie Claude Code neu, damit der MCP-Server wieder funktioniert.",
+    "failure": {
+      "noNode": "Claude Stats konnte den MCP-Server nicht registrieren: Keine Node.js-Binärdatei im PATH gefunden. Installieren Sie Node.js 22.5 oder neuer (z. B. über nvm, Homebrew oder nodejs.org) und stellen Sie sicher, dass `node` von Ihrer Shell aus erreichbar ist. Laden Sie anschließend das Fenster neu (Befehlspalette → „Developer: Reload Window“). Das Dashboard funktioniert weiterhin, aber Ihr Claude-Agent kann bis zur Behebung keine Statistiken über MCP abfragen. Zieldatei: {{path}}",
+      "writeFailed": "Claude Stats konnte {{path}} nicht schreiben, um den MCP-Server zu registrieren ({{message}}). Prüfen Sie, ob die Datei beschreibbar ist (sie gehört zu Ihrer Claude-Code-Konfiguration) und derzeit nicht von einem anderen Prozess geöffnet oder gesperrt wird. Laden Sie danach das Fenster neu. Das Dashboard funktioniert weiterhin, aber Ihr Claude-Agent kann bis zur Behebung keine Statistiken über MCP abfragen.",
+      "generic": "Claude Stats konnte den MCP-Server nicht in {{path}} registrieren: {{message}}. Das Dashboard funktioniert weiterhin, aber Ihr Claude-Agent kann bis zur Behebung keine Statistiken über MCP abfragen. Laden Sie das Fenster neu (Befehlspalette → „Developer: Reload Window“), um es erneut zu versuchen."
+    }
+  },
+  "welcome": {
+    "noClaudeCode": {
+      "title": "Willkommen bei Claude Stats",
+      "intro": "Claude Stats liest die lokalen Sitzungsdateien von Claude Code, um anzuzeigen, wie viele Tokens Sie verwendet haben, was das kostet und wohin die Zeit fließt. Derzeit sind auf diesem Rechner keine Claude-Code-Daten zu finden, daher ist das Dashboard leer.",
+      "steps": [
+        {
+          "heading": "Claude Code installieren",
+          "body": "Installieren Sie Anthropics Claude-Code-CLI gemäß der offiziellen Anthropic-Dokumentation und melden Sie sich einmal an, damit Sitzungsdateien in Ihrem Home-Verzeichnis angelegt werden können."
+        },
+        {
+          "heading": "Ein Gespräch starten",
+          "body": "Öffnen Sie ein Terminal in einem beliebigen Projekt und führen Sie `claude` aus. Senden Sie mindestens eine Nachricht. Claude Code schreibt ein JSONL-Sitzungsprotokoll, sobald die erste Antwort eintrifft."
+        },
+        {
+          "heading": "Zurückkommen",
+          "body": "Die Erweiterung überwacht im Hintergrund neue Sitzungsdateien. Sobald die erste existiert, wird sie innerhalb weniger Sekunden erkannt — ein Neustart von VS Code ist nicht nötig."
+        }
+      ],
+      "whatNext": "Solange keine Sitzung existiert, zeigt die Statusleiste das Leerlauf-Symbol und das Dashboard bleibt auf diesem Willkommensbildschirm. Klicken Sie auf „Jetzt aktualisieren“, sobald Sie eine Nachricht an Claude Code gesendet haben."
+    },
+    "noSessions": {
+      "title": "Noch keine Claude-Code-Sitzungen",
+      "intro": "Claude Code ist auf diesem Rechner installiert, aber es wurden noch keine Sitzungen aufgezeichnet (oder der Sammler hat seinen ersten Durchlauf noch nicht abgeschlossen). Das Dashboard füllt sich, sobald eine Sitzung vorliegt.",
+      "steps": [
+        {
+          "heading": "Eine Unterhaltung beginnen oder fortsetzen",
+          "body": "Öffnen Sie ein Terminal und führen Sie `claude` in einem Projektordner aus. Senden Sie eine Nachricht. Claude Code schreibt pro Sitzung eine JSONL-Protokolldatei in das unten angegebene Projektverzeichnis."
+        },
+        {
+          "heading": "Den Sammler aufholen lassen",
+          "body": "Die Erweiterung überwacht ~/.claude/projects/ auf Änderungen und führt alle paar Sekunden (entprellt) eine inkrementelle Erfassung aus. Die erste Erfassung bei vielen historischen Sitzungen kann 10–30 Sekunden dauern."
+        },
+        {
+          "heading": "Dashboard aktualisieren",
+          "body": "Verwenden Sie den Button unten (oder klicken Sie auf den Claude-Stats-Eintrag in der Statusleiste), um erneut zu prüfen. Sobald Sitzungen erfasst sind, wird dieser Bildschirm automatisch durch das vollständige Dashboard ersetzt."
+        }
+      ],
+      "whatNext": "Wenn Sie Claude Code bereits verwenden und diesen Bildschirm nach einer Minute immer noch sehen, verhindert etwas, dass der Sammler die Sitzungsdateien liest. Prüfen Sie, ob die unten angegebenen Pfade existieren und lesbar sind, und laden Sie dann das Fenster neu (Befehlspalette → „Developer: Reload Window“)."
+    },
+    "stepsHeading": "Nächste Schritte",
+    "whatNextHeading": "Was als Nächstes passiert",
+    "refresh": "Jetzt aktualisieren",
+    "refreshHint": "Liest ~/.claude/projects/ neu und rendert das Dashboard erneut.",
+    "projectsDirLabel": "Quellordner:",
+    "dbPathLabel": "Lokale Datenbank:",
+    "privacyNote": "Claude Stats verlässt Ihren Rechner nie. Es werden keine Tokens oder Zugangsdaten übertragen — alles wird lokal aus den JSONL-Protokollen von Claude Code gelesen und in einer SQLite-Datenbank in Ihrem Home-Verzeichnis aggregiert."
+  }
+}

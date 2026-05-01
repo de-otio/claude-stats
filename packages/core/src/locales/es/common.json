@@ -1,0 +1,79 @@
+{
+  "metrics": {
+    "sessions": "Sesiones",
+    "prompts": "Prompts",
+    "inputTokens": "Tokens de entrada",
+    "outputTokens": "Tokens de salida",
+    "input": "Entrada",
+    "output": "Salida",
+    "cache": "Caché",
+    "cacheEfficiency": "Eficiencia de caché",
+    "estCost": "Coste estimado",
+    "planValue": "Valor del plan",
+    "planROI": "ROI del plan",
+    "activeHours": "Horas activas",
+    "costPerPrompt": "Coste / Prompt",
+    "tokPerMin": "Tok / Min",
+    "throttleEvents": "Eventos de limitación",
+    "velocity": "Velocidad",
+    "cost": "Coste",
+    "duration": "Duración",
+    "thinking": "Razonamiento"
+  },
+  "periods": {
+    "day": "Día",
+    "week": "Semana",
+    "month": "Mes",
+    "all": "Todo",
+    "allTime": "todo el tiempo"
+  },
+  "periodLabels": {
+    "daily": "Diario",
+    "weekly": "Semanal",
+    "monthly": "Mensual",
+    "allTime": "Todo el tiempo"
+  },
+  "models": {
+    "opus4": "Opus 4",
+    "sonnet4": "Sonnet 4",
+    "haiku4": "Haiku 4"
+  },
+  "plans": {
+    "pro": "Pro",
+    "max5x": "Max 5x",
+    "max20x": "Max 20x",
+    "teamStandard": "Team Standard",
+    "teamPremium": "Team Premium"
+  },
+  "verdicts": {
+    "goodValue": "Buena relación calidad-precio",
+    "underusing": "Infrautilización",
+    "noPlanDetected": "No se detectó ningún plan"
+  },
+  "tableHeaders": {
+    "session": "Sesión",
+    "started": "Inicio",
+    "model": "Modelo",
+    "time": "Hora",
+    "stop": "Parada",
+    "tools": "Herramientas",
+    "total": "Total",
+    "totals": "Totales"
+  },
+  "units": {
+    "tokens": "tokens",
+    "session_one": "{{count}} sesión",
+    "session_other": "{{count}} sesiones",
+    "tokPerMin": "tok/min",
+    "promptsPerHr": "prompts/h",
+    "outputPerPrompt": "salida/prompt"
+  },
+  "actions": {
+    "connect": "Conectar",
+    "disconnect": "Desconectar",
+    "cancel": "Cancelar",
+    "refresh": "Actualizar",
+    "save": "Guardar",
+    "send": "Enviar"
+  }
+}

@@ -1,0 +1,286 @@
+{
+  "/ClaudeStats-dev-Data/UserProfiles": [
+    {
+      "type": "aws:cdk:hasPhysicalName",
+      "data": {
+        "Ref": "UserProfiles32DFB678"
+      }
+    }
+  ],
+  "/ClaudeStats-dev-Data/Teams": [
+    {
+      "type": "aws:cdk:hasPhysicalName",
+      "data": {
+        "Ref": "Teams577113D3"
+      }
+    }
+  ],
+  "/ClaudeStats-dev-Data/TeamMemberships": [
+    {
+      "type": "aws:cdk:hasPhysicalName",
+      "data": {
+        "Ref": "TeamMembershipsFB021976"
+      }
+    }
+  ],
+  "/ClaudeStats-dev-Data/SyncedSessions": [
+    {
+      "type": "aws:cdk:hasPhysicalName",
+      "data": {
+        "Ref": "SyncedSessionsC1BE9270"
+      }
+    }
+  ],
+  "/ClaudeStats-dev-Data/SyncedMessages": [
+    {
+      "type": "aws:cdk:hasPhysicalName",
+      "data": {
+        "Ref": "SyncedMessages5D4324E9"
+      }
+    }
+  ],
+  "/ClaudeStats-dev-Data/TeamStats": [
+    {
+      "type": "aws:cdk:hasPhysicalName",
+      "data": {
+        "Ref": "TeamStats4E383A76"
+      }
+    }
+  ],
+  "/ClaudeStats-dev-Data/Achievements": [
+    {
+      "type": "aws:cdk:hasPhysicalName",
+      "data": {
+        "Ref": "Achievements5605DA53"
+      }
+    }
+  ],
+  "/ClaudeStats-dev-Data/Challenges": [
+    {
+      "type": "aws:cdk:hasPhysicalName",
+      "data": {
+        "Ref": "Challenges261CFAA0"
+      }
+    }
+  ],
+  "/ClaudeStats-dev-Data/InterTeamChallenges": [
+    {
+      "type": "aws:cdk:hasPhysicalName",
+      "data": {
+        "Ref": "InterTeamChallenges55D07B60"
+      }
+    }
+  ],
+  "/ClaudeStats-dev-Data/MagicLinkTokens": [
+    {
+      "type": "aws:cdk:hasPhysicalName",
+      "data": {
+        "Ref": "MagicLinkTokens24BC7868"
+      }
+    }
+  ],
+  "/ClaudeStats-dev-Data/BootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "BootstrapVersion"
+    }
+  ],
+  "/ClaudeStats-dev-Data/CheckBootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CheckBootstrapVersion"
+    }
+  ],
+  "/ClaudeStats-dev-Data/UserProfiles/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "UserProfiles32DFB678"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Teams/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Teams577113D3"
+    }
+  ],
+  "/ClaudeStats-dev-Data/TeamMemberships/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "TeamMembershipsFB021976"
+    }
+  ],
+  "/ClaudeStats-dev-Data/SyncedSessions/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SyncedSessionsC1BE9270"
+    }
+  ],
+  "/ClaudeStats-dev-Data/SyncedMessages/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SyncedMessages5D4324E9"
+    }
+  ],
+  "/ClaudeStats-dev-Data/TeamStats/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "TeamStats4E383A76"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Achievements/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Achievements5605DA53"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Challenges/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Challenges261CFAA0"
+    }
+  ],
+  "/ClaudeStats-dev-Data/InterTeamChallenges/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "InterTeamChallenges55D07B60"
+    }
+  ],
+  "/ClaudeStats-dev-Data/MagicLinkTokens/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "MagicLinkTokens24BC7868"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-arns-userProfiles/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablearnsuserProfiles79EC0D8A"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-names-userProfiles/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablenamesuserProfilesBD0946CC"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-arns-teams/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Paramdatatablearnsteams19801EB0"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-names-teams/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Paramdatatablenamesteams994E51F7"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-arns-teamMemberships/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablearnsteamMembershipsF55A7F35"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-names-teamMemberships/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablenamesteamMemberships9895EFD2"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-arns-syncedSessions/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablearnssyncedSessions9DB51C99"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-names-syncedSessions/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablenamessyncedSessions83908C02"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-arns-syncedMessages/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablearnssyncedMessages466B2FBC"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-names-syncedMessages/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablenamessyncedMessagesFAFE6C66"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-arns-teamStats/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablearnsteamStats62118074"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-names-teamStats/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablenamesteamStats85D8A199"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-arns-achievements/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Paramdatatablearnsachievements8842DAF6"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-names-achievements/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablenamesachievementsC58D536F"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-arns-challenges/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablearnschallengesC92BB3B4"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-names-challenges/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Paramdatatablenameschallenges5769C6C6"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-arns-interTeamChallenges/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablearnsinterTeamChallengesBF57E71C"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-names-interTeamChallenges/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablenamesinterTeamChallengesF01910FC"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-arns-magicLinkTokens/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablearnsmagicLinkTokens18D1BF03"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-table-names-magicLinkTokens/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatatablenamesmagicLinkTokensD90B255E"
+    }
+  ],
+  "/ClaudeStats-dev-Data/Param-data-synced-sessions-stream-arn/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "ParamdatasyncedsessionsstreamarnF74649D2"
+    }
+  ],
+  "/ClaudeStats-dev-Data/CDKMetadata/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadata"
+    }
+  ]
+}

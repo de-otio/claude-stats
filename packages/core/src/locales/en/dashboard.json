@@ -1,0 +1,293 @@
+{
+  "pageTitle": "Claude Stats \u2014 {{period}} ({{date}})",
+  "tabs": {
+    "overview": "Overview",
+    "models": "Models",
+    "projects": "Projects",
+    "sessions": "Sessions",
+    "plan": "Plan",
+    "context": "Context",
+    "efficiency": "Efficiency",
+    "energy": "Energy",
+    "settings": "Settings"
+  },
+  "toolbar": {
+    "period": "Period:",
+    "refresh": "Refresh",
+    "autoOff": "Auto: off",
+    "autoOn": "Auto: on ({{seconds}}s)"
+  },
+  "summary": {
+    "sessions": "Sessions",
+    "prompts": "Prompts",
+    "inputTokens": "Input Tokens",
+    "outputTokens": "Output Tokens",
+    "cacheEfficiency": "Cache Efficiency",
+    "estCost": "Est. Cost",
+    "planValue": "Plan Value",
+    "ofPlanFee": "of ${{fee}}/mo",
+    "activeHours": "Active Hours",
+    "costPerPrompt": "Cost / Prompt",
+    "tokPerMin": "Tok / Min",
+    "truncatedOutputs": "Truncated Outputs",
+    "periodRange": "{{start}} \u2192 today",
+    "allTime": "All time"
+  },
+  "charts": {
+    "hourlyTokenUsage": "Hourly Token Usage",
+    "dailyTokenUsage": "Daily Token Usage",
+    "tokenBreakdown": "Token Breakdown",
+    "cacheUsage": "Cache Usage",
+    "cumulativeApiValue": "Cumulative API Value vs Plan Fee",
+    "tokensByModel": "Tokens by Model",
+    "stopReasons": "Stop Reasons",
+    "topProjects": "Top Projects",
+    "tokensByProject": "Token Share by Project",
+    "energyByProject": "Energy Usage by Project",
+    "thinkingIntensity": "Thinking Intensity by Project",
+    "natureOfWork": "Nature of Work by Project",
+    "sessionsByEntrypoint": "Sessions by Entrypoint",
+    "usageWindows": "5-Hour Usage Windows",
+    "topConversations": "Top Conversations by API Cost",
+    "windowLimitUsage": "Window Limit Usage %",
+    "weeklyActivity": "Weekly Activity",
+    "windowsPerWeek": "Windows Per Week",
+    "conversationLengthDist": "Conversation Length Distribution",
+    "contextGrowthCurve": "Context Growth Curve",
+    "cacheEfficiencyByLength": "Cache Efficiency by Conversation Length",
+    "compactionEvents": "Compaction Events",
+    "longSessions": "Long Sessions \u2014 Context Management Opportunities",
+    "modelUsageByTier": "Model Usage by Complexity Tier",
+    "opusScoreDist": "Opus Complexity Score Distribution",
+    "topOveruse": "Top Overuse: Expensive Model on Simple Tasks"
+  },
+  "plan": {
+    "account": "Account",
+    "currentPlan": "Current Plan",
+    "planVerdict": "Plan Verdict",
+    "suggestedPlan": "Suggested Plan",
+    "avgWeeklyValue": "Avg Weekly Value",
+    "peakLabel": "peak: ${{value}}",
+    "windowsPerWeek": "Windows / Week",
+    "totalWindows": "{{count}} total windows",
+    "avgWindowCost": "Avg Window Cost",
+    "medianLabel": "median: ${{value}}",
+    "truncatedOutputWindows": "Windows w/ Trunc. Output",
+    "truncatedOutputWindowsHint": "contained max_tokens truncation",
+    "accounts": "Accounts:",
+    "accountsDetected": "{{count}} accounts detected",
+    "planNotDetected": "Plan not detected",
+    "setPlanFee": "Set --plan-fee or enrich telemetry",
+    "basedOnAvg": "based on avg ${{value}}/week API value",
+    "feeManual": "${{fee}}/mo (manual)",
+    "feeAutoDetected": "${{fee}}/mo (auto-detected)",
+    "unknownPlan": "unknown plan",
+    "noData": "No Data",
+    "notEnoughData": "Not enough usage data to analyze plan efficiency yet.",
+    "goodValue": "Good Value",
+    "underusing": "Underusing",
+    "noPlan": "No Plan",
+    "noPlanDetected": "No Plan Detected",
+    "planNames": {
+      "pro": "Pro ($20)",
+      "team_standard": "Team Std ($25)",
+      "max_5x": "Max 5x ($100)",
+      "team_premium": "Team Premium ($125)",
+      "max_20x": "Max 20x ($200)"
+    }
+  },
+  "context": {
+    "avgPromptsPerSession": "Avg Prompts/Session",
+    "medianPrompts": "Median Prompts",
+    "compactionRate": "Compaction Rate",
+    "avgPeakInputTokens": "Avg Peak Input Tokens",
+    "needCompaction": "Need Compaction",
+    "compactionsDetected": "compactions detected across {{count}} sessions",
+    "noCompactionEvents": "No compaction events detected. Consider using /compact in long conversations to reduce context size and cost.",
+    "tableHeaders": {
+      "project": "Project",
+      "prompts": "Prompts",
+      "duration": "Duration",
+      "peakInput": "Peak Input",
+      "compacted": "Compacted?",
+      "cost": "Cost",
+      "yes": "Yes",
+      "no": "No"
+    }
+  },
+  "efficiency": {
+    "potentialSavings": "Potential Savings",
+    "overuseRate": "Overuse Rate",
+    "overuseDescription": "turns sent to pricier model than needed",
+    "turnsAnalyzed": "Turns Analyzed",
+    "ofTotalMessages": "of {{count}} total messages"
+  },
+  "energy": {
+    "totalEnergy": "Total Energy",
+    "totalCO2": "CO₂ Emissions",
+    "co2Range": "±55% uncertainty: {{low}} – {{high}}",
+    "region": "Grid Region",
+    "gridIntensity": "Grid Intensity",
+    "gCO2perKWh": "gCO₂/kWh",
+    "cacheSaved": "Cache Saved",
+    "energySavedLabel": "vs. re-computing inputs",
+    "thinkingSessions": "Thinking Sessions",
+    "thinkingEnergyPct": "{{pct}}% of energy",
+    "geoCoverage": "Geo Coverage",
+    "geoCoverageHint": "% of messages with detected inference region",
+    "equivalents": "Environmental Context",
+    "periodRange": "{{start}} → {{end}} ({{days}} days)",
+    "gasolineLiters": "liters of gasoline",
+    "transitKm": "km by local transit",
+    "trainKm": "km by long-distance train",
+    "solarPanels": "solar panels required (period)",
+    "solarRegion": "in {{region}}",
+    "solarPanelsFootnote": "Area of rooftop PV modules (~20% efficiency, 0.75 performance ratio) that, sited in {{region}}, would take exactly the selected time window to generate this period's total energy consumption. Scales with the regional annual solar irradiance and the chosen period length.",
+    "windRotations": "wind-turbine rotations",
+    "windTurbineRef": "3 MW onshore, 35 % CF",
+    "windRotationsFootnote": "Rotations of a typical modern 3 MW onshore wind turbine at ~15 RPM under a 35 % capacity factor — ~1.17 kWh per rotation at average output. Equivalently, one such turbine would need {{minutes}} min at its real-world average output (or {{ratedMinutes}} min at rated 3 MW) to generate your period's total energy.",
+    "hydroTurbineLiters": "liters through a hydro turbine",
+    "hydroTurbineRef": "~100 m head, 90 % η",
+    "hydroTurbineFootnote": "Volume of water that would need to pass through a typical modern hydroelectric turbine (~100 m head, ~90 % efficiency) to generate this period's energy — about 4,077 L per kWh, derived from E = m·g·h·η. High-head plants need less (Hoover Dam, 180 m: ~2,200 L/kWh); low-head run-of-river plants need much more.",
+    "nuclearWaste": "nuclear waste volume",
+    "nuclearWasteFootnote": "Engineered disposal-facility volume — not raw waste — if the same energy came from 100 % nuclear (~4 mL/kWh). Weighted blend of HLW emplacement per Posiva KBS-3 (~1,500× raw spent-fuel volume once copper canister, bentonite buffer, and thermally-spaced repository tunnels are counted — Onkalo excavates ~1 million m³ of rock for ~650 m³ of spent fuel), plus ILW (~5×) and LLW (~3×) disposal, using IAEA waste-inventory volume shares. HLW must be safely isolated and guarded for ~100,000 years before its radioactivity decays to the level of natural uranium ore.",
+    "journeyAnchor": "Your carbon ≈ driving {{name}} ({{km}} km).",
+    "journeys": {
+      "coffeeWalk": "to the coffee shop and back",
+      "bikeCrossTown": "a bike ride across town",
+      "crosstownCommute": "a cross-town commute",
+      "shortIntercity": "London → Brighton",
+      "berlinHamburg": "Berlin → Hamburg",
+      "berlinMunich": "Berlin → Munich",
+      "parisBerlin": "Paris → Berlin",
+      "coastToCoast": "Los Angeles → New York",
+      "halfEarth": "halfway around the Earth"
+    },
+    "disclaimer": "Estimates only — ±55% uncertainty. Anthropic does not publish per-request energy data. Not for regulatory use.",
+    "byModel": "Energy by Model",
+    "byDay": "Daily Energy & CO₂",
+    "byProject": "Energy by Project",
+    "noData": "No energy data available for this period.",
+    "calc": {
+      "title": "How this is calculated",
+      "clickToExpand": "click to expand",
+      "intro": "Every tile on this tab is derived from the token counts Anthropic's API returns for each message. Here is exactly how that token-level data becomes the kWh, kg CO₂, and equivalent figures shown above, using your actual period's numbers so you can audit the math.",
+      "ratesHeader": "Per-model energy rates:",
+      "periodHeader": "Your period ({{start}} → {{end}}):",
+      "col": {
+        "class": "Class",
+        "inputRate": "Input Wh/1K",
+        "outputRate": "Output Wh/1K",
+        "msgs": "Msgs",
+        "output": "Output tok",
+        "input": "Input tok",
+        "cacheWrite": "Cache write",
+        "cacheRead": "Cache read",
+        "rawEnergy": "Raw energy",
+        "rawTotal": "Raw total"
+      },
+      "totals": "Raw total {{raw}} kWh × PUE {{pue}} = <strong>{{totalKwh}} kWh</strong> consumed. At <strong>{{region}}</strong> grid intensity {{gridIntensity}} gCO₂/kWh, that is <strong>{{co2Kg}} kg CO₂</strong>.",
+      "equivHeader": "How the equivalents were derived from {{co2Kg}} kg CO₂ / {{totalKwh}} kWh:",
+      "eq": {
+        "gasoline": "Gasoline: {{co2Kg}} kg ÷ 2.31 kg CO₂/L = <strong>{{value}} L</strong>",
+        "train": "Long-distance train: {{co2Kg}} kg ÷ 0.006 kg CO₂/pkm = <strong>{{value}} km</strong>",
+        "transit": "Local transit: {{co2Kg}} kg ÷ 0.030 kg CO₂/pkm = <strong>{{value}} km</strong>",
+        "nuclearWaste": "Nuclear disposal volume: {{totalKwh}} kWh × 4 mL/kWh (engineered HLW+ILW+LLW repository, weighted) = <strong>{{value}}</strong>",
+        "wind": "Wind-turbine rotations: {{totalKwh}} kWh ÷ 1.17 kWh/rotation (3 MW turbine at 15 RPM, 35 % CF) = <strong>{{value}} rotations</strong> ≈ {{minutes}} min of real-world spinning",
+        "hydro": "Hydro-turbine water volume: {{totalKwh}} kWh × 4,077 L/kWh (~100 m head, 90 % η via E = m·g·h·η) = <strong>{{value}}</strong>",
+        "solar": "Solar panels: {{totalKwh}} kWh ÷ ({{regionYield}} kWh/m²/yr in {{region}} × {{periodDays}}/365) = <strong>{{value}}</strong>"
+      }
+    },
+    "sources": {
+      "title": "Data Sources",
+      "items": {
+        "methodology": {
+          "label": "Model energy rates",
+          "value": "Derived from Google's 2025 Gemini inference whitepaper (0.24 Wh/median text query) and Epoch AI 2024 token-level estimates, scaled by model class (Haiku/Sonnet/Opus). Formula details in /doc/analysis/energy-dashboard/01-estimation-model.md."
+        },
+        "pue": {
+          "label": "Data-center overhead",
+          "value": "PUE 1.2 — Uptime Institute 2023 hyperscale average (Google, AWS, Azure publish 1.10–1.20)."
+        },
+        "gridIntensity": {
+          "label": "Grid carbon intensity",
+          "value": "US: EPA eGRID2022. EU: European Environment Agency (EEA) 2024. Asia-Pacific & global: IEA 2024. National agencies used where available."
+        },
+        "solarYield": {
+          "label": "Solar panel yield",
+          "value": "Regional annual GHI from PVGIS (Europe) / NREL NSRDB (Americas) / World Bank GSA (global), multiplied by 20% panel efficiency × 0.75 performance ratio. The tile scales this annual yield down to the selected period to show the panel area required to produce exactly this period's energy in that timeframe."
+        },
+        "windTurbine": {
+          "label": "Wind turbine reference",
+          "value": "Modern 3 MW onshore turbine at 15 RPM and ~35 % capacity factor (IRENA Renewable Power Generation Costs 2023, IEA Renewables 2024). Energy per rotation = 3 MW × 4 s × 0.35 ≈ 1.17 kWh at average output (~3.33 kWh at rated)."
+        },
+        "hydroTurbine": {
+          "label": "Hydroelectric turbine reference",
+          "value": "Representative modern hydroelectric plant at ~100 m net head with ~90 % combined turbine+generator efficiency. Derived from the physical relation E = m·g·h·η with g = 9.81 m/s², giving 3,600,000 J ÷ (9.81 × 100 × 0.9) ≈ 4,077 L/kWh. Close to the global capacity-weighted average (Three Gorges ~95 m, Itaipu ~118 m); high-head plants such as Hoover Dam (180 m) need ~2,200 L/kWh."
+        },
+        "carKm": {
+          "label": "Car emissions",
+          "value": "120 gCO₂/km — EU new-car fleet average, EEA 2024."
+        },
+        "transit": {
+          "label": "Local transit emissions",
+          "value": "30 gCO₂/passenger-km — weighted blend of urban bus (~27), subway/metro (~8), and tram/light rail from IEA Transport Emissions (2024) and EEA Transport & Environment Reporting Mechanism 2024."
+        },
+        "train": {
+          "label": "Long-distance train emissions",
+          "value": "6 gCO₂/passenger-km — European electrified intercity rail average, UIC Railway Handbook on Energy and CO₂ Emissions and EEA 2024."
+        },
+        "tree": {
+          "label": "Tree absorption",
+          "value": "21 kg CO₂ absorbed per year by a mature tree — US Forest Service / EPA."
+        },
+        "gasoline": {
+          "label": "Gasoline combustion",
+          "value": "2.31 kg CO₂ per liter — US EPA tailpipe emissions factor."
+        },
+        "nuclearWaste": {
+          "label": "Nuclear disposal volume",
+          "value": "~4 mL/kWh engineered repository volume — not raw waste. Weighted across HLW disposal per Posiva KBS-3 / Onkalo (~1,500× raw spent-fuel volume after copper canister, bentonite buffer, and thermal tunnel spacing), ILW (~5×) and LLW (~3×) disposal, using IAEA volume shares. References: Posiva 2012 safety case, SKB TR-11-01, IAEA Radioactive Waste Inventory."
+        }
+      }
+    }
+  },
+  "settings": {
+    "configuration": "Configuration",
+    "settingsPath": "Settings are saved to <code style=\"background:#0f3460;padding:0.15rem 0.3rem;border-radius:3px;color:#ccc;\">~/.claude-stats/config.json</code>",
+    "planType": "Plan Type",
+    "notSetAutoDetect": "Not set (auto-detect)",
+    "planOptions": {
+      "pro": "Pro ($20/mo)",
+      "max_5x": "Max 5x ($100/mo)",
+      "max_20x": "Max 20x ($200/mo)",
+      "team_standard": "Team Standard ($25/mo)",
+      "team_premium": "Team Premium ($125/mo)",
+      "custom": "Custom"
+    },
+    "planAutoDetectHint": "Auto-detect relies on intermittent telemetry data and is often unable to determine your plan. Setting this manually is recommended.",
+    "monthlyFee": "Monthly Fee (USD)",
+    "monthlyFeePlaceholder": "Auto from plan type",
+    "monthlyFeeHint": "Override the default fee for your plan type, or set a custom amount.",
+    "costAlertThresholds": "Cost Alert Thresholds (USD)",
+    "daily": "Daily",
+    "weekly": "Weekly",
+    "monthly": "Monthly",
+    "save": "Save",
+    "savedReload": "Saved! Reload to see updated dashboard.",
+    "networkError": "Network error.",
+    "errorSaving": "Error saving."
+  },
+  "pricing": {
+    "title": "Token Pricing (per 1M tokens)",
+    "model": "Model",
+    "input": "Input",
+    "output": "Output",
+    "cacheRead": "Cache Read",
+    "cacheWrite": "Cache Write",
+    "source": "Source: Anthropic API pricing \u2014 last updated {{date}} (auto-refreshed weekly). Costs shown are equivalent API rates, not subscription charges."
+  },
+  "footer": {
+    "generated": "Generated {{timestamp}} \u2022 Timezone: {{timezone}}"
+  }
+}

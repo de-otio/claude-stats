@@ -1,0 +1,14 @@
+{
+  "name": "@claude-stats/lambda",
+  "version": "0.1.0",
+  "description": "Lambda function handlers for claude-stats team app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@claude-stats/core": "*"
+  }
+}

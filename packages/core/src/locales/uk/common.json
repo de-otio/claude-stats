@@ -1,0 +1,79 @@
+{
+  "metrics": {
+    "sessions": "Сесії",
+    "prompts": "Промпти",
+    "inputTokens": "Вхідні токени",
+    "outputTokens": "Вихідні токени",
+    "input": "Вхід",
+    "output": "Вихід",
+    "cache": "Кеш",
+    "cacheEfficiency": "Ефективність кешу",
+    "estCost": "Орієнтовна вартість",
+    "planValue": "Вартість плану",
+    "planROI": "ROI плану",
+    "activeHours": "Активні години",
+    "costPerPrompt": "Вартість / Промпт",
+    "tokPerMin": "Ток / Хв",
+    "throttleEvents": "Події обмеження",
+    "velocity": "Швидкість",
+    "cost": "Вартість",
+    "duration": "Тривалість",
+    "thinking": "Міркування"
+  },
+  "periods": {
+    "day": "День",
+    "week": "Тиждень",
+    "month": "Місяць",
+    "all": "Усе",
+    "allTime": "весь час"
+  },
+  "periodLabels": {
+    "daily": "Щоденно",
+    "weekly": "Щотижнево",
+    "monthly": "Щомісячно",
+    "allTime": "Весь час"
+  },
+  "models": {
+    "opus4": "Opus 4",
+    "sonnet4": "Sonnet 4",
+    "haiku4": "Haiku 4"
+  },
+  "plans": {
+    "pro": "Pro",
+    "max5x": "Max 5x",
+    "max20x": "Max 20x",
+    "teamStandard": "Team Standard",
+    "teamPremium": "Team Premium"
+  },
+  "verdicts": {
+    "goodValue": "Хороша цінність",
+    "underusing": "Недостатнє використання",
+    "noPlanDetected": "План не виявлено"
+  },
+  "tableHeaders": {
+    "session": "Сесія",
+    "started": "Початок",
+    "model": "Модель",
+    "time": "Час",
+    "stop": "Зупинка",
+    "tools": "Інструменти",
+    "total": "Разом",
+    "totals": "Підсумки"
+  },
+  "units": {
+    "tokens": "токени",
+    "session_one": "{{count}} сесія",
+    "session_other": "{{count}} сесій",
+    "tokPerMin": "ток/хв",
+    "promptsPerHr": "промптів/год",
+    "outputPerPrompt": "вихід/промпт"
+  },
+  "actions": {
+    "connect": "Підключити",
+    "disconnect": "Відключити",
+    "cancel": "Скасувати",
+    "refresh": "Оновити",
+    "save": "Зберегти",
+    "send": "Надіслати"
+  }
+}

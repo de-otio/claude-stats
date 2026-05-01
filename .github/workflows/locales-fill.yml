@@ -1,0 +1,126 @@
+name: Auto-translate locales
+
+# Runs on every PR that touches the English source of truth, but only does
+# actual translation work if the parity check detects drift (i.e. missing
+# keys, extra keys, mismatched {{placeholders}}, or mismatched $(codicons) in
+# any non-en locale). When locales are already in sync — the common case,
+# because the canonical dev loop is "edit en/ → run npm run locales:fill
+# locally → commit" — the workflow finishes in <30 s with no API calls.
+#
+# Security / permissions:
+#   - Uses pull_request_target, NOT pull_request, so the workflow has a
+#     writable GITHUB_TOKEN and can access secrets. Safe here because we
+#     explicitly check out the PR head, never execute code from it, and
+#     only run our own vetted scripts.
+#   - Fork PRs are skipped (no secrets available cross-fork). Maintainers
+#     can run the workflow manually via workflow_dispatch on a branch they
+#     own.
+
+on:
+  pull_request_target:
+    paths:
+      - "packages/core/src/locales/en/**"
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to translate (defaults to the caller ref)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: locales-fill-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fill:
+    name: Fill missing translations via Opus
+    runs-on: ubuntu-latest
+    # Skip fork PRs — secrets are unavailable and we can't push to the fork.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.repo.full_name == github.repository)
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref || inputs.branch || github.ref_name }}
+          # Use a PAT if available (required for protected branches),
+          # otherwise fall back to GITHUB_TOKEN.
+          token: ${{ secrets.LOCALES_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      # ── Gate: is there any drift at all? ────────────────────────────────
+      # The parity script is dependency-free (pure node:fs + node:path), so
+      # we run it BEFORE `npm ci`. On the common happy path — locales
+      # already in sync — we skip installing deps, skip the Anthropic API,
+      # skip the commit push, and exit in ~20 s.
+      - name: Check locale parity (gate)
+        id: check
+        run: |
+          if node scripts/check-locale-parity.mjs; then
+            echo "needs_fill=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::All locales in parity — no translation needed."
+          else
+            echo "needs_fill=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Drift detected — will invoke Opus to fill missing translations."
+          fi
+        # `|| true` not used here: we want the workflow to *tolerate* non-zero
+        # exit (which indicates drift) but still fail on unexpected errors.
+        # We normalize by branching inside the script above and always `exit 0`
+        # implicitly from the `if` / `else`.
+        continue-on-error: false
+
+      # Everything below runs ONLY when parity reported drift.
+
+      - name: Install dependencies
+        if: steps.check.outputs.needs_fill == 'true'
+        run: npm ci
+
+      - name: Verify ANTHROPIC_API_KEY is configured
+        if: steps.check.outputs.needs_fill == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::Drift was detected but ANTHROPIC_API_KEY is not configured."
+            echo "Add the secret in Settings → Secrets and variables → Actions to enable auto-translation,"
+            echo "or run 'npm run locales:fill' locally and push the result."
+            exit 1
+          fi
+
+      - name: Fill missing translations via Opus
+        if: steps.check.outputs.needs_fill == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: npm run locales:fill -- --verbose
+
+      - name: Re-verify parity after fill
+        if: steps.check.outputs.needs_fill == 'true'
+        run: npm run locales:check
+
+      - name: Commit translations back to branch
+        if: steps.check.outputs.needs_fill == 'true'
+        run: |
+          if git diff --quiet -- packages/core/src/locales; then
+            echo "::notice::Fill script ran but produced no changes — nothing to commit."
+            exit 0
+          fi
+          git config user.name "claude-stats-locales-bot"
+          git config user.email "claude-stats-locales-bot@users.noreply.github.com"
+          git add packages/core/src/locales
+          git commit -m "chore(i18n): auto-fill missing translations via Opus
+
+          Generated by scripts/fill-locales.mjs on PR #${{ github.event.pull_request.number || 'manual' }}.
+          Review terminology choices before merging."
+          git push

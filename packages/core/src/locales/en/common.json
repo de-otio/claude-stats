@@ -1,0 +1,79 @@
+{
+  "metrics": {
+    "sessions": "Sessions",
+    "prompts": "Prompts",
+    "inputTokens": "Input Tokens",
+    "outputTokens": "Output Tokens",
+    "input": "Input",
+    "output": "Output",
+    "cache": "Cache",
+    "cacheEfficiency": "Cache Efficiency",
+    "estCost": "Est. Cost",
+    "planValue": "Plan Value",
+    "planROI": "Plan ROI",
+    "activeHours": "Active Hours",
+    "costPerPrompt": "Cost / Prompt",
+    "tokPerMin": "Tok / Min",
+    "throttleEvents": "Throttle Events",
+    "velocity": "Velocity",
+    "cost": "Cost",
+    "duration": "Duration",
+    "thinking": "Thinking"
+  },
+  "periods": {
+    "day": "Day",
+    "week": "Week",
+    "month": "Month",
+    "all": "All",
+    "allTime": "all time"
+  },
+  "periodLabels": {
+    "daily": "Daily",
+    "weekly": "Weekly",
+    "monthly": "Monthly",
+    "allTime": "All-Time"
+  },
+  "models": {
+    "opus4": "Opus 4",
+    "sonnet4": "Sonnet 4",
+    "haiku4": "Haiku 4"
+  },
+  "plans": {
+    "pro": "Pro",
+    "max5x": "Max 5x",
+    "max20x": "Max 20x",
+    "teamStandard": "Team Standard",
+    "teamPremium": "Team Premium"
+  },
+  "verdicts": {
+    "goodValue": "Good Value",
+    "underusing": "Underusing",
+    "noPlanDetected": "No Plan Detected"
+  },
+  "tableHeaders": {
+    "session": "Session",
+    "started": "Started",
+    "model": "Model",
+    "time": "Time",
+    "stop": "Stop",
+    "tools": "Tools",
+    "total": "Total",
+    "totals": "Totals"
+  },
+  "units": {
+    "tokens": "tokens",
+    "session_one": "{{count}} session",
+    "session_other": "{{count}} sessions",
+    "tokPerMin": "tok/min",
+    "promptsPerHr": "prompts/hr",
+    "outputPerPrompt": "output/prompt"
+  },
+  "actions": {
+    "connect": "Connect",
+    "disconnect": "Disconnect",
+    "cancel": "Cancel",
+    "refresh": "Refresh",
+    "save": "Save",
+    "send": "Send"
+  }
+}

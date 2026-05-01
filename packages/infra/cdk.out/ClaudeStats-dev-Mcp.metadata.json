@@ -1,0 +1,92 @@
+{
+  "/ClaudeStats-dev-Mcp/SsmParameterValue:--ClaudeStats-dev--api--graphql-endpoint:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevapigraphqlendpointC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Mcp/SsmParameterValue:--ClaudeStats-dev--api--graphql-api-arn:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevapigraphqlapiarnC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Mcp/SsmParameterValue:--ClaudeStats-dev--auth--cognito-domain:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevauthcognitodomainC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Mcp/SsmParameterValue:--ClaudeStats-dev--auth--mcp-client-id:C96584B6-F00A-464E-AD19-53AFF4B05118.Parameter": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SsmParameterValueClaudeStatsdevauthmcpclientidC96584B6F00A464EAD1953AFF4B05118Parameter"
+    }
+  ],
+  "/ClaudeStats-dev-Mcp/McpGatewayUrl": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "McpGatewayUrl"
+    }
+  ],
+  "/ClaudeStats-dev-Mcp/McpEcrRepository": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "McpEcrRepository"
+    }
+  ],
+  "/ClaudeStats-dev-Mcp/BootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "BootstrapVersion"
+    }
+  ],
+  "/ClaudeStats-dev-Mcp/CheckBootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CheckBootstrapVersion"
+    }
+  ],
+  "/ClaudeStats-dev-Mcp/McpRepository/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "McpRepository598C0493"
+    }
+  ],
+  "/ClaudeStats-dev-Mcp/McpRole/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "McpRoleA027B6FA"
+    }
+  ],
+  "/ClaudeStats-dev-Mcp/McpFunction/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "McpFunctionF370A1F8"
+    }
+  ],
+  "/ClaudeStats-dev-Mcp/Param-mcp-gateway-url/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "Parammcpgatewayurl3CD9FD2E"
+    }
+  ],
+  "/ClaudeStats-dev-Mcp/CDKMetadata/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadata"
+    }
+  ],
+  "/ClaudeStats-dev-Mcp/McpRole/DefaultPolicy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "McpRoleDefaultPolicy08B34C48"
+    }
+  ],
+  "/ClaudeStats-dev-Mcp/McpFunction/FunctionUrl/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "McpFunctionFunctionUrl5385C13A"
+    }
+  ]
+}

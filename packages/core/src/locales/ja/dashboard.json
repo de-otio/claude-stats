@@ -1,0 +1,293 @@
+{
+  "pageTitle": "Claude Stats — {{period}} ({{date}})",
+  "tabs": {
+    "overview": "概要",
+    "models": "モデル",
+    "projects": "プロジェクト",
+    "sessions": "セッション",
+    "plan": "プラン",
+    "context": "コンテキスト",
+    "efficiency": "効率",
+    "energy": "エネルギー",
+    "settings": "設定"
+  },
+  "toolbar": {
+    "period": "期間:",
+    "refresh": "更新",
+    "autoOff": "自動: オフ",
+    "autoOn": "自動: オン ({{seconds}}秒)"
+  },
+  "summary": {
+    "sessions": "セッション",
+    "prompts": "プロンプト",
+    "inputTokens": "入力トークン",
+    "outputTokens": "出力トークン",
+    "cacheEfficiency": "キャッシュ効率",
+    "estCost": "推定コスト",
+    "planValue": "プラン価値",
+    "ofPlanFee": "${{fee}}/月 のうち",
+    "activeHours": "アクティブ時間",
+    "costPerPrompt": "コスト / プロンプト",
+    "tokPerMin": "トークン / 分",
+    "truncatedOutputs": "切り捨てられた出力",
+    "periodRange": "{{start}} → 今日",
+    "allTime": "全期間"
+  },
+  "charts": {
+    "hourlyTokenUsage": "時間別トークン使用量",
+    "dailyTokenUsage": "日別トークン使用量",
+    "tokenBreakdown": "トークン内訳",
+    "cacheUsage": "キャッシュ使用量",
+    "cumulativeApiValue": "累積 API 価値 vs プラン料金",
+    "tokensByModel": "モデル別トークン",
+    "stopReasons": "停止理由",
+    "topProjects": "トッププロジェクト",
+    "tokensByProject": "プロジェクト別トークンシェア",
+    "energyByProject": "プロジェクト別エネルギー使用量",
+    "thinkingIntensity": "プロジェクト別思考の深さ",
+    "natureOfWork": "プロジェクト別作業内容",
+    "sessionsByEntrypoint": "エントリーポイント別セッション",
+    "usageWindows": "5 時間使用ウィンドウ",
+    "topConversations": "API コスト上位の会話",
+    "windowLimitUsage": "ウィンドウ上限使用率 %",
+    "weeklyActivity": "週次アクティビティ",
+    "windowsPerWeek": "週あたりのウィンドウ数",
+    "conversationLengthDist": "会話長の分布",
+    "contextGrowthCurve": "コンテキスト成長曲線",
+    "cacheEfficiencyByLength": "会話長別キャッシュ効率",
+    "compactionEvents": "コンパクションイベント",
+    "longSessions": "長時間セッション — コンテキスト管理の余地",
+    "modelUsageByTier": "複雑度ティア別モデル使用",
+    "opusScoreDist": "Opus 複雑度スコア分布",
+    "topOveruse": "過剰使用上位: 単純タスクに高価なモデル"
+  },
+  "plan": {
+    "account": "アカウント",
+    "currentPlan": "現在のプラン",
+    "planVerdict": "プラン判定",
+    "suggestedPlan": "推奨プラン",
+    "avgWeeklyValue": "週平均価値",
+    "peakLabel": "ピーク: ${{value}}",
+    "windowsPerWeek": "ウィンドウ / 週",
+    "totalWindows": "合計 {{count}} ウィンドウ",
+    "avgWindowCost": "平均ウィンドウコスト",
+    "medianLabel": "中央値: ${{value}}",
+    "truncatedOutputWindows": "切り捨て出力ありウィンドウ",
+    "truncatedOutputWindowsHint": "max_tokens 切り捨てを含む",
+    "accounts": "アカウント:",
+    "accountsDetected": "{{count}} アカウントを検出",
+    "planNotDetected": "プランを検出できませんでした",
+    "setPlanFee": "--plan-fee を設定するかテレメトリを拡充してください",
+    "basedOnAvg": "週平均 ${{value}} の API 価値に基づく",
+    "feeManual": "${{fee}}/月（手動）",
+    "feeAutoDetected": "${{fee}}/月（自動検出）",
+    "unknownPlan": "不明なプラン",
+    "noData": "データなし",
+    "notEnoughData": "プラン効率を分析するのに十分な使用データがまだありません。",
+    "goodValue": "お得",
+    "underusing": "使用不足",
+    "noPlan": "プランなし",
+    "noPlanDetected": "プランが検出されませんでした",
+    "planNames": {
+      "pro": "Pro ($20)",
+      "team_standard": "Team Std ($25)",
+      "max_5x": "Max 5x ($100)",
+      "team_premium": "Team Premium ($125)",
+      "max_20x": "Max 20x ($200)"
+    }
+  },
+  "context": {
+    "avgPromptsPerSession": "セッション平均プロンプト数",
+    "medianPrompts": "プロンプト中央値",
+    "compactionRate": "コンパクション率",
+    "avgPeakInputTokens": "平均ピーク入力トークン",
+    "needCompaction": "コンパクション推奨",
+    "compactionsDetected": "{{count}} セッションにわたりコンパクションを検出",
+    "noCompactionEvents": "コンパクションイベントは検出されませんでした。長い会話では /compact を使用してコンテキストサイズとコストを削減することを検討してください。",
+    "tableHeaders": {
+      "project": "プロジェクト",
+      "prompts": "プロンプト",
+      "duration": "所要時間",
+      "peakInput": "ピーク入力",
+      "compacted": "コンパクト済み？",
+      "cost": "コスト",
+      "yes": "はい",
+      "no": "いいえ"
+    }
+  },
+  "efficiency": {
+    "potentialSavings": "節約可能額",
+    "overuseRate": "過剰使用率",
+    "overuseDescription": "必要以上に高価なモデルへ送られたターン",
+    "turnsAnalyzed": "分析対象ターン",
+    "ofTotalMessages": "合計 {{count}} メッセージ中"
+  },
+  "energy": {
+    "totalEnergy": "総エネルギー",
+    "totalCO2": "CO₂ 排出量",
+    "co2Range": "±55% 不確実性: {{low}} – {{high}}",
+    "region": "電力系統リージョン",
+    "gridIntensity": "系統炭素強度",
+    "gCO2perKWh": "gCO₂/kWh",
+    "cacheSaved": "キャッシュで節約",
+    "energySavedLabel": "入力再計算と比較",
+    "thinkingSessions": "思考セッション",
+    "thinkingEnergyPct": "エネルギーの {{pct}}%",
+    "geoCoverage": "地理カバレッジ",
+    "geoCoverageHint": "推論リージョンが検出されたメッセージの割合",
+    "equivalents": "環境コンテキスト",
+    "periodRange": "{{start}} → {{end}} ({{days}} 日)",
+    "gasolineLiters": "ガソリンのリットル数",
+    "transitKm": "都市交通 km",
+    "trainKm": "長距離鉄道 km",
+    "solarPanels": "必要な太陽光パネル（期間）",
+    "solarRegion": "{{region}} にて",
+    "solarPanelsFootnote": "屋上 PV モジュール（効率約 20%、性能比 0.75）の面積で、{{region}} に設置した場合、選択した期間とちょうど同じ時間で本期間の総エネルギー消費を生成するのに必要な面積。地域の年間日射量と選択期間の長さに応じてスケールします。",
+    "windRotations": "風力タービンの回転数",
+    "windTurbineRef": "3 MW 陸上、35% CF",
+    "windRotationsFootnote": "典型的な最新 3 MW 陸上風力タービンを 15 RPM、設備利用率 35% で運転した場合の回転数 — 平均出力で 1 回転あたり約 1.17 kWh。同等に、そのタービン 1 基が実運用平均出力で本期間の総エネルギーを生成するには {{minutes}} 分（定格 3 MW では {{ratedMinutes}} 分）必要です。",
+    "hydroTurbineLiters": "水力タービンを通過する水量（リットル）",
+    "hydroTurbineRef": "落差約 100 m、効率 90%",
+    "hydroTurbineFootnote": "本期間のエネルギーを生成するために典型的な最新水力タービン（落差約 100 m、効率約 90%）を通過させる必要がある水量 — E = m·g·h·η より kWh あたり約 4,077 L。高落差プラントではより少なく（フーバーダム、180 m: 約 2,200 L/kWh）、低落差の流れ込み式プラントでははるかに多くなります。",
+    "nuclearWaste": "原子力廃棄物の量",
+    "nuclearWasteFootnote": "エンジニアリング処分施設の体積 — 原廃棄物ではなく、同じエネルギーを 100% 原子力で生成した場合（約 4 mL/kWh）。Posiva KBS-3 に基づく HLW 定置（銅キャニスタ、ベントナイト緩衝材、熱的に離間された処分トンネルを含めると使用済燃料の原体積の約 1,500 倍 — Onkalo は 650 m³ の使用済燃料のために約 100 万 m³ の岩盤を掘削）、ILW（約 5 倍）、LLW（約 3 倍）処分の重み付けブレンドで、IAEA 廃棄物インベントリ量シェアを使用。HLW は放射能が自然ウラン鉱石レベルまで減衰するまで約 10 万年間、安全に隔離・管理する必要があります。",
+    "journeyAnchor": "あなたの炭素排出量 ≈ {{name}} の運転（{{km}} km）。",
+    "journeys": {
+      "coffeeWalk": "コーヒーショップへの往復",
+      "bikeCrossTown": "街を横断する自転車走行",
+      "crosstownCommute": "街を横断する通勤",
+      "shortIntercity": "ロンドン → ブライトン",
+      "berlinHamburg": "ベルリン → ハンブルク",
+      "berlinMunich": "ベルリン → ミュンヘン",
+      "parisBerlin": "パリ → ベルリン",
+      "coastToCoast": "ロサンゼルス → ニューヨーク",
+      "halfEarth": "地球半周"
+    },
+    "disclaimer": "推定値のみ — ±55% の不確実性。Anthropic はリクエスト単位のエネルギーデータを公開していません。規制用途には使用できません。",
+    "byModel": "モデル別エネルギー",
+    "byDay": "日次エネルギーと CO₂",
+    "byProject": "プロジェクト別エネルギー",
+    "noData": "この期間のエネルギーデータはありません。",
+    "calc": {
+      "title": "計算方法",
+      "clickToExpand": "クリックして展開",
+      "intro": "このタブのすべてのタイルは、Anthropic の API が各メッセージで返すトークン数から導出されています。以下に、そのトークンレベルデータが kWh、kg CO₂、および上記の等価値になるまでの過程を、あなたの実際の期間の数値を使って示し、計算を検証できるようにしています。",
+      "ratesHeader": "モデル別エネルギーレート:",
+      "periodHeader": "あなたの期間 ({{start}} → {{end}}):",
+      "col": {
+        "class": "クラス",
+        "inputRate": "入力 Wh/1K",
+        "outputRate": "出力 Wh/1K",
+        "msgs": "メッセージ",
+        "output": "出力トークン",
+        "input": "入力トークン",
+        "cacheWrite": "キャッシュ書込",
+        "cacheRead": "キャッシュ読取",
+        "rawEnergy": "生エネルギー",
+        "rawTotal": "生合計"
+      },
+      "totals": "生合計 {{raw}} kWh × PUE {{pue}} = <strong>{{totalKwh}} kWh</strong> 消費。<strong>{{region}}</strong> の系統強度 {{gridIntensity}} gCO₂/kWh にて、これは <strong>{{co2Kg}} kg CO₂</strong> に相当します。",
+      "equivHeader": "{{co2Kg}} kg CO₂ / {{totalKwh}} kWh から等価値がどのように導かれたか:",
+      "eq": {
+        "gasoline": "ガソリン: {{co2Kg}} kg ÷ 2.31 kg CO₂/L = <strong>{{value}} L</strong>",
+        "train": "長距離鉄道: {{co2Kg}} kg ÷ 0.006 kg CO₂/pkm = <strong>{{value}} km</strong>",
+        "transit": "都市交通: {{co2Kg}} kg ÷ 0.030 kg CO₂/pkm = <strong>{{value}} km</strong>",
+        "nuclearWaste": "原子力処分体積: {{totalKwh}} kWh × 4 mL/kWh（エンジニアリング HLW+ILW+LLW リポジトリ加重平均）= <strong>{{value}}</strong>",
+        "wind": "風力タービン回転数: {{totalKwh}} kWh ÷ 1.17 kWh/回転（15 RPM、35% CF の 3 MW タービン）= <strong>{{value}} 回転</strong> ≈ 実運用で {{minutes}} 分の回転",
+        "hydro": "水力タービン水量: {{totalKwh}} kWh × 4,077 L/kWh（落差約 100 m、効率 90%、E = m·g·h·η より）= <strong>{{value}}</strong>",
+        "solar": "太陽光パネル: {{totalKwh}} kWh ÷ ({{regionYield}} kWh/m²/年 in {{region}} × {{periodDays}}/365) = <strong>{{value}}</strong>"
+      }
+    },
+    "sources": {
+      "title": "データソース",
+      "items": {
+        "methodology": {
+          "label": "モデル別エネルギーレート",
+          "value": "Google の 2025 年 Gemini 推論ホワイトペーパー（テキストクエリ中央値 0.24 Wh）および Epoch AI 2024 のトークンレベル推定を基に、モデルクラス（Haiku/Sonnet/Opus）別にスケーリング。計算式の詳細は /doc/analysis/energy-dashboard/01-estimation-model.md を参照。"
+        },
+        "pue": {
+          "label": "データセンターオーバーヘッド",
+          "value": "PUE 1.2 — Uptime Institute 2023 ハイパースケール平均（Google、AWS、Azure は 1.10–1.20 を公開）。"
+        },
+        "gridIntensity": {
+          "label": "系統炭素強度",
+          "value": "米国: EPA eGRID2022。EU: European Environment Agency (EEA) 2024。アジア太平洋およびグローバル: IEA 2024。利用可能な場合は各国機関のデータを使用。"
+        },
+        "solarYield": {
+          "label": "太陽光パネル収量",
+          "value": "地域別年間 GHI は PVGIS（ヨーロッパ）／NREL NSRDB（アメリカ大陸）／World Bank GSA（グローバル）を、パネル効率 20% × 性能比 0.75 で乗算。タイルはこの年間収量を選択期間に縮小し、その時間枠内で本期間のエネルギーを正確に生成するのに必要なパネル面積を表示します。"
+        },
+        "windTurbine": {
+          "label": "風力タービン参照値",
+          "value": "15 RPM、設備利用率約 35% の最新 3 MW 陸上タービン（IRENA Renewable Power Generation Costs 2023、IEA Renewables 2024）。回転あたりのエネルギー = 3 MW × 4 s × 0.35 ≈ 平均出力 1.17 kWh（定格では約 3.33 kWh）。"
+        },
+        "hydroTurbine": {
+          "label": "水力タービン参照値",
+          "value": "落差約 100 m、タービン+発電機合成効率約 90% の代表的な最新水力プラント。E = m·g·h·η より（g = 9.81 m/s²）、3,600,000 J ÷ (9.81 × 100 × 0.9) ≈ 4,077 L/kWh。グローバル容量加重平均に近い値（三峡約 95 m、イタイプ約 118 m）。フーバーダム（180 m）などの高落差プラントは約 2,200 L/kWh。"
+        },
+        "carKm": {
+          "label": "自動車排出量",
+          "value": "120 gCO₂/km — EU 新車平均、EEA 2024。"
+        },
+        "transit": {
+          "label": "都市交通排出量",
+          "value": "30 gCO₂/旅客 km — 都市バス（約 27）、地下鉄（約 8）、路面電車/軽便鉄道の加重ブレンド。IEA Transport Emissions (2024) および EEA Transport & Environment Reporting Mechanism 2024 より。"
+        },
+        "train": {
+          "label": "長距離鉄道排出量",
+          "value": "6 gCO₂/旅客 km — ヨーロッパ電化都市間鉄道平均、UIC Railway Handbook on Energy and CO₂ Emissions および EEA 2024。"
+        },
+        "tree": {
+          "label": "樹木の吸収量",
+          "value": "成熟した樹木 1 本あたり年間 21 kg の CO₂ 吸収 — 米国森林局／EPA。"
+        },
+        "gasoline": {
+          "label": "ガソリン燃焼",
+          "value": "1 L あたり 2.31 kg CO₂ — 米国 EPA テイルパイプ排出係数。"
+        },
+        "nuclearWaste": {
+          "label": "原子力処分体積",
+          "value": "約 4 mL/kWh のエンジニアリング処分体積 — 原廃棄物ではありません。Posiva KBS-3 / Onkalo に基づく HLW 処分（銅キャニスタ、ベントナイト緩衝材、熱トンネル間隔を考慮すると使用済燃料原体積の約 1,500 倍）、ILW（約 5 倍）、LLW（約 3 倍）処分の加重平均、IAEA 体積シェア使用。参照: Posiva 2012 セーフティケース、SKB TR-11-01、IAEA Radioactive Waste Inventory。"
+        }
+      }
+    }
+  },
+  "settings": {
+    "configuration": "設定",
+    "settingsPath": "設定は <code style=\"background:#0f3460;padding:0.15rem 0.3rem;border-radius:3px;color:#ccc;\">~/.claude-stats/config.json</code> に保存されます",
+    "planType": "プランタイプ",
+    "notSetAutoDetect": "未設定（自動検出）",
+    "planOptions": {
+      "pro": "Pro ($20/月)",
+      "max_5x": "Max 5x ($100/月)",
+      "max_20x": "Max 20x ($200/月)",
+      "team_standard": "Team Standard ($25/月)",
+      "team_premium": "Team Premium ($125/月)",
+      "custom": "カスタム"
+    },
+    "planAutoDetectHint": "自動検出は断続的なテレメトリデータに依存しており、プランを判定できないことがよくあります。手動で設定することをお勧めします。",
+    "monthlyFee": "月額料金（USD）",
+    "monthlyFeePlaceholder": "プランタイプから自動",
+    "monthlyFeeHint": "プランタイプのデフォルト料金を上書き、またはカスタム金額を設定します。",
+    "costAlertThresholds": "コストアラートしきい値（USD）",
+    "daily": "日次",
+    "weekly": "週次",
+    "monthly": "月次",
+    "save": "保存",
+    "savedReload": "保存しました！更新されたダッシュボードを表示するには再読み込みしてください。",
+    "networkError": "ネットワークエラー。",
+    "errorSaving": "保存エラー。"
+  },
+  "pricing": {
+    "title": "トークン料金（100 万トークンあたり）",
+    "model": "モデル",
+    "input": "入力",
+    "output": "出力",
+    "cacheRead": "キャッシュ読取",
+    "cacheWrite": "キャッシュ書込",
+    "source": "ソース: Anthropic API 料金 — 最終更新 {{date}}（週次自動更新）。表示されるコストは API 相当料金であり、サブスクリプション料金ではありません。"
+  },
+  "footer": {
+    "generated": "生成 {{timestamp}} • タイムゾーン: {{timezone}}"
+  }
+}

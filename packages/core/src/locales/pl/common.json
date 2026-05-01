@@ -1,0 +1,79 @@
+{
+  "metrics": {
+    "sessions": "Sesje",
+    "prompts": "Prompty",
+    "inputTokens": "Tokeny wejściowe",
+    "outputTokens": "Tokeny wyjściowe",
+    "input": "Wejście",
+    "output": "Wyjście",
+    "cache": "Cache",
+    "cacheEfficiency": "Efektywność cache",
+    "estCost": "Szac. koszt",
+    "planValue": "Wartość planu",
+    "planROI": "ROI planu",
+    "activeHours": "Aktywne godziny",
+    "costPerPrompt": "Koszt / Prompt",
+    "tokPerMin": "Tok / Min",
+    "throttleEvents": "Zdarzenia ograniczenia",
+    "velocity": "Szybkość",
+    "cost": "Koszt",
+    "duration": "Czas trwania",
+    "thinking": "Rozumowanie"
+  },
+  "periods": {
+    "day": "Dzień",
+    "week": "Tydzień",
+    "month": "Miesiąc",
+    "all": "Wszystko",
+    "allTime": "cały okres"
+  },
+  "periodLabels": {
+    "daily": "Dzienne",
+    "weekly": "Tygodniowe",
+    "monthly": "Miesięczne",
+    "allTime": "Cały okres"
+  },
+  "models": {
+    "opus4": "Opus 4",
+    "sonnet4": "Sonnet 4",
+    "haiku4": "Haiku 4"
+  },
+  "plans": {
+    "pro": "Pro",
+    "max5x": "Max 5x",
+    "max20x": "Max 20x",
+    "teamStandard": "Team Standard",
+    "teamPremium": "Team Premium"
+  },
+  "verdicts": {
+    "goodValue": "Dobra wartość",
+    "underusing": "Niedostateczne użycie",
+    "noPlanDetected": "Nie wykryto planu"
+  },
+  "tableHeaders": {
+    "session": "Sesja",
+    "started": "Początek",
+    "model": "Model",
+    "time": "Czas",
+    "stop": "Zatrzymanie",
+    "tools": "Narzędzia",
+    "total": "Suma",
+    "totals": "Sumy"
+  },
+  "units": {
+    "tokens": "tokeny",
+    "session_one": "{{count}} sesja",
+    "session_other": "{{count}} sesji",
+    "tokPerMin": "tok/min",
+    "promptsPerHr": "promptów/godz",
+    "outputPerPrompt": "wyjście/prompt"
+  },
+  "actions": {
+    "connect": "Połącz",
+    "disconnect": "Rozłącz",
+    "cancel": "Anuluj",
+    "refresh": "Odśwież",
+    "save": "Zapisz",
+    "send": "Wyślij"
+  }
+}
