@@ -717,6 +717,47 @@ export class Store {
     return (stmt.all as (...args: any[]) => unknown[])(...params) as SessionRow[];
   }
 
+  /**
+   * Distinct accounts present in the session store, with the most-recent
+   * subscription_type and session count for each. Used to populate the
+   * dashboard's account selector independent of the current account filter.
+   */
+  listAccounts(filters: { since?: number; until?: number; includeCI?: boolean } = {}): Array<{
+    accountUuid: string;
+    subscriptionType: string | null;
+    sessionCount: number;
+  }> {
+    const conditions: string[] = ["account_uuid IS NOT NULL", "source_deleted = 0"];
+    const params: unknown[] = [];
+    if (filters.since !== undefined) {
+      conditions.push("first_timestamp >= ?");
+      params.push(filters.since);
+    }
+    if (filters.until !== undefined) {
+      conditions.push("first_timestamp < ?");
+      params.push(filters.until);
+    }
+    if (!filters.includeCI) {
+      conditions.push("is_interactive = 1");
+    }
+    const where = `WHERE ${conditions.join(" AND ")}`;
+    const stmt = this.db.prepare(`
+      SELECT account_uuid AS accountUuid,
+             MAX(subscription_type) AS subscriptionType,
+             COUNT(*) AS sessionCount
+      FROM sessions
+      ${where}
+      GROUP BY account_uuid
+      ORDER BY sessionCount DESC
+    `);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(...params) as Array<{
+      accountUuid: string;
+      subscriptionType: string | null;
+      sessionCount: number;
+    }>;
+  }
+
   // ─── Session detail queries ────────────────────────────────────────────────
 
   findSession(partialId: string): SessionRow | null {
