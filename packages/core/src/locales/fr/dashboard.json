@@ -137,7 +137,9 @@
     "geoCoverageHint": "% de messages avec région d'inférence détectée",
     "equivalents": "Contexte environnemental",
     "periodRange": "{{start}} → {{end}} ({{days}} jours)",
-    "gasolineLiters": "litres d'essence",
+    "naturalGasM3": "gaz naturel brûlé par une centrale",
+    "naturalGasRef": "CCG, ~55 % η, PCI",
+    "naturalGasFootnote": "Volume de gaz naturel qu'une centrale moderne à cycle combiné gaz (CCG, ~55 % de rendement, pouvoir calorifique inférieur ~35,8 MJ/m³ ≈ 9,94 kWh/m³) devrait brûler pour fournir l'énergie électrique livrée à la prise du data-center sur la période — environ 0,183 m³ par kWh. Les turbines à gaz à cycle ouvert plus anciennes en consomment ~50 à 60 % de plus.",
     "transitKm": "km en transport urbain",
     "trainKm": "km en train longue distance",
     "solarPanels": "panneaux solaires requis (période)",
@@ -189,7 +191,7 @@
       "totals": "Total brut {{raw}} kWh × PUE {{pue}} = <strong>{{totalKwh}} kWh</strong> consommés. À l'intensité de réseau <strong>{{region}}</strong> de {{gridIntensity}} gCO₂/kWh, cela fait <strong>{{co2Kg}} kg CO₂</strong>.",
       "equivHeader": "Comment les équivalents ont été dérivés de {{co2Kg}} kg CO₂ / {{totalKwh}} kWh :",
       "eq": {
-        "gasoline": "Essence : {{co2Kg}} kg ÷ 2,31 kg CO₂/L = <strong>{{value}} L</strong>",
+        "naturalGas": "Gaz naturel (CCG) : {{totalKwh}} kWh ÷ (0,55 × 9,94 kWh/m³ PCI) = <strong>{{value}}</strong>",
         "train": "Train longue distance : {{co2Kg}} kg ÷ 0,006 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "transit": "Transport urbain : {{co2Kg}} kg ÷ 0,030 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "nuclearWaste": "Volume d'élimination nucléaire : {{totalKwh}} kWh × 4 mL/kWh (dépôt conçu DHAVL+DMAVL+DFAVL, pondéré) = <strong>{{value}}</strong>",
@@ -241,9 +243,9 @@
           "label": "Absorption par un arbre",
           "value": "21 kg de CO₂ absorbés par an par un arbre mature — US Forest Service / EPA."
         },
-        "gasoline": {
-          "label": "Combustion d'essence",
-          "value": "2,31 kg de CO₂ par litre — facteur d'émissions à l'échappement US EPA."
+        "naturalGas": {
+          "label": "Centrale au gaz naturel",
+          "value": "Centrale moderne à cycle combiné gaz (CCG) à ~55 % de rendement électrique, gaz naturel au pouvoir calorifique inférieur 35,8 MJ/m³ (≈ 9,94 kWh/m³). Soit ~0,183 m³ de gaz naturel brûlé par kWh d'électricité livré. Source du rendement : IEA Electricity 2024, US EIA Annual Energy Outlook 2024."
         },
         "nuclearWaste": {
           "label": "Volume d'élimination nucléaire",

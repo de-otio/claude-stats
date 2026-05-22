@@ -137,7 +137,9 @@
     "geoCoverageHint": "% de mensagens com região de inferência detectada",
     "equivalents": "Contexto ambiental",
     "periodRange": "{{start}} → {{end}} ({{days}} dias)",
-    "gasolineLiters": "litros de gasolina",
+    "naturalGasM3": "gás natural queimado por uma usina",
+    "naturalGasRef": "CCGN, ~55 % η, PCI",
+    "naturalGasFootnote": "Volume de gás natural que uma usina moderna de ciclo combinado a gás (CCGN, ~55 % de eficiência, poder calorífico inferior ~35,8 MJ/m³ ≈ 9,94 kWh/m³) precisaria queimar para entregar a energia elétrica consumida no data-center durante o período — cerca de 0,183 m³ por kWh. Turbinas a gás de ciclo aberto mais antigas precisam ~50–60 % a mais.",
     "transitKm": "km em transporte urbano",
     "trainKm": "km em trem de longa distância",
     "solarPanels": "painéis solares necessários (período)",
@@ -189,7 +191,7 @@
       "totals": "Total bruto {{raw}} kWh × PUE {{pue}} = <strong>{{totalKwh}} kWh</strong> consumidos. Na intensidade da rede <strong>{{region}}</strong> de {{gridIntensity}} gCO₂/kWh, isso equivale a <strong>{{co2Kg}} kg CO₂</strong>.",
       "equivHeader": "Como os equivalentes foram derivados de {{co2Kg}} kg CO₂ / {{totalKwh}} kWh:",
       "eq": {
-        "gasoline": "Gasolina: {{co2Kg}} kg ÷ 2,31 kg CO₂/L = <strong>{{value}} L</strong>",
+        "naturalGas": "Gás natural (CCGN): {{totalKwh}} kWh ÷ (0,55 × 9,94 kWh/m³ PCI) = <strong>{{value}}</strong>",
         "train": "Trem de longa distância: {{co2Kg}} kg ÷ 0,006 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "transit": "Transporte urbano: {{co2Kg}} kg ÷ 0,030 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "nuclearWaste": "Volume de descarte nuclear: {{totalKwh}} kWh × 4 mL/kWh (repositório engenheirado RNAA+RNMA+RNBA, ponderado) = <strong>{{value}}</strong>",
@@ -241,9 +243,9 @@
           "label": "Absorção por árvore",
           "value": "21 kg de CO₂ absorvidos por ano por uma árvore madura — US Forest Service / EPA."
         },
-        "gasoline": {
-          "label": "Combustão de gasolina",
-          "value": "2,31 kg de CO₂ por litro — fator de emissões no escapamento da US EPA."
+        "naturalGas": {
+          "label": "Usina a gás natural",
+          "value": "Usina moderna de ciclo combinado a gás (CCGN) com ~55 % de eficiência elétrica, gás natural com poder calorífico inferior 35,8 MJ/m³ (≈ 9,94 kWh/m³). Resulta em ~0,183 m³ de gás natural queimado por kWh de eletricidade entregue. Fonte da eficiência: IEA Electricity 2024, US EIA Annual Energy Outlook 2024."
         },
         "nuclearWaste": {
           "label": "Volume de descarte nuclear",

@@ -187,7 +187,8 @@ describe("estimateEnergy", () => {
 
   it("includes environmental equivalents", () => {
     const result = estimateEnergy(basicUsage);
-    expect(result.equivalents.gasolineLiters).toBeGreaterThan(0);
+    expect(result.equivalents.naturalGasM3).toBeGreaterThan(0);
+    expect(result.equivalents.naturalGasM3).toBeCloseTo((result.totalEnergyWh / 1000) / (0.55 * 9.94), 10);
     expect(result.equivalents.solarPanelM2).toBeGreaterThan(0);
     expect(result.equivalents.solarRegionKey).toBeTruthy();
     expect(result.equivalents.transitKm).toBeGreaterThan(0);

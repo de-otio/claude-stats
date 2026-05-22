@@ -267,7 +267,7 @@ export interface DashboardEnergy {
     transitKm: number;
     solarPanelM2: number;
     solarRegionKey: string;
-    gasolineLiters: number;
+    naturalGasM3: number;
     trainKm: number;
     nuclearWasteMl: number;
     windRotations: number;
@@ -1870,7 +1870,7 @@ function buildEnergySection(
       transitKm: Math.round(aggregated.equivalents.transitKm * 100) / 100,
       solarPanelM2: Math.round(((aggregated.totalEnergyWh / 1000) / (REGIONS[aggregated.equivalents.solarRegionKey]!.solarYield * (daysInPeriod / 365))) * 10000) / 10000,
       solarRegionKey: aggregated.equivalents.solarRegionKey,
-      gasolineLiters: Math.round(aggregated.equivalents.gasolineLiters * 1000) / 1000,
+      naturalGasM3: Math.round(aggregated.equivalents.naturalGasM3 * 100000) / 100000,
       trainKm: Math.round(aggregated.equivalents.trainKm * 100) / 100,
       nuclearWasteMl: Math.round(aggregated.equivalents.nuclearWasteMl * 10000) / 10000,
       windRotations: Math.round(aggregated.equivalents.windRotations * 10) / 10,

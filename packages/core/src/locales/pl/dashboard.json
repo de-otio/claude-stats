@@ -137,7 +137,9 @@
     "geoCoverageHint": "% wiadomości z wykrytym regionem inferencji",
     "equivalents": "Kontekst środowiskowy",
     "periodRange": "{{start}} → {{end}} ({{days}} dni)",
-    "gasolineLiters": "litrów benzyny",
+    "naturalGasM3": "gaz ziemny spalony w elektrowni",
+    "naturalGasRef": "blok parowo-gazowy, ~55 % η, Wd",
+    "naturalGasFootnote": "Objętość gazu ziemnego, którą nowoczesny blok parowo-gazowy (~55 % sprawności, wartość opałowa dolna ~35,8 MJ/m³ ≈ 9,94 kWh/m³) musiałby spalić, aby dostarczyć energię elektryczną pobraną w okresie na wejściu centrum danych — około 0,183 m³ na kWh. Starsze turbiny gazowe w cyklu otwartym potrzebują ~50–60 % więcej.",
     "transitKm": "km komunikacją miejską",
     "trainKm": "km pociągiem dalekobieżnym",
     "solarPanels": "paneli słonecznych potrzebnych (okres)",
@@ -189,7 +191,7 @@
       "totals": "Suma surowa {{raw}} kWh × PUE {{pue}} = <strong>{{totalKwh}} kWh</strong> zużyte. Przy intensywności sieci <strong>{{region}}</strong> {{gridIntensity}} gCO₂/kWh, to <strong>{{co2Kg}} kg CO₂</strong>.",
       "equivHeader": "Jak ekwiwalenty zostały wyprowadzone z {{co2Kg}} kg CO₂ / {{totalKwh}} kWh:",
       "eq": {
-        "gasoline": "Benzyna: {{co2Kg}} kg ÷ 2,31 kg CO₂/L = <strong>{{value}} L</strong>",
+        "naturalGas": "Gaz ziemny (blok parowo-gazowy): {{totalKwh}} kWh ÷ (0,55 × 9,94 kWh/m³ Wd) = <strong>{{value}}</strong>",
         "train": "Pociąg dalekobieżny: {{co2Kg}} kg ÷ 0,006 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "transit": "Komunikacja miejska: {{co2Kg}} kg ÷ 0,030 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "nuclearWaste": "Objętość składowiska jądrowego: {{totalKwh}} kWh × 4 mL/kWh (inżynieryjne HLW+ILW+LLW, ważone) = <strong>{{value}}</strong>",
@@ -241,9 +243,9 @@
           "label": "Absorpcja drzew",
           "value": "21 kg CO₂ absorbowane rocznie przez dojrzałe drzewo — US Forest Service / EPA."
         },
-        "gasoline": {
-          "label": "Spalanie benzyny",
-          "value": "2,31 kg CO₂ na litr — współczynnik emisji spalin US EPA."
+        "naturalGas": {
+          "label": "Elektrownia na gaz ziemny",
+          "value": "Nowoczesny blok parowo-gazowy o sprawności elektrycznej ~55 %, gaz ziemny o wartości opałowej dolnej 35,8 MJ/m³ (≈ 9,94 kWh/m³). Daje to ~0,183 m³ spalonego gazu ziemnego na kWh dostarczonej energii elektrycznej. Źródło sprawności: IEA Electricity 2024, US EIA Annual Energy Outlook 2024."
         },
         "nuclearWaste": {
           "label": "Objętość składowiska jądrowego",

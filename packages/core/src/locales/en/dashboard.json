@@ -137,7 +137,9 @@
     "geoCoverageHint": "% of messages with detected inference region",
     "equivalents": "Environmental Context",
     "periodRange": "{{start}} → {{end}} ({{days}} days)",
-    "gasolineLiters": "liters of gasoline",
+    "naturalGasM3": "natural gas burned by a power plant",
+    "naturalGasRef": "CCGT, ~55 % η, LHV",
+    "naturalGasFootnote": "Volume of natural gas a modern combined-cycle gas turbine (~55 % efficiency, lower heating value ~35.8 MJ/m³ ≈ 9.94 kWh/m³) would need to burn at the plant to deliver this period's electrical energy at the data-center wall — about 0.183 m³ per kWh. Older simple-cycle peakers need ~50–60 % more.",
     "transitKm": "km by local transit",
     "trainKm": "km by long-distance train",
     "solarPanels": "solar panels required (period)",
@@ -189,7 +191,7 @@
       "totals": "Raw total {{raw}} kWh × PUE {{pue}} = <strong>{{totalKwh}} kWh</strong> consumed. At <strong>{{region}}</strong> grid intensity {{gridIntensity}} gCO₂/kWh, that is <strong>{{co2Kg}} kg CO₂</strong>.",
       "equivHeader": "How the equivalents were derived from {{co2Kg}} kg CO₂ / {{totalKwh}} kWh:",
       "eq": {
-        "gasoline": "Gasoline: {{co2Kg}} kg ÷ 2.31 kg CO₂/L = <strong>{{value}} L</strong>",
+        "naturalGas": "Natural gas (CCGT): {{totalKwh}} kWh ÷ (0.55 × 9.94 kWh/m³ LHV) = <strong>{{value}}</strong>",
         "train": "Long-distance train: {{co2Kg}} kg ÷ 0.006 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "transit": "Local transit: {{co2Kg}} kg ÷ 0.030 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "nuclearWaste": "Nuclear disposal volume: {{totalKwh}} kWh × 4 mL/kWh (engineered HLW+ILW+LLW repository, weighted) = <strong>{{value}}</strong>",
@@ -241,9 +243,9 @@
           "label": "Tree absorption",
           "value": "21 kg CO₂ absorbed per year by a mature tree — US Forest Service / EPA."
         },
-        "gasoline": {
-          "label": "Gasoline combustion",
-          "value": "2.31 kg CO₂ per liter — US EPA tailpipe emissions factor."
+        "naturalGas": {
+          "label": "Natural-gas power plant",
+          "value": "Modern combined-cycle gas turbine (CCGT) at ~55 % electrical efficiency, with natural gas at lower heating value 35.8 MJ/m³ (≈ 9.94 kWh/m³). Yields ~0.183 m³ of natural gas burned per kWh of electricity delivered. Efficiency reference: IEA Electricity 2024, US EIA Annual Energy Outlook 2024."
         },
         "nuclearWaste": {
           "label": "Nuclear disposal volume",

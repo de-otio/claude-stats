@@ -775,9 +775,10 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:1rem;">
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
-          <div style="font-size:1.6rem;line-height:1;">⛽</div>
-          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${data.energy.equivalents.gasolineLiters.toFixed(3)}</div>
-          <div style="font-size:0.8rem;color:#d0d8f0;">${t("dashboard:energy.gasolineLiters")}</div>
+          <div style="font-size:1.6rem;line-height:1;">🔥</div>
+          <div style="font-size:1.2rem;font-weight:bold;color:#fff;">${formatNaturalGasVolume(data.energy.equivalents.naturalGasM3)}<sup style="font-size:0.7rem;color:#ff9966;">¶</sup></div>
+          <div style="font-size:0.8rem;color:#d0d8f0;">${t("dashboard:energy.naturalGasM3")}</div>
+          <div style="font-size:0.65rem;color:#9aa3c0;margin-top:0.15rem;">${t("dashboard:energy.naturalGasRef")}</div>
         </div>
         <div style="flex:1;min-width:140px;background:#0f1429;border-radius:4px;padding:0.6rem;text-align:center;">
           <div style="font-size:1.6rem;line-height:1;">☀️</div>
@@ -830,6 +831,9 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       </div>
       <div style="margin-top:0.35rem;font-size:0.6rem;color:#888;line-height:1.35;">
         <span style="color:#6ec1e4;">§</span> ${t("dashboard:energy.hydroTurbineFootnote")}
+      </div>
+      <div style="margin-top:0.35rem;font-size:0.6rem;color:#888;line-height:1.35;">
+        <span style="color:#ff9966;">¶</span> ${t("dashboard:energy.naturalGasFootnote")}
       </div>
     </div>
 
@@ -938,7 +942,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
         })}</p>
         <p style="margin:0.75rem 0 0.25rem 0;"><strong style="color:#a0c4ff;">${t("dashboard:energy.calc.equivHeader")}</strong></p>
         <ul style="list-style:none;padding:0;margin:0.25rem 0;font-size:0.65rem;color:#ccc;line-height:1.55;">
-          <li>${t("dashboard:energy.calc.eq.gasoline", { co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2), value: data.energy.equivalents.gasolineLiters.toFixed(3) })}</li>
+          <li>${t("dashboard:energy.calc.eq.naturalGas", { totalKwh: (data.energy.totalEnergyWh / 1000).toFixed(2), value: formatNaturalGasVolume(data.energy.equivalents.naturalGasM3) })}</li>
           <li>${t("dashboard:energy.calc.eq.train", { co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2), value: data.energy.equivalents.trainKm.toFixed(2) })}</li>
           <li>${t("dashboard:energy.calc.eq.transit", { co2Kg: (data.energy.totalCO2Grams / 1000).toFixed(2), value: data.energy.equivalents.transitKm.toFixed(2) })}</li>
           <li>${t("dashboard:energy.calc.eq.nuclearWaste", { totalKwh: (data.energy.totalEnergyWh / 1000).toFixed(2), value: formatNuclearVolume(data.energy.equivalents.nuclearWasteMl) })}</li>
@@ -961,7 +965,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
       <ul style="list-style:none;padding:0;margin:0;font-size:0.65rem;color:#aaa;line-height:1.5;">
         ${[
           "methodology", "pue", "gridIntensity", "solarYield", "windTurbine",
-          "hydroTurbine", "carKm", "transit", "train", "tree", "gasoline", "nuclearWaste",
+          "hydroTurbine", "carKm", "transit", "train", "tree", "naturalGas", "nuclearWaste",
         ].map(k => `<li style="padding:0.15rem 0;"><span style="color:#a0c4ff;font-weight:600;">${t(`dashboard:energy.sources.items.${k}.label`)}:</span> ${t(`dashboard:energy.sources.items.${k}.value`)}</li>`).join("")}
       </ul>
     </div>
@@ -2133,6 +2137,14 @@ function formatWaterVolume(liters: number): string {
   if (liters < 1000) return `${Math.round(liters)} L`;
   if (liters < 1_000_000) return `${(liters / 1000).toFixed(1)} m³`;
   return `${(liters / 1_000_000).toFixed(2)} ML`;
+}
+
+/** Format a natural-gas volume stored in m³: mL when <1 L, L when <1 m³, m³ otherwise. */
+function formatNaturalGasVolume(m3: number): string {
+  const liters = m3 * 1000;
+  if (liters < 1) return `${(liters * 1000).toFixed(0)} mL`;
+  if (liters < 1000) return `${liters.toFixed(1)} L`;
+  return `${m3.toFixed(2)} m³`;
 }
 
 /** Format a large number with k/M suffix for display in summary bar. */

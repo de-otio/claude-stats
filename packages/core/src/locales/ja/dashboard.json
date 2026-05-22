@@ -137,7 +137,9 @@
     "geoCoverageHint": "推論リージョンが検出されたメッセージの割合",
     "equivalents": "環境コンテキスト",
     "periodRange": "{{start}} → {{end}} ({{days}} 日)",
-    "gasolineLiters": "ガソリンのリットル数",
+    "naturalGasM3": "発電所で燃焼する天然ガス",
+    "naturalGasRef": "GTCC、~55 % η、LHV",
+    "naturalGasFootnote": "最新のガスタービンコンバインドサイクル発電所（GTCC、効率 ~55 %、低位発熱量 ~35.8 MJ/m³ ≈ 9.94 kWh/m³）が、本期間にデータセンターの受電端で消費された電力量を供給するために燃焼させる必要のある天然ガスの体積 — 1 kWh あたり約 0.183 m³。旧型の単純サイクルピーカーは ~50〜60 % 多く必要とします。",
     "transitKm": "都市交通 km",
     "trainKm": "長距離鉄道 km",
     "solarPanels": "必要な太陽光パネル（期間）",
@@ -189,7 +191,7 @@
       "totals": "生合計 {{raw}} kWh × PUE {{pue}} = <strong>{{totalKwh}} kWh</strong> 消費。<strong>{{region}}</strong> の系統強度 {{gridIntensity}} gCO₂/kWh にて、これは <strong>{{co2Kg}} kg CO₂</strong> に相当します。",
       "equivHeader": "{{co2Kg}} kg CO₂ / {{totalKwh}} kWh から等価値がどのように導かれたか:",
       "eq": {
-        "gasoline": "ガソリン: {{co2Kg}} kg ÷ 2.31 kg CO₂/L = <strong>{{value}} L</strong>",
+        "naturalGas": "天然ガス（GTCC）: {{totalKwh}} kWh ÷ (0.55 × 9.94 kWh/m³ LHV) = <strong>{{value}}</strong>",
         "train": "長距離鉄道: {{co2Kg}} kg ÷ 0.006 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "transit": "都市交通: {{co2Kg}} kg ÷ 0.030 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "nuclearWaste": "原子力処分体積: {{totalKwh}} kWh × 4 mL/kWh（エンジニアリング HLW+ILW+LLW リポジトリ加重平均）= <strong>{{value}}</strong>",
@@ -241,9 +243,9 @@
           "label": "樹木の吸収量",
           "value": "成熟した樹木 1 本あたり年間 21 kg の CO₂ 吸収 — 米国森林局／EPA。"
         },
-        "gasoline": {
-          "label": "ガソリン燃焼",
-          "value": "1 L あたり 2.31 kg CO₂ — 米国 EPA テイルパイプ排出係数。"
+        "naturalGas": {
+          "label": "天然ガス発電所",
+          "value": "発電効率 ~55 % の最新ガスタービンコンバインドサイクル（GTCC）発電所、天然ガスの低位発熱量 35.8 MJ/m³（≈ 9.94 kWh/m³）。電力 1 kWh の供給に対し天然ガス ~0.183 m³ が燃焼。効率参照: IEA Electricity 2024、US EIA Annual Energy Outlook 2024。"
         },
         "nuclearWaste": {
           "label": "原子力処分体積",
