@@ -15,7 +15,10 @@
     "period": "Period:",
     "refresh": "Refresh",
     "autoOff": "Auto: off",
-    "autoOn": "Auto: on ({{seconds}}s)"
+    "autoOn": "Auto: on ({{seconds}}s)",
+    "account": "Account:",
+    "accountAll": "All accounts combined ({{count}})",
+    "accountCurrent": "(current)"
   },
   "summary": {
     "sessions": "Sessions",

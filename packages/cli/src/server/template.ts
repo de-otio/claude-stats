@@ -212,6 +212,18 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     <select id="period-select" onchange="changePeriod(this.value)">
       ${periodOptions}
     </select>
+    ${data.availableAccounts.length > 1 ? `
+    <label for="account-select" style="margin-left:0.5rem;">${t("dashboard:toolbar.account")}</label>
+    <select id="account-select" onchange="changeAccount(this.value)">
+      <option value=""${data.selectedAccountUuid === null ? " selected" : ""}>${t("dashboard:toolbar.accountAll", { count: data.availableAccounts.length })}</option>
+      ${data.availableAccounts.map(a => {
+        const label = a.emailAddress
+          ? `${escapeHtml(a.emailAddress)}${a.isCurrent ? " " + t("dashboard:toolbar.accountCurrent") : ""}`
+          : `${escapeHtml(a.accountUuid.slice(0, 8))}…${a.isCurrent ? " " + t("dashboard:toolbar.accountCurrent") : ""}`;
+        return `<option value="${escapeHtml(a.accountUuid)}"${data.selectedAccountUuid === a.accountUuid ? " selected" : ""}>${label}</option>`;
+      }).join("")}
+    </select>
+    ` : ""}
     <button id="refresh-btn" onclick="doRefresh()">${t("dashboard:toolbar.refresh")}</button>
     <button id="autorefresh-btn" onclick="toggleRefresh()" style="font-size:0.75rem; padding:0.3rem 0.6rem;">${t("dashboard:toolbar.autoOff")}</button>
   </div>
@@ -1073,6 +1085,15 @@ CO₂_grams = total_kWh × grid_intensity</div>
 
       // ── Period selector ──────────────────────────────────────────────────
       window.changePeriod = function (val) { window.location.href = setUrlParam('period', val); };
+      // ── Account selector ─────────────────────────────────────────────────
+      // Empty value means "all accounts combined"; drop the param so the URL
+      // stays clean and the server treats it as the default.
+      window.changeAccount = function (val) {
+        var url = new URL(window.location.href);
+        if (!val) url.searchParams.delete('account');
+        else url.searchParams.set('account', val);
+        window.location.href = url.toString();
+      };
       window.doRefresh = function () { location.reload(); };
 
       // ── Auto-refresh toggle ───────────────────────────────────────────────

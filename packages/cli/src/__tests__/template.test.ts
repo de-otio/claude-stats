@@ -114,6 +114,8 @@ const mockData: DashboardData = {
   spending: null,
   energy: null,
   recommendations: [],
+  availableAccounts: [],
+  selectedAccountUuid: null,
 };
 
 describe("renderDashboard", () => {

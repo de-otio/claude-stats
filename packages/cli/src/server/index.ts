@@ -39,10 +39,14 @@ export interface StartServerResult {
 
 function parseOpts(url: URL): ReportOptions {
   const p = url.searchParams;
+  // Empty string means "all accounts" — treat as undefined so the dashboard
+  // doesn't try to filter by an empty UUID.
+  const account = p.get("account");
   return {
     period: (p.get("period") ?? undefined) as ReportOptions["period"],
     projectPath: p.get("project") ?? undefined,
     repoUrl: p.get("repo") ?? undefined,
+    accountUuid: account && account.length > 0 ? account : undefined,
     entrypoint: p.get("entrypoint") ?? undefined,
     timezone: p.get("timezone") ?? undefined,
     includeCI: p.get("includeCI") === "true",

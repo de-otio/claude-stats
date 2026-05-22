@@ -15,7 +15,10 @@
     "period": "时间段:",
     "refresh": "刷新",
     "autoOff": "自动: 关闭",
-    "autoOn": "自动: 开启 ({{seconds}} 秒)"
+    "autoOn": "自动: 开启 ({{seconds}} 秒)",
+    "account": "账号:",
+    "accountAll": "所有账号合计 ({{count}})",
+    "accountCurrent": "(当前)"
   },
   "summary": {
     "sessions": "会话",

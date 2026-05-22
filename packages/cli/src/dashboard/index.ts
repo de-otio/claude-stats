@@ -178,6 +178,18 @@ export interface DashboardData {
   spending: DashboardSpending | null;
   energy: DashboardEnergy | null;
   recommendations: Recommendation[];
+  /** All accounts present in the store for the current period — independent of
+   * the account filter. Drives the dashboard's account selector. */
+  availableAccounts: Array<{
+    accountUuid: string;
+    emailAddress: string | null;
+    subscriptionType: string | null;
+    sessionCount: number;
+    /** True for the account currently logged in to Claude Code. */
+    isCurrent: boolean;
+  }>;
+  /** The accountUuid currently being filtered to, or null for "all accounts combined". */
+  selectedAccountUuid: string | null;
 }
 
 export interface Recommendation {
@@ -929,6 +941,23 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     spending,
     energy,
     recommendations,
+    availableAccounts: (() => {
+      // Always list accounts using the unfiltered period so the dropdown can
+      // offer all accounts regardless of the current account filter.
+      const claudeAcct = readClaudeAccount();
+      const list = store.listAccounts({
+        since: since > 0 ? since : undefined,
+        includeCI: opts.includeCI ?? false,
+      });
+      return list.map(a => ({
+        accountUuid: a.accountUuid,
+        emailAddress: claudeAcct?.accountUuid === a.accountUuid ? claudeAcct.emailAddress : null,
+        subscriptionType: a.subscriptionType,
+        sessionCount: a.sessionCount,
+        isCurrent: claudeAcct?.accountUuid === a.accountUuid,
+      }));
+    })(),
+    selectedAccountUuid: opts.accountUuid ?? null,
   };
 }
 

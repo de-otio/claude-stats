@@ -15,7 +15,10 @@
     "period": "Periodo:",
     "refresh": "Actualizar",
     "autoOff": "Auto: desactivado",
-    "autoOn": "Auto: activado ({{seconds}} s)"
+    "autoOn": "Auto: activado ({{seconds}} s)",
+    "account": "Cuenta:",
+    "accountAll": "Todas las cuentas combinadas ({{count}})",
+    "accountCurrent": "(actual)"
   },
   "summary": {
     "sessions": "Sesiones",

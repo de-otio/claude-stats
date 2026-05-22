@@ -15,7 +15,10 @@
     "period": "Період:",
     "refresh": "Оновити",
     "autoOff": "Авто: вимкнено",
-    "autoOn": "Авто: увімкнено ({{seconds}} с)"
+    "autoOn": "Авто: увімкнено ({{seconds}} с)",
+    "account": "Акаунт:",
+    "accountAll": "Усі акаунти разом ({{count}})",
+    "accountCurrent": "(поточний)"
   },
   "summary": {
     "sessions": "Сесії",

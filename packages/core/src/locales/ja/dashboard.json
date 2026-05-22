@@ -15,7 +15,10 @@
     "period": "期間:",
     "refresh": "更新",
     "autoOff": "自動: オフ",
-    "autoOn": "自動: オン ({{seconds}}秒)"
+    "autoOn": "自動: オン ({{seconds}}秒)",
+    "account": "アカウント:",
+    "accountAll": "全アカウント合算 ({{count}})",
+    "accountCurrent": "(現在)"
   },
   "summary": {
     "sessions": "セッション",
