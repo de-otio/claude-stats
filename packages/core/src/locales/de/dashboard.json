@@ -137,7 +137,9 @@
     "geoCoverageHint": "% der Nachrichten mit erkannter Inferenzregion",
     "equivalents": "Umweltkontext",
     "periodRange": "{{start}} → {{end}} ({{days}} Tage)",
-    "gasolineLiters": "Liter Benzin",
+    "naturalGasM3": "Erdgas im Kraftwerk verbrannt",
+    "naturalGasRef": "GuD, ~55 % η, Hu",
+    "naturalGasFootnote": "Erdgasmenge, die ein modernes Gas-und-Dampf-Kombikraftwerk (~55 % Wirkungsgrad, Heizwert Hu ~35,8 MJ/m³ ≈ 9,94 kWh/m³) verbrennen müsste, um den im Zeitraum am Rechenzentrum bezogenen Strom zu liefern — rund 0,183 m³ pro kWh. Ältere offene Gasturbinen-Spitzenlastkraftwerke brauchen ~50–60 % mehr.",
     "transitKm": "km im Nahverkehr",
     "trainKm": "km im Fernverkehr",
     "solarPanels": "benötigte Solarmodule (Zeitraum)",
@@ -189,7 +191,7 @@
       "totals": "Roh-Summe {{raw}} kWh × PUE {{pue}} = <strong>{{totalKwh}} kWh</strong> Verbrauch. Bei <strong>{{region}}</strong>-Netzintensität von {{gridIntensity}} gCO₂/kWh ergibt das <strong>{{co2Kg}} kg CO₂</strong>.",
       "equivHeader": "So wurden die Äquivalente aus {{co2Kg}} kg CO₂ / {{totalKwh}} kWh abgeleitet:",
       "eq": {
-        "gasoline": "Benzin: {{co2Kg}} kg ÷ 2,31 kg CO₂/L = <strong>{{value}} L</strong>",
+        "naturalGas": "Erdgas (GuD): {{totalKwh}} kWh ÷ (0,55 × 9,94 kWh/m³ Hu) = <strong>{{value}}</strong>",
         "train": "Fernverkehrszug: {{co2Kg}} kg ÷ 0,006 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "transit": "Nahverkehr: {{co2Kg}} kg ÷ 0,030 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "nuclearWaste": "Endlagervolumen: {{totalKwh}} kWh × 4 mL/kWh (gebautes HLW+ILW+LLW-Endlager, gewichtet) = <strong>{{value}}</strong>",
@@ -241,9 +243,9 @@
           "label": "Baumaufnahme",
           "value": "21 kg CO₂ pro Jahr von einem ausgewachsenen Baum aufgenommen — US Forest Service / EPA."
         },
-        "gasoline": {
-          "label": "Benzinverbrennung",
-          "value": "2,31 kg CO₂ pro Liter — US EPA Auspuffemissionsfaktor."
+        "naturalGas": {
+          "label": "Erdgas-Kraftwerk",
+          "value": "Modernes Gas-und-Dampf-Kombikraftwerk (GuD) mit ~55 % elektrischem Wirkungsgrad, Erdgas mit Heizwert Hu 35,8 MJ/m³ (≈ 9,94 kWh/m³). Daraus folgen ~0,183 m³ verbranntes Erdgas pro gelieferter kWh Strom. Wirkungsgradquelle: IEA Electricity 2024, US EIA Annual Energy Outlook 2024."
         },
         "nuclearWaste": {
           "label": "Atommüll-Endlagervolumen",

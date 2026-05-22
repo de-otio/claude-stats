@@ -137,7 +137,9 @@
     "geoCoverageHint": "检测到推理区域的消息百分比",
     "equivalents": "环境上下文",
     "periodRange": "{{start}} → {{end}} ({{days}} 天)",
-    "gasolineLiters": "升汽油",
+    "naturalGasM3": "发电厂燃烧的天然气",
+    "naturalGasRef": "燃气联合循环, ~55 % η, 低位",
+    "naturalGasFootnote": "现代燃气联合循环（CCGT，效率约 55 %，低位发热量约 35.8 MJ/m³ ≈ 9.94 kWh/m³）发电厂为在数据中心入电端交付本时段电能所需燃烧的天然气体积——约 0.183 m³/kWh。较老的简单循环调峰燃机需要多约 50–60 %。",
     "transitKm": "公里城市交通",
     "trainKm": "公里长途火车",
     "solarPanels": "所需太阳能板（周期）",
@@ -189,7 +191,7 @@
       "totals": "原始合计 {{raw}} kWh × PUE {{pue}} = 消耗 <strong>{{totalKwh}} kWh</strong>。在 <strong>{{region}}</strong> 电网强度 {{gridIntensity}} gCO₂/kWh 下，这相当于 <strong>{{co2Kg}} kg CO₂</strong>。",
       "equivHeader": "如何从 {{co2Kg}} kg CO₂ / {{totalKwh}} kWh 推导出等价值:",
       "eq": {
-        "gasoline": "汽油: {{co2Kg}} kg ÷ 2.31 kg CO₂/L = <strong>{{value}} L</strong>",
+        "naturalGas": "天然气（CCGT）: {{totalKwh}} kWh ÷ (0.55 × 9.94 kWh/m³ 低位) = <strong>{{value}}</strong>",
         "train": "长途火车: {{co2Kg}} kg ÷ 0.006 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "transit": "城市交通: {{co2Kg}} kg ÷ 0.030 kg CO₂/pkm = <strong>{{value}} km</strong>",
         "nuclearWaste": "核处置体积: {{totalKwh}} kWh × 4 mL/kWh（工程 HLW+ILW+LLW 仓库加权）= <strong>{{value}}</strong>",
@@ -241,9 +243,9 @@
           "label": "树木吸收",
           "value": "成熟树木每年吸收 21 kg CO₂ — 美国林业局/EPA。"
         },
-        "gasoline": {
-          "label": "汽油燃烧",
-          "value": "每升 2.31 kg CO₂ — 美国 EPA 尾气排放系数。"
+        "naturalGas": {
+          "label": "天然气发电厂",
+          "value": "现代燃气联合循环（CCGT）发电厂，电效率约 55 %，天然气低位发热量 35.8 MJ/m³（≈ 9.94 kWh/m³）。每交付 1 kWh 电力需燃烧约 0.183 m³ 天然气。效率来源: IEA Electricity 2024、US EIA Annual Energy Outlook 2024。"
         },
         "nuclearWaste": {
           "label": "核处置体积",

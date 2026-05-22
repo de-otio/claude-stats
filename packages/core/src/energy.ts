@@ -240,8 +240,9 @@ export interface EnvironmentalEquivalents {
   solarPanelM2: number;
   /** Region key whose solar yield was used for solarPanelM2 (falls back to "global"). */
   solarRegionKey: string;
-  /** Liters of gasoline burned (2.31 kgCO₂/L). */
-  gasolineLiters: number;
+  /** Cubic meters of natural gas a modern combined-cycle gas turbine (~55% η, LHV 9.94 kWh/m³)
+   * would need to burn to deliver this period's electrical energy at the data-center wall. */
+  naturalGasM3: number;
   /** EU train km (6 gCO₂/pkm). */
   trainKm: number;
   /** Milliliters of engineered repository volume (HLW+ILW+LLW, incl. canisters/buffer/tunnel excavation) if the same energy came from 100% nuclear (~4 mL/kWh, weighted from Posiva KBS-3 + IAEA inventory). */
@@ -407,7 +408,9 @@ function computeEquivalents(totalEnergyWh: number, co2Grams: number, regionKey: 
     transitKm: co2Kg / 0.030,
     solarPanelM2: (totalEnergyWh / 1000) / solarYield,
     solarRegionKey,
-    gasolineLiters: co2Kg / 2.31,
+    // Natural gas (m³) for a modern combined-cycle gas turbine (~55% η, LHV ~35.8 MJ/m³ → 9.94 kWh/m³).
+    // 1 kWh electrical ⇒ 1 / (0.55 × 9.94) ≈ 0.183 m³ of natural gas burned at the plant.
+    naturalGasM3: (totalEnergyWh / 1000) / (0.55 * 9.94),
     trainKm: co2Kg / 0.006,
     nuclearWasteMl: totalEnergyWh * 0.004,
     windRotations: totalEnergyWh / 1170,
