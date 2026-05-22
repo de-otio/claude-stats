@@ -2,6 +2,28 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.5.0 — 2026-05-22
+
+### Changed — Energy equivalents: natural gas replaces gasoline
+
+The "liters of gasoline" tile on the Energy tab is gone. It divided period
+CO₂ emissions by gasoline's tailpipe emission factor (2.31 kgCO₂/L) — a
+confusing framing that mashed together grid emissions and a transport fuel
+to produce a number with no clear physical meaning.
+
+Replaced with the volume of natural gas a modern combined-cycle gas
+turbine (CCGT, ~55 % electrical efficiency, lower heating value
+≈ 9.94 kWh/m³) would burn to deliver the period's electrical energy at
+the data-center wall — about 0.183 m³ per kWh of electricity. This is a
+direct fuel-input equivalent against a real generation technology, not a
+CO₂-equivalence trick.
+
+The new tile auto-formats by magnitude — mL for light users, L for typical
+sessions, m³ for heavy use — so the number is always readable. Translated
+label, footnote, calculation breakdown, and data-sources entry in all 10
+shipped locales (en, de, es, fr, ja, pl, pt-BR, ru, uk, zh-CN). No other
+runtime behaviour change.
+
 ## 0.4.2 — 2026-04-30
 
 ### Added
