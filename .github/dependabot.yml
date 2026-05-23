@@ -1,0 +1,68 @@
+# Dependabot version-update configuration.
+#
+# Security updates are governed by the repo-level "Dependabot security
+# updates" setting and run independently of this file.
+#
+# Each Dependabot PR (security or version) is reviewed by the org-shared
+# `dependabot-claude-review.yml` workflow (see
+# .github/workflows/dependabot-handler.yml), which checks for supply-chain
+# attack signals and enables GitHub auto-merge when the verdict is APPROVE.
+# GitHub then merges the PR once required status checks on `master` pass.
+
+version: 2
+updates:
+  # ── npm root workspace (covers every packages/* via npm workspaces) ────────
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "deps"
+      include: scope
+    groups:
+      # Group routine non-major bumps so we don't drown in PRs.
+      # Major bumps stay individual — the review workflow short-circuits
+      # majors to `needs-human-review` regardless of grouping.
+      patch-and-minor:
+        update-types:
+          - minor
+          - patch
+      # Keep AWS / Anthropic / VS Code / type-defs / dev tooling in
+      # tighter, separate groups so a bad bump in one area doesn't
+      # block unrelated updates.
+      aws:
+        patterns:
+          - "aws-*"
+          - "@aws-*"
+          - "@aws-amplify/*"
+          - "@aws-sdk/*"
+        update-types:
+          - minor
+          - patch
+      anthropic:
+        patterns:
+          - "@anthropic-ai/*"
+        update-types:
+          - minor
+          - patch
+
+  # ── GitHub Actions ────────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: "ci"
