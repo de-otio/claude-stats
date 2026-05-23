@@ -20,6 +20,7 @@ import type { Store } from "../store/index.js";
 import { buildDashboard } from "../dashboard/index.js";
 import type { ReportOptions } from "../reporter/index.js";
 import { loadConfig, saveConfig, getPlanConfig, type Config } from "../config.js";
+import { t } from "../i18n.js";
 
 const AUTH_COOKIE_NAME = "claude_stats_token";
 
@@ -74,8 +75,10 @@ function sendHtml(res: http.ServerResponse, status: number, body: string, extraH
 
 async function tryRenderDashboard(data: unknown): Promise<string> {
   try {
-    const mod = await import("./template.js") as { renderDashboard: (data: unknown) => string };
-    return mod.renderDashboard(data);
+    const mod = await import("./template.js") as {
+      renderDashboard: (data: unknown, t?: (key: string, options?: Record<string, unknown>) => string) => string;
+    };
+    return mod.renderDashboard(data, t);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return `<!DOCTYPE html><html><body><p>Render error: ${msg}</p><pre>${JSON.stringify(data, null, 2)}</pre></body></html>`;

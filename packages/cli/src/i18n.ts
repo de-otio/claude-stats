@@ -25,6 +25,20 @@ const plCli = _require("@claude-stats/core/locales/pl/cli.json") as Record<strin
 const ukCli = _require("@claude-stats/core/locales/uk/cli.json") as Record<string, unknown>;
 const ruCli = _require("@claude-stats/core/locales/ru/cli.json") as Record<string, unknown>;
 
+// Dashboard namespace — used by the standalone `serve` HTTP server's HTML
+// template. Previously only loaded by the VS Code extension, which left
+// every label on the CLI dashboard rendering as a raw "dashboard:..." key.
+const enDash = _require("@claude-stats/core/locales/en/dashboard.json") as Record<string, unknown>;
+const deDash = _require("@claude-stats/core/locales/de/dashboard.json") as Record<string, unknown>;
+const jaDash = _require("@claude-stats/core/locales/ja/dashboard.json") as Record<string, unknown>;
+const zhCnDash = _require("@claude-stats/core/locales/zh-CN/dashboard.json") as Record<string, unknown>;
+const frDash = _require("@claude-stats/core/locales/fr/dashboard.json") as Record<string, unknown>;
+const esDash = _require("@claude-stats/core/locales/es/dashboard.json") as Record<string, unknown>;
+const ptBrDash = _require("@claude-stats/core/locales/pt-BR/dashboard.json") as Record<string, unknown>;
+const plDash = _require("@claude-stats/core/locales/pl/dashboard.json") as Record<string, unknown>;
+const ukDash = _require("@claude-stats/core/locales/uk/dashboard.json") as Record<string, unknown>;
+const ruDash = _require("@claude-stats/core/locales/ru/dashboard.json") as Record<string, unknown>;
+
 let _t: TFunction;
 let _instance: I18nInstance;
 
@@ -36,18 +50,18 @@ export async function initCliI18n(locale?: string): Promise<void> {
   const lng = locale ?? detectLocaleFromEnv();
   _instance = await initI18n({
     lng,
-    ns: ["cli"],
+    ns: ["cli", "dashboard"],
     resources: {
-      en: { cli: enCli as unknown as object },
-      de: { cli: deCli as unknown as object },
-      ja: { cli: jaCli as unknown as object },
-      "zh-CN": { cli: zhCnCli as unknown as object },
-      fr: { cli: frCli as unknown as object },
-      es: { cli: esCli as unknown as object },
-      "pt-BR": { cli: ptBrCli as unknown as object },
-      pl: { cli: plCli as unknown as object },
-      uk: { cli: ukCli as unknown as object },
-      ru: { cli: ruCli as unknown as object },
+      en: { cli: enCli as unknown as object, dashboard: enDash as unknown as object },
+      de: { cli: deCli as unknown as object, dashboard: deDash as unknown as object },
+      ja: { cli: jaCli as unknown as object, dashboard: jaDash as unknown as object },
+      "zh-CN": { cli: zhCnCli as unknown as object, dashboard: zhCnDash as unknown as object },
+      fr: { cli: frCli as unknown as object, dashboard: frDash as unknown as object },
+      es: { cli: esCli as unknown as object, dashboard: esDash as unknown as object },
+      "pt-BR": { cli: ptBrCli as unknown as object, dashboard: ptBrDash as unknown as object },
+      pl: { cli: plCli as unknown as object, dashboard: plDash as unknown as object },
+      uk: { cli: ukCli as unknown as object, dashboard: ukDash as unknown as object },
+      ru: { cli: ruCli as unknown as object, dashboard: ruDash as unknown as object },
     },
   });
   _t = _instance.t.bind(_instance);
