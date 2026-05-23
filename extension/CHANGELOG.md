@@ -2,6 +2,33 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.5.1 — 2026-05-23
+
+### Added — Per-account / all-accounts toggle in the webview
+
+The dashboard already aggregates sessions across every Claude Code account
+whose JSONL has been collected. The CLI `serve` dashboard gained an account
+selector in 0.5.0's follow-up commit; this release wires the same selector
+through the VS Code extension's webview so users with multiple accounts can
+narrow the view to a single one (useful when switching between a personal
+account and a team account, or auditing usage on one of them without the
+other inflating the totals).
+
+The selector appears next to the Period dropdown and only renders when
+**two or more** accounts are present in the local store — single-account
+users see the same toolbar they had before. Selecting an account refreshes
+the dashboard in place via postMessage; selecting "All accounts combined"
+restores the aggregate view.
+
+### Fixed — Dashboard i18n labels in the standalone `serve` HTTP server
+
+The `claude-stats serve` HTTP dashboard was rendering every label as a raw
+`dashboard:…` key because the CLI bootstrap only loaded the `cli` i18n
+namespace. The VS Code extension was unaffected (it loads `dashboard` via
+its own path). `serve` now loads the same locale resources as the
+extension, so all 10 shipped languages render translated labels on the
+standalone HTTP dashboard as well.
+
 ## 0.5.0 — 2026-05-22
 
 ### Changed — Energy equivalents: natural gas replaces gasoline

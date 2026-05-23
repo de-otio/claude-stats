@@ -24,6 +24,7 @@ export class DashboardPanel {
   private readonly panel: vscode.WebviewPanel;
   private readonly disposables: vscode.Disposable[] = [];
   private period: ReportOptions["period"] = "all";
+  private accountUuid: string | undefined;
   private activeTab: string = "overview";
   private readonly chartJsUri: vscode.Uri;
   private readonly sidebar: SidebarProvider | undefined;
@@ -63,7 +64,7 @@ export class DashboardPanel {
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
     this.panel.webview.onDidReceiveMessage(
-      (msg: { command: string; period?: string; tab?: string }) => this.handleMessage(msg),
+      (msg: { command: string; period?: string; accountUuid?: string; tab?: string }) => this.handleMessage(msg),
       null,
       this.disposables,
     );
@@ -87,7 +88,12 @@ export class DashboardPanel {
 
       const cfg = loadConfig();
       const planCfg = getPlanConfig(cfg);
-      const data = buildDashboard(store, { period: this.period, planFee: planCfg?.monthlyFee, planType: planCfg?.type });
+      const data = buildDashboard(store, {
+        period: this.period,
+        accountUuid: this.accountUuid,
+        planFee: planCfg?.monthlyFee,
+        planType: planCfg?.type,
+      });
       const html = renderDashboard(data, t);
       this.panel.webview.html = patchForWebview(
         html,
@@ -100,9 +106,13 @@ export class DashboardPanel {
     }
   }
 
-  private handleMessage(msg: { command: string; period?: string; tab?: string; config?: Config; callbackId?: number }): void {
+  private handleMessage(msg: { command: string; period?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number }): void {
     if (msg.command === "changePeriod" && msg.period) {
       this.period = msg.period as ReportOptions["period"];
+      this.refresh();
+    } else if (msg.command === "changeAccount") {
+      // Empty string from the dropdown means "all accounts combined".
+      this.accountUuid = msg.accountUuid ? msg.accountUuid : undefined;
       this.refresh();
     } else if (msg.command === "refresh") {
       this.refresh();
@@ -213,6 +223,14 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
     });
   }
 
+  // Wire up account selector (only rendered when >= 2 accounts are present)
+  var acctSel = document.getElementById('account-select');
+  if (acctSel) {
+    acctSel.addEventListener('change', function() {
+      vscode.postMessage({ command: 'changeAccount', accountUuid: acctSel.value });
+    });
+  }
+
   // Wire up refresh button
   var btn = document.getElementById('refresh-btn');
   if (btn) {
@@ -228,6 +246,9 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
   // Override global functions in case they're called from chart init script
   window.changePeriod = function(val) {
     vscode.postMessage({ command: 'changePeriod', period: val });
+  };
+  window.changeAccount = function(val) {
+    vscode.postMessage({ command: 'changeAccount', accountUuid: val });
   };
   window.doRefresh = function() {
     vscode.postMessage({ command: 'refresh' });
