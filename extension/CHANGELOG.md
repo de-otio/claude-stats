@@ -2,6 +2,26 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.5.3 — 2026-05-23
+
+### Fixed — Energy tab now respects the account selector
+
+Selecting an account from the dashboard's account dropdown updated every
+panel (Overview, Plan, Spending, byDay, byHour, …) except the Energy
+tab, which kept showing aggregate energy/CO₂ across every account in the
+store. The dashboard data builder threaded the `accountUuid` filter into
+every section's store query — except the energy section, whose
+`getMessagesForEnergy` helper did not even accept an account filter.
+
+The energy section now filters by `accountUuid` end-to-end, so totals,
+per-day / per-model / per-project breakdowns, cache-impact savings, and
+the lifestyle equivalents (natural gas, solar area, wind rotations,
+hydro turbine, nuclear waste, transit km, train km) all narrow to the
+selected account.
+
+No data-model, locale, or UI-string changes — purely a filtering fix in
+the dashboard builder and the message-store query.
+
 ## 0.5.2 — 2026-05-23
 
 ### Changed — Input-tokens summary card now distinguishes uncached vs. cached
