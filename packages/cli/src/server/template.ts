@@ -258,8 +258,18 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <div class="value">${data.summary.prompts}</div>
       </div>
       <div class="summary-card">
+        <div class="label">${t("dashboard:summary.totalInput")}</div>
+        <div class="value">${fmtNum(data.summary.inputTokens + data.summary.cacheReadTokens + data.summary.cacheCreationTokens)}</div>
+        <div style="font-size:0.6rem;color:#888;margin-top:0.2rem;">${t("dashboard:summary.totalInputHint")}</div>
+      </div>
+      <div class="summary-card">
         <div class="label">${t("dashboard:summary.inputTokens")}</div>
         <div class="value">${fmtNum(data.summary.inputTokens)}</div>
+        <div style="font-size:0.6rem;color:#888;margin-top:0.2rem;">${t("dashboard:summary.inputTokensHint")}</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">${t("dashboard:summary.cacheReads")}</div>
+        <div class="value">${fmtNum(data.summary.cacheReadTokens)}</div>
       </div>
       <div class="summary-card">
         <div class="label">${t("dashboard:summary.outputTokens")}</div>

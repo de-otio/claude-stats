@@ -2,6 +2,33 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.5.2 — 2026-05-23
+
+### Changed — Input-tokens summary card now distinguishes uncached vs. cached
+
+The "Input Tokens" tile on the Overview tab showed only **uncached** input
+tokens — the slice of input the model received fresh, billed at the full
+input rate. For typical Claude Code sessions cache-read tokens dominate
+the actual input volume by 4–5 orders of magnitude (97 %+ cache-hit
+rates are normal), so the headline figure could read e.g. 1.6 M while
+the model actually consumed 35 B input-side tokens that period. The
+label invited a reasonable misread.
+
+The Overview now shows three input tiles instead of one:
+
+- **Total Input** — uncached + cache reads + cache writes. This is the
+  number users intuitively expect when they see "input".
+- **Input (uncached)** — fresh input tokens billed at the full rate.
+  Same number as the old card, just unambiguously labelled now, with
+  a hint line ("fresh tokens, billed at full rate").
+- **Cache Reads** — separated out so the order-of-magnitude gap is
+  visible at a glance.
+
+All three labels translated in the 10 shipped locales (en, de, es, fr,
+ja, pl, pt-BR, ru, uk, zh-CN). No change to the underlying data model,
+parser, or pricing — only how the existing summary fields are
+surfaced.
+
 ## 0.5.1 — 2026-05-23
 
 ### Added — Per-account / all-accounts toggle in the webview

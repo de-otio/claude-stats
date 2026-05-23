@@ -23,7 +23,11 @@
   "summary": {
     "sessions": "会话",
     "prompts": "提示词",
-    "inputTokens": "输入 Token",
+    "totalInput": "总输入",
+    "totalInputHint": "未缓存 + 缓存读取 + 缓存写入",
+    "inputTokens": "输入 (未缓存)",
+    "inputTokensHint": "全价计费的新鲜 Token",
+    "cacheReads": "缓存读取",
     "outputTokens": "输出 Token",
     "cacheEfficiency": "缓存效率",
     "estCost": "预估费用",

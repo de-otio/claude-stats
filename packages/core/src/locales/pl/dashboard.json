@@ -23,7 +23,11 @@
   "summary": {
     "sessions": "Sesje",
     "prompts": "Prompty",
-    "inputTokens": "Tokeny wejściowe",
+    "totalInput": "Wejście łącznie",
+    "totalInputHint": "bez cache + odczyty z cache + zapisy do cache",
+    "inputTokens": "Wejście (bez cache)",
+    "inputTokensHint": "świeże tokeny, pełna stawka",
+    "cacheReads": "Odczyty z cache",
     "outputTokens": "Tokeny wyjściowe",
     "cacheEfficiency": "Efektywność cache",
     "estCost": "Szac. koszt",

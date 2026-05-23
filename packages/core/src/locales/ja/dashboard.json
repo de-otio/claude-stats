@@ -23,7 +23,11 @@
   "summary": {
     "sessions": "セッション",
     "prompts": "プロンプト",
-    "inputTokens": "入力トークン",
+    "totalInput": "入力合計",
+    "totalInputHint": "キャッシュ未使用 + キャッシュ読込 + キャッシュ書込",
+    "inputTokens": "入力 (キャッシュ未使用)",
+    "inputTokensHint": "新規トークン、満額課金",
+    "cacheReads": "キャッシュ読込",
     "outputTokens": "出力トークン",
     "cacheEfficiency": "キャッシュ効率",
     "estCost": "推定コスト",

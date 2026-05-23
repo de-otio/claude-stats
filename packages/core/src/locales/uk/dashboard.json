@@ -23,7 +23,11 @@
   "summary": {
     "sessions": "Сесії",
     "prompts": "Промпти",
-    "inputTokens": "Вхідні токени",
+    "totalInput": "Усього на вхід",
+    "totalInputHint": "без кешу + читання з кешу + записи в кеш",
+    "inputTokens": "Вхід (без кешу)",
+    "inputTokensHint": "свіжі токени, повний тариф",
+    "cacheReads": "Читання з кешу",
     "outputTokens": "Вихідні токени",
     "cacheEfficiency": "Ефективність кешу",
     "estCost": "Орієнтовна вартість",

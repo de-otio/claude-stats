@@ -23,7 +23,11 @@
   "summary": {
     "sessions": "Sessions",
     "prompts": "Prompts",
-    "inputTokens": "Eingabe-Token",
+    "totalInput": "Eingabe gesamt",
+    "totalInputHint": "ungecached + Cache-Lesungen + Cache-Schreibungen",
+    "inputTokens": "Eingabe (ungecached)",
+    "inputTokensHint": "frische Tokens, voller Tarif",
+    "cacheReads": "Cache-Lesungen",
     "outputTokens": "Ausgabe-Token",
     "cacheEfficiency": "Cache-Effizienz",
     "estCost": "Gesch. Kosten",
