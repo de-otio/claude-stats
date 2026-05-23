@@ -23,7 +23,11 @@
   "summary": {
     "sessions": "Сессии",
     "prompts": "Запросы",
-    "inputTokens": "Входные токены",
+    "totalInput": "Всего на вход",
+    "totalInputHint": "без кэша + чтения кэша + записи кэша",
+    "inputTokens": "Вход (без кэша)",
+    "inputTokensHint": "свежие токены, полный тариф",
+    "cacheReads": "Чтения кэша",
     "outputTokens": "Выходные токены",
     "cacheEfficiency": "Эффективность кэша",
     "estCost": "Оценка стоимости",
