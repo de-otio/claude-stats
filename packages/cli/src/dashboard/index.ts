@@ -876,6 +876,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   const energy = buildEnergySection(store, {
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
+    accountUuid: opts.accountUuid,
     since: since > 0 ? since : undefined,
     timezone: tz,
   });
@@ -1701,11 +1702,12 @@ function buildContextAnalysis(
 
 function buildEnergySection(
   store: Store,
-  filters: { projectPath?: string; repoUrl?: string; since?: number; timezone: string },
+  filters: { projectPath?: string; repoUrl?: string; accountUuid?: string; since?: number; timezone: string },
 ): DashboardEnergy | null {
   const messages = store.getMessagesForEnergy({
     projectPath: filters.projectPath,
     repoUrl: filters.repoUrl,
+    accountUuid: filters.accountUuid,
     since: filters.since,
   });
 

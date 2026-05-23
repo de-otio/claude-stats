@@ -1024,6 +1024,7 @@ export class Store {
   getMessagesForEnergy(filters: {
     projectPath?: string;
     repoUrl?: string;
+    accountUuid?: string;
     since?: number;
   } = {}): EnergyMessageRow[] {
     const conditions: string[] = ["m.model IS NOT NULL"];
@@ -1036,6 +1037,10 @@ export class Store {
     if (filters.repoUrl) {
       conditions.push("s.repo_url = ?");
       params.push(filters.repoUrl);
+    }
+    if (filters.accountUuid) {
+      conditions.push("s.account_uuid = ?");
+      params.push(filters.accountUuid);
     }
     if (filters.since !== undefined) {
       conditions.push("s.first_timestamp >= ?");
