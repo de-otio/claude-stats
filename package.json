@@ -30,13 +30,13 @@
     "qs": "^6.15.2"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.98.0",
+    "@anthropic-ai/sdk": "^0.100.1",
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.85.0",
-    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/coverage-v8": "^4.1.8",
     "chart.js": "^4.5.1",
-    "esbuild": "^0.27.3",
-    "tsx": "^4.19.0",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.22.4",
     "typescript": "^5.5.0",
     "vitest": "^4.0.18"
   }
