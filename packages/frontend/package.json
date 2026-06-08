@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@claude-stats/core": "*",
-    "@tanstack/react-query": "^5.60.0",
+    "@tanstack/react-query": "^5.101.0",
     "@tremor/react": "^3.18.0",
     "aws-amplify": "^6.8.0",
     "i18next": "^25.8.18",
