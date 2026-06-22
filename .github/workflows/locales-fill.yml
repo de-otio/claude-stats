@@ -39,6 +39,7 @@ jobs:
   fill:
     name: Fill missing translations via Opus
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Skip fork PRs — secrets are unavailable and we can't push to the fork.
     if: >-
       github.event_name == 'workflow_dispatch' ||
