@@ -2,6 +2,51 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.6.0 — 2026-06-23
+
+### Added — Cost per successful task
+
+A new outcome-cost metric: equivalent-API dollars spent per *shipped /
+confirmed* task, overall and per model — not per token. It answers "what does
+a correct result actually cost?", the question that matters once model
+subsidies end.
+
+Outcome is four-state (success / failed / in-flight / unobservable). The
+success rate is computed over the *observable* slice (success ∪ failed) only,
+never over all tasks, with coverage and the labelled share reported beside it —
+so the number never pretends to know more than it does. Below a coverage
+floor the dashboard and CLI lead with the exact half (mean cost per attempt)
+and warn.
+
+- **Dashboard:** a read-only card on the Overview tab — headline, the
+  mean ÷ rate decomposition, coverage/labelled badges, the four-state outcome
+  breakdown, and a per-model table.
+- **In-dashboard labelling (VS Code only):** per-task success / partial / fail /
+  clear controls. Explicit labels override the git/confidence proxy, turning the
+  metric from a hypothesis into an eval. This write path is gated to the VS Code
+  webview; the read-only `serve` HTTP surface never renders the controls and
+  carries no per-task prompt text.
+- **CLI:** `claude-stats cost-per-task` (with `--period / --by-model / --json`
+  and the usual project/account/repo filters) and `claude-stats task-outcome
+  <item> success|partial|fail [--clear]` for labelling.
+- **MCP:** a read-only `get_cost_per_task` tool. It reports the metric and how
+  much of it is labelled, but cannot set a label — keeping the producer of the
+  number separate from the judge of success.
+
+### Changed — Corrected per-task cost attribution
+
+Cost is now summed over each task's own messages (with sub-agent cost folded
+into the parent task and counted once), fixing a double-count in the previous
+roll-up. **Cost figures for already-recorded days will shift** when the cache
+is recomputed — the new numbers are the corrected ones. Per-task cost is also
+now broken down by model.
+
+### Fixed — Localized HTML export
+
+`claude-stats report --html` rendered every label as a raw translation key
+because it never passed a translator to the dashboard renderer. The exported
+HTML is now fully localized.
+
 ## 0.5.3 — 2026-05-23
 
 ### Fixed — Energy tab now respects the account selector
