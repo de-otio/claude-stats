@@ -51,7 +51,10 @@
     "spendingModel": "按单个模型筛选（如 claude-opus-4）",
     "spendingTop": "显示的前 N 项数量（默认: 5）",
     "spendingJson": "机器可读的 JSON 输出",
-    "spendingSort": "排序方式: cost、tokens、prompts（默认: cost）"
+    "spendingSort": "排序方式: cost、tokens、prompts（默认: cost）",
+    "costPerTask": "Cost per successful task — equivalent-API dollars per shipped/confirmed task, overall and per model",
+    "costPerTaskPeriod": "Time period: day, week, month, or all (default: month)",
+    "costPerTaskByModel": "Break the metric down by dominant model"
   },
   "collection": {
     "collecting": "收集中...",
@@ -128,7 +131,29 @@
     "spendingMcpServers": "MCP 服务器费用",
     "spendingAnomalies": "高费用提示词（超过平均值的 2 倍）",
     "spendingCacheEfficiency": "缓存效率",
-    "spendingSubagents": "子代理开销"
+    "spendingSubagents": "子代理开销",
+    "costPerTaskTitle": "Cost per Successful Task · {{period}}",
+    "costPerTaskHeadline": "Cost per successful task",
+    "costPerTaskDecomp": "mean cost/attempt {{mean}} ÷ success rate {{rate}}",
+    "costPerTaskNoTasks": "No tasks in this window.",
+    "costPerTaskLowCoverageWarn": "Low coverage ({{coverage}}) — the success rate rests on a small observable slice; leading with mean cost per attempt.",
+    "costPerTaskMeanLead": "Mean cost per attempt",
+    "costPerTaskUnreliable": "rate may be unreliable",
+    "costPerTaskNa": "n/a",
+    "costPerTaskTasks": "Tasks",
+    "costPerTaskTotalNoun": "total",
+    "costPerTaskObservableNoun": "observable",
+    "costPerTaskCoverageNoun": "coverage",
+    "costPerTaskLabelledNoun": "labelled",
+    "costPerTaskOutcomes": "Outcomes",
+    "costPerTaskSuccess": "success",
+    "costPerTaskFailed": "failed",
+    "costPerTaskInFlight": "in-flight",
+    "costPerTaskUnobservable": "unobservable",
+    "costPerTaskByModel": "By model",
+    "costPerTaskSuccessShort": "success",
+    "costPerTaskInsufficient": "n/a (<{{min}} obs)",
+    "costPerTaskObsShort": "obs"
   },
   "status": {
     "databaseSize": "数据库大小",

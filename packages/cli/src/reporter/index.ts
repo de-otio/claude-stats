@@ -6,6 +6,8 @@
 import type { Store, SessionRow, MessageRow, StatusInfo, SpendingReport } from "../store/index.js";
 import type { SearchResult } from "../history/index.js";
 import type { DailyDigest, DailyDigestItem } from "../recap/index.js";
+import type { CostPerTaskReport } from "../cost-per-task/index.js";
+import { MIN_OBSERVABLE_FOR_MODEL_RATE } from "../cost-per-task/index.js";
 import { estimateCost, formatCost } from "@claude-stats/core/pricing";
 import { attributeToolCosts, groupByMcpServer, detectAnomalies } from "../spending.js";
 import { t } from "../i18n.js";
@@ -701,6 +703,116 @@ export function printSpendingReport(store: Store, opts: SpendingOptions = {}): v
   }
 
   console.log();
+}
+
+// ── Cost per successful task ─────────────────────────────────────────────────
+
+export interface CostPerTaskPrintOptions {
+  /** Emit the raw report as JSON instead of the formatted view. */
+  json?: boolean;
+  /**
+   * Below this `observable / total` ratio, the success rate rests on too thin a
+   * slice to trust: lead with `mean_cost_per_attempt` (which needs no outcome)
+   * and warn. See doc/analysis/cost-per-successful-task/03-outcome-model.md §3.6.
+   */
+  coverageFloor?: number;
+}
+
+const DEFAULT_COVERAGE_FLOOR = 0.2;
+
+function fmtPct(x: number): string {
+  return `${(x * 100).toFixed(0)}%`;
+}
+
+/** Trim the `claude-` prefix and a trailing `-YYYYMMDD` date stamp for display. */
+function shortModel(model: string): string {
+  return model.replace(/^claude-/, "").replace(/-\d{8}$/, "");
+}
+
+/**
+ * Print the cost-per-successful-task report. Pure formatting over an already
+ * built {@link CostPerTaskReport} (the CLI command builds it via
+ * `buildCostPerTaskReport`), mirroring `printDailyRecap`'s digest-in shape so
+ * the heavy async build stays out of this function and out of coverage.
+ */
+export function printCostPerTask(
+  report: CostPerTaskReport,
+  out: NodeJS.WritableStream = process.stdout,
+  opts: CostPerTaskPrintOptions = {},
+): void {
+  if (opts.json) {
+    out.write(JSON.stringify(report, null, 2) + "\n");
+    return;
+  }
+
+  const write = (line: string) => out.write(line + "\n");
+  const floor = opts.coverageFloor ?? DEFAULT_COVERAGE_FLOOR;
+  const na = t("cli:report.costPerTaskNa");
+
+  write("");
+  write(`─── ${t("cli:report.costPerTaskTitle", { period: report.period })} ───`);
+  write("");
+
+  if (report.tasksTotal === 0) {
+    write(t("cli:report.costPerTaskNoTasks"));
+    write("");
+    return;
+  }
+
+  // Headline — below the coverage floor, lead loudly with the exact half.
+  if (report.coverage < floor) {
+    write(`⚠ ${t("cli:report.costPerTaskLowCoverageWarn", { coverage: fmtPct(report.coverage) })}`);
+    write("");
+    const mean = report.meanCostPerAttempt !== null ? formatCost(report.meanCostPerAttempt) : na;
+    write(`${t("cli:report.costPerTaskMeanLead")}: ${mean}  (${report.observable} ${t("cli:report.costPerTaskObservableNoun")})`);
+    if (report.costPerSuccessfulTask !== null) {
+      write(`${t("cli:report.costPerTaskHeadline")}: ${formatCost(report.costPerSuccessfulTask)}  (${t("cli:report.costPerTaskUnreliable")})`);
+    }
+  } else {
+    const headline = report.costPerSuccessfulTask !== null ? formatCost(report.costPerSuccessfulTask) : na;
+    write(`${t("cli:report.costPerTaskHeadline")}: ${headline}`);
+    if (report.meanCostPerAttempt !== null && report.successRate !== null) {
+      write(`  = ${t("cli:report.costPerTaskDecomp", {
+        mean: formatCost(report.meanCostPerAttempt),
+        rate: fmtPct(report.successRate),
+      })}`);
+    }
+  }
+  write("");
+
+  // Coverage / labelling line — tells the reader which tier the number rests on.
+  write(
+    `${t("cli:report.costPerTaskTasks")}: ` +
+    `${report.tasksTotal} ${t("cli:report.costPerTaskTotalNoun")} · ` +
+    `${report.observable} ${t("cli:report.costPerTaskObservableNoun")} (${fmtPct(report.coverage)} ${t("cli:report.costPerTaskCoverageNoun")}) · ` +
+    `${report.labelledCount} ${t("cli:report.costPerTaskLabelledNoun")}`,
+  );
+
+  // Four-state outcome breakdown.
+  write(
+    `${t("cli:report.costPerTaskOutcomes")}: ` +
+    `${report.successCount} ${t("cli:report.costPerTaskSuccess")} · ` +
+    `${report.failedCount} ${t("cli:report.costPerTaskFailed")} · ` +
+    `${report.inFlightCount} ${t("cli:report.costPerTaskInFlight")} · ` +
+    `${report.unobservableCount} ${t("cli:report.costPerTaskUnobservable")}`,
+  );
+
+  // Per-model table (dominant-model assignment for the rate).
+  if (report.byModel.length > 0) {
+    write("");
+    write(`${t("cli:report.costPerTaskByModel")}:`);
+    for (const m of report.byModel) {
+      const name = shortModel(m.model).padEnd(16).slice(0, 16);
+      const cps = (m.costPerSuccessfulTask !== null
+        ? `${formatCost(m.costPerSuccessfulTask)}/${t("cli:report.costPerTaskSuccessShort")}`
+        : na).padStart(14);
+      const rate = (m.successRate !== null
+        ? `${fmtPct(m.successRate)} ${t("cli:report.costPerTaskSuccessShort")}`
+        : t("cli:report.costPerTaskInsufficient", { min: MIN_OBSERVABLE_FOR_MODEL_RATE })).padEnd(18);
+      write(`  ${name} ${cps}   ${rate} ${String(m.tasksObservable).padStart(4)} ${t("cli:report.costPerTaskObsShort")}   ${formatCost(m.costObservable).padStart(9)}`);
+    }
+  }
+  write("");
 }
 
 function highlightMatch(text: string, query: string): string {

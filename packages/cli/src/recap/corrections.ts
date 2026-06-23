@@ -25,11 +25,14 @@ export interface CorrectionSignature {
   promptPrefix: string;             // first 80 chars of normalised prompt
 }
 
+export type OutcomeValue = 'success' | 'partial' | 'fail';
+
 export type CorrectionAction =
   | { kind: 'merge'; otherSignature: CorrectionSignature }
   | { kind: 'split'; segmentId: SegmentId }
   | { kind: 'rename'; label: string }
-  | { kind: 'hide' };
+  | { kind: 'hide' }
+  | { kind: 'outcome'; value: OutcomeValue };
 
 export interface CorrectionsClient {
   add(sig: CorrectionSignature, action: CorrectionAction): void;
@@ -119,7 +122,7 @@ function rowToEntry(row: CorrectionsRow): {
   id: number;
   sig: CorrectionSignature;
   action: CorrectionAction;
-} {
+} | null {
   const sig: CorrectionSignature = {
     projectPath: row.project_path,
     filePaths: JSON.parse(row.file_paths_json) as string[],
@@ -142,6 +145,15 @@ function rowToEntry(row: CorrectionsRow): {
     case 'hide':
       action = { kind: 'hide' };
       break;
+    case 'outcome': {
+      const v = payload['value'];
+      if (v !== 'success' && v !== 'partial' && v !== 'fail') {
+        // Unknown/malformed outcome value — skip this row defensively
+        return null;
+      }
+      action = { kind: 'outcome', value: v };
+      break;
+    }
     default:
       throw new Error(`Unknown correction kind: ${row.action_kind}`);
   }
@@ -162,6 +174,8 @@ function actionToKindAndPayload(action: CorrectionAction): {
       return { kind: 'rename', payload: { label: action.label } };
     case 'hide':
       return { kind: 'hide', payload: {} };
+    case 'outcome':
+      return { kind: 'outcome', payload: { value: action.value } };
   }
 }
 
@@ -254,7 +268,9 @@ export function openCorrections(opts?: { dbPath?: string }): CorrectionsClient {
       const filePathsJson = JSON.stringify([...normSig.filePaths].sort());
       return rows
         .filter((row) => row.file_paths_json === filePathsJson)
-        .map((row) => rowToEntry(row).action);
+        .map((row) => rowToEntry(row))
+        .filter((entry): entry is NonNullable<ReturnType<typeof rowToEntry>> => entry !== null)
+        .map((entry) => entry.action);
     },
 
     remove(sig: CorrectionSignature, action: CorrectionAction): void {
@@ -272,13 +288,33 @@ export function openCorrections(opts?: { dbPath?: string }): CorrectionsClient {
     list(): readonly { id: number; sig: CorrectionSignature; action: CorrectionAction }[] {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rows = stmtSelectAll.all() as unknown as CorrectionsRow[];
-      return rows.map((row) => rowToEntry(row));
+      return rows
+        .map((row) => rowToEntry(row))
+        .filter((entry): entry is NonNullable<ReturnType<typeof rowToEntry>> => entry !== null);
     },
 
     close(): void {
       db.close();
     },
   };
+}
+
+// ─── latestOutcome helper ────────────────────────────────────────────────────
+
+/**
+ * Return the value of the LAST `outcome` action in the list, or null if none.
+ * "Last" means highest list index — forSignature returns actions ordered by
+ * insertion id ASC (chronological), so the last element is the most recent.
+ * Pure: no I/O, no mutation.
+ */
+export function latestOutcome(actions: readonly CorrectionAction[]): OutcomeValue | null {
+  for (let i = actions.length - 1; i >= 0; i--) {
+    const a = actions[i]!;
+    if (a.kind === 'outcome') {
+      return a.value;
+    }
+  }
+  return null;
 }
 
 // ─── computeSignature helper ────────────────────────────────────────────────

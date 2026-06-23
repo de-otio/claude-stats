@@ -239,6 +239,56 @@ export async function buildCli(): Promise<Command> {
     });
 
   program
+    .command("cost-per-task")
+    .description(t("cli:commands.costPerTask"))
+    .option("--period <period>", t("cli:commands.costPerTaskPeriod"), "month")
+    .option("--project <path>", t("cli:commands.reportProject"))
+    .option("--account <uuid>", t("cli:commands.reportAccount"))
+    .option("--repo <url>", t("cli:commands.reportRepo"))
+    .option("--include-ci", t("cli:commands.reportIncludeCi"))
+    .option("--by-model", t("cli:commands.costPerTaskByModel"))
+    .option("--timezone <tz>", t("cli:commands.reportTimezone"))
+    .option("--json", t("cli:commands.spendingJson"))
+    .action(async (opts: {
+      period?: string;
+      project?: string;
+      account?: string;
+      repo?: string;
+      includeCi?: boolean;
+      byModel?: boolean;
+      timezone?: string;
+      json?: boolean;
+    }) => {
+      loadCachedPricing();
+      const { buildCostPerTaskReport } = await import("../cost-per-task/index.js");
+      const { printCostPerTask } = await import("../reporter/index.js");
+      const { createEmbeddingProvider } = await import("../recap/embeddings.js");
+      const store = new Store();
+      await collect(store);
+      try {
+        let embeddingProvider = null;
+        try {
+          embeddingProvider = await createEmbeddingProvider({ mode: "auto" });
+        } catch {
+          embeddingProvider = null;
+        }
+        const report = await buildCostPerTaskReport(store, {
+          period: opts.period as "day" | "week" | "month" | "all" | undefined,
+          projectPath: opts.project,
+          accountUuid: opts.account,
+          repoUrl: opts.repo,
+          includeCI: opts.includeCi,
+          byModel: opts.byModel === true,
+          tz: opts.timezone,
+          digestDeps: { embeddingProvider },
+        });
+        printCostPerTask(report, process.stdout, { json: opts.json });
+      } finally {
+        store.close();
+      }
+    });
+
+  program
     .command("status")
     .description(t("cli:commands.status"))
     .action(() => {

@@ -181,10 +181,11 @@ afterAll(() => {
 
 describe("MCP Server", () => {
   describe("tools/list", () => {
-    it("returns all 7 tools", async () => {
+    it("returns all 8 tools", async () => {
       const result = await client.listTools();
       const names = result.tools.map((t) => t.name).sort();
       expect(names).toEqual([
+        "get_cost_per_task",
         "get_session_detail",
         "get_stats",
         "get_status",
@@ -543,6 +544,57 @@ describe("MCP Server", () => {
       const tool = result.tools.find((t) => t.name === "summarize_day");
       expect(tool).toBeDefined();
       expect(tool!.description).toContain("templates.ts");
+    });
+  });
+
+  // ── get_cost_per_task ─────────────────────────────────────────────────────
+  describe("get_cost_per_task", () => {
+    async function callCostPerTask(args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+      const result = await client.callTool({ name: "get_cost_per_task", arguments: args });
+      const content = result.content as Array<{ type: string; text: string }>;
+      expect(content).toHaveLength(1);
+      expect(content[0]!.type).toBe("text");
+      return JSON.parse(content[0]!.text) as Record<string, unknown>;
+    }
+
+    it("is registered in the server tool list", async () => {
+      const result = await client.listTools();
+      const names = result.tools.map((t) => t.name);
+      expect(names).toContain("get_cost_per_task");
+    });
+
+    it("returns a CostPerTaskReport-shaped object", async () => {
+      const report = await callCostPerTask({ period: "all" });
+      for (const key of [
+        "period", "windowStart", "windowEnd", "tasksTotal", "observable",
+        "coverage", "successCount", "failedCount", "inFlightCount",
+        "unobservableCount", "totalCostObservable", "labelledCount", "byModel",
+      ]) {
+        expect(report).toHaveProperty(key);
+      }
+      expect(Array.isArray(report["byModel"])).toBe(true);
+    });
+
+    // The whole point of the read-only invariant: the metric payload is numbers
+    // and model names only. The Apr-25 fixture carries the prompt text
+    // "Refactor the auth module to use JWT"; none of it may surface here.
+    it("returns NO stored prompt text in the payload", async () => {
+      const result = await client.callTool({ name: "get_cost_per_task", arguments: { period: "all" } });
+      const content = result.content as Array<{ type: string; text: string }>;
+      const raw = content[0]!.text;
+      expect(raw).not.toContain("Refactor");
+      expect(raw).not.toContain("auth module");
+      expect(raw).not.toContain("JWT");
+      // Defensive: no firstPrompt / promptText fields leaked into the report.
+      expect(raw).not.toMatch(/firstPrompt|promptText|untrusted-stored-content/i);
+    });
+
+    it("advertises the read-only / no-prompt-text contract in its description", async () => {
+      const result = await client.listTools();
+      const tool = result.tools.find((t) => t.name === "get_cost_per_task");
+      expect(tool).toBeDefined();
+      expect(tool!.description!.toUpperCase()).toContain("READ-ONLY");
+      expect(tool!.description).toMatch(/cannot set an outcome label|no stored prompt text/i);
     });
   });
 
