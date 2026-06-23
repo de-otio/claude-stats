@@ -51,10 +51,7 @@
     "spendingModel": "Filtra por un modelo (ej. claude-opus-4)",
     "spendingTop": "Número de elementos principales a mostrar (por defecto: 5)",
     "spendingJson": "Salida JSON legible por máquina",
-    "spendingSort": "Orden: cost, tokens, prompts (por defecto: cost)",
-    "costPerTask": "Cost per successful task — equivalent-API dollars per shipped/confirmed task, overall and per model",
-    "costPerTaskPeriod": "Time period: day, week, month, or all (default: month)",
-    "costPerTaskByModel": "Break the metric down by dominant model"
+    "spendingSort": "Orden: cost, tokens, prompts (por defecto: cost)"
   },
   "collection": {
     "collecting": "Recopilando...",
@@ -131,29 +128,7 @@
     "spendingMcpServers": "Costes de servidores MCP",
     "spendingAnomalies": "Prompts costosos (> 2× el promedio)",
     "spendingCacheEfficiency": "Eficiencia de caché",
-    "spendingSubagents": "Sobrecarga de subagentes",
-    "costPerTaskTitle": "Cost per Successful Task · {{period}}",
-    "costPerTaskHeadline": "Cost per successful task",
-    "costPerTaskDecomp": "mean cost/attempt {{mean}} ÷ success rate {{rate}}",
-    "costPerTaskNoTasks": "No tasks in this window.",
-    "costPerTaskLowCoverageWarn": "Low coverage ({{coverage}}) — the success rate rests on a small observable slice; leading with mean cost per attempt.",
-    "costPerTaskMeanLead": "Mean cost per attempt",
-    "costPerTaskUnreliable": "rate may be unreliable",
-    "costPerTaskNa": "n/a",
-    "costPerTaskTasks": "Tasks",
-    "costPerTaskTotalNoun": "total",
-    "costPerTaskObservableNoun": "observable",
-    "costPerTaskCoverageNoun": "coverage",
-    "costPerTaskLabelledNoun": "labelled",
-    "costPerTaskOutcomes": "Outcomes",
-    "costPerTaskSuccess": "success",
-    "costPerTaskFailed": "failed",
-    "costPerTaskInFlight": "in-flight",
-    "costPerTaskUnobservable": "unobservable",
-    "costPerTaskByModel": "By model",
-    "costPerTaskSuccessShort": "success",
-    "costPerTaskInsufficient": "n/a (<{{min}} obs)",
-    "costPerTaskObsShort": "obs"
+    "spendingSubagents": "Sobrecarga de subagentes"
   },
   "status": {
     "databaseSize": "Tamaño de la base de datos",

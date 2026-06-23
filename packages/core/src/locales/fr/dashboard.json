@@ -298,44 +298,5 @@
   },
   "footer": {
     "generated": "Généré le {{timestamp}} • Fuseau horaire : {{timezone}}"
-  },
-  "costPerTask": {
-    "title": "Cost per Successful Task",
-    "headline": "per successful task",
-    "na": "n/a",
-    "lowCoverage": "Low coverage ({{coverage}}) — rate rests on a small observable slice",
-    "decomp": "= {{mean}}/attempt ÷ {{rate}} success rate",
-    "coverageBadge": "{{observable}}/{{total}} observable ({{coverage}})",
-    "labelledBadge": "{{labelled}}/{{observable}} labelled",
-    "success": "success",
-    "failed": "failed",
-    "inFlight": "in-flight",
-    "unobservable": "unobservable",
-    "model": "Model",
-    "perSuccess": "$/success",
-    "successRate": "Success",
-    "observableCol": "Obs.",
-    "insufficient": "n/a",
-    "proxyNote": "Outcome is proxied from git activity and confidence unless you've explicitly labelled the task; the rate is computed over observable tasks only.",
-    "period": {
-      "day": "today",
-      "week": "last 7 days",
-      "month": "this month",
-      "all": "all time"
-    },
-    "labelTasksHeading": "Label task outcomes",
-    "labelledTag": "labelled",
-    "outcomeShort": {
-      "success": "success",
-      "failed": "failed",
-      "in_flight": "in-flight",
-      "unobservable": "unobservable"
-    },
-    "mark": {
-      "success": "Mark success",
-      "partial": "Mark partial",
-      "fail": "Mark fail",
-      "clear": "Clear label"
-    }
   }
 }
