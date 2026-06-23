@@ -293,6 +293,59 @@ export async function buildCli(): Promise<Command> {
     });
 
   program
+    .command("task-outcome <item> [value]")
+    .description(
+      "Label a task's outcome (success|partial|fail) so the cost-per-task " +
+        "metric rests on ground truth instead of a proxy. <item> is an id " +
+        "prefix or prompt substring from today's recap; use --clear to remove.",
+    )
+    .option("--clear", "Remove any outcome label for the matched task")
+    .action(async (itemSelector: string, value: string | undefined, opts: { clear?: boolean }) => {
+      const { buildDailyDigest } = await import("../recap/index.js");
+      const { openCorrections, computeSignature } = await import("../recap/corrections.js");
+      const valid = new Set(["success", "partial", "fail"]);
+      if (!opts.clear) {
+        if (!value || !valid.has(value)) {
+          process.stderr.write(
+            `Provide an outcome: success | partial | fail (or --clear). Got "${value ?? ""}".\n`,
+          );
+          process.exit(1);
+        }
+      }
+      const store = new Store();
+      await collect(store);
+      try {
+        const digest = await buildDailyDigest(store, {});
+        const item = await resolveItem(digest, itemSelector);
+        if (!item) {
+          process.stderr.write(`No item matching "${itemSelector}" in today's digest.\n`);
+          process.exit(1);
+        }
+        const sig = computeSignature(item);
+        const client = openCorrections();
+        try {
+          if (opts.clear) {
+            // Remove every stored outcome action for this signature.
+            const outcomes = client.forSignature(sig).filter((a) => a.kind === "outcome");
+            for (const a of outcomes) client.remove(sig, a);
+            console.log(
+              outcomes.length > 0
+                ? `Cleared outcome label for "${item.id}".`
+                : `No outcome label set for "${item.id}".`,
+            );
+          } else {
+            client.add(sig, { kind: "outcome", value: value as "success" | "partial" | "fail" });
+            console.log(`Outcome recorded: "${item.id}" → ${value}.`);
+          }
+        } finally {
+          client.close();
+        }
+      } finally {
+        store.close();
+      }
+    });
+
+  program
     .command("status")
     .description(t("cli:commands.status"))
     .action(() => {
@@ -826,7 +879,9 @@ export async function buildCli(): Promise<Command> {
                 ? `merge with ${action.otherSignature.projectPath}`
                 : action.kind === "split"
                   ? `split segment ${action.segmentId}`
-                  : "hide";
+                  : action.kind === "outcome"
+                    ? `outcome → ${action.value}`
+                    : "hide";
           console.log(
             `[${id}] ${sig.projectPath} | \`${sig.promptPrefix}\` | ${actionStr}`,
           );
