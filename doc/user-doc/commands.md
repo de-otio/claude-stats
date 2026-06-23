@@ -381,6 +381,76 @@ claude-stats spending --period week --json | jq '.topSessions'
 
 ---
 
+## `cost-per-task`
+
+Show **cost per successful task** — equivalent-API dollars spent per *shipped / confirmed* task, overall and per model. This is an outcome-cost metric: it divides cost over observable attempts by the number that succeeded, rather than stopping at tokens.
+
+```
+claude-stats cost-per-task [options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--period <period>` | `month` | `day`, `week`, `month`, or `all` |
+| `--project <path>` | _(all projects)_ | Filter to one project |
+| `--account <uuid>` | _(all accounts)_ | Filter to a specific Anthropic account UUID |
+| `--repo <url>` | _(all repos)_ | Filter to a specific git remote URL |
+| `--include-ci` | _(off)_ | Include CI/automated sessions |
+| `--by-model` | _(off)_ | Show the per-model breakdown table |
+| `--timezone <tz>` | System timezone | IANA timezone for period boundaries |
+| `--json` | _(off)_ | Output the full report as JSON |
+
+**What it shows:**
+
+- **Headline** — cost per successful task, with its decomposition: `mean cost per attempt ÷ success rate`.
+- **Coverage & labelling** — a task is one of four states (`success` / `failed` / `in-flight` / `unobservable`). The success rate is computed over the **observable** subset (success ∪ failed) only; `coverage` and the labelled share are reported beside it. If coverage is low, the report leads with mean cost per attempt and warns.
+- **Per-model table** (`--by-model`) — cost-per-success and success rate by dominant model (suppressed below a minimum number of observable tasks).
+
+Outcome is proxied from git activity and recap confidence unless you label a task explicitly with `task-outcome`. A note: `--period all` on a cold cache is slow (per-day git enrichment) — run `recap precompute` first to warm it.
+
+**Examples:**
+
+```sh
+# This month's cost per successful task
+claude-stats cost-per-task
+
+# Last 7 days, with the per-model breakdown
+claude-stats cost-per-task --period week --by-model
+
+# As JSON
+claude-stats cost-per-task --json
+```
+
+---
+
+## `task-outcome`
+
+Label a task's outcome so the cost-per-task metric rests on ground truth instead of a proxy. Explicit labels override the git/confidence proxy.
+
+```
+claude-stats task-outcome <item> <success|partial|fail>
+claude-stats task-outcome <item> --clear
+```
+
+`<item>` is an id prefix or prompt substring from **today's** recap (the same selector style as `recap correct hide`/`rename`). Use `--clear` to remove an existing label.
+
+Labelling is a human action — the read-only MCP server cannot set labels, which keeps the producer of the number (the model) separate from the judge of success (you). The same control is also available per-task in the VS Code dashboard webview.
+
+**Examples:**
+
+```sh
+# Mark a task as successfully shipped
+claude-stats task-outcome a1b2c3 success
+
+# Mark by prompt substring
+claude-stats task-outcome "refactor auth" partial
+
+# Remove a label
+claude-stats task-outcome a1b2c3 --clear
+```
+
+---
+
 ## `mcp`
 
 Start a local MCP server over stdio for AI agent access to your usage stats.
@@ -401,6 +471,8 @@ No options. The server is intended to be launched by a Claude Code client (not r
 | `list_projects` | Per-project usage breakdown |
 | `get_status` | Database health, session count, last collection time |
 | `search_history` | Search prompt history by keyword |
+| `summarize_day` | Clustered digest of what you accomplished on a given day |
+| `get_cost_per_task` | Cost per successful task — outcome-cost overall and per model (read-only) |
 
 **Client configuration** — register via `claude mcp add`:
 
@@ -419,6 +491,7 @@ The VS Code extension auto-registers this in `~/.claude.json` on first activatio
 - "How many tokens have I used this week?"
 - "What were my most expensive sessions today?"
 - "Which projects am I spending the most on?"
+- "What's my cost per successful task, by model?"
 
 ---
 
