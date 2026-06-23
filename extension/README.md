@@ -13,6 +13,7 @@ View your Claude Code usage statistics directly inside VS Code. Local-only — n
 - **Work profile** — distribution of the nature of your work across projects
 - **Auto-registers a local MCP server** so your AI agent can query stats directly ("how many tokens did I use this week?")
 - **Daily-recap digests** with on-device semantic clustering — bundled MiniLM-L6-v2 model runs locally, no data leaves your machine
+- **Cost per successful task** — outcome-cost per model (dollars per shipped/confirmed task, not per token), with per-task `success`/`partial`/`fail` labelling right in the dashboard
 
 ## Requirements
 
@@ -44,6 +45,7 @@ Once installed, ask your AI agent things like:
 | `list_projects` | Per-project usage breakdown |
 | `get_status` | Database health, session count, last collection time |
 | `search_history` | Search prompt history by keyword |
+| `get_cost_per_task` | Cost per successful task — outcome-cost overall and per model (read-only) |
 | `summarize_day` | Structured daily-recap digest with semantic clustering — "what did I get done today?" |
 
 ## Settings
