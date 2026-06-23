@@ -322,6 +322,20 @@
       "week": "last 7 days",
       "month": "this month",
       "all": "all time"
+    },
+    "labelTasksHeading": "Label task outcomes",
+    "labelledTag": "labelled",
+    "outcomeShort": {
+      "success": "success",
+      "failed": "failed",
+      "in_flight": "in-flight",
+      "unobservable": "unobservable"
+    },
+    "mark": {
+      "success": "Mark success",
+      "partial": "Mark partial",
+      "fail": "Mark fail",
+      "clear": "Clear label"
     }
   }
 }

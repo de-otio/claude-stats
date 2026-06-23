@@ -902,5 +902,48 @@ describe("renderDashboard", () => {
       const html = renderDashboard({ ...mockData, costPerTask: empty }, t);
       expect(html).not.toContain("Cost per Successful Task");
     });
+
+    it("renders no labelling controls when tasks is absent (read-only / serve)", () => {
+      const html = renderDashboard({ ...mockData, costPerTask: baseReport }, t);
+      expect(html).not.toContain("data-cpt-index");
+      expect(html).not.toContain("Label task outcomes");
+    });
+
+    it("renders per-task labelling controls when tasks is present (webview)", () => {
+      const withTasks = {
+        ...baseReport,
+        tasks: [
+          {
+            id: "task-1",
+            title: "fix the auth flow",
+            project: "/home/me/repos/app",
+            outcome: "in_flight" as const,
+            labelled: false,
+            confidence: "medium" as const,
+            signature: { projectPath: "/home/me/repos/app", filePaths: ["src/a.ts"], promptPrefix: "fix the auth flow" },
+          },
+        ],
+      };
+      const html = renderDashboard({ ...mockData, costPerTask: withTasks }, t);
+      expect(html).toContain("Label task outcomes");
+      expect(html).toContain('data-cpt-index="0"');
+      expect(html).toContain('data-cpt-value="success"');
+      expect(html).toContain('data-cpt-value="clear"');
+      expect(html).toContain("fix the auth flow");
+    });
+
+    it("HTML-escapes the prompt-derived task title", () => {
+      const evil = {
+        ...baseReport,
+        tasks: [{
+          id: "x", title: "<img src=x onerror=alert(1)>", project: "/p",
+          outcome: "unobservable" as const, labelled: false, confidence: "low" as const,
+          signature: { projectPath: "/p", filePaths: [], promptPrefix: "x" },
+        }],
+      };
+      const html = renderDashboard({ ...mockData, costPerTask: evil }, t);
+      expect(html).not.toContain("<img src=x onerror=alert(1)>");
+      expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    });
   });
 });

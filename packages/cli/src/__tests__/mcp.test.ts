@@ -587,6 +587,10 @@ describe("MCP Server", () => {
       expect(raw).not.toContain("JWT");
       // Defensive: no firstPrompt / promptText fields leaked into the report.
       expect(raw).not.toMatch(/firstPrompt|promptText|untrusted-stored-content/i);
+      // The per-task labelling list (which carries prompt-derived titles +
+      // signatures) must NEVER be populated on the read-only MCP surface.
+      const report = JSON.parse(raw) as { tasks?: unknown };
+      expect(report.tasks).toBeUndefined();
     });
 
     it("advertises the read-only / no-prompt-text contract in its description", async () => {

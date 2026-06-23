@@ -86,6 +86,15 @@ describe("patchForWebview", () => {
     expect(result).not.toMatch(/script-src[^;]*'unsafe-inline'/);
   });
 
+  it("wires the cost-per-task outcome-labelling bridge (setOutcome postMessage)", () => {
+    const result = patchForWebview(sampleHtml, CSP_SOURCE, LOCAL_CHART_URI);
+    // The injected bridge must read the per-task signature from __DASHBOARD__
+    // and post a setOutcome message — the VS-Code-only write path.
+    expect(result).toContain("data-cpt-index");
+    expect(result).toContain("command: 'setOutcome'");
+    expect(result).toContain("costPerTask.tasks");
+  });
+
   it("adds nonce attribute to all script tags", () => {
     const result = patchForWebview(sampleHtml, CSP_SOURCE, LOCAL_CHART_URI);
     // Every <script> tag should have a nonce

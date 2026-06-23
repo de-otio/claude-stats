@@ -365,6 +365,43 @@ describe('buildCostPerTaskReport (integration)', () => {
     }
   });
 
+  // ── includeTasks (per-task labelling list) ──
+  it('omits the tasks list by default (keeps the metric payload prompt-text-free)', async () => {
+    const r = await buildCostPerTaskReport(store, {
+      period: 'day', nowMs: NOW_TS, tz: 'UTC', correctionsClient: null, digestDeps: deps(),
+    });
+    expect(r.tasks).toBeUndefined();
+  });
+
+  it('includes a per-task list with signatures when includeTasks is set', async () => {
+    const r = await buildCostPerTaskReport(store, {
+      period: 'day', nowMs: NOW_TS, tz: 'UTC', correctionsClient: null, digestDeps: deps(),
+      includeTasks: true,
+    });
+    expect(r.tasks).toBeDefined();
+    expect(r.tasks!.length).toBe(4);
+    for (const task of r.tasks!) {
+      expect(typeof task.id).toBe('string');
+      expect(typeof task.title).toBe('string');
+      expect(task.signature).toMatchObject({
+        projectPath: expect.any(String),
+        promptPrefix: expect.any(String),
+      });
+      expect(Array.isArray(task.signature.filePaths)).toBe(true);
+    }
+    // The list is capped (MAX_LABELLABLE_TASKS) and round-trips a usable
+    // signature — write it back and confirm it lands as a label.
+    const corrDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cpt-tasks-'));
+    const client = openCorrections({ dbPath: path.join(corrDir, 'c.db') });
+    try {
+      client.add(r.tasks![0]!.signature, { kind: 'outcome', value: 'success' });
+      expect(client.forSignature(r.tasks![0]!.signature).some((a) => a.kind === 'outcome')).toBe(true);
+    } finally {
+      client.close();
+      fs.rmSync(corrDir, { recursive: true, force: true });
+    }
+  });
+
   // ── attachCostPerTask (dashboard wrapper) ──
   it('attachCostPerTask populates data.costPerTask using the dashboard filters', async () => {
     const data = buildDashboard(store, { period: 'day' });

@@ -73,6 +73,11 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   const fmtPct0 = (x: number) => `${Math.round(x * 100)}%`;
   const cptBadge = (text: string, color = "#9aa3c0") =>
     `<span style="font-size:0.65rem;color:${color};background:#0f1830;border:1px solid #2a3552;border-radius:3px;padding:0.1rem 0.45rem;">${text}</span>`;
+  // Per-task labelling control button. Rendered only when costPerTask.tasks is
+  // present, which only the VS Code webview sets (the serve path leaves it off).
+  // The webview bridge reads data-cpt-index into __DASHBOARD__.costPerTask.tasks.
+  const cptBtn = (i: number, val: string, glyph: string, active: boolean) =>
+    `<button data-cpt-index="${i}" data-cpt-value="${val}" title="${t("dashboard:costPerTask.mark." + val)}" style="cursor:pointer;background:${active ? "#2b5238" : "#0f1830"};color:#cfd8ea;border:1px solid #2a3552;border-radius:3px;padding:0.05rem 0.35rem;font-size:0.7rem;line-height:1.1;">${glyph}</button>`;
   const costPerTaskHtml = (cpt && cpt.tasksTotal > 0) ? `
     <div class="cpt-card" style="margin-bottom:1rem;background:#16213e;border:1px solid #2a3552;border-radius:6px;padding:0.75rem 1rem;">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5rem;">
@@ -113,6 +118,24 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           </tr>`).join("")}
         </tbody>
       </table>` : ""}
+      ${(cpt.tasks && cpt.tasks.length > 0) ? `
+      <div style="margin-top:0.7rem;">
+        <div style="font-size:0.65rem;color:#888;margin-bottom:0.3rem;">${t("dashboard:costPerTask.labelTasksHeading")}</div>
+        ${cpt.tasks.map((task, i) => {
+          const o = task.outcome;
+          const lab = task.labelled;
+          return `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0;border-top:1px solid #2a3552;font-size:0.72rem;">
+            <span style="flex:1;min-width:0;color:#e8e8e8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(task.title)} <span style="color:#666;">· ${escapeHtml(task.project.split("/").pop() ?? task.project)}</span></span>
+            <span style="color:#888;font-size:0.6rem;white-space:nowrap;">${lab ? t("dashboard:costPerTask.labelledTag") : t("dashboard:costPerTask.outcomeShort." + o)}</span>
+            <span style="display:flex;gap:0.2rem;flex:0 0 auto;">
+              ${cptBtn(i, "success", "✓", lab && o === "success")}
+              ${cptBtn(i, "partial", "~", lab && o === "in_flight")}
+              ${cptBtn(i, "fail", "✗", lab && o === "failed")}
+              ${cptBtn(i, "clear", "⌫", false)}
+            </span>
+          </div>`;
+        }).join("")}
+      </div>` : ""}
       <div style="font-size:0.6rem;color:#666;margin-top:0.5rem;line-height:1.4;">${t("dashboard:costPerTask.proxyNote")}</div>
     </div>` : "";
 

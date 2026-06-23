@@ -29,6 +29,7 @@ import {
   computeSignature,
   latestOutcome,
   openCorrections,
+  type CorrectionSignature,
   type CorrectionsClient,
   type OutcomeValue,
 } from '../recap/corrections.js';
@@ -71,6 +72,28 @@ export interface ModelCostPerTask {
   costPerSuccessfulTask: number | null;
 }
 
+/**
+ * A single task surfaced for in-dashboard labelling. Carries prompt-derived
+ * text (`title`, `signature.promptPrefix`), so it is ONLY ever populated when
+ * `CostPerTaskOptions.includeTasks` is set — which the VS Code webview does and
+ * the read-only MCP server / `serve` LAN path deliberately do NOT (keeping the
+ * metric payload prompt-text-free on those surfaces).
+ */
+export interface LabellableTask {
+  id: string;
+  /** Short prompt-derived heading for display (webview-only). */
+  title: string;
+  project: string;
+  outcome: TaskOutcome;
+  labelled: boolean;
+  confidence: Confidence;
+  /** Signature the webview echoes back to write/clear an outcome correction. */
+  signature: CorrectionSignature;
+}
+
+/** Cap on tasks surfaced for labelling — most-expensive-first; the rest are omitted. */
+export const MAX_LABELLABLE_TASKS = 25;
+
 export interface CostPerTaskReport {
   period: Period;
   windowStart: number;
@@ -92,6 +115,12 @@ export interface CostPerTaskReport {
   /** How many outcomes are user-labelled (vs proxied) — ground-truth share. */
   labelledCount: number;
   byModel: ModelCostPerTask[];
+  /**
+   * Per-task list for in-dashboard labelling. Present ONLY when
+   * `opts.includeTasks` is set (VS Code webview). Undefined on the read-only
+   * MCP and `serve` surfaces so no prompt text leaks there.
+   */
+  tasks?: readonly LabellableTask[];
 }
 
 /** Below this many observable tasks, a per-model rate is too noisy to report. */
@@ -157,6 +186,18 @@ export function dominantModel(costByModel: Readonly<Record<string, number>>): st
     }
   }
   return best;
+}
+
+/** Short, prompt-derived heading for a labellable task (webview display only). */
+function taskTitle(item: { label?: string | null; firstPrompt: string | null }): string {
+  if (item.label) return item.label;
+  let raw = item.firstPrompt ?? '';
+  // firstPrompt is wrapped by wrapUntrusted; extract the inner content (mirrors
+  // computeSignature) so the heading is the real prompt, not the advisory note.
+  const m = raw.match(/<untrusted-stored-content>([\s\S]*?)<\/untrusted-stored-content>/);
+  raw = (m ? m[1]! : raw).replace(/\s+/g, ' ').trim();
+  if (raw.length === 0) return '(no prompt)';
+  return raw.length > 70 ? raw.slice(0, 69) + '…' : raw;
 }
 
 function hasMutatingWork(toolHistogram: Readonly<Record<string, number>>): boolean {
@@ -227,6 +268,12 @@ export interface CostPerTaskOptions {
   repoUrl?: string;
   includeCI?: boolean;
   byModel?: boolean;
+  /**
+   * When true, the report includes a `tasks` list (per-task id/title/signature)
+   * for in-dashboard labelling. Carries prompt-derived text — leave OFF for the
+   * read-only MCP and `serve` surfaces. Default: false.
+   */
+  includeTasks?: boolean;
   // ── Injectables (default to production behaviour) ──
   /** Epoch-ms "now". Defaults to Date.now(). Injected for deterministic tests. */
   nowMs?: number;
@@ -270,6 +317,7 @@ export async function buildCostPerTaskReport(
 
   // ── Pool digest items across the window ──
   const records: TaskRecord[] = [];
+  const tasks: LabellableTask[] = [];
   for (const date of dates) {
     const digest = await buildDailyDigest(
       store,
@@ -310,10 +358,31 @@ export async function buildCostPerTaskReport(
         labelled,
         confidence: item.confidence,
       });
+      if (opts.includeTasks) {
+        tasks.push({
+          id: item.id,
+          title: taskTitle(item),
+          project: item.project,
+          outcome,
+          labelled,
+          confidence: item.confidence,
+          signature: sig,
+        });
+      }
     }
   }
 
-  return aggregate(records, period, windowStart, windowEnd, opts.byModel !== false);
+  const report = aggregate(records, period, windowStart, windowEnd, opts.byModel !== false);
+  if (opts.includeTasks) {
+    // Most-expensive-first: the tasks whose label most moves the metric. Cost
+    // is on the record, not the task; align by id (ids are unique per window).
+    const costById = new Map(records.map((r) => [r.id, r.cost]));
+    const ranked = [...tasks].sort(
+      (a, b) => (costById.get(b.id) ?? 0) - (costById.get(a.id) ?? 0),
+    );
+    return { ...report, tasks: ranked.slice(0, MAX_LABELLABLE_TASKS) };
+  }
+  return report;
 }
 
 /** Pure aggregation over classified task records. Exported for direct testing. */

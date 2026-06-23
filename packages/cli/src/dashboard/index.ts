@@ -986,7 +986,14 @@ export async function attachCostPerTask(
   store: Store,
   data: DashboardData,
   opts: ReportOptions,
-  extra?: Pick<CostPerTaskOptions, "digestDeps" | "correctionsClient" | "tz" | "nowMs">,
+  extra?: Pick<CostPerTaskOptions, "digestDeps" | "correctionsClient" | "tz" | "nowMs"> & {
+    /**
+     * Include the per-task labelling list. ONLY the VS Code webview sets this —
+     * the list carries prompt text, so the `serve` LAN path and the CLI JSON
+     * export leave it off. See {@link CostPerTaskOptions.includeTasks}.
+     */
+    includeTasks?: boolean;
+  },
 ): Promise<DashboardData> {
   try {
     const { buildCostPerTaskReport } = await import("../cost-per-task/index.js");
@@ -1003,6 +1010,7 @@ export async function attachCostPerTask(
       repoUrl: opts.repoUrl,
       includeCI: opts.includeCI,
       byModel: true,
+      includeTasks: extra?.includeTasks ?? false,
       tz: extra?.tz ?? opts.timezone,
       nowMs: extra?.nowMs,
       digestDeps: extra?.digestDeps,
