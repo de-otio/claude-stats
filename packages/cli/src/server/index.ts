@@ -181,6 +181,8 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
           if (planCfg && !opts.planFee) opts.planFee = planCfg.monthlyFee;
           if (planCfg && !opts.planType) opts.planType = planCfg.type;
           const data = buildDashboard(store, opts);
+          const { attachCostPerTask } = await import("../dashboard/index.js");
+          await attachCostPerTask(store, data, opts);
           const html = await tryRenderDashboard(data);
           // Set auth cookie so SPA can authenticate subsequent mutating
           // requests. SameSite=Strict prevents CSRF; Path=/ so same-origin
@@ -194,6 +196,8 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
         if (req.method === "GET" && pathname === "/api/dashboard") {
           const opts = parseOpts(url);
           const data = buildDashboard(store, opts);
+          const { attachCostPerTask } = await import("../dashboard/index.js");
+          await attachCostPerTask(store, data, opts);
           sendJson(res, 200, data);
           return;
         }

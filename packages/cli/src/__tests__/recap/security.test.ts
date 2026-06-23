@@ -437,6 +437,7 @@ describe('SR-2 — untrusted-slot rendering via printDailyRecap', () => {
           characterVerb: 'Drafted',
           duration: { wallMs: 600_000, activeMs: 600_000 },
           estimatedCost: 0,
+          costByModel: {},
           toolHistogram: {},
           filePathsTouched: [],
           git: null,

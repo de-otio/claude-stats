@@ -51,7 +51,10 @@
     "spendingModel": "Filtre sur un modèle (ex. claude-opus-4)",
     "spendingTop": "Nombre d'éléments top à afficher (par défaut : 5)",
     "spendingJson": "Sortie JSON lisible par machine",
-    "spendingSort": "Tri : cost, tokens, prompts (par défaut : cost)"
+    "spendingSort": "Tri : cost, tokens, prompts (par défaut : cost)",
+    "costPerTask": "Coût par tâche réussie — dollars API équivalents par tâche livrée/confirmée, au total et par modèle",
+    "costPerTaskPeriod": "Période : day, week, month ou all (par défaut : month)",
+    "costPerTaskByModel": "Ventiler la métrique par modèle dominant"
   },
   "collection": {
     "collecting": "Collecte en cours...",
@@ -128,7 +131,29 @@
     "spendingMcpServers": "Coûts des serveurs MCP",
     "spendingAnomalies": "Prompts onéreux (> 2× la moyenne)",
     "spendingCacheEfficiency": "Efficacité du cache",
-    "spendingSubagents": "Surcoût des sous-agents"
+    "spendingSubagents": "Surcoût des sous-agents",
+    "costPerTaskTitle": "Coût par tâche réussie · {{period}}",
+    "costPerTaskHeadline": "Coût par tâche réussie",
+    "costPerTaskDecomp": "coût moyen/tentative {{mean}} ÷ taux de réussite {{rate}}",
+    "costPerTaskNoTasks": "Aucune tâche sur cette période.",
+    "costPerTaskLowCoverageWarn": "Couverture faible ({{coverage}}) — le taux de réussite repose sur un faible échantillon observable ; le coût moyen par tentative est affiché en premier.",
+    "costPerTaskMeanLead": "Coût moyen par tentative",
+    "costPerTaskUnreliable": "taux peut-être peu fiable",
+    "costPerTaskNa": "n/a",
+    "costPerTaskTasks": "Tâches",
+    "costPerTaskTotalNoun": "au total",
+    "costPerTaskObservableNoun": "observables",
+    "costPerTaskCoverageNoun": "couverture",
+    "costPerTaskLabelledNoun": "étiquetées",
+    "costPerTaskOutcomes": "Résultats",
+    "costPerTaskSuccess": "réussies",
+    "costPerTaskFailed": "échouées",
+    "costPerTaskInFlight": "en cours",
+    "costPerTaskUnobservable": "non observables",
+    "costPerTaskByModel": "Par modèle",
+    "costPerTaskSuccessShort": "réussite",
+    "costPerTaskInsufficient": "n/a (<{{min}} obs.)",
+    "costPerTaskObsShort": "obs."
   },
   "status": {
     "databaseSize": "Taille de la base",

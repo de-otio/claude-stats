@@ -51,7 +51,10 @@
     "spendingModel": "Фільтрує по одній моделі (напр. claude-opus-4)",
     "spendingTop": "Кількість топ-елементів для показу (за замовчуванням: 5)",
     "spendingJson": "Машиночитаний JSON-вивід",
-    "spendingSort": "Сортування: cost, tokens, prompts (за замовчуванням: cost)"
+    "spendingSort": "Сортування: cost, tokens, prompts (за замовчуванням: cost)",
+    "costPerTask": "Вартість успішного завдання — еквівалентні долари API на виконане/підтверджене завдання, загалом і за моделями",
+    "costPerTaskPeriod": "Період: day, week, month або all (за замовчуванням: month)",
+    "costPerTaskByModel": "Розбити метрику за домінуючою моделлю"
   },
   "collection": {
     "collecting": "Збирання...",
@@ -128,7 +131,29 @@
     "spendingMcpServers": "Вартість серверів MCP",
     "spendingAnomalies": "Дорогі промпти (> 2× середнього)",
     "spendingCacheEfficiency": "Ефективність кешу",
-    "spendingSubagents": "Накладні витрати підагентів"
+    "spendingSubagents": "Накладні витрати підагентів",
+    "costPerTaskTitle": "Вартість успішного завдання · {{period}}",
+    "costPerTaskHeadline": "Вартість успішного завдання",
+    "costPerTaskDecomp": "середня вартість/спробу {{mean}} ÷ частка успіху {{rate}}",
+    "costPerTaskNoTasks": "Немає завдань за цей період.",
+    "costPerTaskLowCoverageWarn": "Низьке охоплення ({{coverage}}) — частка успіху ґрунтується на малій спостережуваній вибірці; спершу показано середню вартість спроби.",
+    "costPerTaskMeanLead": "Середня вартість спроби",
+    "costPerTaskUnreliable": "частка може бути ненадійною",
+    "costPerTaskNa": "n/a",
+    "costPerTaskTasks": "Завдання",
+    "costPerTaskTotalNoun": "усього",
+    "costPerTaskObservableNoun": "спостережувані",
+    "costPerTaskCoverageNoun": "охоплення",
+    "costPerTaskLabelledNoun": "позначено",
+    "costPerTaskOutcomes": "Результати",
+    "costPerTaskSuccess": "успішно",
+    "costPerTaskFailed": "невдало",
+    "costPerTaskInFlight": "у процесі",
+    "costPerTaskUnobservable": "не спостерігається",
+    "costPerTaskByModel": "За моделлю",
+    "costPerTaskSuccessShort": "успіх",
+    "costPerTaskInsufficient": "n/a (<{{min}} спост.)",
+    "costPerTaskObsShort": "спост."
   },
   "status": {
     "databaseSize": "Розмір бази даних",

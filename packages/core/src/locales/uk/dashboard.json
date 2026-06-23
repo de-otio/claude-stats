@@ -298,5 +298,44 @@
   },
   "footer": {
     "generated": "Згенеровано {{timestamp}} • Часовий пояс: {{timezone}}"
+  },
+  "costPerTask": {
+    "title": "Вартість успішного завдання",
+    "headline": "на успішне завдання",
+    "na": "n/a",
+    "lowCoverage": "Низьке охоплення ({{coverage}}) — частка ґрунтується на малій спостережуваній вибірці",
+    "decomp": "= {{mean}}/спробу ÷ {{rate}} частка успіху",
+    "coverageBadge": "{{observable}}/{{total}} спостережувані ({{coverage}})",
+    "labelledBadge": "{{labelled}}/{{observable}} позначено",
+    "success": "успішно",
+    "failed": "невдало",
+    "inFlight": "у процесі",
+    "unobservable": "не спостерігається",
+    "model": "Модель",
+    "perSuccess": "$/успіх",
+    "successRate": "Успіх",
+    "observableCol": "Спост.",
+    "insufficient": "n/a",
+    "proxyNote": "Результат виводиться з активності Git та впевненості, якщо ви явно не позначили завдання; частка обчислюється лише за спостережуваними завданнями.",
+    "period": {
+      "day": "сьогодні",
+      "week": "останні 7 днів",
+      "month": "цей місяць",
+      "all": "Весь час"
+    },
+    "labelTasksHeading": "Позначити результати завдань",
+    "labelledTag": "позначено",
+    "outcomeShort": {
+      "success": "успіх",
+      "failed": "невдача",
+      "in_flight": "у процесі",
+      "unobservable": "не спостерігається"
+    },
+    "mark": {
+      "success": "Позначити як успіх",
+      "partial": "Позначити як частково",
+      "fail": "Позначити як невдачу",
+      "clear": "Зняти позначку"
+    }
   }
 }

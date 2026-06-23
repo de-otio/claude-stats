@@ -42,6 +42,7 @@ function makeItem(overrides: Partial<DailyDigestItem> = {}): DailyDigestItem {
     characterVerb: "Worked on",
     duration: { wallMs: 3_600_000, activeMs: 3_600_000 },
     estimatedCost: 0.5,
+    costByModel: {},
     toolHistogram: {},
     filePathsTouched: [],
     git: null,

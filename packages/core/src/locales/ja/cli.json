@@ -51,7 +51,10 @@
     "spendingModel": "単一モデルでフィルタリング（例: claude-opus-4）",
     "spendingTop": "表示する上位項目数（デフォルト: 5）",
     "spendingJson": "機械可読な JSON 出力",
-    "spendingSort": "並び順: cost, tokens, prompts（デフォルト: cost）"
+    "spendingSort": "並び順: cost, tokens, prompts（デフォルト: cost）",
+    "costPerTask": "成功タスクあたりのコスト — 出荷/確認済みタスクあたりの等価API費用（全体およびモデル別）",
+    "costPerTaskPeriod": "期間: day, week, month, all（デフォルト: month）",
+    "costPerTaskByModel": "主要モデル別にメトリクスを分解する"
   },
   "collection": {
     "collecting": "収集中...",
@@ -128,7 +131,29 @@
     "spendingMcpServers": "MCP サーバーのコスト",
     "spendingAnomalies": "高コストなプロンプト（平均の 2 倍以上）",
     "spendingCacheEfficiency": "キャッシュ効率",
-    "spendingSubagents": "サブエージェントのオーバーヘッド"
+    "spendingSubagents": "サブエージェントのオーバーヘッド",
+    "costPerTaskTitle": "成功タスクあたりのコスト · {{period}}",
+    "costPerTaskHeadline": "成功タスクあたりのコスト",
+    "costPerTaskDecomp": "試行あたり平均コスト {{mean}} ÷ 成功率 {{rate}}",
+    "costPerTaskNoTasks": "この期間にタスクはありません。",
+    "costPerTaskLowCoverageWarn": "カバレッジが低い ({{coverage}}) — 成功率は少数の観測可能なタスクに基づいています。試行あたり平均コストを優先表示します。",
+    "costPerTaskMeanLead": "試行あたり平均コスト",
+    "costPerTaskUnreliable": "成功率は信頼できない可能性があります",
+    "costPerTaskNa": "n/a",
+    "costPerTaskTasks": "タスク",
+    "costPerTaskTotalNoun": "合計",
+    "costPerTaskObservableNoun": "観測可能",
+    "costPerTaskCoverageNoun": "カバレッジ",
+    "costPerTaskLabelledNoun": "ラベル付き",
+    "costPerTaskOutcomes": "結果",
+    "costPerTaskSuccess": "成功",
+    "costPerTaskFailed": "失敗",
+    "costPerTaskInFlight": "進行中",
+    "costPerTaskUnobservable": "観測不可",
+    "costPerTaskByModel": "モデル別",
+    "costPerTaskSuccessShort": "成功",
+    "costPerTaskInsufficient": "n/a (<{{min}} 観測)",
+    "costPerTaskObsShort": "観測"
   },
   "status": {
     "databaseSize": "データベースサイズ",

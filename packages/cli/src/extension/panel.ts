@@ -10,9 +10,10 @@ import * as fs from "node:fs";
 import * as vscode from "vscode";
 import { Store } from "../store/index.js";
 import { getNonce, escapeHtml } from "./utils.js";
-import { buildDashboard } from "../dashboard/index.js";
+import { buildDashboard, attachCostPerTask } from "../dashboard/index.js";
 import { renderDashboard } from "../server/template.js";
 import { loadConfig, saveConfig, getPlanConfig, type Config } from "../config.js";
+import { openCorrections, type CorrectionSignature, type OutcomeValue } from "../recap/corrections.js";
 import type { ReportOptions } from "../reporter/index.js";
 import type { SidebarProvider } from "./sidebar.js";
 import { t } from "./i18n.js";
@@ -34,7 +35,7 @@ export class DashboardPanel {
    * Called by the AutoCollector after each successful collection.
    */
   static refreshIfVisible(): void {
-    DashboardPanel.instance?.refresh();
+    DashboardPanel.instance?.refresh().catch(() => {});
   }
 
   static createOrShow(context: vscode.ExtensionContext, sidebar?: SidebarProvider): void {
@@ -64,15 +65,15 @@ export class DashboardPanel {
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
     this.panel.webview.onDidReceiveMessage(
-      (msg: { command: string; period?: string; accountUuid?: string; tab?: string }) => this.handleMessage(msg),
+      (msg: { command: string; period?: string; accountUuid?: string; tab?: string; signature?: unknown; value?: string }) => this.handleMessage(msg),
       null,
       this.disposables,
     );
 
-    this.refresh();
+    void this.refresh();
   }
 
-  private refresh(): void {
+  private async refresh(): Promise<void> {
     // Open and close the store on each refresh so we always read
     // the latest committed data (safe with WAL + busy_timeout)
     const store = new Store();
@@ -88,12 +89,16 @@ export class DashboardPanel {
 
       const cfg = loadConfig();
       const planCfg = getPlanConfig(cfg);
-      const data = buildDashboard(store, {
+      const dashOpts = {
         period: this.period,
         accountUuid: this.accountUuid,
         planFee: planCfg?.monthlyFee,
         planType: planCfg?.type,
-      });
+      };
+      const data = buildDashboard(store, dashOpts);
+      // includeTasks: this is the VS Code webview — the only surface allowed to
+      // render the per-task labelling controls (the list carries prompt text).
+      await attachCostPerTask(store, data, dashOpts, { includeTasks: true });
       const html = renderDashboard(data, t);
       this.panel.webview.html = patchForWebview(
         html,
@@ -106,16 +111,22 @@ export class DashboardPanel {
     }
   }
 
-  private handleMessage(msg: { command: string; period?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number }): void {
+  private handleMessage(msg: { command: string; period?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string }): void {
     if (msg.command === "changePeriod" && msg.period) {
       this.period = msg.period as ReportOptions["period"];
-      this.refresh();
+      void this.refresh();
+    } else if (msg.command === "setOutcome") {
+      // Write-back labelling — VS Code webview ONLY. The read-only `serve` HTTP
+      // path has no message channel and never reaches this handler, keeping the
+      // LAN surface write-free. The signature is round-tripped extension data;
+      // openCorrections().add re-validates/sanitises it (parameterised SQL).
+      this.setOutcome(msg.signature, msg.value);
     } else if (msg.command === "changeAccount") {
       // Empty string from the dropdown means "all accounts combined".
       this.accountUuid = msg.accountUuid ? msg.accountUuid : undefined;
-      this.refresh();
+      void this.refresh();
     } else if (msg.command === "refresh") {
-      this.refresh();
+      void this.refresh();
     } else if (msg.command === "tabChanged" && msg.tab) {
       this.activeTab = msg.tab;
       this.sidebar?.setActiveTab(msg.tab);
@@ -142,11 +153,53 @@ export class DashboardPanel {
         };
         saveConfig(merged);
         void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, data: { ok: true, config: merged } });
-        this.refresh();
+        void this.refresh();
       } catch {
         void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, error: t("extension:panel.errors.failedToSaveConfig") });
       }
     }
+  }
+
+  /**
+   * Write (or clear) an outcome label for a task, then refresh. The signature is
+   * round-tripped from extension-rendered data; we still validate its shape and
+   * the value before touching the corrections DB, and `add()` re-validates +
+   * sanitises (parameterised SQL). Best-effort — failures are swallowed so a bad
+   * payload never crashes the panel.
+   */
+  private setOutcome(signature: unknown, value: string | undefined): void {
+    const allowed = new Set(["success", "partial", "fail", "clear"]);
+    if (!value || !allowed.has(value)) return;
+    const sig = signature as { projectPath?: unknown; filePaths?: unknown; promptPrefix?: unknown } | null;
+    if (
+      !sig ||
+      typeof sig.projectPath !== "string" ||
+      typeof sig.promptPrefix !== "string" ||
+      !Array.isArray(sig.filePaths) ||
+      !sig.filePaths.every((p) => typeof p === "string")
+    ) {
+      return;
+    }
+    const cleanSig: CorrectionSignature = {
+      projectPath: sig.projectPath,
+      filePaths: sig.filePaths as string[],
+      promptPrefix: sig.promptPrefix,
+    };
+    const client = openCorrections();
+    try {
+      if (value === "clear") {
+        for (const a of client.forSignature(cleanSig).filter((a) => a.kind === "outcome")) {
+          client.remove(cleanSig, a);
+        }
+      } else {
+        client.add(cleanSig, { kind: "outcome", value: value as OutcomeValue });
+      }
+    } catch {
+      // add() throws on validation failure — labelling is best-effort UI.
+    } finally {
+      client.close();
+    }
+    void this.refresh();
   }
 
   private dispose(): void {
@@ -271,6 +324,19 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
     var tab = activeTab.getAttribute('data-tab');
     if (tab) vscode.postMessage({ command: 'tabChanged', tab: tab });
   }
+
+  // Wire up cost-per-task outcome-labelling controls (webview-only). Each button
+  // carries data-cpt-index into __DASHBOARD__.costPerTask.tasks (the signature
+  // source) and data-cpt-value (success|partial|fail|clear). The serve path
+  // renders no such controls and has no vscode bridge, so it stays read-only.
+  document.querySelectorAll('[data-cpt-index]').forEach(function(b) {
+    b.addEventListener('click', function() {
+      var tasks = (window.__DASHBOARD__ && window.__DASHBOARD__.costPerTask && window.__DASHBOARD__.costPerTask.tasks) || [];
+      var task = tasks[parseInt(b.getAttribute('data-cpt-index'), 10)];
+      if (!task || !task.signature) return;
+      vscode.postMessage({ command: 'setOutcome', signature: task.signature, value: b.getAttribute('data-cpt-value') });
+    });
+  });
 })();
 </script>`;
   html = html.replace("</body>", `${bridgeScript}\n</body>`);

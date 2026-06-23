@@ -19,6 +19,17 @@ export interface DailyDigestOptions {
    * Useful for tests and emergency recovery.
    */
   forceRebuild?: boolean;
+  /** Restrict the digest to sessions whose project_path matches exactly. */
+  projectPath?: string;
+  /** Restrict the digest to sessions whose account_uuid matches exactly. */
+  accountUuid?: string;
+  /** Restrict the digest to sessions whose repo_url matches exactly. */
+  repoUrl?: string;
+  /**
+   * When true, include non-interactive (CI) sessions in the digest.
+   * Defaults to false (matching the long-standing hardcoded behaviour).
+   */
+  includeCI?: boolean;
 }
 
 /**
@@ -69,6 +80,13 @@ export interface DailyDigestItem {
   characterVerb: string;
   duration: { wallMs: number; activeMs: number };
   estimatedCost: number;
+  /**
+   * Per-model breakdown of `estimatedCost` (equivalent-API $). Keys are model
+   * names; values sum to `estimatedCost`. Includes folded-in subagent cost,
+   * attributed to the model that produced it. Back-compat: digests cached
+   * before this field existed normalise to `{}` on read.
+   */
+  costByModel: Readonly<Record<string, number>>;
   toolHistogram: Readonly<Record<string, number>>;
   filePathsTouched: readonly string[];
   git: ProjectGitActivity | null;

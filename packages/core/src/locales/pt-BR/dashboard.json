@@ -298,5 +298,44 @@
   },
   "footer": {
     "generated": "Gerado em {{timestamp}} • Fuso horário: {{timezone}}"
+  },
+  "costPerTask": {
+    "title": "Custo por tarefa bem-sucedida",
+    "headline": "por tarefa bem-sucedida",
+    "na": "n/a",
+    "lowCoverage": "Cobertura baixa ({{coverage}}) — a taxa baseia-se em uma amostra observável pequena",
+    "decomp": "= {{mean}}/tentativa ÷ {{rate}} taxa de sucesso",
+    "coverageBadge": "{{observable}}/{{total}} observáveis ({{coverage}})",
+    "labelledBadge": "{{labelled}}/{{observable}} rotuladas",
+    "success": "com sucesso",
+    "failed": "falharam",
+    "inFlight": "em andamento",
+    "unobservable": "não observáveis",
+    "model": "Modelo",
+    "perSuccess": "$/sucesso",
+    "successRate": "Sucesso",
+    "observableCol": "Obs.",
+    "insufficient": "n/a",
+    "proxyNote": "O resultado é inferido da atividade do Git e da confiança, a menos que você rotule a tarefa explicitamente; a taxa é calculada apenas sobre as tarefas observáveis.",
+    "period": {
+      "day": "hoje",
+      "week": "últimos 7 dias",
+      "month": "este mês",
+      "all": "Todo o período"
+    },
+    "labelTasksHeading": "Rotular resultados das tarefas",
+    "labelledTag": "rotulada",
+    "outcomeShort": {
+      "success": "com sucesso",
+      "failed": "falhou",
+      "in_flight": "em andamento",
+      "unobservable": "não observável"
+    },
+    "mark": {
+      "success": "Marcar como sucesso",
+      "partial": "Marcar como parcial",
+      "fail": "Marcar como falha",
+      "clear": "Remover rótulo"
+    }
   }
 }

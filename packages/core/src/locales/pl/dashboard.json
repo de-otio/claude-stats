@@ -298,5 +298,44 @@
   },
   "footer": {
     "generated": "Wygenerowano {{timestamp}} • Strefa czasowa: {{timezone}}"
+  },
+  "costPerTask": {
+    "title": "Koszt na udane zadanie",
+    "headline": "na udane zadanie",
+    "na": "n/a",
+    "lowCoverage": "Niskie pokrycie ({{coverage}}) — wskaźnik opiera się na małej obserwowalnej próbce",
+    "decomp": "= {{mean}}/próbę ÷ {{rate}} wskaźnik sukcesu",
+    "coverageBadge": "{{observable}}/{{total}} obserwowalne ({{coverage}})",
+    "labelledBadge": "{{labelled}}/{{observable}} oznaczone",
+    "success": "udane",
+    "failed": "nieudane",
+    "inFlight": "w toku",
+    "unobservable": "nieobserwowalne",
+    "model": "Model",
+    "perSuccess": "$/sukces",
+    "successRate": "Sukces",
+    "observableCol": "Obs.",
+    "insufficient": "n/a",
+    "proxyNote": "Wynik jest wnioskowany z aktywności Git i pewności, chyba że zadanie zostało jawnie oznaczone; wskaźnik liczony jest tylko dla zadań obserwowalnych.",
+    "period": {
+      "day": "dzisiaj",
+      "week": "ostatnie 7 dni",
+      "month": "ten miesiąc",
+      "all": "Cały okres"
+    },
+    "labelTasksHeading": "Oznacz wyniki zadań",
+    "labelledTag": "oznaczone",
+    "outcomeShort": {
+      "success": "udane",
+      "failed": "nieudane",
+      "in_flight": "w toku",
+      "unobservable": "nieobserwowalne"
+    },
+    "mark": {
+      "success": "Oznacz jako udane",
+      "partial": "Oznacz jako częściowe",
+      "fail": "Oznacz jako nieudane",
+      "clear": "Usuń oznaczenie"
+    }
   }
 }

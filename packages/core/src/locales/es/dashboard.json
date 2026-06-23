@@ -298,5 +298,44 @@
   },
   "footer": {
     "generated": "Generado {{timestamp}} • Zona horaria: {{timezone}}"
+  },
+  "costPerTask": {
+    "title": "Coste por tarea exitosa",
+    "headline": "por tarea exitosa",
+    "na": "n/a",
+    "lowCoverage": "Cobertura baja ({{coverage}}) — la tasa se basa en una muestra observable pequeña",
+    "decomp": "= {{mean}}/intento ÷ {{rate}} tasa de éxito",
+    "coverageBadge": "{{observable}}/{{total}} observables ({{coverage}})",
+    "labelledBadge": "{{labelled}}/{{observable}} etiquetadas",
+    "success": "con éxito",
+    "failed": "fallidas",
+    "inFlight": "en curso",
+    "unobservable": "no observables",
+    "model": "Modelo",
+    "perSuccess": "$/éxito",
+    "successRate": "Éxito",
+    "observableCol": "Obs.",
+    "insufficient": "n/a",
+    "proxyNote": "El resultado se infiere de la actividad de Git y la confianza, salvo que hayas etiquetado la tarea explícitamente; la tasa se calcula solo sobre las tareas observables.",
+    "period": {
+      "day": "hoy",
+      "week": "últimos 7 días",
+      "month": "este mes",
+      "all": "Todo el tiempo"
+    },
+    "labelTasksHeading": "Etiquetar resultados de tareas",
+    "labelledTag": "etiquetada",
+    "outcomeShort": {
+      "success": "con éxito",
+      "failed": "fallida",
+      "in_flight": "en curso",
+      "unobservable": "no observable"
+    },
+    "mark": {
+      "success": "Marcar como éxito",
+      "partial": "Marcar como parcial",
+      "fail": "Marcar como fallo",
+      "clear": "Quitar etiqueta"
+    }
   }
 }
