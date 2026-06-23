@@ -80,6 +80,7 @@ claude mcp add -s user claude-stats -- "$(which node)" --experimental-sqlite \
 | `list_projects`      | Per-project usage breakdown                                                    |
 | `get_status`         | Database health, session count, last collection time                           |
 | `search_history`     | Search prompt history by keyword                                               |
+| `get_cost_per_task`  | Cost per successful task — outcome-cost overall and per model (read-only)       |
 
 ### Example queries
 
@@ -87,6 +88,7 @@ claude mcp add -s user claude-stats -- "$(which node)" --experimental-sqlite \
 - "What were my most expensive sessions today?"
 - "Which projects am I spending the most on?"
 - "How much CO₂ did my Claude usage cause last week?"
+- "What's my cost per successful task, broken down by model?"
 
 ## Commandline Usage
 
@@ -111,6 +113,8 @@ claude-stats report --html        # export a standalone HTML dashboard file
 | `collect`      | Incrementally import session data from `~/.claude/projects/`    |
 | `report`       | Print usage summary, per-session detail, or trend breakdown     |
 | `spending`     | Detailed cost breakdown by model, session, tool, and MCP server |
+| `cost-per-task`| Cost per successful task — outcome-cost overall and per model   |
+| `task-outcome` | Label a task `success`/`partial`/`fail` to ground the metric    |
 | `serve`        | Start a local web dashboard (`http://localhost:9120`)           |
 | `status`       | Show database size, session count, and last collection time     |
 | `export`       | Export sessions as JSON or CSV                                  |
