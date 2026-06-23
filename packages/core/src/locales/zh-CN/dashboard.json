@@ -298,5 +298,44 @@
   },
   "footer": {
     "generated": "生成于 {{timestamp}} • 时区: {{timezone}}"
+  },
+  "costPerTask": {
+    "title": "每个成功任务的成本",
+    "headline": "每个成功任务",
+    "na": "n/a",
+    "lowCoverage": "覆盖率较低（{{coverage}}）— 成功率基于较小的可观测样本",
+    "decomp": "= {{mean}}/尝试 ÷ {{rate}} 成功率",
+    "coverageBadge": "{{observable}}/{{total}} 可观测（{{coverage}}）",
+    "labelledBadge": "{{labelled}}/{{observable}} 已标注",
+    "success": "成功",
+    "failed": "失败",
+    "inFlight": "进行中",
+    "unobservable": "不可观测",
+    "model": "模型",
+    "perSuccess": "$/成功",
+    "successRate": "成功",
+    "observableCol": "观测",
+    "insufficient": "n/a",
+    "proxyNote": "除非你明确标注任务，否则结果根据 Git 活动和置信度推断；成功率仅基于可观测任务计算。",
+    "period": {
+      "day": "今天",
+      "week": "最近 7 天",
+      "month": "本月",
+      "all": "全部时间"
+    },
+    "labelTasksHeading": "标注任务结果",
+    "labelledTag": "已标注",
+    "outcomeShort": {
+      "success": "成功",
+      "failed": "失败",
+      "in_flight": "进行中",
+      "unobservable": "不可观测"
+    },
+    "mark": {
+      "success": "标记为成功",
+      "partial": "标记为部分",
+      "fail": "标记为失败",
+      "clear": "清除标注"
+    }
   }
 }

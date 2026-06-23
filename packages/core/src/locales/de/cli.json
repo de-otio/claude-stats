@@ -51,7 +51,10 @@
     "spendingModel": "Nach einem Modell filtern (z.\u00a0B. claude-opus-4)",
     "spendingTop": "Anzahl der Top-Einträge (Standard: 5)",
     "spendingJson": "Maschinenlesbare JSON-Ausgabe",
-    "spendingSort": "Sortierung: cost, tokens, prompts (Standard: cost)"
+    "spendingSort": "Sortierung: cost, tokens, prompts (Standard: cost)",
+    "costPerTask": "Kosten pro erfolgreicher Aufgabe — äquivalente API-Dollar pro ausgelieferter/bestätigter Aufgabe, insgesamt und pro Modell",
+    "costPerTaskPeriod": "Zeitraum: day, week, month oder all (Standard: month)",
+    "costPerTaskByModel": "Die Metrik nach dominantem Modell aufschlüsseln"
   },
   "collection": {
     "collecting": "Erfassung läuft...",
@@ -128,7 +131,29 @@
     "spendingMcpServers": "MCP-Server-Kosten",
     "spendingAnomalies": "Teure Prompts (> 2x Durchschnitt)",
     "spendingCacheEfficiency": "Cache-Effizienz",
-    "spendingSubagents": "Subagent-Overhead"
+    "spendingSubagents": "Subagent-Overhead",
+    "costPerTaskTitle": "Kosten pro erfolgreicher Aufgabe · {{period}}",
+    "costPerTaskHeadline": "Kosten pro erfolgreicher Aufgabe",
+    "costPerTaskDecomp": "mittlere Kosten/Versuch {{mean}} ÷ Erfolgsrate {{rate}}",
+    "costPerTaskNoTasks": "Keine Aufgaben in diesem Zeitraum.",
+    "costPerTaskLowCoverageWarn": "Geringe Abdeckung ({{coverage}}) — die Erfolgsrate beruht auf einem kleinen beobachtbaren Anteil; es werden zunächst die mittleren Kosten pro Versuch angezeigt.",
+    "costPerTaskMeanLead": "Mittlere Kosten pro Versuch",
+    "costPerTaskUnreliable": "Rate möglicherweise unzuverlässig",
+    "costPerTaskNa": "n/a",
+    "costPerTaskTasks": "Aufgaben",
+    "costPerTaskTotalNoun": "gesamt",
+    "costPerTaskObservableNoun": "beobachtbar",
+    "costPerTaskCoverageNoun": "Abdeckung",
+    "costPerTaskLabelledNoun": "gekennzeichnet",
+    "costPerTaskOutcomes": "Ergebnisse",
+    "costPerTaskSuccess": "erfolgreich",
+    "costPerTaskFailed": "fehlgeschlagen",
+    "costPerTaskInFlight": "in Arbeit",
+    "costPerTaskUnobservable": "nicht beobachtbar",
+    "costPerTaskByModel": "Nach Modell",
+    "costPerTaskSuccessShort": "Erfolg",
+    "costPerTaskInsufficient": "n/a (<{{min}} Beob.)",
+    "costPerTaskObsShort": "Beob."
   },
   "status": {
     "databaseSize": "Datenbankgröße",

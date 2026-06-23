@@ -51,7 +51,10 @@
     "spendingModel": "Filtruje po jednym modelu (np. claude-opus-4)",
     "spendingTop": "Liczba najlepszych pozycji do pokazania (domyślnie: 5)",
     "spendingJson": "Wyjście JSON czytelne maszynowo",
-    "spendingSort": "Sortowanie: cost, tokens, prompts (domyślnie: cost)"
+    "spendingSort": "Sortowanie: cost, tokens, prompts (domyślnie: cost)",
+    "costPerTask": "Koszt na udane zadanie — równoważne dolary API na dostarczone/potwierdzone zadanie, łącznie i według modelu",
+    "costPerTaskPeriod": "Okres: day, week, month lub all (domyślnie: month)",
+    "costPerTaskByModel": "Rozbij metrykę według dominującego modelu"
   },
   "collection": {
     "collecting": "Zbieranie...",
@@ -128,7 +131,29 @@
     "spendingMcpServers": "Koszty serwerów MCP",
     "spendingAnomalies": "Drogie prompty (> 2× średniej)",
     "spendingCacheEfficiency": "Efektywność cache",
-    "spendingSubagents": "Narzut podagentów"
+    "spendingSubagents": "Narzut podagentów",
+    "costPerTaskTitle": "Koszt na udane zadanie · {{period}}",
+    "costPerTaskHeadline": "Koszt na udane zadanie",
+    "costPerTaskDecomp": "średni koszt/próbę {{mean}} ÷ wskaźnik sukcesu {{rate}}",
+    "costPerTaskNoTasks": "Brak zadań w tym okresie.",
+    "costPerTaskLowCoverageWarn": "Niskie pokrycie ({{coverage}}) — wskaźnik sukcesu opiera się na małej obserwowalnej próbce; najpierw pokazywany jest średni koszt na próbę.",
+    "costPerTaskMeanLead": "Średni koszt na próbę",
+    "costPerTaskUnreliable": "wskaźnik może być niewiarygodny",
+    "costPerTaskNa": "n/a",
+    "costPerTaskTasks": "Zadania",
+    "costPerTaskTotalNoun": "łącznie",
+    "costPerTaskObservableNoun": "obserwowalne",
+    "costPerTaskCoverageNoun": "pokrycie",
+    "costPerTaskLabelledNoun": "oznaczone",
+    "costPerTaskOutcomes": "Wyniki",
+    "costPerTaskSuccess": "udane",
+    "costPerTaskFailed": "nieudane",
+    "costPerTaskInFlight": "w toku",
+    "costPerTaskUnobservable": "nieobserwowalne",
+    "costPerTaskByModel": "Według modelu",
+    "costPerTaskSuccessShort": "sukces",
+    "costPerTaskInsufficient": "n/a (<{{min}} obs.)",
+    "costPerTaskObsShort": "obs."
   },
   "status": {
     "databaseSize": "Rozmiar bazy danych",

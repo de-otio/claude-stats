@@ -298,5 +298,44 @@
   },
   "footer": {
     "generated": "Generiert {{timestamp}} • Zeitzone: {{timezone}}"
+  },
+  "costPerTask": {
+    "title": "Kosten pro erfolgreicher Aufgabe",
+    "headline": "pro erfolgreicher Aufgabe",
+    "na": "n/a",
+    "lowCoverage": "Geringe Abdeckung ({{coverage}}) — Rate beruht auf kleinem beobachtbaren Anteil",
+    "decomp": "= {{mean}}/Versuch ÷ {{rate}} Erfolgsrate",
+    "coverageBadge": "{{observable}}/{{total}} beobachtbar ({{coverage}})",
+    "labelledBadge": "{{labelled}}/{{observable}} gekennzeichnet",
+    "success": "erfolgreich",
+    "failed": "fehlgeschlagen",
+    "inFlight": "in Arbeit",
+    "unobservable": "nicht beobachtbar",
+    "model": "Modell",
+    "perSuccess": "$/Erfolg",
+    "successRate": "Erfolg",
+    "observableCol": "Beob.",
+    "insufficient": "n/a",
+    "proxyNote": "Das Ergebnis wird aus Git-Aktivität und Konfidenz abgeleitet, sofern du die Aufgabe nicht ausdrücklich gekennzeichnet hast; die Rate wird nur über beobachtbare Aufgaben berechnet.",
+    "period": {
+      "day": "heute",
+      "week": "letzte 7 Tage",
+      "month": "dieser Monat",
+      "all": "Gesamtzeitraum"
+    },
+    "labelTasksHeading": "Aufgabenergebnisse kennzeichnen",
+    "labelledTag": "gekennzeichnet",
+    "outcomeShort": {
+      "success": "erfolgreich",
+      "failed": "fehlgeschlagen",
+      "in_flight": "in Arbeit",
+      "unobservable": "nicht beobachtbar"
+    },
+    "mark": {
+      "success": "Als Erfolg markieren",
+      "partial": "Als teilweise markieren",
+      "fail": "Als Fehlschlag markieren",
+      "clear": "Kennzeichnung entfernen"
+    }
   }
 }
