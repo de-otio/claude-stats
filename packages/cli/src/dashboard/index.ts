@@ -16,6 +16,7 @@ import {
   type ModelEfficiencyData,
 } from "../classifier.js";
 import { attributeToolCosts, groupByMcpServer, detectAnomalies, aggregateMcpServerUsage } from "../spending.js";
+import type { CostPerTaskReport, CostPerTaskOptions } from "../cost-per-task/index.js";
 import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor, modelClass } from "@claude-stats/core/energy";
 import type { ModelClass } from "@claude-stats/core/energy";
 
@@ -177,6 +178,15 @@ export interface DashboardData {
   contextAnalysis: ContextAnalysis | null;
   spending: DashboardSpending | null;
   energy: DashboardEnergy | null;
+  /**
+   * Cost-per-successful-task metric for the current period/filter, or null.
+   * `buildDashboard` (synchronous) always leaves this null; it is populated
+   * asynchronously by {@link attachCostPerTask} in the full-dashboard renderers
+   * (serve / VS Code panel / CLI `dashboard`), because the metric iterates the
+   * async recap pipeline per day and the lightweight callers (statusBar, MCP
+   * `get_stats`) must not pay that cost.
+   */
+  costPerTask: CostPerTaskReport | null;
   recommendations: Recommendation[];
   /** All accounts present in the store for the current period — independent of
    * the account filter. Drives the dashboard's account selector. */
@@ -941,6 +951,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     contextAnalysis,
     spending,
     energy,
+    costPerTask: null,
     recommendations,
     availableAccounts: (() => {
       // Always list accounts using the unfiltered period so the dropdown can
@@ -960,6 +971,56 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     })(),
     selectedAccountUuid: opts.accountUuid ?? null,
   };
+}
+
+/**
+ * Populate `data.costPerTask` for a dashboard, asynchronously.
+ *
+ * Kept separate from the synchronous {@link buildDashboard} because the metric
+ * iterates the recap pipeline per day (async, git-enriched). Only the
+ * full-dashboard renderers call this; lightweight callers leave it null.
+ * Reuses the dashboard's period/account/project filters. Never throws — on any
+ * failure the card is simply omitted (returns the data unchanged).
+ */
+export async function attachCostPerTask(
+  store: Store,
+  data: DashboardData,
+  opts: ReportOptions,
+  extra?: Pick<CostPerTaskOptions, "digestDeps" | "correctionsClient" | "tz" | "nowMs"> & {
+    /**
+     * Include the per-task labelling list. ONLY the VS Code webview sets this —
+     * the list carries prompt text, so the `serve` LAN path and the CLI JSON
+     * export leave it off. See {@link CostPerTaskOptions.includeTasks}.
+     */
+    includeTasks?: boolean;
+  },
+): Promise<DashboardData> {
+  try {
+    const { buildCostPerTaskReport } = await import("../cost-per-task/index.js");
+    // Cap the card to `month` when the dashboard is on `all` (or unset, which
+    // defaults to `all`): an all-time window iterates the git-enriched recap
+    // pipeline per day across the whole history — a multi-second hang on a cold
+    // cache. The plan's mitigation: month default, all opt-in via the CLI.
+    const dashPeriod = opts.period ?? "all";
+    const period = (dashPeriod === "all" ? "month" : dashPeriod) as CostPerTaskOptions["period"];
+    const report = await buildCostPerTaskReport(store, {
+      period,
+      projectPath: opts.projectPath,
+      accountUuid: opts.accountUuid,
+      repoUrl: opts.repoUrl,
+      includeCI: opts.includeCI,
+      byModel: true,
+      includeTasks: extra?.includeTasks ?? false,
+      tz: extra?.tz ?? opts.timezone,
+      nowMs: extra?.nowMs,
+      digestDeps: extra?.digestDeps,
+      correctionsClient: extra?.correctionsClient,
+    });
+    data.costPerTask = report;
+  } catch {
+    data.costPerTask = null;
+  }
+  return data;
 }
 
 const PLAN_LABELS: Record<string, string> = {

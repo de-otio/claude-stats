@@ -133,7 +133,7 @@ export async function buildCli(): Promise<Command> {
     .option("--session <id>", t("cli:commands.reportSession"))
     .option("--html [outfile]", t("cli:commands.reportHtml"))
     .action(
-      (opts: {
+      async (opts: {
         project?: string;
         repo?: string;
         account?: string;
@@ -171,7 +171,11 @@ export async function buildCli(): Promise<Command> {
           };
           if (opts.html) {
             const data = buildDashboard(store, reportOpts);
-            const html = renderDashboard(data);
+            const { attachCostPerTask } = await import("../dashboard/index.js");
+            await attachCostPerTask(store, data, reportOpts);
+            // Pass the CLI translator so the exported HTML is localized; without
+            // it every label (not just this card) renders as a raw i18n key.
+            const html = renderDashboard(data, t);
             const today = new Date().toISOString().slice(0, 10);
             const outfile = typeof opts.html === "string" && opts.html.length > 0
               ? opts.html
@@ -233,6 +237,109 @@ export async function buildCli(): Promise<Command> {
           timezone: opts.timezone,
           accountUuid: opts.account,
         });
+      } finally {
+        store.close();
+      }
+    });
+
+  program
+    .command("cost-per-task")
+    .description(t("cli:commands.costPerTask"))
+    .option("--period <period>", t("cli:commands.costPerTaskPeriod"), "month")
+    .option("--project <path>", t("cli:commands.reportProject"))
+    .option("--account <uuid>", t("cli:commands.reportAccount"))
+    .option("--repo <url>", t("cli:commands.reportRepo"))
+    .option("--include-ci", t("cli:commands.reportIncludeCi"))
+    .option("--by-model", t("cli:commands.costPerTaskByModel"))
+    .option("--timezone <tz>", t("cli:commands.reportTimezone"))
+    .option("--json", t("cli:commands.spendingJson"))
+    .action(async (opts: {
+      period?: string;
+      project?: string;
+      account?: string;
+      repo?: string;
+      includeCi?: boolean;
+      byModel?: boolean;
+      timezone?: string;
+      json?: boolean;
+    }) => {
+      loadCachedPricing();
+      const { buildCostPerTaskReport } = await import("../cost-per-task/index.js");
+      const { printCostPerTask } = await import("../reporter/index.js");
+      const { createEmbeddingProvider } = await import("../recap/embeddings.js");
+      const store = new Store();
+      await collect(store);
+      try {
+        let embeddingProvider = null;
+        try {
+          embeddingProvider = await createEmbeddingProvider({ mode: "auto" });
+        } catch {
+          embeddingProvider = null;
+        }
+        const report = await buildCostPerTaskReport(store, {
+          period: opts.period as "day" | "week" | "month" | "all" | undefined,
+          projectPath: opts.project,
+          accountUuid: opts.account,
+          repoUrl: opts.repo,
+          includeCI: opts.includeCi,
+          byModel: opts.byModel === true,
+          tz: opts.timezone,
+          digestDeps: { embeddingProvider },
+        });
+        printCostPerTask(report, process.stdout, { json: opts.json });
+      } finally {
+        store.close();
+      }
+    });
+
+  program
+    .command("task-outcome <item> [value]")
+    .description(
+      "Label a task's outcome (success|partial|fail) so the cost-per-task " +
+        "metric rests on ground truth instead of a proxy. <item> is an id " +
+        "prefix or prompt substring from today's recap; use --clear to remove.",
+    )
+    .option("--clear", "Remove any outcome label for the matched task")
+    .action(async (itemSelector: string, value: string | undefined, opts: { clear?: boolean }) => {
+      const { buildDailyDigest } = await import("../recap/index.js");
+      const { openCorrections, computeSignature } = await import("../recap/corrections.js");
+      const valid = new Set(["success", "partial", "fail"]);
+      if (!opts.clear) {
+        if (!value || !valid.has(value)) {
+          process.stderr.write(
+            `Provide an outcome: success | partial | fail (or --clear). Got "${value ?? ""}".\n`,
+          );
+          process.exit(1);
+        }
+      }
+      const store = new Store();
+      await collect(store);
+      try {
+        const digest = await buildDailyDigest(store, {});
+        const item = await resolveItem(digest, itemSelector);
+        if (!item) {
+          process.stderr.write(`No item matching "${itemSelector}" in today's digest.\n`);
+          process.exit(1);
+        }
+        const sig = computeSignature(item);
+        const client = openCorrections();
+        try {
+          if (opts.clear) {
+            // Remove every stored outcome action for this signature.
+            const outcomes = client.forSignature(sig).filter((a) => a.kind === "outcome");
+            for (const a of outcomes) client.remove(sig, a);
+            console.log(
+              outcomes.length > 0
+                ? `Cleared outcome label for "${item.id}".`
+                : `No outcome label set for "${item.id}".`,
+            );
+          } else {
+            client.add(sig, { kind: "outcome", value: value as "success" | "partial" | "fail" });
+            console.log(`Outcome recorded: "${item.id}" → ${value}.`);
+          }
+        } finally {
+          client.close();
+        }
       } finally {
         store.close();
       }
@@ -519,14 +626,17 @@ export async function buildCli(): Promise<Command> {
     .option("--period <period>", t("cli:commands.dashboardPeriod"), "all")
     .option("--project <path>", t("cli:commands.dashboardProject"))
     .option("--repo <url>", t("cli:commands.dashboardRepo"))
-    .action((opts: { period?: string; project?: string; repo?: string }) => {
+    .action(async (opts: { period?: string; project?: string; repo?: string }) => {
       const store = new Store();
       try {
-        const data = buildDashboard(store, {
+        const dashOpts = {
           period: opts.period as "day" | "week" | "month" | "all" | undefined,
           projectPath: opts.project,
           repoUrl: opts.repo,
-        });
+        };
+        const data = buildDashboard(store, dashOpts);
+        const { attachCostPerTask } = await import("../dashboard/index.js");
+        await attachCostPerTask(store, data, dashOpts);
         console.log(JSON.stringify(data, null, 2));
       } finally {
         store.close();
@@ -769,7 +879,9 @@ export async function buildCli(): Promise<Command> {
                 ? `merge with ${action.otherSignature.projectPath}`
                 : action.kind === "split"
                   ? `split segment ${action.segmentId}`
-                  : "hide";
+                  : action.kind === "outcome"
+                    ? `outcome → ${action.value}`
+                    : "hide";
           console.log(
             `[${id}] ${sig.projectPath} | \`${sig.promptPrefix}\` | ${actionStr}`,
           );

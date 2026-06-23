@@ -390,6 +390,17 @@ function diffInputs(prev: SnapshotHashInputs, next: SnapshotHashInputs): InputDi
  * @returns      A complete DailyDigest. Never throws — errors in git
  *               enrichment, cache I/O, or cost estimation degrade gracefully.
  */
+/**
+ * Ensure a digest item read from the on-disk cache carries fields that were
+ * added after it was written. Legacy entries lack `costByModel` (added with the
+ * cost-attribution fix); normalise it to `{}` so consumers can rely on the
+ * field. Mirrors the `clusteringMethod` normalisation done on cache read.
+ */
+function normalizeCachedItem(item: DailyDigestItem): DailyDigestItem {
+  if (item.costByModel != null) return item;
+  return { ...item, costByModel: {} };
+}
+
 export async function buildDailyDigest(
   store: Store,
   opts?: DailyDigestOptions,
@@ -419,11 +430,19 @@ export async function buildDailyDigest(
 
   // ── Step 2: Fetch sessions in the window ─────────────────────────────────
 
+  // Subagent sessions (is_subagent=1) are excluded from the task set: their
+  // work is part of the human-initiated parent task, and their cost is folded
+  // into the parent in buildDigestItem. Including them would double-count cost
+  // and inflate the task count.
   const sessions = store.getSessions({
     since: startMs,
     until: endMs,
-    includeCI: false,
+    projectPath: opts?.projectPath,
+    accountUuid: opts?.accountUuid,
+    repoUrl: opts?.repoUrl,
+    includeCI: opts?.includeCI ?? false,
     includeDeleted: false,
+    includeSubagents: false,
   });
 
   // Build sorted unique project paths
@@ -479,6 +498,14 @@ export async function buildDailyDigest(
     perProjectLastCommit[p] = getLastCommit(p);
   }
 
+  // Build the filter object only when at least one filter is active so that
+  // the common "no filter" case round-trips identically (back-compat).
+  const hasFilter =
+    opts?.projectPath !== undefined ||
+    opts?.accountUuid !== undefined ||
+    opts?.repoUrl !== undefined ||
+    opts?.includeCI !== undefined;
+
   const newInputs: SnapshotHashInputs = {
     date,
     tz,
@@ -486,6 +513,16 @@ export async function buildDailyDigest(
     maxMessageUuid,
     perProjectLastCommit,
     perSessionLastMessageUuid,
+    ...(hasFilter
+      ? {
+          filter: {
+            projectPath: opts?.projectPath,
+            accountUuid: opts?.accountUuid,
+            repoUrl: opts?.repoUrl,
+            includeCI: opts?.includeCI,
+          },
+        }
+      : {}),
   };
 
   const snapshotHash = computeSnapshotHash(newInputs);
@@ -499,9 +536,14 @@ export async function buildDailyDigest(
     // Normalise clusteringMethod for digests cached before the field existed.
     // The type asserts presence, but on-disk cache entries written by older
     // versions may not have the key — fall back to 'jaccard' (the only path
-    // that ran pre-this-change).
+    // that ran pre-this-change). Likewise normalise each item's costByModel.
     const method = cached.clusteringMethod ?? 'jaccard';
-    return { ...cached, clusteringMethod: method, cached: true };
+    return {
+      ...cached,
+      items: cached.items.map(normalizeCachedItem),
+      clusteringMethod: method,
+      cached: true,
+    };
   }
 
   // ── Step 4b: Short-circuit for empty days (negative caching, v3.07) ────────
@@ -562,7 +604,7 @@ export async function buildDailyDigest(
       const diff = diffInputs(prevEntry.inputs, newInputs);
 
       // Count how many of the previous clusters are "touched" (need rebuild).
-      const prevItems = prevEntry.digest.items;
+      const prevItems = prevEntry.digest.items.map(normalizeCachedItem);
       const touchedProjects = new Set([
         ...diff.changedCommitProjects,
         ...diff.addedProjects,
@@ -970,21 +1012,50 @@ function buildDigestItem(
     }
   }
 
-  // estimatedCost: sum per-message cost for contributing sessions
+  // estimatedCost: sum per-message cost over exactly the messages in this
+  // task's segments (NOT every message in a contributing session — that
+  // double-counts when a session spans multiple clusters), plus folded-in
+  // subagent cost. Bucketed by model in the same pass.
   let estimatedCost = 0;
+  const costByModel: Record<string, number> = {};
+  const addCost = (
+    rows: ReadonlyArray<{
+      model: string | null;
+      input_tokens: number;
+      output_tokens: number;
+      cache_read_tokens: number;
+      cache_creation_tokens: number;
+    }>,
+  ): void => {
+    for (const row of rows) {
+      if (row.model === null) continue;
+      const { cost } = estimateCost(
+        row.model,
+        row.input_tokens,
+        row.output_tokens,
+        row.cache_read_tokens,
+        row.cache_creation_tokens,
+      );
+      estimatedCost += cost;
+      costByModel[row.model] = (costByModel[row.model] ?? 0) + cost;
+    }
+  };
+
+  // 1. This task's own messages — exactly the UUIDs in its segments.
+  const ownUuids: string[] = [];
+  for (const seg of segments) {
+    for (const uuid of seg.messageUuids) ownUuids.push(uuid);
+  }
+  addCost(store.getMessageCostInputsByUuids(ownUuids));
+
+  // 2. Subagent cost: messages of child sessions linked to any contributing
+  //    session, folded into this (parent) task and counted exactly once.
+  const seenChildren = new Set<string>();
   for (const sessionId of sessionIds) {
-    const msgs = store.getSessionMessages(sessionId);
-    for (const msg of msgs) {
-      if (msg.model !== null) {
-        const { cost } = estimateCost(
-          msg.model,
-          msg.input_tokens,
-          msg.output_tokens,
-          msg.cache_read_tokens,
-          msg.cache_creation_tokens,
-        );
-        estimatedCost += cost;
-      }
+    for (const child of store.getChildSessions(sessionId)) {
+      if (seenChildren.has(child.session_id)) continue;
+      seenChildren.add(child.session_id);
+      addCost(store.getSessionMessages(child.session_id));
     }
   }
 
@@ -1055,6 +1126,7 @@ function buildDigestItem(
     characterVerb: finalVerb,
     duration: { wallMs, activeMs },
     estimatedCost,
+    costByModel: Object.freeze(costByModel),
     toolHistogram: Object.freeze(toolHistogram),
     filePathsTouched,
     git,

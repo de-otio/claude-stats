@@ -191,6 +191,65 @@ describe("Store — getSessions filters", () => {
     expect(rows[0]!.session_id).toBe("s5");
     expect(rows[0]!.entrypoint).toBe("claude");
   });
+
+  it("includes subagent sessions by default but excludes them when includeSubagents is false", () => {
+    store.upsertSession(makeSession({
+      sessionId: "sub1", projectPath: "/proj/a", firstTimestamp: 6_000,
+      isInteractive: true, isSubagent: true, parentSessionId: "s1",
+    }));
+    // Default: subagents included
+    expect(store.getSessions().map(r => r.session_id)).toContain("sub1");
+    // includeSubagents:false excludes them, keeps normal sessions
+    const filtered = store.getSessions({ includeSubagents: false }).map(r => r.session_id);
+    expect(filtered).not.toContain("sub1");
+    expect(filtered).toEqual(expect.arrayContaining(["s1", "s2"]));
+  });
+});
+
+describe("Store — getMessageCostInputsByUuids", () => {
+  let store: Store;
+  let dbPath: string;
+
+  const msg = (uuid: string, model: string | null, input: number, output: number) => ({
+    uuid, sessionId: "s1", timestamp: 1000, claudeVersion: "2.1.70",
+    model, stopReason: "end_turn", inputTokens: input, outputTokens: output,
+    cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], filePaths: [],
+    thinkingBlocks: 0, serviceTier: null, inferenceGeo: null,
+    ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0, promptText: null,
+  });
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+    store.upsertMessages([msg("a", "claude-sonnet-4-6", 100, 50), msg("b", "claude-opus-4-6", 200, 80), msg("c", null, 10, 10)]);
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  it("returns an empty array for empty input (no SQL run)", () => {
+    expect(store.getMessageCostInputsByUuids([])).toEqual([]);
+  });
+
+  it("returns only the requested uuids with token columns", () => {
+    const rows = store.getMessageCostInputsByUuids(["a", "c"]);
+    expect(rows.map(r => r.uuid).sort()).toEqual(["a", "c"]);
+    const a = rows.find(r => r.uuid === "a")!;
+    expect(a.model).toBe("claude-sonnet-4-6");
+    expect(a.input_tokens).toBe(100);
+    expect(a.output_tokens).toBe(50);
+    expect(rows.find(r => r.uuid === "c")!.model).toBeNull();
+  });
+
+  it("ignores unknown uuids and batches large inputs (>500)", () => {
+    // 600 ids, only 'a' and 'b' exist → batching over two IN(...) chunks
+    const ids = Array.from({ length: 600 }, (_, i) => `x${i}`);
+    ids.push("a", "b");
+    const rows = store.getMessageCostInputsByUuids(ids);
+    expect(rows.map(r => r.uuid).sort()).toEqual(["a", "b"]);
+  });
 });
 
 describe("Store — checkpoint", () => {

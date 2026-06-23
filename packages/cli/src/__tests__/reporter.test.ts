@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { formatTokens, formatBytes, formatDuration, periodStart, printSummary, printStatus, formatEntrypoint, printSessionList, printSessionDetail, buildBuckets, printTrend, printSpendingReport } from "../reporter/index.js";
+import { formatTokens, formatBytes, formatDuration, periodStart, printSummary, printStatus, formatEntrypoint, printSessionList, printSessionDetail, buildBuckets, printTrend, printSpendingReport, printCostPerTask } from "../reporter/index.js";
+import type { CostPerTaskReport, ModelCostPerTask } from "../cost-per-task/index.js";
 import { Store } from "../store/index.js";
 import os from "os";
 import path from "path";
@@ -1274,5 +1275,120 @@ describe("printSpendingReport", () => {
     // Should show both models with percentages
     expect(output.some(s => s.includes("opus") && s.includes("%"))).toBe(true);
     expect(output.some(s => s.includes("sonnet") && s.includes("%"))).toBe(true);
+  });
+});
+
+// ── printCostPerTask ─────────────────────────────────────────────────────────
+
+describe("printCostPerTask", () => {
+  /** Collect lines written to a fake stream so we can assert on the output. */
+  function capture(report: CostPerTaskReport, opts?: Parameters<typeof printCostPerTask>[2]): string {
+    let buf = "";
+    const out = { write: (s: string) => { buf += s; return true; } } as unknown as NodeJS.WritableStream;
+    printCostPerTask(report, out, opts);
+    return buf;
+  }
+
+  function makeModel(over: Partial<ModelCostPerTask> = {}): ModelCostPerTask {
+    return {
+      model: "claude-opus-4-6",
+      tasksObservable: 40,
+      successCount: 12,
+      successRate: 0.3,
+      costObservable: 420,
+      costByModelExact: 420,
+      meanCostPerAttempt: 10.5,
+      costPerSuccessfulTask: 35,
+      ...over,
+    };
+  }
+
+  function makeReport(over: Partial<CostPerTaskReport> = {}): CostPerTaskReport {
+    return {
+      period: "month",
+      windowStart: 0,
+      windowEnd: 0,
+      tasksTotal: 100,
+      observable: 40,
+      coverage: 0.4,
+      successCount: 12,
+      failedCount: 28,
+      inFlightCount: 30,
+      unobservableCount: 30,
+      successRate: 0.3,
+      totalCostObservable: 420,
+      meanCostPerAttempt: 10.5,
+      costPerSuccessfulTask: 35,
+      labelledCount: 5,
+      byModel: [],
+      ...over,
+    };
+  }
+
+  it("emits valid JSON of the report in json mode", () => {
+    const report = makeReport();
+    const out = capture(report, { json: true });
+    expect(JSON.parse(out)).toEqual(report);
+  });
+
+  it("prints a no-tasks message when the window is empty", () => {
+    const out = capture(makeReport({ tasksTotal: 0, observable: 0, successCount: 0, failedCount: 0, inFlightCount: 0, unobservableCount: 0, successRate: null, meanCostPerAttempt: null, costPerSuccessfulTask: null, coverage: 0, totalCostObservable: 0, labelledCount: 0 }));
+    expect(out).toContain("No tasks in this window.");
+  });
+
+  it("leads with the headline and the mean ÷ rate decomposition at healthy coverage", () => {
+    const out = capture(makeReport());
+    expect(out).toContain("Cost per successful task: $35.00");
+    expect(out).toContain("$10.50"); // mean cost per attempt
+    expect(out).toContain("30%");    // success rate
+    // Coverage + labelling line and the four-state outcome line are present.
+    expect(out).toContain("40 observable (40% coverage)");
+    expect(out).toContain("5 labelled");
+    expect(out).toContain("12 success");
+    expect(out).toContain("28 failed");
+    expect(out).toContain("30 in-flight");
+    expect(out).toContain("30 unobservable");
+  });
+
+  it("warns and leads with mean-cost-per-attempt below the coverage floor", () => {
+    const out = capture(makeReport({ coverage: 0.1 }));
+    expect(out).toContain("⚠");
+    expect(out).toContain("Low coverage (10%)");
+    expect(out).toContain("Mean cost per attempt: $10.50");
+    // The headline is still shown but flagged unreliable.
+    expect(out).toContain("rate may be unreliable");
+  });
+
+  it("respects a custom coverage floor", () => {
+    // coverage 0.4 is below a 0.5 floor → warn path
+    const out = capture(makeReport(), { coverageFloor: 0.5 });
+    expect(out).toContain("Low coverage (40%)");
+  });
+
+  it("renders 'n/a' when there are no successes", () => {
+    const out = capture(makeReport({ successCount: 0, costPerSuccessfulTask: null, successRate: 0, meanCostPerAttempt: 10.5 }));
+    expect(out).toContain("Cost per successful task: n/a");
+  });
+
+  it("renders the per-model table with the dominant-model rate", () => {
+    const out = capture(makeReport({
+      byModel: [
+        makeModel({ model: "claude-opus-4-6", costPerSuccessfulTask: 35, successRate: 0.3, tasksObservable: 40, costObservable: 420 }),
+        makeModel({ model: "claude-sonnet-4-6", costPerSuccessfulTask: 5.45, successRate: 0.55, tasksObservable: 60, costObservable: 180 }),
+      ],
+    }));
+    expect(out).toContain("By model:");
+    expect(out).toContain("opus-4-6");
+    expect(out).toContain("$35.00/success");
+    expect(out).toContain("sonnet-4-6");
+    expect(out).toContain("$5.45/success");
+  });
+
+  it("marks a thinly-observed model as insufficient rather than printing a noisy rate", () => {
+    const out = capture(makeReport({
+      byModel: [makeModel({ model: "claude-haiku-4-5", tasksObservable: 3, successRate: null, costPerSuccessfulTask: null, costObservable: 12 })],
+    }));
+    expect(out).toContain("haiku-4-5");
+    expect(out).toContain("n/a (<10 obs)");
   });
 });

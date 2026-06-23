@@ -32,6 +32,7 @@ Read in order for full context, or jump to 07 and 02 to start implementing.
 |-----------|---------|
 | [daily-recap/](daily-recap/) | "What did I get done today?" — hybrid AI + deterministic pipeline for token-efficient day summaries |
 | [energy-dashboard/](energy-dashboard/) | Energy consumption and carbon footprint estimation dashboard |
+| [cost-per-successful-task/](cost-per-successful-task/) | "What does a correct result actually cost?" — outcome-cost metric per model, for the post-subsidy pricing era |
 
 ## Architecture Summary
 

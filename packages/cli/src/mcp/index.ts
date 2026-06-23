@@ -301,6 +301,44 @@ export function createMcpServer(store: Store): McpServer {
     },
   );
 
+  // ── get_cost_per_task ─────────────────────────────────────────────────────
+  server.tool(
+    "get_cost_per_task",
+    "Get your cost per successful task — equivalent-API dollars spent per " +
+      "shipped/confirmed task, overall and per model. This is the metric that " +
+      "matters once model subsidies end: it divides total cost over observable " +
+      "attempts by the number that succeeded, rather than stopping at tokens.\n\n" +
+      "Outcome is FOUR-state (success / failed / in_flight / unobservable); the " +
+      "success rate is computed over the observable subset (success ∪ failed) " +
+      "only, with `coverage` reported beside it. `labelledCount` tells you how " +
+      "much of the number rests on explicit user labels versus mechanical " +
+      "proxies — a high labelled share is an eval, a low one is a hypothesis.\n\n" +
+      "READ-ONLY: this tool reports the metric but cannot set an outcome label. " +
+      "Labelling is a human action (CLI `task-outcome` / the dashboard), keeping " +
+      "the producer of the number separate from the judge of success. The " +
+      "response is numbers and model names only — no stored prompt text.",
+    {
+      period: z.enum(["day", "week", "month", "all"]).default("month")
+        .describe("Time period for aggregation"),
+      project: z.string().optional()
+        .describe("Filter to a specific project path"),
+      account: z.string().optional()
+        .describe("Filter to a specific account UUID"),
+      byModel: z.boolean().default(true)
+        .describe("Include the per-model breakdown (dominant-model assignment)"),
+    },
+    async ({ period, project, account, byModel }) => {
+      const { buildCostPerTaskReport } = await import("../cost-per-task/index.js");
+      const report = await buildCostPerTaskReport(store, {
+        period,
+        projectPath: project,
+        accountUuid: account,
+        byModel,
+      });
+      return formatResult(report);
+    },
+  );
+
   return server;
 }
 

@@ -298,5 +298,44 @@
   },
   "footer": {
     "generated": "生成 {{timestamp}} • タイムゾーン: {{timezone}}"
+  },
+  "costPerTask": {
+    "title": "成功タスクあたりのコスト",
+    "headline": "成功タスクあたり",
+    "na": "n/a",
+    "lowCoverage": "カバレッジが低い ({{coverage}}) — 成功率は少数の観測可能なタスクに基づいています",
+    "decomp": "= {{mean}}/試行 ÷ {{rate}} 成功率",
+    "coverageBadge": "{{observable}}/{{total}} 観測可能 ({{coverage}})",
+    "labelledBadge": "{{labelled}}/{{observable}} ラベル付き",
+    "success": "成功",
+    "failed": "失敗",
+    "inFlight": "進行中",
+    "unobservable": "観測不可",
+    "model": "モデル",
+    "perSuccess": "$/成功",
+    "successRate": "成功",
+    "observableCol": "観測",
+    "insufficient": "n/a",
+    "proxyNote": "結果は、タスクを明示的にラベル付けしない限り、Git アクティビティと信頼度から推定されます。成功率は観測可能なタスクのみで計算されます。",
+    "period": {
+      "day": "今日",
+      "week": "過去7日間",
+      "month": "今月",
+      "all": "全期間"
+    },
+    "labelTasksHeading": "タスクの結果にラベルを付ける",
+    "labelledTag": "ラベル付き",
+    "outcomeShort": {
+      "success": "成功",
+      "failed": "失敗",
+      "in_flight": "進行中",
+      "unobservable": "観測不可"
+    },
+    "mark": {
+      "success": "成功としてマーク",
+      "partial": "部分的としてマーク",
+      "fail": "失敗としてマーク",
+      "clear": "ラベルをクリア"
+    }
   }
 }

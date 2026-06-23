@@ -298,5 +298,44 @@
   },
   "footer": {
     "generated": "Сгенерировано {{timestamp}} • Часовой пояс: {{timezone}}"
+  },
+  "costPerTask": {
+    "title": "Стоимость успешной задачи",
+    "headline": "на успешную задачу",
+    "na": "n/a",
+    "lowCoverage": "Низкий охват ({{coverage}}) — доля основана на небольшой наблюдаемой выборке",
+    "decomp": "= {{mean}}/попытку ÷ {{rate}} доля успеха",
+    "coverageBadge": "{{observable}}/{{total}} наблюдаемые ({{coverage}})",
+    "labelledBadge": "{{labelled}}/{{observable}} помечено",
+    "success": "успешно",
+    "failed": "неудачно",
+    "inFlight": "в процессе",
+    "unobservable": "не наблюдается",
+    "model": "Модель",
+    "perSuccess": "$/успех",
+    "successRate": "Успех",
+    "observableCol": "Набл.",
+    "insufficient": "n/a",
+    "proxyNote": "Результат выводится из активности Git и уверенности, если вы явно не пометили задачу; доля рассчитывается только по наблюдаемым задачам.",
+    "period": {
+      "day": "сегодня",
+      "week": "последние 7 дней",
+      "month": "этот месяц",
+      "all": "За всё время"
+    },
+    "labelTasksHeading": "Пометить результаты задач",
+    "labelledTag": "помечено",
+    "outcomeShort": {
+      "success": "успех",
+      "failed": "неудача",
+      "in_flight": "в процессе",
+      "unobservable": "не наблюдается"
+    },
+    "mark": {
+      "success": "Отметить как успех",
+      "partial": "Отметить как частично",
+      "fail": "Отметить как неудачу",
+      "clear": "Снять пометку"
+    }
   }
 }

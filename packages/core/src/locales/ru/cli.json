@@ -51,7 +51,10 @@
     "spendingModel": "Фильтр по одной модели (например, claude-opus-4)",
     "spendingTop": "Количество топовых элементов (по умолчанию: 5)",
     "spendingJson": "Машиночитаемый вывод в JSON",
-    "spendingSort": "Сортировка: cost, tokens, prompts (по умолчанию: cost)"
+    "spendingSort": "Сортировка: cost, tokens, prompts (по умолчанию: cost)",
+    "costPerTask": "Стоимость успешной задачи — эквивалентные доллары API на выполненную/подтверждённую задачу, всего и по моделям",
+    "costPerTaskPeriod": "Период: day, week, month или all (по умолчанию: month)",
+    "costPerTaskByModel": "Разбить метрику по доминирующей модели"
   },
   "collection": {
     "collecting": "Сбор...",
@@ -128,7 +131,29 @@
     "spendingMcpServers": "Стоимость MCP-серверов",
     "spendingAnomalies": "Дорогие запросы (> 2x среднего)",
     "spendingCacheEfficiency": "Эффективность кэша",
-    "spendingSubagents": "Накладные расходы субагентов"
+    "spendingSubagents": "Накладные расходы субагентов",
+    "costPerTaskTitle": "Стоимость успешной задачи · {{period}}",
+    "costPerTaskHeadline": "Стоимость успешной задачи",
+    "costPerTaskDecomp": "средняя стоимость/попытку {{mean}} ÷ доля успеха {{rate}}",
+    "costPerTaskNoTasks": "Нет задач за этот период.",
+    "costPerTaskLowCoverageWarn": "Низкий охват ({{coverage}}) — доля успеха основана на небольшой наблюдаемой выборке; сначала показана средняя стоимость попытки.",
+    "costPerTaskMeanLead": "Средняя стоимость попытки",
+    "costPerTaskUnreliable": "доля может быть недостоверной",
+    "costPerTaskNa": "n/a",
+    "costPerTaskTasks": "Задачи",
+    "costPerTaskTotalNoun": "всего",
+    "costPerTaskObservableNoun": "наблюдаемые",
+    "costPerTaskCoverageNoun": "охват",
+    "costPerTaskLabelledNoun": "помечено",
+    "costPerTaskOutcomes": "Результаты",
+    "costPerTaskSuccess": "успешно",
+    "costPerTaskFailed": "неудачно",
+    "costPerTaskInFlight": "в процессе",
+    "costPerTaskUnobservable": "не наблюдается",
+    "costPerTaskByModel": "По моделям",
+    "costPerTaskSuccessShort": "успех",
+    "costPerTaskInsufficient": "n/a (<{{min}} набл.)",
+    "costPerTaskObsShort": "набл."
   },
   "status": {
     "databaseSize": "Размер базы данных",

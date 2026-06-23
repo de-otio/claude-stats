@@ -669,6 +669,9 @@ export class Store {
     until?: number;
     includeCI?: boolean;
     includeDeleted?: boolean;
+    /** When false, exclude subagent sessions (is_subagent=1). Defaults to
+     *  including them, preserving prior behaviour for existing callers. */
+    includeSubagents?: boolean;
   } = {}): SessionRow[] {
     const conditions: string[] = [];
     const params: unknown[] = [];
@@ -706,6 +709,9 @@ export class Store {
     }
     if (!filters.includeDeleted) {
       conditions.push("source_deleted = 0");
+    }
+    if (filters.includeSubagents === false) {
+      conditions.push("(is_subagent = 0 OR is_subagent IS NULL)");
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -947,6 +953,30 @@ export class Store {
     return results;
   }
 
+  /**
+   * Returns per-message cost inputs (model + token columns) for the given
+   * message UUIDs, batched ≤500 to stay under the SQLite variable limit.
+   * Used to attribute task cost to exactly the messages in a task's segments
+   * (rather than every message in a contributing session).
+   */
+  getMessageCostInputsByUuids(uuids: string[]): MessageCostInputRow[] {
+    if (uuids.length === 0) return [];
+    const results: MessageCostInputRow[] = [];
+    for (let i = 0; i < uuids.length; i += 500) {
+      const batch = uuids.slice(i, i + 500);
+      const placeholders = batch.map(() => "?").join(",");
+      const stmt = this.db.prepare(`
+        SELECT uuid, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens
+        FROM messages
+        WHERE uuid IN (${placeholders})
+      `);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows = (stmt.all as (...args: any[]) => unknown[])(...batch) as MessageCostInputRow[];
+      results.push(...rows);
+    }
+    return results;
+  }
+
   /** Returns per-message details for model efficiency analysis. */
   getMessagesForEfficiency(filters: {
     projectPath?: string;
@@ -1083,6 +1113,18 @@ export class Store {
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (stmt.all as (...args: any[]) => unknown[])(parentSessionId) as SessionRow[];
+  }
+
+  /**
+   * Earliest session first_timestamp across all non-deleted sessions, or null
+   * when there are none. Used to bound the 'all' window for cost-per-task
+   * aggregation so it never enumerates from the epoch.
+   */
+  getEarliestSessionTimestamp(): number | null {
+    const row = this.db
+      .prepare("SELECT MIN(first_timestamp) AS t FROM sessions WHERE source_deleted = 0 AND first_timestamp IS NOT NULL")
+      .get() as { t: number | null };
+    return row?.t ?? null;
   }
 
   getStatus(): StatusInfo {
@@ -1317,6 +1359,15 @@ export interface SessionMessageTotalRow {
 
 export interface MessageTotalRow {
   model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+}
+
+export interface MessageCostInputRow {
+  uuid: string;
+  model: string | null;
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;
