@@ -67,6 +67,55 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     </div>` : "";
   const recsHtml = actionsHtml + positivesHtml;
 
+  // ── Cost per successful task (read-only card) ──
+  const cpt = data.costPerTask;
+  const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
+  const fmtPct0 = (x: number) => `${Math.round(x * 100)}%`;
+  const cptBadge = (text: string, color = "#9aa3c0") =>
+    `<span style="font-size:0.65rem;color:${color};background:#0f1830;border:1px solid #2a3552;border-radius:3px;padding:0.1rem 0.45rem;">${text}</span>`;
+  const costPerTaskHtml = (cpt && cpt.tasksTotal > 0) ? `
+    <div class="cpt-card" style="margin-bottom:1rem;background:#16213e;border:1px solid #2a3552;border-radius:6px;padding:0.75rem 1rem;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5rem;">
+        <span style="font-size:0.75rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;">${t("dashboard:costPerTask.title")}</span>
+        <span style="font-size:0.65rem;color:#666;">${t(`dashboard:costPerTask.period.${cpt.period}`)}</span>
+      </div>
+      ${cpt.coverage < 0.2 ? `<div style="font-size:0.7rem;color:#f28e2b;margin-bottom:0.5rem;">⚠ ${t("dashboard:costPerTask.lowCoverage", { coverage: fmtPct0(cpt.coverage) })}</div>` : ""}
+      <div style="display:flex;flex-wrap:wrap;gap:1.5rem;align-items:baseline;">
+        <div>
+          <div style="font-size:1.6rem;font-weight:bold;color:#fff;">${cpt.costPerSuccessfulTask !== null ? fmtUsd(cpt.costPerSuccessfulTask) : t("dashboard:costPerTask.na")}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:costPerTask.headline")}</div>
+        </div>
+        ${(cpt.meanCostPerAttempt !== null && cpt.successRate !== null) ? `
+        <div style="font-size:0.78rem;color:#b0b0b0;">${t("dashboard:costPerTask.decomp", { mean: fmtUsd(cpt.meanCostPerAttempt), rate: fmtPct0(cpt.successRate) })}</div>` : ""}
+      </div>
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.6rem;">
+        ${cptBadge(t("dashboard:costPerTask.coverageBadge", { observable: cpt.observable, total: cpt.tasksTotal, coverage: fmtPct0(cpt.coverage) }))}
+        ${cptBadge(t("dashboard:costPerTask.labelledBadge", { labelled: cpt.labelledCount, observable: cpt.observable }))}
+        ${cptBadge(`${cpt.successCount} ${t("dashboard:costPerTask.success")}`, "#8ec07c")}
+        ${cptBadge(`${cpt.failedCount} ${t("dashboard:costPerTask.failed")}`, "#e15759")}
+        ${cptBadge(`${cpt.inFlightCount} ${t("dashboard:costPerTask.inFlight")}`)}
+        ${cptBadge(`${cpt.unobservableCount} ${t("dashboard:costPerTask.unobservable")}`)}
+      </div>
+      ${cpt.byModel.length > 0 ? `
+      <table style="width:100%;margin-top:0.7rem;font-size:0.72rem;border-collapse:collapse;">
+        <thead><tr style="color:#888;text-align:left;">
+          <th style="padding:0.2rem 0.4rem;">${t("dashboard:costPerTask.model")}</th>
+          <th style="padding:0.2rem 0.4rem;text-align:right;">${t("dashboard:costPerTask.perSuccess")}</th>
+          <th style="padding:0.2rem 0.4rem;text-align:right;">${t("dashboard:costPerTask.successRate")}</th>
+          <th style="padding:0.2rem 0.4rem;text-align:right;">${t("dashboard:costPerTask.observableCol")}</th>
+        </tr></thead>
+        <tbody>
+          ${cpt.byModel.map(m => `<tr style="border-top:1px solid #2a3552;">
+            <td style="padding:0.2rem 0.4rem;color:#e8e8e8;">${escapeHtml(m.model.replace(/^claude-/, ""))}</td>
+            <td style="padding:0.2rem 0.4rem;text-align:right;color:#fff;">${m.costPerSuccessfulTask !== null ? fmtUsd(m.costPerSuccessfulTask) : t("dashboard:costPerTask.na")}</td>
+            <td style="padding:0.2rem 0.4rem;text-align:right;color:#b0b0b0;">${m.successRate !== null ? fmtPct0(m.successRate) : t("dashboard:costPerTask.insufficient")}</td>
+            <td style="padding:0.2rem 0.4rem;text-align:right;color:#b0b0b0;">${m.tasksObservable}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>` : ""}
+      <div style="font-size:0.6rem;color:#666;margin-top:0.5rem;line-height:1.4;">${t("dashboard:costPerTask.proxyNote")}</div>
+    </div>` : "";
+
   // Build pricing info rows for the cost-related panel
   const pricingRows = Object.entries(PRICING)
     .map(([model, p]) =>
@@ -313,6 +362,8 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       </div>
       ` : ""}
     </div>
+
+    ${costPerTaskHtml}
 
     <div class="charts-grid">
       <div class="chart-card">

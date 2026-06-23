@@ -133,7 +133,7 @@ export async function buildCli(): Promise<Command> {
     .option("--session <id>", t("cli:commands.reportSession"))
     .option("--html [outfile]", t("cli:commands.reportHtml"))
     .action(
-      (opts: {
+      async (opts: {
         project?: string;
         repo?: string;
         account?: string;
@@ -171,7 +171,11 @@ export async function buildCli(): Promise<Command> {
           };
           if (opts.html) {
             const data = buildDashboard(store, reportOpts);
-            const html = renderDashboard(data);
+            const { attachCostPerTask } = await import("../dashboard/index.js");
+            await attachCostPerTask(store, data, reportOpts);
+            // Pass the CLI translator so the exported HTML is localized; without
+            // it every label (not just this card) renders as a raw i18n key.
+            const html = renderDashboard(data, t);
             const today = new Date().toISOString().slice(0, 10);
             const outfile = typeof opts.html === "string" && opts.html.length > 0
               ? opts.html
@@ -569,14 +573,17 @@ export async function buildCli(): Promise<Command> {
     .option("--period <period>", t("cli:commands.dashboardPeriod"), "all")
     .option("--project <path>", t("cli:commands.dashboardProject"))
     .option("--repo <url>", t("cli:commands.dashboardRepo"))
-    .action((opts: { period?: string; project?: string; repo?: string }) => {
+    .action(async (opts: { period?: string; project?: string; repo?: string }) => {
       const store = new Store();
       try {
-        const data = buildDashboard(store, {
+        const dashOpts = {
           period: opts.period as "day" | "week" | "month" | "all" | undefined,
           projectPath: opts.project,
           repoUrl: opts.repo,
-        });
+        };
+        const data = buildDashboard(store, dashOpts);
+        const { attachCostPerTask } = await import("../dashboard/index.js");
+        await attachCostPerTask(store, data, dashOpts);
         console.log(JSON.stringify(data, null, 2));
       } finally {
         store.close();

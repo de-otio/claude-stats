@@ -113,6 +113,7 @@ const mockData: DashboardData = {
   contextAnalysis: null,
   spending: null,
   energy: null,
+  costPerTask: null,
   recommendations: [],
   availableAccounts: [],
   selectedAccountUuid: null,
@@ -848,6 +849,58 @@ describe("renderDashboard", () => {
       expect(body).not.toContain("<script>alert(1)</script>");
       expect(body).not.toContain("<b>evil</b>");
       expect(body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    });
+  });
+
+  describe("cost-per-task card", () => {
+    const baseReport: NonNullable<DashboardData["costPerTask"]> = {
+      period: "month",
+      windowStart: 0,
+      windowEnd: 0,
+      tasksTotal: 100,
+      observable: 40,
+      coverage: 0.4,
+      successCount: 12,
+      failedCount: 28,
+      inFlightCount: 30,
+      unobservableCount: 30,
+      successRate: 0.3,
+      totalCostObservable: 420,
+      meanCostPerAttempt: 10.5,
+      costPerSuccessfulTask: 35,
+      labelledCount: 5,
+      byModel: [
+        {
+          model: "claude-opus-4-6", tasksObservable: 40, successCount: 12, successRate: 0.3,
+          costObservable: 420, costByModelExact: 420, meanCostPerAttempt: 10.5, costPerSuccessfulTask: 35,
+        },
+      ],
+    };
+
+    it("does not render the card when costPerTask is null", () => {
+      const html = renderDashboard(mockData, t);
+      expect(html).not.toContain("Cost per Successful Task");
+    });
+
+    it("renders the headline, decomposition, badges and per-model row when present", () => {
+      const html = renderDashboard({ ...mockData, costPerTask: baseReport }, t);
+      expect(html).toContain("Cost per Successful Task");
+      expect(html).toContain("$35.00");          // headline
+      expect(html).toContain("$10.50");          // mean cost per attempt
+      expect(html).toContain("40/100 observable"); // coverage badge
+      expect(html).toContain("5/40 labelled");   // labelled badge
+      expect(html).toContain("opus-4-6");        // per-model row (claude- stripped)
+    });
+
+    it("shows the low-coverage warning below the floor", () => {
+      const html = renderDashboard({ ...mockData, costPerTask: { ...baseReport, coverage: 0.1 } }, t);
+      expect(html).toContain("Low coverage");
+    });
+
+    it("omits the card entirely for an empty window", () => {
+      const empty = { ...baseReport, tasksTotal: 0, observable: 0 };
+      const html = renderDashboard({ ...mockData, costPerTask: empty }, t);
+      expect(html).not.toContain("Cost per Successful Task");
     });
   });
 });

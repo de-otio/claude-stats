@@ -10,7 +10,7 @@ import * as fs from "node:fs";
 import * as vscode from "vscode";
 import { Store } from "../store/index.js";
 import { getNonce, escapeHtml } from "./utils.js";
-import { buildDashboard } from "../dashboard/index.js";
+import { buildDashboard, attachCostPerTask } from "../dashboard/index.js";
 import { renderDashboard } from "../server/template.js";
 import { loadConfig, saveConfig, getPlanConfig, type Config } from "../config.js";
 import type { ReportOptions } from "../reporter/index.js";
@@ -34,7 +34,7 @@ export class DashboardPanel {
    * Called by the AutoCollector after each successful collection.
    */
   static refreshIfVisible(): void {
-    DashboardPanel.instance?.refresh();
+    DashboardPanel.instance?.refresh().catch(() => {});
   }
 
   static createOrShow(context: vscode.ExtensionContext, sidebar?: SidebarProvider): void {
@@ -69,10 +69,10 @@ export class DashboardPanel {
       this.disposables,
     );
 
-    this.refresh();
+    void this.refresh();
   }
 
-  private refresh(): void {
+  private async refresh(): Promise<void> {
     // Open and close the store on each refresh so we always read
     // the latest committed data (safe with WAL + busy_timeout)
     const store = new Store();
@@ -88,12 +88,14 @@ export class DashboardPanel {
 
       const cfg = loadConfig();
       const planCfg = getPlanConfig(cfg);
-      const data = buildDashboard(store, {
+      const dashOpts = {
         period: this.period,
         accountUuid: this.accountUuid,
         planFee: planCfg?.monthlyFee,
         planType: planCfg?.type,
-      });
+      };
+      const data = buildDashboard(store, dashOpts);
+      await attachCostPerTask(store, data, dashOpts);
       const html = renderDashboard(data, t);
       this.panel.webview.html = patchForWebview(
         html,
@@ -109,13 +111,13 @@ export class DashboardPanel {
   private handleMessage(msg: { command: string; period?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number }): void {
     if (msg.command === "changePeriod" && msg.period) {
       this.period = msg.period as ReportOptions["period"];
-      this.refresh();
+      void this.refresh();
     } else if (msg.command === "changeAccount") {
       // Empty string from the dropdown means "all accounts combined".
       this.accountUuid = msg.accountUuid ? msg.accountUuid : undefined;
-      this.refresh();
+      void this.refresh();
     } else if (msg.command === "refresh") {
-      this.refresh();
+      void this.refresh();
     } else if (msg.command === "tabChanged" && msg.tab) {
       this.activeTab = msg.tab;
       this.sidebar?.setActiveTab(msg.tab);
@@ -142,7 +144,7 @@ export class DashboardPanel {
         };
         saveConfig(merged);
         void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, data: { ok: true, config: merged } });
-        this.refresh();
+        void this.refresh();
       } catch {
         void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, error: t("extension:panel.errors.failedToSaveConfig") });
       }

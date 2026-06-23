@@ -16,6 +16,7 @@ import { estimateCost } from '@claude-stats/core/pricing';
 import type { BuildDailyDigestDeps } from '../recap/index.js';
 import type { ProjectGitActivity } from '../recap/types.js';
 import { openCorrections, computeSignature } from '../recap/corrections.js';
+import { buildDashboard, attachCostPerTask } from '../dashboard/index.js';
 import type { CacheClient } from '../recap/cache.js';
 import {
   classifyOutcome,
@@ -362,5 +363,43 @@ describe('buildCostPerTaskReport (integration)', () => {
     } finally {
       try { fs.rmSync(corrDir, { recursive: true, force: true }); } catch { /* ok */ }
     }
+  });
+
+  // ── attachCostPerTask (dashboard wrapper) ──
+  it('attachCostPerTask populates data.costPerTask using the dashboard filters', async () => {
+    const data = buildDashboard(store, { period: 'day' });
+    expect(data.costPerTask).toBeNull(); // sync build never computes it
+    await attachCostPerTask(store, data, { period: 'day' }, {
+      nowMs: NOW_TS, tz: 'UTC', correctionsClient: null, digestDeps: deps(),
+    });
+    expect(data.costPerTask).not.toBeNull();
+    expect(data.costPerTask!.period).toBe('day');
+    expect(data.costPerTask!.tasksTotal).toBe(4);
+  });
+
+  it("attachCostPerTask caps an 'all' dashboard period to 'month' for the card", async () => {
+    const data = buildDashboard(store, { period: 'all' });
+    await attachCostPerTask(store, data, { period: 'all' }, {
+      nowMs: NOW_TS, tz: 'UTC', correctionsClient: null, digestDeps: deps(),
+    });
+    // 'all' would iterate the full history per day (slow); the card caps to month.
+    expect(data.costPerTask!.period).toBe('month');
+  });
+
+  it('attachCostPerTask never throws — leaves costPerTask null on failure', async () => {
+    const data = buildDashboard(store, { period: 'day' });
+    // A digestDeps whose clock throws makes the build fail outright (git errors,
+    // by contrast, degrade gracefully); the wrapper must swallow it and leave
+    // the card absent rather than crash the whole dashboard.
+    const boomDeps: BuildDailyDigestDeps = {
+      ...deps(),
+      now: () => { throw new Error('boom'); },
+    };
+    await expect(
+      attachCostPerTask(store, data, { period: 'day' }, {
+        nowMs: NOW_TS, tz: 'UTC', correctionsClient: null, digestDeps: boomDeps,
+      }),
+    ).resolves.toBeDefined();
+    expect(data.costPerTask).toBeNull();
   });
 });
