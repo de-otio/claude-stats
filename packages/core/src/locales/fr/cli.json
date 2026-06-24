@@ -54,7 +54,8 @@
     "spendingSort": "Tri : cost, tokens, prompts (par défaut : cost)",
     "costPerTask": "Coût par tâche réussie — dollars API équivalents par tâche livrée/confirmée, au total et par modèle",
     "costPerTaskPeriod": "Période : day, week, month ou all (par défaut : month)",
-    "costPerTaskByModel": "Ventiler la métrique par modèle dominant"
+    "costPerTaskByModel": "Ventiler la métrique par modèle dominant",
+    "costPerTaskCalibrate": "Afficher les métriques de calibration (accord proxy/signal avec vos labels) en JSON"
   },
   "collection": {
     "collecting": "Collecte en cours...",

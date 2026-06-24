@@ -54,7 +54,8 @@
     "spendingSort": "Sort order: cost, tokens, prompts (default: cost)",
     "costPerTask": "Cost per successful task — equivalent-API dollars per shipped/confirmed task, overall and per model",
     "costPerTaskPeriod": "Time period: day, week, month, or all (default: month)",
-    "costPerTaskByModel": "Break the metric down by dominant model"
+    "costPerTaskByModel": "Break the metric down by dominant model",
+    "costPerTaskCalibrate": "Output calibration metrics (proxy/signal agreement vs your labels) as JSON"
   },
   "collection": {
     "collecting": "Collecting...",
