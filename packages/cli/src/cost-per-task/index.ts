@@ -45,6 +45,7 @@ import {
 import { buildTaskEvidence } from './evidence/gather.js';
 import { conversationalSignal } from './signals/conversational.js';
 import { truncationSignal, reworkSignal, toolErrorSignal, revertSignal } from './signals/mechanical.js';
+import { runJudge, type JudgeProvider } from './judge.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -271,17 +272,44 @@ function hasMutatingWork(toolHistogram: Readonly<Record<string, number>>): boole
  * tasks in the same session — acceptable for the default-off hook; segment-scoped
  * windowing is future work (and the flag stays off until calibration anyway).
  */
-function gatherExtendedSignals(store: Store, item: DailyDigestItem): readonly OutcomeSignal[] {
+/** Mutable per-run budget for LLM-judge calls (shared across a report's tasks). */
+interface JudgeBudget {
+  provider: JudgeProvider;
+  remaining: number;
+}
+
+async function gatherExtendedSignals(
+  store: Store,
+  item: DailyDigestItem,
+  judge?: JudgeBudget,
+): Promise<readonly OutcomeSignal[]> {
   const committed = (item.git?.commitsToday ?? 0) > 0;
   const messages = item.sessionIds.flatMap((sid) => store.getSessionMessages(sid));
   const evidence = buildTaskEvidence(messages, committed, item.git?.subjects ?? []);
-  return [
+  const signals: OutcomeSignal[] = [
     conversationalSignal(evidence),
     truncationSignal(evidence),
     reworkSignal(evidence),
     toolErrorSignal(evidence),
     revertSignal(evidence),
   ].filter((s): s is OutcomeSignal => s !== null);
+
+  // Phase D: only judge AMBIGUOUS tasks (held-out base) — the combiner ignores
+  // signals on a decisive base, so judging those would just burn calls — and only
+  // while the per-run budget lasts.
+  if (judge && judge.remaining > 0) {
+    const base = baseLadder({
+      confidence: item.confidence,
+      git: item.git,
+      hasMutatingWork: hasMutatingWork(item.toolHistogram),
+    });
+    if (base === 'in_flight' || base === 'unobservable') {
+      judge.remaining -= 1;
+      const verdict = await runJudge(judge.provider, evidence);
+      if (verdict) signals.push(verdict);
+    }
+  }
+  return signals;
 }
 
 const DAY_MS = 86_400_000;
@@ -362,6 +390,15 @@ export interface CostPerTaskOptions {
    * process and never enters the report payload.
    */
   experimentalSignals?: boolean;
+  /**
+   * Phase-D LLM judge (opt-in). When set AND `experimentalSignals` is true, an
+   * independent model rules on ambiguous (held-out) tasks. Null/undefined → no
+   * judge, no external call. PRIVACY: enabling this sends a blinded task summary
+   * (incl. prompt text) to the provider's endpoint — see Config.llmJudge.
+   */
+  judgeProvider?: JudgeProvider | null;
+  /** Cap on judge calls per run (cost guard; default 25). */
+  maxJudgeCalls?: number;
   // ── Injectables (default to production behaviour) ──
   /** Epoch-ms "now". Defaults to Date.now(). Injected for deterministic tests. */
   nowMs?: number;
@@ -403,6 +440,12 @@ export async function buildCostPerTaskReport(
   const dates = datesForPeriod(period, tz, nowMs, earliestMs);
   const { windowStart, windowEnd } = windowBoundsMs(dates, tz, nowMs);
 
+  // Phase-D budget: only when experimental signals are on AND a judge is given.
+  const judgeBudget: JudgeBudget | undefined =
+    opts.experimentalSignals && opts.judgeProvider
+      ? { provider: opts.judgeProvider, remaining: opts.maxJudgeCalls ?? 25 }
+      : undefined;
+
   // ── Pool digest items across the window ──
   const records: TaskRecord[] = [];
   const tasks: LabellableTask[] = [];
@@ -431,7 +474,7 @@ export async function buildCostPerTaskReport(
       // Prompt text read here (via buildTaskEvidence) stays in process — only the
       // resulting enum-tag signals reach the combiner, never the report payload.
       const extendedSignals = opts.experimentalSignals
-        ? gatherExtendedSignals(store, item)
+        ? await gatherExtendedSignals(store, item, judgeBudget)
         : undefined;
       const { outcome, labelled } = classifyOutcome(
         {
@@ -507,6 +550,12 @@ export async function buildCalibrationReport(
   const earliestMs = period === 'all' ? store.getEarliestSessionTimestamp() : null;
   const dates = datesForPeriod(period, tz, nowMs, earliestMs);
 
+  // Calibration measures the signals' agreement, so run the judge here whenever a
+  // provider is given (independent of experimentalSignals — that's the point).
+  const judgeBudget: JudgeBudget | undefined = opts.judgeProvider
+    ? { provider: opts.judgeProvider, remaining: opts.maxJudgeCalls ?? 25 }
+    : undefined;
+
   const proxyPairs: LabelledPair[] = [];
   const signalPairs: LabelledPair[] = [];
 
@@ -544,7 +593,7 @@ export async function buildCalibrationReport(
         },
         null,
       ).outcome;
-      const verdict = combineOutcome({ base, signals: gatherExtendedSignals(store, item) });
+      const verdict = combineOutcome({ base, signals: await gatherExtendedSignals(store, item, judgeBudget) });
 
       proxyPairs.push({ predicted: base, actual, score: null });
       signalPairs.push({ predicted: verdict.outcome, actual, score: verdict.score });

@@ -55,7 +55,9 @@
     "costPerTask": "Koszt na udane zadanie — równoważne dolary API na dostarczone/potwierdzone zadanie, łącznie i według modelu",
     "costPerTaskPeriod": "Okres: day, week, month lub all (domyślnie: month)",
     "costPerTaskByModel": "Rozbij metrykę według dominującego modelu",
-    "costPerTaskCalibrate": "Wypisz metryki kalibracji (zgodność proxy/sygnału z Twoimi etykietami) jako JSON"
+    "costPerTaskCalibrate": "Wypisz metryki kalibracji (zgodność proxy/sygnału z Twoimi etykietami) jako JSON",
+    "costPerTaskLlmJudge": "Uruchom opcjonalnego sędziego LLM dla niejednoznacznych zadań (wymaga konfiguracji llmJudge; wysyła zanonimizowane podsumowanie zadania do Twojego endpointu)",
+    "costPerTaskLlmJudgeUnconfigured": "Zażądano --llm-judge, ale llmJudge.endpoint/model nie są ustawione; pomijanie sędziego."
   },
   "collection": {
     "collecting": "Zbieranie...",
