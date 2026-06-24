@@ -338,5 +338,21 @@
       "fail": "Marquer comme échec",
       "clear": "Retirer l'étiquette"
     }
+  },
+  "calibration": {
+    "title": "Précision vs. vos labels",
+    "noLabels": "Étiquetez les résultats des tâches ci-dessus (✓ / ~ / ✗) pour calibrer. Tant que peu sont étiquetées, le taux de réussite est une estimation, pas une évaluation.",
+    "colProxy": "estimation",
+    "colSignals": "+ signaux",
+    "failedPrecision": "Précision des échecs",
+    "accuracy": "Exactitude",
+    "brier": "Brier (plus bas = mieux)",
+    "ready": "✓ Les signaux dépassent le seuil de précision des échecs ({{floor}}) — activation sûre.",
+    "notReady": "⚠ Sous le seuil de précision des échecs ({{floor}}) — étiquetez davantage avant de vous y fier.",
+    "labelled": "{{n}} tâche(s) étiquetée(s) dans cette période",
+    "toggle": "Utiliser les signaux de précision expérimentaux pour le taux en direct",
+    "enabledNote": "Activé — le taux ci-dessus intègre les signaux de précision.",
+    "disabledNote": "Désactivé — le taux ci-dessus est uniquement l'estimation.",
+    "na": "n/d"
   }
 }

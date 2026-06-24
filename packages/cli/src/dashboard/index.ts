@@ -17,6 +17,7 @@ import {
 } from "../classifier.js";
 import { attributeToolCosts, groupByMcpServer, detectAnomalies, aggregateMcpServerUsage } from "../spending.js";
 import type { CostPerTaskReport, CostPerTaskOptions } from "../cost-per-task/index.js";
+import type { CalibrationReport } from "../cost-per-task/calibration.js";
 import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor, modelClass } from "@claude-stats/core/energy";
 import type { ModelClass } from "@claude-stats/core/energy";
 
@@ -187,6 +188,15 @@ export interface DashboardData {
    * `get_stats`) must not pay that cost.
    */
   costPerTask: CostPerTaskReport | null;
+  /**
+   * Calibration of the outcome proxy/signals against the user's labels. Null
+   * until {@link attachCalibration} runs (VS Code panel only — it drives the
+   * in-dashboard "is the success rate trustworthy yet" view + the activation
+   * toggle). Sync signals only (no per-refresh LLM-judge calls).
+   */
+  calibration: CalibrationReport | null;
+  /** Whether the experimental accuracy signals are currently enabled (config). */
+  experimentalSignalsEnabled: boolean;
   recommendations: Recommendation[];
   /** All accounts present in the store for the current period — independent of
    * the account filter. Drives the dashboard's account selector. */
@@ -952,6 +962,8 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     spending,
     energy,
     costPerTask: null,
+    calibration: null,
+    experimentalSignalsEnabled: false,
     recommendations,
     availableAccounts: (() => {
       // Always list accounts using the unfiltered period so the dropdown can
@@ -993,8 +1005,14 @@ export async function attachCostPerTask(
      * export leave it off. See {@link CostPerTaskOptions.includeTasks}.
      */
     includeTasks?: boolean;
+    /**
+     * Fold the experimental accuracy signals into the live outcome (config-gated
+     * opt-in; off by default). The webview sets this from `config.experimentalSignals`.
+     */
+    experimentalSignals?: boolean;
   },
 ): Promise<DashboardData> {
+  data.experimentalSignalsEnabled = extra?.experimentalSignals === true;
   try {
     const { buildCostPerTaskReport } = await import("../cost-per-task/index.js");
     // Cap the card to `month` when the dashboard is on `all` (or unset, which
@@ -1011,6 +1029,7 @@ export async function attachCostPerTask(
       includeCI: opts.includeCI,
       byModel: true,
       includeTasks: extra?.includeTasks ?? false,
+      experimentalSignals: extra?.experimentalSignals === true,
       tz: extra?.tz ?? opts.timezone,
       nowMs: extra?.nowMs,
       digestDeps: extra?.digestDeps,
@@ -1019,6 +1038,41 @@ export async function attachCostPerTask(
     data.costPerTask = report;
   } catch {
     data.costPerTask = null;
+  }
+  return data;
+}
+
+/**
+ * Populate `data.calibration` — how well the proxy/signals agree with the user's
+ * labels — for the in-dashboard trust view (VS Code panel only). Never throws.
+ *
+ * Sync signals only (no `judgeProvider`): the panel auto-refreshes, and per-
+ * refresh LLM-judge calls would be costly/slow. Evaluate the judge via the CLI
+ * (`cost-per-task --calibrate --llm-judge`).
+ */
+export async function attachCalibration(
+  store: Store,
+  data: DashboardData,
+  opts: ReportOptions,
+  extra?: Pick<CostPerTaskOptions, "digestDeps" | "correctionsClient" | "tz" | "nowMs">,
+): Promise<DashboardData> {
+  try {
+    const { buildCalibrationReport } = await import("../cost-per-task/index.js");
+    const dashPeriod = opts.period ?? "all";
+    const period = (dashPeriod === "all" ? "month" : dashPeriod) as CostPerTaskOptions["period"];
+    data.calibration = await buildCalibrationReport(store, {
+      period,
+      projectPath: opts.projectPath,
+      accountUuid: opts.accountUuid,
+      repoUrl: opts.repoUrl,
+      includeCI: opts.includeCI,
+      tz: extra?.tz ?? opts.timezone,
+      nowMs: extra?.nowMs,
+      digestDeps: extra?.digestDeps,
+      correctionsClient: extra?.correctionsClient,
+    });
+  } catch {
+    data.calibration = null;
   }
   return data;
 }

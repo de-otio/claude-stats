@@ -139,6 +139,42 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       <div style="font-size:0.6rem;color:#666;margin-top:0.5rem;line-height:1.4;">${t("dashboard:costPerTask.proxyNote")}</div>
     </div>` : "";
 
+  // ── Calibration + signal-activation (VS Code webview only — data.calibration
+  //    is null elsewhere). Shows how well the signals agree with the user's
+  //    labels and lets them flip the signals on for the live rate. ──
+  const cal = data.calibration;
+  const fmtPctNa = (x: number | null) => (x === null ? t("dashboard:calibration.na") : fmtPct0(x));
+  const fmtBrier = (x: number | null) => (x === null ? t("dashboard:calibration.na") : x.toFixed(3));
+  const signalsOn = data.experimentalSignalsEnabled;
+  const floorPct = cal ? fmtPct0(cal.floor) : "";
+  const calibrationHtml = cal ? `
+    <div class="cpt-card" style="margin-bottom:1rem;background:#16213e;border:1px solid #2a3552;border-radius:6px;padding:0.75rem 1rem;">
+      <div style="font-size:0.75rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">${t("dashboard:calibration.title")}</div>
+      ${cal.n === 0 ? `
+      <div style="font-size:0.78rem;color:#b0b0b0;line-height:1.5;">${t("dashboard:calibration.noLabels")}</div>` : `
+      <table style="width:100%;font-size:0.72rem;border-collapse:collapse;">
+        <thead><tr style="color:#888;text-align:left;">
+          <th style="padding:0.2rem 0.4rem;"></th>
+          <th style="padding:0.2rem 0.4rem;text-align:right;">${t("dashboard:calibration.colProxy")}</th>
+          <th style="padding:0.2rem 0.4rem;text-align:right;">${t("dashboard:calibration.colSignals")}</th>
+        </tr></thead>
+        <tbody>
+          <tr style="border-top:1px solid #2a3552;"><td style="padding:0.2rem 0.4rem;color:#e8e8e8;">${t("dashboard:calibration.failedPrecision")}</td><td style="padding:0.2rem 0.4rem;text-align:right;color:#fff;">${fmtPctNa(cal.proxyOnly.failedPrecision)}</td><td style="padding:0.2rem 0.4rem;text-align:right;color:#fff;">${fmtPctNa(cal.withSignals.failedPrecision)}</td></tr>
+          <tr style="border-top:1px solid #2a3552;"><td style="padding:0.2rem 0.4rem;color:#e8e8e8;">${t("dashboard:calibration.accuracy")}</td><td style="padding:0.2rem 0.4rem;text-align:right;color:#b0b0b0;">${fmtPctNa(cal.proxyOnly.accuracy)}</td><td style="padding:0.2rem 0.4rem;text-align:right;color:#b0b0b0;">${fmtPctNa(cal.withSignals.accuracy)}</td></tr>
+          <tr style="border-top:1px solid #2a3552;"><td style="padding:0.2rem 0.4rem;color:#e8e8e8;">${t("dashboard:calibration.brier")}</td><td style="padding:0.2rem 0.4rem;text-align:right;color:#b0b0b0;">${fmtBrier(cal.proxyOnly.brier)}</td><td style="padding:0.2rem 0.4rem;text-align:right;color:#b0b0b0;">${fmtBrier(cal.withSignals.brier)}</td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:0.72rem;margin-top:0.5rem;color:${cal.withSignals.meetsFailedFloor ? "#8ec07c" : "#f28e2b"};">
+        ${cal.withSignals.meetsFailedFloor ? t("dashboard:calibration.ready", { floor: floorPct }) : t("dashboard:calibration.notReady", { floor: floorPct })}
+      </div>
+      <div style="font-size:0.65rem;color:#888;margin-top:0.2rem;">${t("dashboard:calibration.labelled", { n: cal.n })}</div>`}
+      <label style="display:flex;align-items:center;gap:0.5rem;margin-top:0.7rem;font-size:0.78rem;color:#cfd8ea;cursor:pointer;">
+        <input type="checkbox" id="signals-toggle"${signalsOn ? " checked" : ""}>
+        ${t("dashboard:calibration.toggle")}
+      </label>
+      <div style="font-size:0.65rem;color:${signalsOn ? "#8ec07c" : "#888"};margin-top:0.2rem;">${signalsOn ? t("dashboard:calibration.enabledNote") : t("dashboard:calibration.disabledNote")}</div>
+    </div>` : "";
+
   // Build pricing info rows for the cost-related panel
   const pricingRows = Object.entries(PRICING)
     .map(([model, p]) =>
@@ -745,6 +781,8 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     </div>
 
     ${costPerTaskHtml}
+
+    ${calibrationHtml}
 
     <div class="charts-grid">
       <div class="chart-card">
