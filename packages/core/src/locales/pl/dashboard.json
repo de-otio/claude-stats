@@ -338,5 +338,21 @@
       "fail": "Oznacz jako nieudane",
       "clear": "Usuń oznaczenie"
     }
+  },
+  "calibration": {
+    "title": "Dokładność vs. Twoje etykiety",
+    "noLabels": "Oznacz wyniki zadań powyżej (✓ / ~ / ✗), aby skalibrować. Dopóki kilka nie zostanie oznaczonych, wskaźnik sukcesu to szacunek, nie ewaluacja.",
+    "colProxy": "szacunek",
+    "colSignals": "+ sygnały",
+    "failedPrecision": "Precyzja porażek",
+    "accuracy": "Dokładność",
+    "brier": "Brier (niżej = lepiej)",
+    "ready": "✓ Sygnały przekraczają próg precyzji porażek ({{floor}}) — można bezpiecznie włączyć.",
+    "notReady": "⚠ Poniżej progu precyzji porażek ({{floor}}) — oznacz więcej, zanim zaufasz.",
+    "labelled": "Oznaczone zadania w tym okresie: {{n}}",
+    "toggle": "Użyj eksperymentalnych sygnałów dokładności dla wskaźnika na żywo",
+    "enabledNote": "Włączone — wskaźnik powyżej uwzględnia sygnały dokładności.",
+    "disabledNote": "Wyłączone — wskaźnik powyżej to tylko szacunek.",
+    "na": "bd."
   }
 }

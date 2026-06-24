@@ -338,5 +338,21 @@
       "fail": "Mark fail",
       "clear": "Clear label"
     }
+  },
+  "calibration": {
+    "title": "Accuracy vs your labels",
+    "noLabels": "Label task outcomes above (✓ / ~ / ✗) to calibrate. Until a few are labelled, the success rate is a proxy, not an eval.",
+    "colProxy": "proxy",
+    "colSignals": "+ signals",
+    "failedPrecision": "Failed precision",
+    "accuracy": "Accuracy",
+    "brier": "Brier (lower = better)",
+    "ready": "✓ Signals clear the failed-precision floor ({{floor}}) — safe to enable.",
+    "notReady": "⚠ Below the failed-precision floor ({{floor}}) — label more before trusting.",
+    "labelled": "{{n}} labelled task(s) in this window",
+    "toggle": "Use experimental accuracy signals for the live rate",
+    "enabledNote": "Enabled — the rate above folds in the accuracy signals.",
+    "disabledNote": "Disabled — the rate above is the proxy only.",
+    "na": "n/a"
   }
 }

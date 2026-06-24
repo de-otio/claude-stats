@@ -338,5 +338,21 @@
       "fail": "Marcar como fallo",
       "clear": "Quitar etiqueta"
     }
+  },
+  "calibration": {
+    "title": "Precisión vs. tus etiquetas",
+    "noLabels": "Etiqueta los resultados de las tareas arriba (✓ / ~ / ✗) para calibrar. Hasta que haya algunas etiquetadas, la tasa de éxito es una estimación, no una evaluación.",
+    "colProxy": "estimación",
+    "colSignals": "+ señales",
+    "failedPrecision": "Precisión de fallo",
+    "accuracy": "Exactitud",
+    "brier": "Brier (menor = mejor)",
+    "ready": "✓ Las señales superan el umbral de precisión de fallo ({{floor}}) — es seguro activar.",
+    "notReady": "⚠ Por debajo del umbral de precisión de fallo ({{floor}}) — etiqueta más antes de confiar.",
+    "labelled": "{{n}} tarea(s) etiquetada(s) en este periodo",
+    "toggle": "Usar señales de precisión experimentales para la tasa en vivo",
+    "enabledNote": "Activado — la tasa de arriba incorpora las señales de precisión.",
+    "disabledNote": "Desactivado — la tasa de arriba es solo la estimación.",
+    "na": "n/d"
   }
 }

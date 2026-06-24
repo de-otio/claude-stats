@@ -338,5 +338,21 @@
       "fail": "Marcar como falha",
       "clear": "Remover rótulo"
     }
+  },
+  "calibration": {
+    "title": "Precisão vs. seus rótulos",
+    "noLabels": "Rotule os resultados das tarefas acima (✓ / ~ / ✗) para calibrar. Até que alguns sejam rotulados, a taxa de sucesso é uma estimativa, não uma avaliação.",
+    "colProxy": "estimativa",
+    "colSignals": "+ sinais",
+    "failedPrecision": "Precisão de falha",
+    "accuracy": "Acurácia",
+    "brier": "Brier (menor = melhor)",
+    "ready": "✓ Os sinais superam o limiar de precisão de falha ({{floor}}) — seguro ativar.",
+    "notReady": "⚠ Abaixo do limiar de precisão de falha ({{floor}}) — rotule mais antes de confiar.",
+    "labelled": "{{n}} tarefa(s) rotulada(s) neste período",
+    "toggle": "Usar sinais de precisão experimentais para a taxa ao vivo",
+    "enabledNote": "Ativado — a taxa acima incorpora os sinais de precisão.",
+    "disabledNote": "Desativado — a taxa acima é apenas a estimativa.",
+    "na": "n/d"
   }
 }
