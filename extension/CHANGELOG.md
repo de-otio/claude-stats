@@ -2,6 +2,38 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.7.0 — 2026-06-24
+
+### Added — Outcome accuracy + in-dashboard calibration
+
+Builds on 0.6.0's cost-per-successful-task metric with automatic accuracy
+signals and an in-dashboard way to calibrate and turn them on.
+
+- **Calibration view** on the Spending tab, beside the ✓/~/✗ labelling
+  controls: how well the proxy and the accuracy signals agree with your labels
+  (failed-precision, accuracy, Brier), with a floor verdict that tells you when
+  the signals are trustworthy enough to enable.
+- **Signal-activation toggle**: turn the experimental accuracy signals on for
+  the live rate straight from the dashboard — no config editing.
+- **Accuracy signals** (default-off, calibration-gated): conversational
+  repair/acceptance, output truncation, rework, failed tool calls (a new
+  per-message capture of `is_error` tool results), and revert/fixup commits —
+  combined through an evidence scorer with an abstain band so weak or
+  contradictory evidence never fabricates a verdict.
+- **Opt-in LLM-judge tier** (`cost-per-task --llm-judge`): an independent,
+  blinded model rules on ambiguous tasks. Local-first — configure an Ollama (or
+  any OpenAI-compatible) endpoint to keep data on the machine.
+- **Calibration CLI**: `cost-per-task --calibrate` reports proxy/signal
+  agreement against your labels as JSON.
+
+### Fixed
+
+- A committed-but-unpushed task is now classified as success, not in-flight.
+- The dashboard shows a loading screen on first open instead of a blank panel
+  while it computes.
+- The "Cost per Successful Task" detail moved to the Spending tab (the overview
+  keeps a compact summary box); the sidebar gained a Spending tab explanation.
+
 ## 0.6.0 — 2026-06-23
 
 ### Added — Cost per successful task
