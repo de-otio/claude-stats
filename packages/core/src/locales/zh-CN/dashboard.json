@@ -338,5 +338,21 @@
       "fail": "标记为失败",
       "clear": "清除标注"
     }
+  },
+  "calibration": {
+    "title": "与你的标签的准确度",
+    "noLabels": "在上方标注任务结果（✓ / ~ / ✗）以进行校准。在标注若干之前，成功率只是代理估计，而非评估。",
+    "colProxy": "代理",
+    "colSignals": "+ 信号",
+    "failedPrecision": "失败精确率",
+    "accuracy": "准确率",
+    "brier": "Brier（越低越好）",
+    "ready": "✓ 信号已达到失败精确率下限（{{floor}}）——可安全启用。",
+    "notReady": "⚠ 低于失败精确率下限（{{floor}}）——在信任之前请标注更多。",
+    "labelled": "本时段已标注任务：{{n}}",
+    "toggle": "为实时比率使用实验性准确度信号",
+    "enabledNote": "已启用——上方比率已纳入准确度信号。",
+    "disabledNote": "已禁用——上方比率仅为代理估计。",
+    "na": "无"
   }
 }

@@ -10,7 +10,7 @@ import * as fs from "node:fs";
 import * as vscode from "vscode";
 import { Store } from "../store/index.js";
 import { getNonce, escapeHtml } from "./utils.js";
-import { buildDashboard, attachCostPerTask } from "../dashboard/index.js";
+import { buildDashboard, attachCostPerTask, attachCalibration } from "../dashboard/index.js";
 import { renderDashboard } from "../server/template.js";
 import { loadConfig, saveConfig, getPlanConfig, type Config } from "../config.js";
 import { openCorrections, type CorrectionSignature, type OutcomeValue } from "../recap/corrections.js";
@@ -104,7 +104,13 @@ export class DashboardPanel {
       const data = buildDashboard(store, dashOpts);
       // includeTasks: this is the VS Code webview — the only surface allowed to
       // render the per-task labelling controls (the list carries prompt text).
-      await attachCostPerTask(store, data, dashOpts, { includeTasks: true });
+      // experimentalSignals: config-gated opt-in (the in-dashboard activation
+      // toggle writes it); when on, the live card folds in the accuracy signals.
+      const experimentalSignals = cfg.experimentalSignals === true;
+      await attachCostPerTask(store, data, dashOpts, { includeTasks: true, experimentalSignals });
+      // Calibration view (proxy/signal agreement vs the user's labels) — drives
+      // the trust display + the activation toggle. Sync signals only.
+      await attachCalibration(store, data, dashOpts);
       const html = renderDashboard(data, t);
       this.panel.webview.html = patchForWebview(
         html,
@@ -117,7 +123,7 @@ export class DashboardPanel {
     }
   }
 
-  private handleMessage(msg: { command: string; period?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string }): void {
+  private handleMessage(msg: { command: string; period?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean }): void {
     if (msg.command === "changePeriod" && msg.period) {
       this.period = msg.period as ReportOptions["period"];
       void this.refresh();
@@ -132,6 +138,16 @@ export class DashboardPanel {
       this.accountUuid = msg.accountUuid ? msg.accountUuid : undefined;
       void this.refresh();
     } else if (msg.command === "refresh") {
+      void this.refresh();
+    } else if (msg.command === "setExperimentalSignals") {
+      // In-dashboard activation toggle: flip config.experimentalSignals and
+      // re-render so the live cost-per-task card reflects the choice.
+      try {
+        const current = loadConfig();
+        saveConfig({ ...current, experimentalSignals: msg.enabled === true });
+      } catch {
+        // best-effort; a failed write just leaves the toggle where it was
+      }
       void this.refresh();
     } else if (msg.command === "tabChanged" && msg.tab) {
       this.activeTab = msg.tab;
@@ -343,6 +359,14 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
       vscode.postMessage({ command: 'setOutcome', signature: task.signature, value: b.getAttribute('data-cpt-value') });
     });
   });
+
+  // Signal-activation toggle: flip config.experimentalSignals and re-render.
+  var sigToggle = document.getElementById('signals-toggle');
+  if (sigToggle) {
+    sigToggle.addEventListener('change', function() {
+      vscode.postMessage({ command: 'setExperimentalSignals', enabled: sigToggle.checked });
+    });
+  }
 })();
 </script>`;
   html = html.replace("</body>", `${bridgeScript}\n</body>`);

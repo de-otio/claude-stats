@@ -338,5 +338,21 @@
       "fail": "Als Fehlschlag markieren",
       "clear": "Kennzeichnung entfernen"
     }
+  },
+  "calibration": {
+    "title": "Genauigkeit vs. deine Labels",
+    "noLabels": "Kennzeichne oben Aufgaben-Ergebnisse (✓ / ~ / ✗), um zu kalibrieren. Bis einige gelabelt sind, ist die Erfolgsrate eine Schätzung, keine Auswertung.",
+    "colProxy": "Schätzung",
+    "colSignals": "+ Signale",
+    "failedPrecision": "Fehler-Präzision",
+    "accuracy": "Genauigkeit",
+    "brier": "Brier (niedriger = besser)",
+    "ready": "✓ Signale erreichen die Fehler-Präzisions-Schwelle ({{floor}}) — Aktivierung ist sicher.",
+    "notReady": "⚠ Unter der Fehler-Präzisions-Schwelle ({{floor}}) — labele mehr, bevor du vertraust.",
+    "labelled": "{{n}} gelabelte Aufgabe(n) in diesem Zeitraum",
+    "toggle": "Experimentelle Genauigkeitssignale für die Live-Rate verwenden",
+    "enabledNote": "Aktiviert — die Rate oben bezieht die Genauigkeitssignale ein.",
+    "disabledNote": "Deaktiviert — die Rate oben ist nur die Schätzung.",
+    "na": "k. A."
   }
 }

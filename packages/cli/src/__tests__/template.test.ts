@@ -114,6 +114,8 @@ const mockData: DashboardData = {
   spending: null,
   energy: null,
   costPerTask: null,
+  calibration: null,
+  experimentalSignalsEnabled: false,
   recommendations: [],
   availableAccounts: [],
   selectedAccountUuid: null,
@@ -971,6 +973,38 @@ describe("renderDashboard", () => {
       const noAvg = { ...baseReport, costPerSuccessfulTask: null };
       const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: noAvg }, t);
       expect(html).not.toContain("Full breakdown on the Spending tab");
+    });
+
+    // ── Calibration view + activation toggle (webview only) ──
+    const emptyMetrics = {
+      n: 0, accuracy: null, observableN: 0,
+      perClass: {
+        success: { support: 0, predicted: 0, truePositives: 0, precision: null, recall: null, f1: null },
+        failed: { support: 0, predicted: 0, truePositives: 0, precision: null, recall: null, f1: null },
+        in_flight: { support: 0, predicted: 0, truePositives: 0, precision: null, recall: null, f1: null },
+        unobservable: { support: 0, predicted: 0, truePositives: 0, precision: null, recall: null, f1: null },
+      },
+      brier: null, failedPrecision: null, meetsFailedFloor: false,
+    };
+    const calibration: NonNullable<DashboardData["calibration"]> = { n: 0, floor: 0.7, proxyOnly: emptyMetrics, withSignals: emptyMetrics };
+
+    it("renders the calibration view and activation toggle when calibration is present", () => {
+      const html = renderDashboard({ ...mockData, spending: emptySpending, calibration }, t);
+      expect(html).toContain('id="signals-toggle"');       // the toggle the bridge wires
+      expect(html).toContain("Accuracy vs your labels");    // calibration.title
+      expect(html).toContain("Label task outcomes");        // n===0 guidance
+      expect(html).toContain("the proxy only");             // disabledNote (signals off)
+    });
+
+    it("checks the toggle and shows the enabled note when signals are on", () => {
+      const html = renderDashboard({ ...mockData, spending: emptySpending, calibration, experimentalSignalsEnabled: true }, t);
+      expect(html).toContain('id="signals-toggle" checked');
+      expect(html).toContain("folds in the accuracy signals"); // enabledNote
+    });
+
+    it("omits the calibration view entirely when calibration is null (serve/CLI)", () => {
+      const html = renderDashboard({ ...mockData, spending: emptySpending, calibration: null }, t);
+      expect(html).not.toContain('id="signals-toggle"');
     });
   });
 });
