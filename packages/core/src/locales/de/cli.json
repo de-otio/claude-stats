@@ -54,7 +54,8 @@
     "spendingSort": "Sortierung: cost, tokens, prompts (Standard: cost)",
     "costPerTask": "Kosten pro erfolgreicher Aufgabe — äquivalente API-Dollar pro ausgelieferter/bestätigter Aufgabe, insgesamt und pro Modell",
     "costPerTaskPeriod": "Zeitraum: day, week, month oder all (Standard: month)",
-    "costPerTaskByModel": "Die Metrik nach dominantem Modell aufschlüsseln"
+    "costPerTaskByModel": "Die Metrik nach dominantem Modell aufschlüsseln",
+    "costPerTaskCalibrate": "Kalibrierungsmetriken (Übereinstimmung von Proxy/Signal mit deinen Labels) als JSON ausgeben"
   },
   "collection": {
     "collecting": "Erfassung läuft...",

@@ -54,7 +54,8 @@
     "spendingSort": "Orden: cost, tokens, prompts (por defecto: cost)",
     "costPerTask": "Coste por tarea exitosa — dólares equivalentes de API por tarea entregada/confirmada, en total y por modelo",
     "costPerTaskPeriod": "Periodo: day, week, month o all (por defecto: month)",
-    "costPerTaskByModel": "Desglosar la métrica por modelo dominante"
+    "costPerTaskByModel": "Desglosar la métrica por modelo dominante",
+    "costPerTaskCalibrate": "Mostrar métricas de calibración (concordancia proxy/señal con tus etiquetas) como JSON"
   },
   "collection": {
     "collecting": "Recopilando...",

@@ -35,6 +35,13 @@ import {
 } from '../recap/corrections.js';
 import type { TaskOutcome, OutcomeSignal } from './outcome-types.js';
 import { combineOutcome } from './combine.js';
+import {
+  calibrationMetrics,
+  labelToOutcome,
+  FAILED_PRECISION_FLOOR,
+  type CalibrationReport,
+  type LabelledPair,
+} from './calibration.js';
 import { buildTaskEvidence } from './evidence/gather.js';
 import { conversationalSignal } from './signals/conversational.js';
 import { truncationSignal, reworkSignal } from './signals/mechanical.js';
@@ -469,6 +476,85 @@ export async function buildCostPerTaskReport(
     return { ...report, tasks: ranked.slice(0, MAX_LABELLABLE_TASKS) };
   }
   return report;
+}
+
+/**
+ * Build a calibration report: how well the proxy ladder and the experimental
+ * combiner agree with the user's explicit outcome labels (ground truth).
+ *
+ * Only labelled tasks form the eval set. For each, the prediction is computed
+ * with the label (and `hidden`) suppressed — so the label is pure ground truth
+ * and the prediction is what the classifier would have said unaided. Two
+ * predictions are scored: the legacy proxy ladder, and the ladder + Tier-0
+ * signals (the combiner). Read-only and prompt-text-free.
+ *
+ * Use the `withSignals.meetsFailedFloor` result to decide whether the signals
+ * are trustworthy enough to enable (`experimentalSignals`) — doc 07 §7.4–7.5.
+ */
+export async function buildCalibrationReport(
+  store: Store,
+  opts: CostPerTaskOptions & { floor?: number } = {},
+): Promise<CalibrationReport> {
+  const period: Period = opts.period ?? 'month';
+  const nowMs = opts.nowMs ?? Date.now();
+  const tz = opts.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const floor = opts.floor ?? FAILED_PRECISION_FLOOR;
+  const corrections: CorrectionsClient | null =
+    opts.correctionsClient === undefined ? openCorrections() : opts.correctionsClient;
+
+  const earliestMs = period === 'all' ? store.getEarliestSessionTimestamp() : null;
+  const dates = datesForPeriod(period, tz, nowMs, earliestMs);
+
+  const proxyPairs: LabelledPair[] = [];
+  const signalPairs: LabelledPair[] = [];
+
+  for (const date of dates) {
+    const digest = await buildDailyDigest(
+      store,
+      {
+        date,
+        tz,
+        projectPath: opts.projectPath,
+        accountUuid: opts.accountUuid,
+        repoUrl: opts.repoUrl,
+        includeCI: opts.includeCI ?? false,
+      },
+      opts.digestDeps,
+    );
+
+    for (const item of digest.items) {
+      const sig = computeSignature({
+        project: item.project,
+        filePathsTouched: item.filePathsTouched,
+        firstPrompt: item.firstPrompt,
+      });
+      const label = corrections ? latestOutcome(corrections.forSignature(sig)) : null;
+      if (label === null) continue; // eval set = labelled tasks only
+
+      const actual = labelToOutcome(label);
+      // Prediction with the label AND hidden suppressed → pure unaided proxy.
+      const base = classifyOutcome(
+        {
+          confidence: item.confidence,
+          git: item.git,
+          hidden: false,
+          hasMutatingWork: hasMutatingWork(item.toolHistogram),
+        },
+        null,
+      ).outcome;
+      const verdict = combineOutcome({ base, signals: gatherExtendedSignals(store, item) });
+
+      proxyPairs.push({ predicted: base, actual, score: null });
+      signalPairs.push({ predicted: verdict.outcome, actual, score: verdict.score });
+    }
+  }
+
+  return {
+    n: proxyPairs.length,
+    floor,
+    proxyOnly: calibrationMetrics(proxyPairs, floor),
+    withSignals: calibrationMetrics(signalPairs, floor),
+  };
 }
 
 /** Pure aggregation over classified task records. Exported for direct testing. */
