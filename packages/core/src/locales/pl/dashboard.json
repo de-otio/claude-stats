@@ -300,6 +300,7 @@
     "generated": "Wygenerowano {{timestamp}} • Strefa czasowa: {{timezone}}"
   },
   "costPerTask": {
+    "summaryHint": "Pełny podział w karcie Spending",
     "title": "Koszt na udane zadanie",
     "headline": "na udane zadanie",
     "na": "n/a",

@@ -300,6 +300,7 @@
     "generated": "Згенеровано {{timestamp}} • Часовий пояс: {{timezone}}"
   },
   "costPerTask": {
+    "summaryHint": "Повна розбивка на вкладці Spending",
     "title": "Вартість успішного завдання",
     "headline": "на успішне завдання",
     "na": "n/a",

@@ -355,6 +355,13 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <div class="label">${t("dashboard:summary.estCost")}</div>
         <div class="value">${formattedCost}</div>
       </div>
+      ${(cpt && cpt.tasksTotal > 0 && cpt.costPerSuccessfulTask !== null) ? `
+      <div class="summary-card">
+        <div class="label">${t("dashboard:costPerTask.title")}</div>
+        <div class="value">${fmtUsd(cpt.costPerSuccessfulTask)}</div>
+        <div style="font-size:0.6rem;color:#888;margin-top:0.2rem;">${t("dashboard:costPerTask.summaryHint")}</div>
+      </div>
+      ` : ""}
       ${showPlan ? `
       <div class="summary-card" style="border-color:#59a14f;">
         <div class="label">${t("dashboard:summary.planValue")}</div>
@@ -385,8 +392,6 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       </div>
       ` : ""}
     </div>
-
-    ${costPerTaskHtml}
 
     <div class="charts-grid">
       <div class="chart-card">
@@ -738,6 +743,8 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">~$${data.spending.subagentOverhead.totalCost.toFixed(2)}</div>
       </div>` : ""}
     </div>
+
+    ${costPerTaskHtml}
 
     <div class="charts-grid">
       <div class="chart-card">
