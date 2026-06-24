@@ -15,6 +15,8 @@ function makeEvidence(userPrompts: readonly string[]): TaskEvidence {
     editEvents: [],
     committed: false,
     lastActivityMs: 0,
+    toolErrors: 0,
+    commitSubjects: [],
   };
 }
 

@@ -44,7 +44,7 @@ import {
 } from './calibration.js';
 import { buildTaskEvidence } from './evidence/gather.js';
 import { conversationalSignal } from './signals/conversational.js';
-import { truncationSignal, reworkSignal } from './signals/mechanical.js';
+import { truncationSignal, reworkSignal, toolErrorSignal, revertSignal } from './signals/mechanical.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -274,11 +274,13 @@ function hasMutatingWork(toolHistogram: Readonly<Record<string, number>>): boole
 function gatherExtendedSignals(store: Store, item: DailyDigestItem): readonly OutcomeSignal[] {
   const committed = (item.git?.commitsToday ?? 0) > 0;
   const messages = item.sessionIds.flatMap((sid) => store.getSessionMessages(sid));
-  const evidence = buildTaskEvidence(messages, committed);
+  const evidence = buildTaskEvidence(messages, committed, item.git?.subjects ?? []);
   return [
     conversationalSignal(evidence),
     truncationSignal(evidence),
     reworkSignal(evidence),
+    toolErrorSignal(evidence),
+    revertSignal(evidence),
   ].filter((s): s is OutcomeSignal => s !== null);
 }
 
