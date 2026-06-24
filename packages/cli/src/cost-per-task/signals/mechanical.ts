@@ -38,3 +38,33 @@ export function reworkSignal(ev: TaskEvidence): OutcomeSignal | null {
   }
   return null;
 }
+
+/** Subjects matching a revert/rollback/fixup intent (Phase C). Word-boundary,
+ *  literal alternatives only — no catastrophic-backtracking surface. */
+const REVERT_PATTERN = /\b(revert|reverts|reverted|rollback|rolled back|undo|fixup|hotfix)\b/i;
+
+/**
+ * Phase B — fires when the task accumulated several failed tool calls
+ * (>= 3 is_error tool_results): a struggle / mechanical-failure signal.
+ * Conservative threshold so isolated, recovered errors don't fire.
+ */
+export function toolErrorSignal(ev: TaskEvidence): OutcomeSignal | null {
+  if (ev.toolErrors >= 3) {
+    return { id: 'tool_errors_high', value: -1, evidence: 'tool_errors_high' };
+  }
+  return null;
+}
+
+/**
+ * Phase C — fires when one of the task's own commit subjects reads as a
+ * revert / rollback / fixup: the work needed correcting (rework). Uses only the
+ * already-collected git.subjects, so no new git calls.
+ */
+export function revertSignal(ev: TaskEvidence): OutcomeSignal | null {
+  for (const subject of ev.commitSubjects) {
+    if (REVERT_PATTERN.test(subject)) {
+      return { id: 'revert_or_fixup', value: -1, evidence: 'revert_or_fixup' };
+    }
+  }
+  return null;
+}
