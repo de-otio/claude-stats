@@ -70,6 +70,12 @@ export class DashboardPanel {
       this.disposables,
     );
 
+    // Paint a loading screen immediately. refresh() is async and only assigns
+    // the webview HTML once buildDashboard()/attachCostPerTask() have completed —
+    // on a cold first run over a large history that can take several seconds,
+    // during which the webview would otherwise be a blank white panel.
+    this.panel.webview.html = renderLoading(this.panel.webview.cspSource);
+
     void this.refresh();
   }
 
@@ -342,6 +348,85 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
   html = html.replace("</body>", `${bridgeScript}\n</body>`);
 
   return html;
+}
+
+/**
+ * Render a lightweight "loading" page shown immediately when the panel opens,
+ * before buildDashboard()/attachCostPerTask() finish computing the dashboard.
+ *
+ * Without this, the webview has no HTML during that computation — which on a
+ * cold first run over a large history is multi-second — and VS Code renders a
+ * blank white panel with no indication that anything is happening. refresh()
+ * replaces this with the real dashboard (or the welcome screen) once ready.
+ *
+ * Purely presentational: it runs no scripts, so the CSP omits script-src
+ * entirely (nothing to nonce).
+ */
+export function renderLoading(cspSource: string): string {
+  const title = escapeHtml(t("extension:loading.title"));
+  const subtitle = escapeHtml(t("extension:loading.subtitle"));
+
+  const csp = [
+    "default-src 'none'",
+    `style-src ${cspSource} 'unsafe-inline'`,
+  ].join("; ");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
+  <title>${title}</title>
+  <style>
+    body {
+      font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size);
+      color: var(--vscode-foreground);
+      background: var(--vscode-editor-background);
+      margin: 0;
+    }
+    .wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      min-height: 70vh;
+      padding: 32px;
+      text-align: center;
+    }
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.3));
+      border-top-color: var(--vscode-progressBar-background, var(--vscode-button-background, #0e639c));
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .title {
+      font-size: 0.98rem;
+      font-weight: 600;
+    }
+    .subtitle {
+      font-size: 0.85rem;
+      color: var(--vscode-descriptionForeground);
+      max-width: 360px;
+      line-height: 1.5;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .spinner { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap" role="status" aria-live="polite">
+    <div class="spinner"></div>
+    <div class="title">${title}</div>
+    <div class="subtitle">${subtitle}</div>
+  </div>
+</body>
+</html>`;
 }
 
 /**

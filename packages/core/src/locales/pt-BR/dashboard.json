@@ -300,6 +300,7 @@
     "generated": "Gerado em {{timestamp}} • Fuso horário: {{timezone}}"
   },
   "costPerTask": {
+    "summaryHint": "Detalhamento completo na aba Spending",
     "title": "Custo por tarefa bem-sucedida",
     "headline": "por tarefa bem-sucedida",
     "na": "n/a",
