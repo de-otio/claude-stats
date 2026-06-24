@@ -34,7 +34,8 @@ export type SignalId =
   | 'truncation_high'    // many max_tokens stops — incompleteness (negative, weak)
   | 'rework_abandoned'   // mutating edits, no commit, ended unresolved (negative, weak)
   | 'tool_errors_high'   // Phase B: many failed tool calls (is_error) — struggle (negative)
-  | 'revert_or_fixup';   // Phase C: a revert/rollback/fixup commit subject — rework (negative)
+  | 'revert_or_fixup'    // Phase C: a revert/rollback/fixup commit subject — rework (negative)
+  | 'llm_judge';         // Phase D: an opt-in LLM reviewer's verdict (positive or negative)
 
 /** Evidence is reported as enum tags only — never prompt-derived text (see PRIVACY). */
 export type EvidenceTag = SignalId;
@@ -73,6 +74,11 @@ export const SIGNAL_REGISTRY: Readonly<Record<SignalId, SignalSpec>> = {
   rework_abandoned: { defaultWeight: 0.25, direction: 'negative' },
   tool_errors_high: { defaultWeight: 0.4,  direction: 'negative' },
   revert_or_fixup:  { defaultWeight: 0.4,  direction: 'negative' },
+  // Holistic reviewer: weightier than the weak mechanical signals, but still
+  // ≤ base_ladder and only able to refine a held-out base (never flips a
+  // decisive verdict). Calibrate before trusting (07 §7.4); self-attribution
+  // risk is mitigated by blinding + an independent model (06 §6.5).
+  llm_judge:        { defaultWeight: 0.7,  direction: 'either' },
 };
 
 /** Decision thresholds on the combined score. Symmetric by design. */

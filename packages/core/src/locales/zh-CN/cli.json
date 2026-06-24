@@ -55,7 +55,9 @@
     "costPerTask": "每个成功任务的成本 — 每个交付/确认任务的等效 API 费用（总体及按模型）",
     "costPerTaskPeriod": "时间段: day、week、month 或 all（默认: month）",
     "costPerTaskByModel": "按主要模型细分该指标",
-    "costPerTaskCalibrate": "以 JSON 输出校准指标（代理/信号与你的标签的一致性）"
+    "costPerTaskCalibrate": "以 JSON 输出校准指标（代理/信号与你的标签的一致性）",
+    "costPerTaskLlmJudge": "对模糊任务运行可选的 LLM 评判（需要 llmJudge 配置；会将匿名化的任务摘要发送到你的端点）",
+    "costPerTaskLlmJudgeUnconfigured": "请求了 --llm-judge，但未配置 llmJudge.endpoint/model；跳过评判。"
   },
   "collection": {
     "collecting": "收集中...",

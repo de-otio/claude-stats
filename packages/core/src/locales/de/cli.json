@@ -55,7 +55,9 @@
     "costPerTask": "Kosten pro erfolgreicher Aufgabe — äquivalente API-Dollar pro ausgelieferter/bestätigter Aufgabe, insgesamt und pro Modell",
     "costPerTaskPeriod": "Zeitraum: day, week, month oder all (Standard: month)",
     "costPerTaskByModel": "Die Metrik nach dominantem Modell aufschlüsseln",
-    "costPerTaskCalibrate": "Kalibrierungsmetriken (Übereinstimmung von Proxy/Signal mit deinen Labels) als JSON ausgeben"
+    "costPerTaskCalibrate": "Kalibrierungsmetriken (Übereinstimmung von Proxy/Signal mit deinen Labels) als JSON ausgeben",
+    "costPerTaskLlmJudge": "Den optionalen LLM-Richter für mehrdeutige Aufgaben ausführen (benötigt llmJudge-Konfiguration; sendet eine anonymisierte Aufgabenzusammenfassung an deinen Endpunkt)",
+    "costPerTaskLlmJudgeUnconfigured": "--llm-judge angefordert, aber llmJudge.endpoint/model sind nicht gesetzt; Richter wird übersprungen."
   },
   "collection": {
     "collecting": "Erfassung läuft...",

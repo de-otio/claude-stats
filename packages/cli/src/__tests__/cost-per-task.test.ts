@@ -455,6 +455,41 @@ describe('buildCostPerTaskReport (integration)', () => {
     expect(JSON.stringify(on)).not.toContain('revert it');
   });
 
+  // ── Phase D: LLM judge (opt-in) ──
+  it('judgeProvider: judges only held-out tasks, within budget, and flips them', async () => {
+    const complete = vi.fn(async () => '{"outcome":"failed","confidence":1}');
+    const base = { period: 'day' as const, nowMs: NOW_TS, tz: 'UTC', correctionsClient: null, digestDeps: deps() };
+    const off = await buildCostPerTaskReport(store, base);
+    const on = await buildCostPerTaskReport(store, {
+      ...base, experimentalSignals: true, judgeProvider: { complete }, maxJudgeCalls: 25,
+    });
+    // The decisive tasks (/p/success, /p/failed) are NOT judged — only the two
+    // held-out ones (/p/inflight=in_flight, /p/unobs=unobservable).
+    expect(complete).toHaveBeenCalledTimes(2);
+    // A "failed" verdict flips both held-out tasks → failedCount grows by 2.
+    expect(on.failedCount).toBe(off.failedCount + 2);
+    expect(on.inFlightCount).toBe(0);
+    expect(on.unobservableCount).toBe(0);
+  });
+
+  it('judgeProvider: a per-run budget caps the number of judge calls', async () => {
+    const complete = vi.fn(async () => '{"outcome":"uncertain","confidence":0}');
+    await buildCostPerTaskReport(store, {
+      period: 'day', nowMs: NOW_TS, tz: 'UTC', correctionsClient: null, digestDeps: deps(),
+      experimentalSignals: true, judgeProvider: { complete }, maxJudgeCalls: 1,
+    });
+    expect(complete).toHaveBeenCalledTimes(1); // budget of 1, despite 2 held-out tasks
+  });
+
+  it('judgeProvider is ignored when experimentalSignals is off (no calls)', async () => {
+    const complete = vi.fn(async () => '{"outcome":"failed","confidence":1}');
+    await buildCostPerTaskReport(store, {
+      period: 'day', nowMs: NOW_TS, tz: 'UTC', correctionsClient: null, digestDeps: deps(),
+      judgeProvider: { complete }, // experimentalSignals not set
+    });
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   // ── includeTasks (per-task labelling list) ──
   it('omits the tasks list by default (keeps the metric payload prompt-text-free)', async () => {
     const r = await buildCostPerTaskReport(store, {
