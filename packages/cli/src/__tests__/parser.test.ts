@@ -169,6 +169,56 @@ describe("parseSessionFile", () => {
     expect(editCount).toBe(1);
   });
 
+  it("counts tool_result blocks flagged is_error into toolErrorCount", async () => {
+    const entry = assistantEntry({});
+    (entry as Record<string, unknown>).message = {
+      ...((entry as Record<string, unknown>).message as Record<string, unknown>),
+      content: [
+        { type: "tool_result", tool_use_id: "t1", is_error: true, content: "boom" },
+        { type: "tool_result", tool_use_id: "t2", is_error: false, content: "ok" },
+        { type: "tool_result", tool_use_id: "t3", is_error: true, content: "nope" },
+        { type: "tool_use", name: "Read", id: "t4", input: {} },
+      ],
+    };
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    const msg = result.messages.find((m) => m.uuid === (entry as Record<string, unknown>).uuid);
+    expect(msg?.toolErrorCount).toBe(2);
+    // Additive: existing extraction (tool counts) is unchanged.
+    expect(msg?.tools).toContain("Read");
+  });
+
+  it("defaults toolErrorCount to 0 when there are no error results", async () => {
+    const entry = assistantEntry({});
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    const msg = result.messages.find((m) => m.uuid === (entry as Record<string, unknown>).uuid);
+    expect(msg?.toolErrorCount).toBe(0);
+  });
+
+  it("attributes a user tool_result is_error to the preceding assistant message (real shape)", async () => {
+    // Real Claude Code shape: assistant issues a tool_use; the failing result
+    // comes back as the NEXT user turn with is_error.
+    const assistant = assistantEntry({});
+    (assistant as Record<string, unknown>).message = {
+      ...((assistant as Record<string, unknown>).message as Record<string, unknown>),
+      content: [{ type: "tool_use", name: "Bash", id: "t1", input: {} }],
+    };
+    const userResult = {
+      type: "user",
+      sessionId: BASE_SESSION,
+      version: BASE_VERSION,
+      timestamp: 1_002_000,
+      uuid: `u-result-${Math.random()}`,
+      isMeta: false,
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", is_error: true, content: "exit 1" }] },
+    };
+    writeLines(filePath, [assistant, userResult]);
+    const result = await parseSessionFile(filePath, "/proj");
+    const msg = result.messages.find((m) => m.uuid === (assistant as Record<string, unknown>).uuid);
+    expect(msg?.toolErrorCount).toBe(1);
+  });
+
   it("collects distinct models used", async () => {
     const e1 = assistantEntry();
     const e2 = {

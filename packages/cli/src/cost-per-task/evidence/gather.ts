@@ -41,6 +41,7 @@ function safeParseStringArray(raw: string): readonly string[] {
 export function buildTaskEvidence(
   messages: readonly MessageRow[],
   committed: boolean,
+  commitSubjects: readonly string[] = [],
 ): TaskEvidence {
   // Deterministic sort: ascending (timestamp ?? 0), tie-break by uuid.
   const sorted = [...messages].sort((a, b) => {
@@ -54,8 +55,12 @@ export function buildTaskEvidence(
   const stopReasons: string[] = [];
   const editEvents: EditEvent[] = [];
   let lastActivityMs = 0;
+  let toolErrors = 0;
 
   for (const m of sorted) {
+    // Phase B: accumulate failed tool calls (additive; missing → 0).
+    toolErrors += m.tool_error_count ?? 0;
+
     // Collect user prompts.
     if (m.prompt_text != null && m.prompt_text !== '') {
       userPrompts.push(m.prompt_text);
@@ -94,5 +99,7 @@ export function buildTaskEvidence(
     editEvents,
     committed,
     lastActivityMs,
+    toolErrors,
+    commitSubjects: [...commitSubjects],
   };
 }

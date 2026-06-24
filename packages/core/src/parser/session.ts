@@ -155,6 +155,22 @@ export async function parseSessionFile(
     if (type === "queue-operation") {
       hasQueueOperation = true;
     } else if (type === "user") {
+      // Tool results are echoed back as a user turn; a tool_result flagged
+      // is_error means that tool call failed. Attribute it to the assistant
+      // message that issued the call (the previously-pushed record) so the
+      // per-message tool_error_count reflects failed work. Additive — never
+      // changes existing fields. (Not gated on isMeta: a tool_result is real.)
+      const uContent = entry.message?.content;
+      if (Array.isArray(uContent) && messages.length > 0) {
+        let errs = 0;
+        for (const block of uContent) {
+          if (block.type === "tool_result" && block.is_error === true) errs++;
+        }
+        if (errs > 0) {
+          const prev = messages[messages.length - 1]!;
+          prev.toolErrorCount = (prev.toolErrorCount ?? 0) + errs;
+        }
+      }
       if (!entry.isMeta) {
         promptCount++;
         if (ts !== null) lastUserTimestamp = ts;
@@ -201,7 +217,13 @@ export async function parseSessionFile(
       const msgTools: string[] = [];
       const msgFilePathsSet = new Set<string>();
       let thinkingBlockCount = 0;
+      let toolErrorCount = 0;
       for (const block of contentArr) {
+        // A tool_result flagged is_error means the tool call failed (non-zero
+        // Bash exit, failed Edit, etc). Additive capture — existing fields untouched.
+        if (block.type === "tool_result" && block.is_error === true) {
+          toolErrorCount++;
+        }
         if (block.type === "tool_use" && block.name) {
           toolUseCounts.set(
             block.name,
@@ -271,6 +293,7 @@ export async function parseSessionFile(
           ephemeral5mCacheTokens: usage?.cache_creation?.ephemeral_5m_input_tokens ?? 0,
           ephemeral1hCacheTokens: usage?.cache_creation?.ephemeral_1h_input_tokens ?? 0,
           promptText: lastPromptText,
+          toolErrorCount,
         });
       }
       lastPromptText = null;
