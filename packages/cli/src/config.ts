@@ -6,6 +6,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import type { PlanType, PlanConfig } from "@claude-stats/core/types";
+import { createHttpJudgeProvider } from "./cost-per-task/judge-http.js";
+import type { JudgeProvider } from "./cost-per-task/judge.js";
 
 export interface Config {
   costThresholds?: {
@@ -17,6 +19,39 @@ export interface Config {
     type?: PlanType;
     monthly_fee?: number;
   };
+  /**
+   * Opt-in: fold the experimental Tier-0/1/2 accuracy signals into the
+   * cost-per-task outcome (off by default; flip only after calibrating —
+   * see `cost-per-task --calibrate` and doc 07 §7.5).
+   */
+  experimentalSignals?: boolean;
+  /**
+   * Opt-in Phase-D LLM judge. When `enabled` and `experimentalSignals` are both
+   * true, an independent model rules on ambiguous tasks. PRIVACY: this sends a
+   * blinded task summary (including your prompt text) to `endpoint`. Use a LOCAL
+   * endpoint (e.g. Ollama) to keep data on the machine; a hosted endpoint sends
+   * it off-box. Prefer a model from a different family than the one being judged.
+   */
+  llmJudge?: {
+    enabled?: boolean;
+    /** OpenAI-compatible chat-completions URL. */
+    endpoint?: string;
+    model?: string;
+    apiKey?: string;
+    /** Max judge calls per report run (cost cap; default 25). */
+    maxCalls?: number;
+  };
+}
+
+/**
+ * Build a judge provider from config, or null when the LLM judge is not fully
+ * configured/enabled. Keeping this here (not at the call sites) means the only
+ * way to enable Phase D is via config — never a hardcoded flag.
+ */
+export function createJudgeProviderFromConfig(config: Config): JudgeProvider | null {
+  const j = config.llmJudge;
+  if (!j?.enabled || !j.endpoint || !j.model) return null;
+  return createHttpJudgeProvider({ endpoint: j.endpoint, model: j.model, apiKey: j.apiKey });
 }
 
 /** Default monthly fees by plan type (USD). */
