@@ -24,7 +24,7 @@
 import type { Store } from '../store/index.js';
 import type { BuildDailyDigestDeps } from '../recap/index.js';
 import { buildDailyDigest } from '../recap/index.js';
-import type { Confidence, ProjectGitActivity } from '../recap/types.js';
+import type { Confidence, ProjectGitActivity, DailyDigestItem } from '../recap/types.js';
 import {
   computeSignature,
   latestOutcome,
@@ -33,6 +33,11 @@ import {
   type CorrectionsClient,
   type OutcomeValue,
 } from '../recap/corrections.js';
+import type { TaskOutcome, OutcomeSignal } from './outcome-types.js';
+import { combineOutcome } from './combine.js';
+import { buildTaskEvidence } from './evidence/gather.js';
+import { conversationalSignal } from './signals/conversational.js';
+import { truncationSignal, reworkSignal } from './signals/mechanical.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -42,8 +47,11 @@ export type Period = 'day' | 'week' | 'month' | 'all';
  * Four-state task outcome. `observable = success ∪ failed`; `in_flight` and
  * `unobservable` are deliberately held OUT of the success rate (an unfinished
  * task is not a failure; an unmeasurable one is not either).
+ *
+ * Canonical definition lives in {@link ./outcome-types.ts} (the Phase-A accuracy
+ * contract); re-exported here so existing importers are unaffected.
  */
-export type TaskOutcome = 'success' | 'failed' | 'in_flight' | 'unobservable';
+export type { TaskOutcome } from './outcome-types.js';
 
 export interface TaskRecord {
   id: string;
@@ -144,34 +152,72 @@ const MUTATING_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
  *   `failed` when it actually attempted to change code and nothing landed;
  *   a pure read/Q&A session is `unobservable`.
  */
+interface ClassifierItem {
+  confidence: Confidence;
+  git: ProjectGitActivity | null;
+  hidden?: boolean;
+  hasMutatingWork: boolean;
+}
+
+/**
+ * The legacy proxy ladder: confidence × git observability → a four-state base
+ * verdict (no label handling). This is the exact behaviour shipped before the
+ * Phase-A accuracy work; it is the `base` the combiner refines when extended
+ * signals are supplied.
+ */
+function baseLadder(item: ClassifierItem): TaskOutcome {
+  if (item.confidence === 'high') return 'success'; // pushed commit or merged PR
+  if (item.confidence === 'medium') {
+    // `medium` bundles two distinct cases (see computeConfidence): a local commit
+    // that hasn't been pushed yet, and a long, edit-heavy session with nothing
+    // committed. A commit is a completion signal — the user committed the work —
+    // so a committed task is `success`, not `in_flight`; only the no-commit case
+    // (substantial edits still uncommitted) is genuinely unfinished work.
+    if (item.git !== null && item.git.commitsToday > 0) return 'success';
+    return 'in_flight';
+  }
+  // confidence === 'low': git observable + code-changing work but nothing landed
+  // is the only defensible automatic failure; absence of signal is never failure.
+  if (item.git !== null && item.hasMutatingWork) return 'failed';
+  return 'unobservable';
+}
+
+/**
+ * Classify a task into the four-state outcome. Explicit labels win; otherwise the
+ * legacy proxy ladder ({@link baseLadder}) decides.
+ *
+ * `extendedSignals` is the Phase-A accuracy hook (off by default): when supplied
+ * (only when `CostPerTaskOptions.experimentalSignals` is set), the Tier-0 signals
+ * are folded into the base verdict by {@link combineOutcome}. When omitted, this
+ * returns the legacy verdict verbatim — behaviour-preserving by construction, so
+ * the live metric is unchanged until calibration flips the flag on (see
+ * doc/analysis/cost-per-successful-task/07-accuracy-plan.md §7.5).
+ *
+ * @param item.hasMutatingWork  whether the task used a workspace-mutating tool.
+ * @param extendedSignals  Tier-0 signals; when present, refine a held-out base.
+ */
 export function classifyOutcome(
-  item: {
-    confidence: Confidence;
-    git: ProjectGitActivity | null;
-    hidden?: boolean;
-    hasMutatingWork: boolean;
-  },
+  item: ClassifierItem,
   label?: OutcomeValue | null,
+  extendedSignals?: readonly OutcomeSignal[],
 ): { outcome: TaskOutcome; labelled: boolean } {
-  // 1. Explicit user labels win, always.
+  // 1. Explicit user labels win, always (resolved BEFORE the combiner).
   if (label === 'success') return { outcome: 'success', labelled: true };
   if (label === 'fail') return { outcome: 'failed', labelled: true };
   if (label === 'partial') return { outcome: 'in_flight', labelled: true };
   // A user-hidden item is an asserted negative (aborted / not real work).
   if (item.hidden === true) return { outcome: 'failed', labelled: true };
 
-  // 2. Proxy from the recap confidence + git observability.
-  if (item.confidence === 'high') return { outcome: 'success', labelled: false }; // pushed commit or merged PR
-  if (item.confidence === 'medium') return { outcome: 'in_flight', labelled: false }; // local commits / substantial, unshipped
+  // 2. Legacy proxy ladder.
+  const base = baseLadder(item);
 
-  // confidence === 'low'
-  if (item.git !== null && item.hasMutatingWork) {
-    // Git was observable (repo + author matched) and code-changing work was
-    // attempted, yet nothing landed → the only defensible automatic failure.
-    return { outcome: 'failed', labelled: false };
-  }
-  // No instrument (no git), or no code-changing attempt to judge.
-  return { outcome: 'unobservable', labelled: false };
+  // 3. Flag off (no extended signals): legacy verdict verbatim.
+  if (extendedSignals === undefined) return { outcome: base, labelled: false };
+
+  // 4. Flag on: fold Tier-0 signals into the base (decisive base never flipped;
+  //    no-signal never becomes failure — enforced by combineOutcome).
+  const verdict = combineOutcome({ base, signals: extendedSignals });
+  return { outcome: verdict.outcome, labelled: false };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -205,6 +251,28 @@ function hasMutatingWork(toolHistogram: Readonly<Record<string, number>>): boole
     if (MUTATING_TOOLS.has(tool)) return true;
   }
   return false;
+}
+
+/**
+ * Gather the Phase-A Tier-0 outcome signals for a task (imperative shell). Reads
+ * the task's session messages, builds {@link buildTaskEvidence} (prompt text held
+ * in process only), and runs the pure detectors. Returns enum-tag signals only —
+ * no prompt text escapes. Called solely when `experimentalSignals` is enabled.
+ *
+ * v1 window approximation: uses all messages from the task's sessions. A session
+ * can contain more than one task, so conversational signals may bleed across
+ * tasks in the same session — acceptable for the default-off hook; segment-scoped
+ * windowing is future work (and the flag stays off until calibration anyway).
+ */
+function gatherExtendedSignals(store: Store, item: DailyDigestItem): readonly OutcomeSignal[] {
+  const committed = (item.git?.commitsToday ?? 0) > 0;
+  const messages = item.sessionIds.flatMap((sid) => store.getSessionMessages(sid));
+  const evidence = buildTaskEvidence(messages, committed);
+  return [
+    conversationalSignal(evidence),
+    truncationSignal(evidence),
+    reworkSignal(evidence),
+  ].filter((s): s is OutcomeSignal => s !== null);
 }
 
 const DAY_MS = 86_400_000;
@@ -274,6 +342,17 @@ export interface CostPerTaskOptions {
    * read-only MCP and `serve` surfaces. Default: false.
    */
   includeTasks?: boolean;
+  /**
+   * Phase-A accuracy hook (default: false). When true, Tier-0 outcome signals
+   * (conversational repair/acceptance, truncation, rework) are gathered per task
+   * and folded into the proxy verdict via the evidence combiner. Default-OFF is
+   * load-bearing: it changes the live success rate, which must stay calibration-
+   * gated until the calibration harness exists (doc 07 §7.5). It must NOT be set
+   * to `true` by any production caller (MCP / serve / dashboard / CLI) before
+   * then — a test enforces this. Prompt text read for these signals stays in
+   * process and never enters the report payload.
+   */
+  experimentalSignals?: boolean;
   // ── Injectables (default to production behaviour) ──
   /** Epoch-ms "now". Defaults to Date.now(). Injected for deterministic tests. */
   nowMs?: number;
@@ -339,6 +418,12 @@ export async function buildCostPerTaskReport(
         firstPrompt: item.firstPrompt,
       });
       const label = corrections ? latestOutcome(corrections.forSignature(sig)) : null;
+      // Phase-A accuracy hook: gather Tier-0 signals only when explicitly enabled.
+      // Prompt text read here (via buildTaskEvidence) stays in process — only the
+      // resulting enum-tag signals reach the combiner, never the report payload.
+      const extendedSignals = opts.experimentalSignals
+        ? gatherExtendedSignals(store, item)
+        : undefined;
       const { outcome, labelled } = classifyOutcome(
         {
           confidence: item.confidence,
@@ -347,6 +432,7 @@ export async function buildCostPerTaskReport(
           hasMutatingWork: hasMutatingWork(item.toolHistogram),
         },
         label,
+        extendedSignals,
       );
       records.push({
         id: item.id,

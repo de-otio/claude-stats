@@ -300,6 +300,7 @@
     "generated": "Сгенерировано {{timestamp}} • Часовой пояс: {{timezone}}"
   },
   "costPerTask": {
+    "summaryHint": "Полная разбивка на вкладке Spending",
     "title": "Стоимость успешной задачи",
     "headline": "на успешную задачу",
     "na": "n/a",

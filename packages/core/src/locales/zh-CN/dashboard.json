@@ -300,6 +300,7 @@
     "generated": "生成于 {{timestamp}} • 时区: {{timezone}}"
   },
   "costPerTask": {
+    "summaryHint": "完整明细见 Spending 标签页",
     "title": "每个成功任务的成本",
     "headline": "每个成功任务",
     "na": "n/a",

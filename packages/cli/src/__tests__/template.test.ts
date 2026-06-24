@@ -877,13 +877,28 @@ describe("renderDashboard", () => {
       ],
     };
 
+    // The detailed cost-per-task card lives in the Spending tab, which only
+    // renders when data.spending is present (in production it always is when
+    // there's data). These tests supply a minimal spending object so the card
+    // is exercised; the overview tab shows only a summary box for the average.
+    const emptySpending: NonNullable<DashboardData["spending"]> = {
+      topSessionsByCost: [],
+      topToolsByCost: [],
+      costByModel: [],
+      expensivePrompts: [],
+      cacheEfficiency: { overallHitRate: 0, estimatedSavings: 0 },
+      mcpServers: [],
+      mcpServerUsage: [],
+      subagentOverhead: { totalCost: 0, agentCount: 0 },
+    };
+
     it("does not render the card when costPerTask is null", () => {
       const html = renderDashboard(mockData, t);
       expect(html).not.toContain("Cost per Successful Task");
     });
 
     it("renders the headline, decomposition, badges and per-model row when present", () => {
-      const html = renderDashboard({ ...mockData, costPerTask: baseReport }, t);
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: baseReport }, t);
       expect(html).toContain("Cost per Successful Task");
       expect(html).toContain("$35.00");          // headline
       expect(html).toContain("$10.50");          // mean cost per attempt
@@ -893,18 +908,18 @@ describe("renderDashboard", () => {
     });
 
     it("shows the low-coverage warning below the floor", () => {
-      const html = renderDashboard({ ...mockData, costPerTask: { ...baseReport, coverage: 0.1 } }, t);
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: { ...baseReport, coverage: 0.1 } }, t);
       expect(html).toContain("Low coverage");
     });
 
     it("omits the card entirely for an empty window", () => {
       const empty = { ...baseReport, tasksTotal: 0, observable: 0 };
-      const html = renderDashboard({ ...mockData, costPerTask: empty }, t);
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: empty }, t);
       expect(html).not.toContain("Cost per Successful Task");
     });
 
     it("renders no labelling controls when tasks is absent (read-only / serve)", () => {
-      const html = renderDashboard({ ...mockData, costPerTask: baseReport }, t);
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: baseReport }, t);
       expect(html).not.toContain("data-cpt-index");
       expect(html).not.toContain("Label task outcomes");
     });
@@ -924,7 +939,7 @@ describe("renderDashboard", () => {
           },
         ],
       };
-      const html = renderDashboard({ ...mockData, costPerTask: withTasks }, t);
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: withTasks }, t);
       expect(html).toContain("Label task outcomes");
       expect(html).toContain('data-cpt-index="0"');
       expect(html).toContain('data-cpt-value="success"');
@@ -941,9 +956,21 @@ describe("renderDashboard", () => {
           signature: { projectPath: "/p", filePaths: [], promptPrefix: "x" },
         }],
       };
-      const html = renderDashboard({ ...mockData, costPerTask: evil }, t);
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: evil }, t);
       expect(html).not.toContain("<img src=x onerror=alert(1)>");
       expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    });
+
+    it("shows the average as a summary box on the overview, pointing to the Spending tab", () => {
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: baseReport }, t);
+      expect(html).toContain("$35.00");                          // average headline
+      expect(html).toContain("Full breakdown on the Spending tab"); // overview pointer
+    });
+
+    it("does not show the overview summary box when the average is null", () => {
+      const noAvg = { ...baseReport, costPerSuccessfulTask: null };
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: noAvg }, t);
+      expect(html).not.toContain("Full breakdown on the Spending tab");
     });
   });
 });

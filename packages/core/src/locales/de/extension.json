@@ -35,6 +35,31 @@
         }
       ]
     },
+    "spending": {
+      "title": "Spending",
+      "sections": [
+        {
+          "heading": "Was dieser Tab zeigt",
+          "body": "Wohin dein Geld fließt: Kosten pro Modell, die teuersten Tools und MCP-Server, deine kostspieligsten Sitzungen und Prompts sowie das, was dich jede erfolgreiche Aufgabe tatsächlich kostet."
+        },
+        {
+          "heading": "Kosten pro erfolgreicher Aufgabe",
+          "body": "Die Kennzahl sind die Gesamtkosten aller Aufgabenversuche geteilt durch die Anzahl der erfolgreichen — also das, was du pro funktionierender Aufgabe wirklich zahlst, einschließlich der Kosten für die gescheiterten Versuche. Sie zerlegt sich in durchschnittliche Kosten pro Versuch ÷ Erfolgsquote: Günstigere Versuche oder eine höhere Erfolgsquote senken sie."
+        },
+        {
+          "heading": "Wie Ergebnisse bestimmt werden",
+          "body": "Jede Aufgabe wird anhand von Git-Aktivität und Signalsicherheit automatisch als erfolgreich, gescheitert, laufend oder nicht beobachtbar eingestuft. Du kannst jede Aufgabe mit den Schaltflächen ✓ (Erfolg), ~ (teilweise) oder ✗ (Fehler) überschreiben oder mit ⌫ deine Bewertung löschen. Manuelle Bewertungen haben immer Vorrang vor der Schätzung."
+        },
+        {
+          "heading": "Abdeckung und Verlässlichkeit",
+          "body": "Die Quote wird nur über „beobachtbare\" Aufgaben berechnet — solche mit genug Signal zur Beurteilung. Das Abdeckungs-Badge zeigt, wie viele deiner Gesamtaufgaben das sind. Liegt die Abdeckung unter 20 %, erscheint eine Warnung: Die Zahl beruht auf einem kleinen Ausschnitt und ist eher als grober Richtwert denn als exakte Größe zu lesen."
+        },
+        {
+          "heading": "Tabelle pro Modell",
+          "body": "Kosten pro erfolgreicher Aufgabe, Erfolgsquote und Anzahl beobachtbarer Aufgaben, aufgeschlüsselt pro Modell — so siehst du, welches Modell dir das zuverlässigste Ergebnis pro Dollar liefert."
+        }
+      ]
+    },
     "models": {
       "title": "Modelle",
       "sections": [
@@ -280,6 +305,10 @@
       "writeFailed": "Claude Stats konnte {{path}} nicht schreiben, um den MCP-Server zu registrieren ({{message}}). Prüfen Sie, ob die Datei beschreibbar ist (sie gehört zu Ihrer Claude-Code-Konfiguration) und derzeit nicht von einem anderen Prozess geöffnet oder gesperrt wird. Laden Sie danach das Fenster neu. Das Dashboard funktioniert weiterhin, aber Ihr Claude-Agent kann bis zur Behebung keine Statistiken über MCP abfragen.",
       "generic": "Claude Stats konnte den MCP-Server nicht in {{path}} registrieren: {{message}}. Das Dashboard funktioniert weiterhin, aber Ihr Claude-Agent kann bis zur Behebung keine Statistiken über MCP abfragen. Laden Sie das Fenster neu (Befehlspalette → „Developer: Reload Window“), um es erneut zu versuchen."
     }
+  },
+  "loading": {
+    "title": "Statistiken werden geladen …",
+    "subtitle": "Dein Claude-Code-Verlauf wird ausgewertet. Beim ersten Mal kann das ein paar Sekunden dauern."
   },
   "welcome": {
     "noClaudeCode": {

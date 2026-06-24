@@ -35,6 +35,31 @@
         }
       ]
     },
+    "spending": {
+      "title": "Spending",
+      "sections": [
+        {
+          "heading": "What this tab shows",
+          "body": "Where your money goes: cost by model, the most expensive tools and MCP servers, your priciest sessions and prompts, and what each successful task actually costs."
+        },
+        {
+          "heading": "Cost per Successful Task",
+          "body": "The headline figure is the total spent on all task attempts divided by the number that succeeded — i.e. what you really pay for each task that works, including the cost of the attempts that failed along the way. It decomposes as mean cost per attempt ÷ success rate, so either cheaper attempts or a higher success rate lowers it."
+        },
+        {
+          "heading": "How outcomes are decided",
+          "body": "Each task is auto-classified as success, failed, in-flight, or unobservable from git activity and signal confidence. You can override any task with the ✓ (success), ~ (partial), or ✗ (fail) buttons, or ⌫ to clear your label. Manual labels always take priority over the proxy."
+        },
+        {
+          "heading": "Coverage and how much to trust it",
+          "body": "The rate is computed only over \"observable\" tasks — those with enough signal to judge. The coverage badge shows how many of your total tasks that is. When coverage is below 20% a warning appears: the number rests on a small slice and should be read as a rough guide rather than an exact figure."
+        },
+        {
+          "heading": "Per-model table",
+          "body": "Cost per successful task, success rate, and observable count broken out by model, so you can see which model gives you the most reliable result per dollar."
+        }
+      ]
+    },
     "models": {
       "title": "Models",
       "sections": [
@@ -296,6 +321,10 @@
       "writeFailed": "Claude Stats could not write to {{path}} to register its MCP server ({{message}}). Check that the file is writable (it belongs to your Claude Code config) and not currently open/locked by another process, then reload this window. Until this is fixed, the dashboard still works, but your Claude agent will not be able to query stats via MCP.",
       "generic": "Claude Stats could not register its MCP server in {{path}}: {{message}}. The dashboard still works, but your Claude agent will not be able to query stats via MCP until this is resolved. Reload this window (Command Palette → \"Developer: Reload Window\") to try again."
     }
+  },
+  "loading": {
+    "title": "Loading your stats…",
+    "subtitle": "Crunching your Claude Code history. This can take a few seconds the first time."
   },
   "welcome": {
     "noClaudeCode": {

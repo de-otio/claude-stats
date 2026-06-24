@@ -62,7 +62,18 @@ describe('classifyOutcome', () => {
     expect(classifyOutcome({ ...base, confidence: 'high' })).toEqual({ outcome: 'success', labelled: false });
   });
 
-  it('medium confidence → in_flight (proxy)', () => {
+  it('medium + a local (unpushed) commit → success (committing is a completion signal)', () => {
+    expect(classifyOutcome({ ...base, confidence: 'medium', git: git({ commitsToday: 2, pushed: false }) }))
+      .toEqual({ outcome: 'success', labelled: false });
+  });
+
+  it('medium from edit volume but nothing committed → in_flight', () => {
+    // git observable, but commitsToday === 0 → genuinely unfinished work.
+    expect(classifyOutcome({ ...base, confidence: 'medium', git: git({ commitsToday: 0, linesAdded: 80 }) }))
+      .toEqual({ outcome: 'in_flight', labelled: false });
+  });
+
+  it('medium with no git signal → in_flight (long session, nothing committed)', () => {
     expect(classifyOutcome({ ...base, confidence: 'medium' })).toEqual({ outcome: 'in_flight', labelled: false });
   });
 
@@ -288,7 +299,9 @@ describe('buildCostPerTaskReport (integration)', () => {
   // Per-project git fixtures driving the four outcomes via computeConfidence.
   const gitByProject: Record<string, ProjectGitActivity | null> = {
     '/p/success': git({ commitsToday: 1, pushed: true, linesAdded: 10 }), // high → success
-    '/p/inflight': git({ commitsToday: 1, pushed: false }),               // medium → in_flight
+    // medium with NO commit (long, edit-heavy session) → in_flight. A committed
+    // task is now classified as success, so in_flight requires the no-commit path.
+    '/p/inflight': git({ commitsToday: 0, linesAdded: 80 }),              // medium (edits) → in_flight
     '/p/failed': git({ commitsToday: 0 }),                                // low + git + Edit → failed
     '/p/unobs': null,                                                     // git null → unobservable
   };
@@ -312,7 +325,15 @@ describe('buildCostPerTaskReport (integration)', () => {
       ['/p/success', ['Edit']], ['/p/inflight', ['Edit']], ['/p/failed', ['Edit']], ['/p/unobs', ['Read']],
     ] as const) {
       const sid = `s-${project.slice(3)}`;
-      store.upsertSession(makeSession({ sessionId: sid, projectPath: project }));
+      // /p/inflight needs a long active session so computeConfidence reaches
+      // 'medium' via the duration+lines path (no commit) → in_flight.
+      const activeDurationMs = project === '/p/inflight' ? 35 * 60_000 : 600_000;
+      store.upsertSession(makeSession({
+        sessionId: sid,
+        projectPath: project,
+        activeDurationMs,
+        lastTimestamp: BASE_TS + activeDurationMs,
+      }));
       store.upsertMessages([makeMessage({ uuid: `m${n++}`, sessionId: sid, model: 'claude-sonnet-4-6', tools: [...tools], prompt: `work in ${project}` })]);
     }
   });
@@ -363,6 +384,39 @@ describe('buildCostPerTaskReport (integration)', () => {
     } finally {
       try { fs.rmSync(corrDir, { recursive: true, force: true }); } catch { /* ok */ }
     }
+  });
+
+  // ── experimentalSignals (Phase-A accuracy hook, default off) ──
+  it('experimentalSignals: true is a no-op on the standard fixture (no lexicon/truncation triggers)', async () => {
+    const base = { period: 'day' as const, nowMs: NOW_TS, tz: 'UTC', correctionsClient: null, digestDeps: deps() };
+    const off = await buildCostPerTaskReport(store, base);
+    const on = await buildCostPerTaskReport(store, { ...base, experimentalSignals: true });
+    // None of the fixture prompts contain repair/acceptance phrases; single
+    // messages mean no repeated truncation; the weak rework signal alone cannot
+    // cross a threshold — so the outcome distribution is unchanged.
+    expect(on.successCount).toBe(off.successCount);
+    expect(on.failedCount).toBe(off.failedCount);
+    expect(on.inFlightCount).toBe(off.inFlightCount);
+    expect(on.unobservableCount).toBe(off.unobservableCount);
+  });
+
+  it('experimentalSignals: a repair follow-up turn flips the in_flight task to failed', async () => {
+    // Add a LATER second user turn to the in_flight session containing a repair
+    // phrase. The later timestamp makes it a genuine follow-up (index ≥ 1) rather
+    // than the task's opening prompt, which the conversational detector ignores.
+    store.upsertMessages([
+      { ...makeMessage({ uuid: 'm-repair', sessionId: 's-inflight', model: 'claude-sonnet-4-6', tools: [], prompt: "that's wrong, revert it" }), timestamp: BASE_TS + 60_000 },
+    ]);
+    const base = { period: 'day' as const, nowMs: NOW_TS, tz: 'UTC', correctionsClient: null, digestDeps: deps() };
+    const off = await buildCostPerTaskReport(store, base);
+    const on = await buildCostPerTaskReport(store, { ...base, experimentalSignals: true });
+    // Off: still in_flight. On: the repair turn moves it to failed.
+    expect(off.inFlightCount).toBeGreaterThanOrEqual(1);
+    expect(on.failedCount).toBeGreaterThan(off.failedCount);
+    // PRIVACY: the prompt text read to derive the signal must NOT appear in the
+    // report payload (security review Sec-2).
+    expect(JSON.stringify(on)).not.toContain("that's wrong");
+    expect(JSON.stringify(on)).not.toContain('revert it');
   });
 
   // ── includeTasks (per-task labelling list) ──

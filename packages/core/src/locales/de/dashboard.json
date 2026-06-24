@@ -300,6 +300,7 @@
     "generated": "Generiert {{timestamp}} • Zeitzone: {{timezone}}"
   },
   "costPerTask": {
+    "summaryHint": "Vollständige Aufschlüsselung im Spending-Tab",
     "title": "Kosten pro erfolgreicher Aufgabe",
     "headline": "pro erfolgreicher Aufgabe",
     "na": "n/a",
