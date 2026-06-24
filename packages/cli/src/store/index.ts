@@ -20,7 +20,7 @@ import type {
 } from "@claude-stats/core/types";
 import { estimateCost } from "@claude-stats/core/pricing";
 
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 export class Store {
   private db: DatabaseSync;
@@ -63,6 +63,7 @@ export class Store {
     if (current < 8) this.migrateToV8();
     if (current < 9) this.migrateToV9();
     if (current < 10) this.migrateToV10();
+    if (current < 11) this.migrateToV11();
 
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
@@ -262,6 +263,19 @@ export class Store {
     addColumn("messages", "file_paths", "TEXT NOT NULL DEFAULT '[]'");
   }
 
+  private migrateToV11(): void {
+    const addColumn = (table: string, column: string, def: string): void => {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === column)) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+      }
+    };
+    // Count of tool_result blocks flagged is_error per message (failed tool calls
+    // — non-zero Bash exit, failed Edit). Additive; old rows default to 0. Feeds
+    // the Phase-B outcome signal; re-collection backfills it from the JSONL.
+    addColumn("messages", "tool_error_count", "INTEGER NOT NULL DEFAULT 0");
+  }
+
   // ─── Transaction wrapper ────────────────────────────────────────────────────
 
   transaction<T>(fn: () => T): T {
@@ -449,8 +463,8 @@ export class Store {
         input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
         tools, file_paths, thinking_blocks,
         service_tier, inference_geo, ephemeral_5m_cache_tokens, ephemeral_1h_cache_tokens,
-        prompt_text
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        prompt_text, tool_error_count
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (uuid) DO UPDATE SET
         model                       = excluded.model,
         input_tokens                = excluded.input_tokens,
@@ -464,7 +478,8 @@ export class Store {
         inference_geo               = excluded.inference_geo,
         ephemeral_5m_cache_tokens   = excluded.ephemeral_5m_cache_tokens,
         ephemeral_1h_cache_tokens   = excluded.ephemeral_1h_cache_tokens,
-        prompt_text                 = COALESCE(excluded.prompt_text, messages.prompt_text)
+        prompt_text                 = COALESCE(excluded.prompt_text, messages.prompt_text),
+        tool_error_count            = excluded.tool_error_count
     `);
     for (const r of records) {
       stmt.run(
@@ -474,7 +489,7 @@ export class Store {
         JSON.stringify(r.tools), JSON.stringify(r.filePaths ?? []),
         r.thinkingBlocks,
         r.serviceTier, r.inferenceGeo, r.ephemeral5mCacheTokens, r.ephemeral1hCacheTokens,
-        r.promptText ?? null
+        r.promptText ?? null, r.toolErrorCount ?? 0
       );
     }
   }
@@ -1346,6 +1361,8 @@ export interface MessageRow {
   ephemeral_5m_cache_tokens: number;
   ephemeral_1h_cache_tokens: number;
   prompt_text: string | null;
+  /** Count of failed tool calls in this message (added schema v11; old rows = 0). */
+  tool_error_count?: number;
 }
 
 export interface SessionMessageTotalRow {

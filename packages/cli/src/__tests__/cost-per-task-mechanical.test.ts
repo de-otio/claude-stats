@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   truncationSignal,
   reworkSignal,
+  toolErrorSignal,
+  revertSignal,
 } from '../cost-per-task/signals/mechanical.js';
 import type { TaskEvidence } from '../cost-per-task/outcome-types.js';
 
@@ -16,6 +18,8 @@ function makeEvidence(overrides: Partial<TaskEvidence>): TaskEvidence {
     editEvents: [],
     committed: false,
     lastActivityMs: 1_000_000,
+    toolErrors: 0,
+    commitSubjects: [],
     ...overrides,
   };
 }
@@ -96,5 +100,54 @@ describe('reworkSignal', () => {
   it('value is clamped to -1', () => {
     const ev = makeEvidence({ editEvents: [EDIT], committed: false });
     expect(reworkSignal(ev)?.value).toBe(-1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// toolErrorSignal (Phase B)
+// ---------------------------------------------------------------------------
+
+describe('toolErrorSignal', () => {
+  it('fires at the threshold of 3 failed tool calls', () => {
+    const sig = toolErrorSignal(makeEvidence({ toolErrors: 3 }));
+    expect(sig?.id).toBe('tool_errors_high');
+    expect(sig?.evidence).toBe('tool_errors_high');
+    expect(sig?.value).toBe(-1);
+  });
+
+  it('does not fire below the threshold', () => {
+    expect(toolErrorSignal(makeEvidence({ toolErrors: 0 }))).toBeNull();
+    expect(toolErrorSignal(makeEvidence({ toolErrors: 2 }))).toBeNull();
+  });
+
+  it('fires above the threshold', () => {
+    expect(toolErrorSignal(makeEvidence({ toolErrors: 10 }))?.id).toBe('tool_errors_high');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// revertSignal (Phase C)
+// ---------------------------------------------------------------------------
+
+describe('revertSignal', () => {
+  it('fires on a revert/rollback/fixup commit subject (case-insensitive)', () => {
+    for (const subj of ['Revert "add feature"', 'rollback the migration', 'fixup: typo', 'HOTFIX login']) {
+      const sig = revertSignal(makeEvidence({ commitSubjects: [subj] }));
+      expect(sig?.id, subj).toBe('revert_or_fixup');
+      expect(sig?.value).toBe(-1);
+    }
+  });
+
+  it('does not fire on ordinary subjects', () => {
+    expect(revertSignal(makeEvidence({ commitSubjects: ['add login form', 'refactor parser'] }))).toBeNull();
+  });
+
+  it('does not fire on an empty subject list', () => {
+    expect(revertSignal(makeEvidence({ commitSubjects: [] }))).toBeNull();
+  });
+
+  it('does not match the substring inside an unrelated word (word boundary)', () => {
+    // "undoubtedly" contains "undo" but should not match due to \b.
+    expect(revertSignal(makeEvidence({ commitSubjects: ['undoubtedly faster now'] }))).toBeNull();
   });
 });

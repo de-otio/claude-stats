@@ -26,6 +26,7 @@ function makeRow(overrides: Partial<MessageRow> & { uuid: string }): MessageRow 
     ephemeral_5m_cache_tokens: 0,
     ephemeral_1h_cache_tokens: 0,
     prompt_text: overrides.prompt_text ?? null,
+    tool_error_count: overrides.tool_error_count,
   };
 }
 
@@ -46,6 +47,30 @@ describe('buildTaskEvidence — empty input', () => {
   it('passes committed=true through unchanged', () => {
     const ev = buildTaskEvidence([], true);
     expect(ev.committed).toBe(true);
+  });
+
+  it('defaults toolErrors to 0 and commitSubjects to [] for empty input', () => {
+    const ev = buildTaskEvidence([], false);
+    expect(ev.toolErrors).toBe(0);
+    expect(ev.commitSubjects).toEqual([]);
+  });
+});
+
+describe('buildTaskEvidence — Phase B/C fields', () => {
+  it('sums tool_error_count across messages (missing → 0)', () => {
+    const rows = [
+      makeRow({ uuid: 'a', timestamp: 1, tool_error_count: 2 }),
+      makeRow({ uuid: 'b', timestamp: 2 }),                       // missing → 0
+      makeRow({ uuid: 'c', timestamp: 3, tool_error_count: 1 }),
+    ];
+    expect(buildTaskEvidence(rows, false).toolErrors).toBe(3);
+  });
+
+  it('passes commitSubjects through, defensively copied', () => {
+    const subjects = ['fix bug', 'revert change'];
+    const ev = buildTaskEvidence([], true, subjects);
+    expect(ev.commitSubjects).toEqual(subjects);
+    expect(ev.commitSubjects).not.toBe(subjects); // copy, not the same ref
   });
 });
 

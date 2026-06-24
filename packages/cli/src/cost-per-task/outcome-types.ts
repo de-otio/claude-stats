@@ -32,7 +32,9 @@ export type SignalId =
   | 'repair_turn'        // a user follow-up rejected/corrected the work (negative)
   | 'acceptance_turn'    // a user follow-up accepted/approved the work (positive)
   | 'truncation_high'    // many max_tokens stops — incompleteness (negative, weak)
-  | 'rework_abandoned';  // mutating edits, no commit, ended unresolved (negative, weak)
+  | 'rework_abandoned'   // mutating edits, no commit, ended unresolved (negative, weak)
+  | 'tool_errors_high'   // Phase B: many failed tool calls (is_error) — struggle (negative)
+  | 'revert_or_fixup';   // Phase C: a revert/rollback/fixup commit subject — rework (negative)
 
 /** Evidence is reported as enum tags only — never prompt-derived text (see PRIVACY). */
 export type EvidenceTag = SignalId;
@@ -69,6 +71,8 @@ export const SIGNAL_REGISTRY: Readonly<Record<SignalId, SignalSpec>> = {
   acceptance_turn:  { defaultWeight: 0.5,  direction: 'positive' },
   truncation_high:  { defaultWeight: 0.15, direction: 'negative' },
   rework_abandoned: { defaultWeight: 0.25, direction: 'negative' },
+  tool_errors_high: { defaultWeight: 0.4,  direction: 'negative' },
+  revert_or_fixup:  { defaultWeight: 0.4,  direction: 'negative' },
 };
 
 /** Decision thresholds on the combined score. Symmetric by design. */
@@ -100,6 +104,10 @@ export interface TaskEvidence {
   readonly committed: boolean;
   /** End of the task's activity window (epoch ms) — for "ended shortly after edit" logic. */
   readonly lastActivityMs: number;
+  /** Phase B: total failed tool calls across the task (sum of message tool_error_count). */
+  readonly toolErrors: number;
+  /** Phase C: the task's own commit subjects (from git.subjects) — scanned for reverts/fixups. */
+  readonly commitSubjects: readonly string[];
 }
 
 export interface EditEvent {

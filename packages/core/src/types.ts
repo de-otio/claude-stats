@@ -46,6 +46,8 @@ export interface ContentBlock {
   // tool_result
   tool_use_id?: string;
   content?: string | ContentBlock[];
+  /** Set on a tool_result when the tool call failed (non-zero exit / error). */
+  is_error?: boolean;
   // thinking
   thinking?: string;
 }
@@ -155,6 +157,12 @@ export interface MessageRecord {
   ephemeral5mCacheTokens: number;
   ephemeral1hCacheTokens: number;
   promptText: string | null;
+  /**
+   * Count of tool_result blocks in this message flagged `is_error` (a tool call
+   * that failed — e.g. a non-zero Bash exit, a failed Edit). Optional for
+   * back-compat: records/rows written before this field default to 0/undefined.
+   */
+  toolErrorCount?: number;
 }
 
 // ─── Collection state ─────────────────────────────────────────────────────────
