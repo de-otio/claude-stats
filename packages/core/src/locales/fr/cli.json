@@ -55,7 +55,9 @@
     "costPerTask": "Coût par tâche réussie — dollars API équivalents par tâche livrée/confirmée, au total et par modèle",
     "costPerTaskPeriod": "Période : day, week, month ou all (par défaut : month)",
     "costPerTaskByModel": "Ventiler la métrique par modèle dominant",
-    "costPerTaskCalibrate": "Afficher les métriques de calibration (accord proxy/signal avec vos labels) en JSON"
+    "costPerTaskCalibrate": "Afficher les métriques de calibration (accord proxy/signal avec vos labels) en JSON",
+    "costPerTaskLlmJudge": "Exécuter le juge LLM optionnel sur les tâches ambiguës (nécessite la config llmJudge ; envoie un résumé anonymisé de la tâche à votre endpoint)",
+    "costPerTaskLlmJudgeUnconfigured": "--llm-judge demandé mais llmJudge.endpoint/model ne sont pas définis ; juge ignoré."
   },
   "collection": {
     "collecting": "Collecte en cours...",

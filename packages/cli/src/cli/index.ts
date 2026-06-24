@@ -7,7 +7,7 @@ import { collect } from "../aggregator/index.js";
 import { Store, validateTag } from "../store/index.js";
 import { printSummary, printStatus, printSearchResults, printSessionList, printSessionDetail, printTrend, printSpendingReport } from "../reporter/index.js";
 import { searchHistory } from "../history/index.js";
-import { loadConfig, saveConfig } from "../config.js";
+import { loadConfig, saveConfig, createJudgeProviderFromConfig } from "../config.js";
 import { checkThresholds } from "../alerts.js";
 import { formatCost } from "@claude-stats/core/pricing";
 import { buildDashboard } from "../dashboard/index.js";
@@ -254,6 +254,7 @@ export async function buildCli(): Promise<Command> {
     .option("--timezone <tz>", t("cli:commands.reportTimezone"))
     .option("--json", t("cli:commands.spendingJson"))
     .option("--calibrate", t("cli:commands.costPerTaskCalibrate"))
+    .option("--llm-judge", t("cli:commands.costPerTaskLlmJudge"))
     .action(async (opts: {
       period?: string;
       project?: string;
@@ -264,11 +265,22 @@ export async function buildCli(): Promise<Command> {
       timezone?: string;
       json?: boolean;
       calibrate?: boolean;
+      llmJudge?: boolean;
     }) => {
       loadCachedPricing();
       const { buildCostPerTaskReport, buildCalibrationReport } = await import("../cost-per-task/index.js");
       const { printCostPerTask } = await import("../reporter/index.js");
       const { createEmbeddingProvider } = await import("../recap/embeddings.js");
+      const config = loadConfig();
+      // Phase D: --llm-judge (or config.llmJudge.enabled) builds the provider from
+      // config; null when endpoint/model are missing (graceful no-op + a warning).
+      const wantJudge = opts.llmJudge === true || config.llmJudge?.enabled === true;
+      const judgeProvider = wantJudge
+        ? createJudgeProviderFromConfig({ ...config, llmJudge: { ...config.llmJudge, enabled: true } })
+        : null;
+      if (wantJudge && !judgeProvider) {
+        process.stderr.write(t("cli:commands.costPerTaskLlmJudgeUnconfigured") + "\n");
+      }
       const store = new Store();
       await collect(store);
       try {
@@ -286,6 +298,8 @@ export async function buildCli(): Promise<Command> {
           includeCI: opts.includeCi,
           tz: opts.timezone,
           digestDeps: { embeddingProvider },
+          judgeProvider,
+          experimentalSignals: config.experimentalSignals === true,
         };
         if (opts.calibrate) {
           // Diagnostic: agreement of the proxy/combiner with the user's labels.
