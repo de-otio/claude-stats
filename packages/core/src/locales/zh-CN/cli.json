@@ -54,7 +54,8 @@
     "spendingSort": "排序方式: cost、tokens、prompts（默认: cost）",
     "costPerTask": "每个成功任务的成本 — 每个交付/确认任务的等效 API 费用（总体及按模型）",
     "costPerTaskPeriod": "时间段: day、week、month 或 all（默认: month）",
-    "costPerTaskByModel": "按主要模型细分该指标"
+    "costPerTaskByModel": "按主要模型细分该指标",
+    "costPerTaskCalibrate": "以 JSON 输出校准指标（代理/信号与你的标签的一致性）"
   },
   "collection": {
     "collecting": "收集中...",

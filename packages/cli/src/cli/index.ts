@@ -253,6 +253,7 @@ export async function buildCli(): Promise<Command> {
     .option("--by-model", t("cli:commands.costPerTaskByModel"))
     .option("--timezone <tz>", t("cli:commands.reportTimezone"))
     .option("--json", t("cli:commands.spendingJson"))
+    .option("--calibrate", t("cli:commands.costPerTaskCalibrate"))
     .action(async (opts: {
       period?: string;
       project?: string;
@@ -262,9 +263,10 @@ export async function buildCli(): Promise<Command> {
       byModel?: boolean;
       timezone?: string;
       json?: boolean;
+      calibrate?: boolean;
     }) => {
       loadCachedPricing();
-      const { buildCostPerTaskReport } = await import("../cost-per-task/index.js");
+      const { buildCostPerTaskReport, buildCalibrationReport } = await import("../cost-per-task/index.js");
       const { printCostPerTask } = await import("../reporter/index.js");
       const { createEmbeddingProvider } = await import("../recap/embeddings.js");
       const store = new Store();
@@ -276,15 +278,25 @@ export async function buildCli(): Promise<Command> {
         } catch {
           embeddingProvider = null;
         }
-        const report = await buildCostPerTaskReport(store, {
+        const common = {
           period: opts.period as "day" | "week" | "month" | "all" | undefined,
           projectPath: opts.project,
           accountUuid: opts.account,
           repoUrl: opts.repo,
           includeCI: opts.includeCi,
-          byModel: opts.byModel === true,
           tz: opts.timezone,
           digestDeps: { embeddingProvider },
+        };
+        if (opts.calibrate) {
+          // Diagnostic: agreement of the proxy/combiner with the user's labels.
+          // JSON-only so there is no localized prose to translate; pipe to jq.
+          const calibration = await buildCalibrationReport(store, common);
+          process.stdout.write(JSON.stringify(calibration, null, 2) + "\n");
+          return;
+        }
+        const report = await buildCostPerTaskReport(store, {
+          ...common,
+          byModel: opts.byModel === true,
         });
         printCostPerTask(report, process.stdout, { json: opts.json });
       } finally {

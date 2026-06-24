@@ -54,7 +54,8 @@
     "spendingSort": "Сортування: cost, tokens, prompts (за замовчуванням: cost)",
     "costPerTask": "Вартість успішного завдання — еквівалентні долари API на виконане/підтверджене завдання, загалом і за моделями",
     "costPerTaskPeriod": "Період: day, week, month або all (за замовчуванням: month)",
-    "costPerTaskByModel": "Розбити метрику за домінуючою моделлю"
+    "costPerTaskByModel": "Розбити метрику за домінуючою моделлю",
+    "costPerTaskCalibrate": "Вивести метрики калібрування (узгодженість проксі/сигналів з вашими мітками) у форматі JSON"
   },
   "collection": {
     "collecting": "Збирання...",

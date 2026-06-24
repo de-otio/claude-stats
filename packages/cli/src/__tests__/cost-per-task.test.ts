@@ -24,6 +24,7 @@ import {
   datesForPeriod,
   aggregate,
   buildCostPerTaskReport,
+  buildCalibrationReport,
   MIN_OBSERVABLE_FOR_MODEL_RATE,
   type TaskRecord,
   type TaskOutcome,
@@ -383,6 +384,41 @@ describe('buildCostPerTaskReport (integration)', () => {
       expect(r.labelledCount).toBe(1);
     } finally {
       try { fs.rmSync(corrDir, { recursive: true, force: true }); } catch { /* ok */ }
+    }
+  });
+
+  // ── buildCalibrationReport (proxy/signal agreement vs labels) ──
+  it('calibration report scores proxy predictions against user labels', async () => {
+    const corrDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-cpt-cal-'));
+    const corrections = openCorrections({ dbPath: path.join(corrDir, 'c.db') });
+    try {
+      // Label two tasks where the proxy already agrees: success→success, failed→fail.
+      corrections.add(
+        computeSignature({ project: '/p/success', filePathsTouched: [], firstPrompt: 'work in /p/success' }),
+        { kind: 'outcome', value: 'success' },
+      );
+      corrections.add(
+        computeSignature({ project: '/p/failed', filePathsTouched: [], firstPrompt: 'work in /p/failed' }),
+        { kind: 'outcome', value: 'fail' },
+      );
+
+      const report = await buildCalibrationReport(store, {
+        period: 'day', nowMs: NOW_TS, tz: 'UTC', correctionsClient: corrections, digestDeps: deps(),
+      });
+
+      // Only the two labelled tasks are in the eval set.
+      expect(report.n).toBe(2);
+      // Proxy agrees with both labels.
+      expect(report.proxyOnly.accuracy).toBeCloseTo(1, 10);
+      expect(report.proxyOnly.observableN).toBe(2);
+      expect(report.proxyOnly.failedPrecision).toBe(1);
+      expect(report.proxyOnly.meetsFailedFloor).toBe(true);
+      // Brier needs a score → proxy path has none; with-signals path does.
+      expect(report.proxyOnly.brier).toBeNull();
+      expect(report.withSignals.brier).not.toBeNull();
+    } finally {
+      corrections.close();
+      fs.rmSync(corrDir, { recursive: true, force: true });
     }
   });
 
