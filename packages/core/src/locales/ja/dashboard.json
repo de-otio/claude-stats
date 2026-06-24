@@ -300,6 +300,7 @@
     "generated": "生成 {{timestamp}} • タイムゾーン: {{timezone}}"
   },
   "costPerTask": {
+    "summaryHint": "詳細は Spending タブを参照",
     "title": "成功タスクあたりのコスト",
     "headline": "成功タスクあたり",
     "na": "n/a",

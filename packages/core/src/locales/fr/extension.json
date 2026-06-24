@@ -35,6 +35,31 @@
         }
       ]
     },
+    "spending": {
+      "title": "Spending",
+      "sections": [
+        {
+          "heading": "Ce que montre cet onglet",
+          "body": "Où va votre argent : coût par modèle, les outils et serveurs MCP les plus chers, vos sessions et prompts les plus coûteux, et ce que coûte réellement chaque tâche réussie."
+        },
+        {
+          "heading": "Coût par tâche réussie",
+          "body": "Le chiffre principal correspond au total dépensé pour toutes les tentatives de tâche divisé par le nombre de réussites — c'est-à-dire ce que vous payez réellement pour chaque tâche qui aboutit, y compris le coût des tentatives échouées. Il se décompose en coût moyen par tentative ÷ taux de réussite : des tentatives moins chères ou un meilleur taux de réussite le font baisser."
+        },
+        {
+          "heading": "Comment les résultats sont déterminés",
+          "body": "Chaque tâche est classée automatiquement comme réussie, échouée, en cours ou non observable à partir de l'activité git et de la confiance du signal. Vous pouvez forcer le résultat d'une tâche avec les boutons ✓ (réussite), ~ (partiel) ou ✗ (échec), ou ⌫ pour effacer votre étiquette. Les étiquettes manuelles priment toujours sur l'estimation."
+        },
+        {
+          "heading": "Couverture et fiabilité",
+          "body": "Le taux n'est calculé que sur les tâches « observables » — celles disposant d'assez de signal pour être jugées. Le badge de couverture indique combien cela représente sur l'ensemble de vos tâches. Lorsque la couverture est inférieure à 20 %, un avertissement apparaît : le chiffre repose sur un petit échantillon et doit être lu comme un ordre de grandeur, non comme une valeur exacte."
+        },
+        {
+          "heading": "Tableau par modèle",
+          "body": "Coût par tâche réussie, taux de réussite et nombre de tâches observables détaillés par modèle, pour voir quel modèle vous donne le résultat le plus fiable par dollar."
+        }
+      ]
+    },
     "models": {
       "title": "Modèles",
       "sections": [
@@ -296,6 +321,10 @@
       "writeFailed": "Claude Stats n'a pas pu écrire dans {{path}} pour enregistrer son serveur MCP ({{message}}). Vérifiez que le fichier est accessible en écriture (il appartient à votre configuration Claude Code) et n'est pas actuellement ouvert/verrouillé par un autre processus, puis rechargez cette fenêtre. En attendant, le tableau de bord fonctionne toujours, mais votre agent Claude ne pourra pas interroger les statistiques via MCP.",
       "generic": "Claude Stats n'a pas pu enregistrer son serveur MCP dans {{path}} : {{message}}. Le tableau de bord fonctionne toujours, mais votre agent Claude ne pourra pas interroger les statistiques via MCP tant que cela ne sera pas résolu. Rechargez cette fenêtre (Palette de commandes → « Developer: Reload Window ») pour réessayer."
     }
+  },
+  "loading": {
+    "title": "Chargement de vos statistiques…",
+    "subtitle": "Analyse de votre historique Claude Code. Cela peut prendre quelques secondes la première fois."
   },
   "welcome": {
     "noClaudeCode": {

@@ -300,6 +300,7 @@
     "generated": "Generated {{timestamp}} \u2022 Timezone: {{timezone}}"
   },
   "costPerTask": {
+    "summaryHint": "Full breakdown on the Spending tab",
     "title": "Cost per Successful Task",
     "headline": "per successful task",
     "na": "n/a",

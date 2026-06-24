@@ -300,6 +300,7 @@
     "generated": "Generado {{timestamp}} • Zona horaria: {{timezone}}"
   },
   "costPerTask": {
+    "summaryHint": "Desglose completo en la pestaña Spending",
     "title": "Coste por tarea exitosa",
     "headline": "por tarea exitosa",
     "na": "n/a",

@@ -35,6 +35,31 @@
         }
       ]
     },
+    "spending": {
+      "title": "Spending",
+      "sections": [
+        {
+          "heading": "Co pokazuje ta karta",
+          "body": "Na co idą Twoje pieniądze: koszt według modelu, najdroższe narzędzia i serwery MCP, najbardziej kosztowne sesje i prompty oraz to, ile naprawdę kosztuje każde udane zadanie."
+        },
+        {
+          "heading": "Koszt na udane zadanie",
+          "body": "Główna liczba to całkowity wydatek na wszystkie próby zadań podzielony przez liczbę udanych — czyli to, ile naprawdę płacisz za każde działające zadanie, wliczając koszt prób nieudanych. Rozkłada się to na średni koszt próby ÷ wskaźnik sukcesu: tańsze próby lub wyższy wskaźnik sukcesu obniżają tę wartość."
+        },
+        {
+          "heading": "Jak ustalane są wyniki",
+          "body": "Każde zadanie jest automatycznie klasyfikowane jako udane, nieudane, w toku lub nieobserwowalne na podstawie aktywności git i pewności sygnału. Możesz nadpisać każde zadanie przyciskami ✓ (sukces), ~ (częściowo) lub ✗ (porażka) albo ⌫, aby usunąć etykietę. Ręczne etykiety zawsze mają pierwszeństwo przed szacunkiem."
+        },
+        {
+          "heading": "Pokrycie i zaufanie do wyniku",
+          "body": "Wskaźnik jest obliczany tylko dla zadań „obserwowalnych\" — tych z wystarczającym sygnałem do oceny. Plakietka pokrycia pokazuje, ile to z wszystkich Twoich zadań. Gdy pokrycie spada poniżej 20%, pojawia się ostrzeżenie: liczba opiera się na małej próbce i należy ją traktować jako przybliżoną wskazówkę, a nie dokładną wartość."
+        },
+        {
+          "heading": "Tabela według modelu",
+          "body": "Koszt na udane zadanie, wskaźnik sukcesu i liczba obserwowalnych zadań w rozbiciu na modele, dzięki czemu widać, który model daje najbardziej niezawodny wynik za dolara."
+        }
+      ]
+    },
     "models": {
       "title": "Modele",
       "sections": [
@@ -296,6 +321,10 @@
       "writeFailed": "Claude Stats nie mógł zapisać do {{path}} aby zarejestrować serwer MCP ({{message}}). Sprawdź, czy plik jest zapisywalny (należy do Twojej konfiguracji Claude Code) i nie jest obecnie otwarty/zablokowany przez inny proces, a następnie przeładuj to okno. Do momentu naprawy panel nadal działa, ale Twój agent Claude nie będzie mógł pobierać statystyk przez MCP.",
       "generic": "Claude Stats nie mógł zarejestrować serwera MCP w {{path}}: {{message}}. Panel nadal działa, ale Twój agent Claude nie będzie mógł pobierać statystyk przez MCP dopóki nie zostanie to rozwiązane. Przeładuj to okno (Paleta poleceń → „Developer: Reload Window\") aby spróbować ponownie."
     }
+  },
+  "loading": {
+    "title": "Ładowanie statystyk…",
+    "subtitle": "Przetwarzanie historii Claude Code. Za pierwszym razem może to potrwać kilka sekund."
   },
   "welcome": {
     "noClaudeCode": {

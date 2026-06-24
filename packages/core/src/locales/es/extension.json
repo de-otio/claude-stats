@@ -35,6 +35,31 @@
         }
       ]
     },
+    "spending": {
+      "title": "Spending",
+      "sections": [
+        {
+          "heading": "Qué muestra esta pestaña",
+          "body": "A dónde va tu dinero: coste por modelo, las herramientas y servidores MCP más caros, tus sesiones y prompts más costosos, y lo que realmente cuesta cada tarea exitosa."
+        },
+        {
+          "heading": "Coste por tarea exitosa",
+          "body": "La cifra principal es el gasto total de todos los intentos de tarea dividido por los que tuvieron éxito, es decir, lo que realmente pagas por cada tarea que funciona, incluido el coste de los intentos fallidos. Se descompone como coste medio por intento ÷ tasa de éxito: intentos más baratos o una tasa de éxito más alta la reducen."
+        },
+        {
+          "heading": "Cómo se determinan los resultados",
+          "body": "Cada tarea se clasifica automáticamente como exitosa, fallida, en curso o no observable a partir de la actividad de git y la confianza de la señal. Puedes anular cualquier tarea con los botones ✓ (éxito), ~ (parcial) o ✗ (fallo), o ⌫ para borrar tu etiqueta. Las etiquetas manuales siempre tienen prioridad sobre la estimación."
+        },
+        {
+          "heading": "Cobertura y cuánto fiarse",
+          "body": "La tasa se calcula solo sobre las tareas «observables», las que tienen suficiente señal para juzgarlas. La insignia de cobertura indica cuántas de tus tareas totales son. Cuando la cobertura es inferior al 20 % aparece un aviso: la cifra se basa en una muestra pequeña y debe leerse como una guía aproximada, no como un dato exacto."
+        },
+        {
+          "heading": "Tabla por modelo",
+          "body": "Coste por tarea exitosa, tasa de éxito y número de tareas observables desglosados por modelo, para que veas qué modelo te da el resultado más fiable por dólar."
+        }
+      ]
+    },
     "models": {
       "title": "Modelos",
       "sections": [
@@ -296,6 +321,10 @@
       "writeFailed": "Claude Stats no pudo escribir en {{path}} para registrar su servidor MCP ({{message}}). Comprueba que el archivo tiene permisos de escritura (pertenece a tu configuración de Claude Code) y no está abierto/bloqueado por otro proceso, luego recarga esta ventana. Hasta que se arregle, el panel sigue funcionando, pero tu agente de Claude no podrá consultar estadísticas vía MCP.",
       "generic": "Claude Stats no pudo registrar su servidor MCP en {{path}}: {{message}}. El panel sigue funcionando, pero tu agente de Claude no podrá consultar estadísticas vía MCP hasta que se resuelva. Recarga esta ventana (Paleta de comandos → «Developer: Reload Window») para volver a intentarlo."
     }
+  },
+  "loading": {
+    "title": "Cargando tus estadísticas…",
+    "subtitle": "Procesando tu historial de Claude Code. La primera vez puede tardar unos segundos."
   },
   "welcome": {
     "noClaudeCode": {
