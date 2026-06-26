@@ -231,8 +231,32 @@ rollup.
    hour-set; backfill = all hours) so they cannot drift. Tests use synthetic
    `project_path` only — never the live DB.
 
-### Status
+### Decision (made) + staged build
 
-**Build deferred pending the period-axis decision.** The corrections (1–9) are
-ready to apply; the axis decision determines whether the build proceeds at all
-and what the parity oracle compares against.
+**Period axis: message-timestamp semantics adopted.** Period-filtered
+**message-level** reads (`getMessageTotals`, `getMessagesForEnergy`,
+`getMessagesForEfficiency`, `getMessagesForContext`, `getEnergyAggregates`) now
+mean "messages **sent** in the period" — filter on `m.timestamp`, not the
+session-first-timestamp subquery. Session-keyed reads (`getSessions` and the
+byDay/byProject/byHour/conversation/plan/spending summaries built from it) stay
+session-based — they answer a different question ("sessions started in period")
+and are already cheap. This makes the message reads consistent with the energy
+`byDay` chart (which already buckets by message timestamp).
+
+Staged to contain the silent-corruption risk the reviews demonstrated:
+
+- **Build 1 — semantics switch.** Replace the `m.session_id IN (SELECT … WHERE
+  s.first_timestamp …)` filter in the message-level reads with a direct
+  `m.timestamp >= ? [AND m.timestamp < ?]` (seeks `idx_messages_timestamp`;
+  O(period) for all bounded periods). Session-scoped filters
+  (project/repo/account) stay as a session-id subquery, ANDed. **Behaviour
+  change:** re-baseline the affected period-filtered test assertions —
+  distinguishing intended semantic changes from regressions, never editing
+  assertions just to go green. Little perf delta vs the current subquery seek;
+  its purpose is the semantics + setting up the rollup axis.
+- **Build 2 — the rollup.** `message_hourly` (migrateToV12, corrections 1–9) +
+  collector touched-hour maintenance + backfill. Read path: serve energy +
+  totals from the rollup **only for the unbounded "all" read** (since=0), where
+  hour-bucket boundaries are exact; bounded periods keep the Build-1 direct
+  seek (already fast, and avoids the partial-boundary-hour granularity issue).
+  Parity oracle compares rollup output to the Build-1 raw output on the full DB.
