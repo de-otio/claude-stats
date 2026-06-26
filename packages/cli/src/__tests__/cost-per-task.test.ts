@@ -139,6 +139,7 @@ function rec(o: Partial<TaskRecord> & { outcome: TaskOutcome; cost: number }): T
     dominantModel: 'claude-sonnet-4-6',
     labelled: false,
     confidence: 'low',
+    archetype: 'other',
     ...o,
   };
 }
@@ -204,6 +205,7 @@ describe('aggregate', () => {
     records.push({
       id: 'x', project: '/p', cost: 10, costByModel: { 'claude-opus-4-6': 10 },
       dominantModel: 'claude-opus-4-6', outcome: 'success', labelled: false, confidence: 'high',
+      archetype: 'other',
     });
     const r = aggregate(records, 'month', 0, 0, true);
 
@@ -247,7 +249,7 @@ describe('aggregate', () => {
         records.push({
           id: `${trial}-${i}`, project: '/p', cost, costByModel: cbm,
           dominantModel: dominantModel(cbm), outcome: outcomes[Math.floor(rng() * outcomes.length)]!,
-          labelled: false, confidence: 'low',
+          labelled: false, confidence: 'low', archetype: 'other',
         });
       }
       const r = aggregate(records, 'month', 0, 0, true);
@@ -563,5 +565,88 @@ describe('buildCostPerTaskReport (integration)', () => {
       }),
     ).resolves.toBeDefined();
     expect(data.costPerTask).toBeNull();
+  });
+});
+
+// ─── Regression (plan A1): per-task cost is not double-counted ───────────────
+// Locks the Phase-0 fix at the cost-per-task report layer: a session that the
+// recap splits into two clusters must charge each segment's cost exactly ONCE.
+// The old whole-session roll-up charged every contributing session's FULL cost
+// to BOTH items (2×). This complements recap/cost-attribution.test.ts (which
+// asserts the same invariant at the digest layer) so a regression in either
+// layer trips a test.
+describe('buildCostPerTaskReport — no per-task cost double-count (Phase-0 lock)', () => {
+  let store: Store;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dbPath = tmp('db');
+    store = new Store(dbPath);
+  });
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  // High-confidence git (pushed commit) → both clustered tasks are observable
+  // successes, so their cost lands in totalCostObservable where we assert on it.
+  function regDeps(): BuildDailyDigestDeps {
+    return {
+      getProjectGitActivity: vi.fn(() => git({ commitsToday: 1, pushed: true, linesAdded: 10 })),
+      getAuthorEmail: vi.fn(() => 'test@example.com'),
+      cache: noopCache(),
+      now: () => NOW_TS,
+      intlTz: () => 'UTC',
+      embeddingProvider: null,
+    };
+  }
+
+  // Local message factory: distinct timestamps + filePaths are load-bearing for
+  // the segmenter split (the shared makeMessage hardcodes both).
+  function regMessage(o: {
+    uuid: string; sessionId: string; timestamp: number; model: string; filePaths: string[]; prompt: string;
+  }): MessageRecord {
+    return {
+      uuid: o.uuid, sessionId: o.sessionId, timestamp: o.timestamp, claudeVersion: null, model: o.model,
+      stopReason: 'end_turn', inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0,
+      tools: ['Edit'], filePaths: o.filePaths, thinkingBlocks: 0, serviceTier: null, inferenceGeo: null,
+      ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0, promptText: o.prompt,
+    };
+  }
+
+  it('a session split across two clusters charges each segment cost once, not twice', async () => {
+    // One session, two messages 31 min apart on disjoint files / topics → the
+    // segmenter splits (gap 0.4 + path 0.25 = 0.65 ≥ 0.5) and the clusterer keeps
+    // two separate tasks (disjoint paths, no time overlap).
+    store.upsertSession(makeSession({ sessionId: 's1', projectPath: '/p/app', lastTimestamp: BASE_TS + 31 * 60_000 }));
+    store.upsertMessages([
+      regMessage({ uuid: 'a', sessionId: 's1', timestamp: BASE_TS, model: 'claude-sonnet-4-6', filePaths: ['/app/a.ts'], prompt: 'fix the database layer' }),
+      regMessage({ uuid: 'b', sessionId: 's1', timestamp: BASE_TS + 31 * 60_000, model: 'claude-opus-4-6', filePaths: ['/app/b.ts'], prompt: 'rewrite the documentation' }),
+    ]);
+
+    const costA = estimateCost('claude-sonnet-4-6', 100, 50, 0, 0).cost;
+    const costB = estimateCost('claude-opus-4-6', 100, 50, 0, 0).cost;
+
+    const r = await buildCostPerTaskReport(store, {
+      period: 'day', nowMs: NOW_TS, tz: 'UTC', correctionsClient: null, digestDeps: regDeps(),
+    });
+
+    // Two distinct tasks, both observable successes (high-confidence git).
+    expect(r.tasksTotal).toBe(2);
+    expect(r.observable).toBe(2);
+
+    // The invariant: total observable cost is each segment's cost summed ONCE.
+    // The old roll-up would have produced 2×(costA+costB).
+    expect(r.totalCostObservable).toBeCloseTo(costA + costB, 10);
+    expect(r.totalCostObservable).not.toBeCloseTo(2 * (costA + costB), 10);
+
+    // The exact per-model split also sums to the single-count total (no model is
+    // charged twice across the two clusters).
+    const exactSum = r.byModel.reduce((s, m) => s + m.costByModelExact, 0);
+    expect(exactSum).toBeCloseTo(costA + costB, 10);
+
+    // Efficiency block rides the report and is always attached.
+    expect(r.efficiency).toBeDefined();
+    expect(r.efficiency!.basis).toBe('completion_proxy');
   });
 });

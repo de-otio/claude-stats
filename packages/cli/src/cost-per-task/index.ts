@@ -46,6 +46,11 @@ import { buildTaskEvidence } from './evidence/gather.js';
 import { conversationalSignal } from './signals/conversational.js';
 import { truncationSignal, reworkSignal, toolErrorSignal, revertSignal } from './signals/mechanical.js';
 import { runJudge, type JudgeProvider } from './judge.js';
+import { classifyArchetype } from './efficiency/archetype.js';
+import { computeFrontier } from './efficiency/frontier.js';
+import { deriveLevers } from './efficiency/levers.js';
+import { buildEfficiencyReport } from './efficiency/index.js';
+import type { Archetype, ClassifiedTask, EfficiencyReport } from './efficiency/types.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -72,6 +77,12 @@ export interface TaskRecord {
   /** True when `outcome` came from an explicit user label, not a proxy. */
   labelled: boolean;
   confidence: Confidence;
+  /**
+   * Rules-based task archetype (efficiency frontier, value-per-cost Phase 1).
+   * Derived from the `DailyDigestItem` tool/path/duration fields where records
+   * are built — never carries prompt text, paths, or project names itself.
+   */
+  archetype: Archetype;
 }
 
 export interface ModelCostPerTask {
@@ -137,6 +148,15 @@ export interface CostPerTaskReport {
    * MCP and `serve` surfaces so no prompt text leaks there.
    */
   tasks?: readonly LabellableTask[];
+  /**
+   * Cost-efficiency frontier block (value-per-cost Phase 1). ALWAYS attached:
+   * an empty window or one where no archetype clears the sample floor yields a
+   * valid empty/abstained shape, never `undefined`. Every leaf is a number,
+   * a model-name string, or a fixed-enum value — no prompt text, paths, project
+   * names, or session ids (plan A4/A5), so it is safe on the read-only MCP and
+   * `serve` LAN surfaces.
+   */
+  efficiency?: EfficiencyReport;
 }
 
 /** Below this many observable tasks, a per-model rate is too noisy to report. */
@@ -500,6 +520,14 @@ export async function buildCostPerTaskReport(
         outcome,
         labelled,
         confidence: item.confidence,
+        // Archetype is computed at THIS layer, where the DailyDigestItem fields
+        // (toolHistogram/filePathsTouched/duration) are in scope; the efficiency
+        // module never imports DailyDigestItem (plan A5).
+        archetype: classifyArchetype({
+          toolHistogram: item.toolHistogram,
+          filePathsTouched: item.filePathsTouched,
+          duration: item.duration,
+        }),
       });
       if (opts.includeTasks) {
         tasks.push({
@@ -639,6 +667,19 @@ export function aggregate(
   const costPerSuccessfulTask = successCount > 0 ? totalCostObservable / successCount : null;
   const coverage = tasksTotal > 0 ? observable / tasksTotal : 0;
 
+  // Efficiency frontier (value-per-cost Phase 1). Built from a privacy-clean
+  // projection of the records (cost/archetype/outcome/dominantModel only) via
+  // the injected pure functions. Always attached — an empty/abstained shape is
+  // a valid report. `aggregate` stays pure: classifyArchetype already ran where
+  // the records were built; computeFrontier/deriveLevers are pure.
+  const classifiedTasks: readonly ClassifiedTask[] = records.map((r) => ({
+    cost: r.cost,
+    archetype: r.archetype,
+    outcome: r.outcome,
+    dominantModel: r.dominantModel,
+  }));
+  const efficiency = buildEfficiencyReport(classifiedTasks, { computeFrontier, deriveLevers });
+
   return {
     period,
     windowStart,
@@ -656,6 +697,7 @@ export function aggregate(
     costPerSuccessfulTask,
     labelledCount,
     byModel: byModel ? aggregateByModel(observableRecords) : [],
+    efficiency,
   };
 }
 
