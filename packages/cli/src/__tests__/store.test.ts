@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Store, validateTag } from "../store/index.js";
-import type { SessionRecord, FileCheckpoint, ParseError } from "@claude-stats/core/types";
+import type { SessionRecord, MessageRecord, FileCheckpoint, ParseError } from "@claude-stats/core/types";
 import os from "os";
 import path from "path";
 import fs from "fs";
+import { DatabaseSync } from "node:sqlite";
 
 function tmpDb(): string {
   return path.join(os.tmpdir(), `cs-store-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
@@ -1307,5 +1308,177 @@ describe("Store — message period filter (subquery seek parity)", () => {
       // orphan never appears regardless of axis
       expect(rows.every(r => r.input_tokens !== 999)).toBe(true);
     });
+  });
+});
+
+// ─── Phase 1: persisted hourly rollup (message_hourly) parity ────────────────
+//
+// Synthetic data only (/Users/alice paths). Asserts that summing message_hourly
+// reproduces the raw per-message sums under the EXISTS-only inclusion predicate
+// (orphan-drop; null-model INCLUDED; null-ts INCLUDED under hour_utc=-1), and
+// that recomputeMessageHourly is partition-correct and idempotent.
+describe("Store — message_hourly rollup parity (Phase 1)", () => {
+  let store: Store;
+  let dbPath: string;
+
+  const HOUR = 3_600_000;
+
+  function mkMsg(o: Partial<MessageRecord> & { uuid: string; sessionId: string }): MessageRecord {
+    return {
+      timestamp: HOUR, // default: hour bucket 1
+      claudeVersion: "2.1.70",
+      model: "claude-opus-4-6",
+      stopReason: "end_turn",
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      tools: [],
+      filePaths: [],
+      thinkingBlocks: 0,
+      serviceTier: null,
+      inferenceGeo: null,
+      ephemeral5mCacheTokens: 0,
+      ephemeral1hCacheTokens: 0,
+      promptText: null,
+      ...o,
+    };
+  }
+
+  // Fixture covering every correction: multiple models (incl. null), multiple
+  // projects, varied + null inference_geo, thinking + non-thinking, a null-ts
+  // message, and an orphan (session_id absent from `sessions`).
+  const messages: MessageRecord[] = [
+    // session sA (/Users/alice/a), bucket 1, opus, geo "eu", thinking
+    mkMsg({ uuid: "m1", sessionId: "sA", inputTokens: 100, outputTokens: 10, cacheReadTokens: 5, cacheCreationTokens: 1, inferenceGeo: "eu", thinkingBlocks: 2, timestamp: HOUR + 1 }),
+    // session sA, bucket 1, opus, geo "eu", NON-thinking
+    mkMsg({ uuid: "m2", sessionId: "sA", inputTokens: 200, outputTokens: 20, cacheReadTokens: 7, cacheCreationTokens: 2, inferenceGeo: "eu", thinkingBlocks: 0, timestamp: HOUR + 2 }),
+    // session sA, bucket 2, sonnet, geo NULL, thinking
+    mkMsg({ uuid: "m3", sessionId: "sA", model: "claude-sonnet-4-6", inputTokens: 300, outputTokens: 30, cacheReadTokens: 9, cacheCreationTokens: 3, inferenceGeo: null, thinkingBlocks: 1, timestamp: 2 * HOUR + 1 }),
+    // session sB (/Users/alice/b), bucket 1, NULL model, geo "us", non-thinking
+    mkMsg({ uuid: "m4", sessionId: "sB", model: null, inputTokens: 400, outputTokens: 40, cacheReadTokens: 11, cacheCreationTokens: 4, inferenceGeo: "us", thinkingBlocks: 0, timestamp: HOUR + 3 }),
+    // session sB, NULL timestamp → hour_utc -1 bucket, opus, geo null
+    mkMsg({ uuid: "m5", sessionId: "sB", inputTokens: 500, outputTokens: 50, cacheReadTokens: 13, cacheCreationTokens: 5, inferenceGeo: null, thinkingBlocks: 0, timestamp: null }),
+    // orphan: session "sZ" never inserted into `sessions` → must be excluded
+    mkMsg({ uuid: "m6", sessionId: "sZ", inputTokens: 999, outputTokens: 999, cacheReadTokens: 999, cacheCreationTokens: 999, inferenceGeo: "eu", thinkingBlocks: 3, timestamp: HOUR + 4 }),
+  ];
+
+  type HourlyRow = {
+    hour_utc: number; project_path: string; model: string; inference_geo: string;
+    input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_creation_tokens: number;
+    th_input_tokens: number; th_output_tokens: number; th_cache_read_tokens: number; th_cache_creation_tokens: number;
+    msg_count: number; th_msg_count: number; min_ts: number | null;
+  };
+
+  // Read message_hourly via an independent connection to the same file.
+  function readHourly(): HourlyRow[] {
+    const db = new DatabaseSync(dbPath);
+    try {
+      return db.prepare("SELECT * FROM message_hourly ORDER BY hour_utc, project_path, model, inference_geo").all() as HourlyRow[];
+    } finally {
+      db.close();
+    }
+  }
+
+  // Raw per-message sum over EXISTS-included messages (orphan excluded), with
+  // optional predicate (e.g. model present, thinking only).
+  function rawSum(field: keyof MessageRecord, pred: (m: MessageRecord) => boolean = () => true): number {
+    return messages
+      .filter(m => m.sessionId !== "sZ") // EXISTS: sZ has no session row
+      .filter(pred)
+      .reduce((acc, m) => acc + (m[field] as number), 0);
+  }
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+    store.upsertSession(makeSession({ sessionId: "sA", projectPath: "/Users/alice/a", firstTimestamp: HOUR }));
+    store.upsertSession(makeSession({ sessionId: "sB", projectPath: "/Users/alice/b", firstTimestamp: HOUR }));
+    // NOTE: "sZ" deliberately NOT inserted → m6 is an orphan.
+    store.upsertMessages(messages);
+    // Rollup was backfilled at construction (empty); recompute now that messages exist.
+    store.recomputeMessageHourly();
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  it("(a) Σ all rollup tokens == raw SUM over EXISTS-included messages (orphan excluded, null-model & null-ts INCLUDED)", () => {
+    const rows = readHourly();
+    const sum = (k: keyof HourlyRow) => rows.reduce((a, r) => a + (r[k] as number), 0);
+    expect(sum("input_tokens")).toBe(rawSum("inputTokens"));          // 100+200+300+400+500 = 1500
+    expect(sum("output_tokens")).toBe(rawSum("outputTokens"));        // 10+20+30+40+50 = 150
+    expect(sum("cache_read_tokens")).toBe(rawSum("cacheReadTokens")); // 5+7+9+11+13 = 45
+    expect(sum("cache_creation_tokens")).toBe(rawSum("cacheCreationTokens")); // 1+2+3+4+5 = 15
+    // orphan never contributes
+    expect(rows.every(r => r.input_tokens !== 999)).toBe(true);
+    // null-ts message landed in the -1 sentinel bucket
+    expect(rows.some(r => r.hour_utc === -1 && r.input_tokens === 500)).toBe(true);
+  });
+
+  it("(b) Σ where model != '' == raw SUM over model IS NOT NULL (energy-read semantics)", () => {
+    const rows = readHourly().filter(r => r.model !== "");
+    const sumIn = rows.reduce((a, r) => a + r.input_tokens, 0);
+    expect(sumIn).toBe(rawSum("inputTokens", m => m.model !== null)); // excludes m4(null model)=400 → 1100
+    // null-model row is stored under model=''
+    const nullModelRow = readHourly().find(r => r.model === "");
+    expect(nullModelRow).toBeDefined();
+    expect(nullModelRow!.input_tokens).toBe(400);
+  });
+
+  it("(c) th_* sums == raw SUM where thinking_blocks > 0", () => {
+    const rows = readHourly();
+    const sum = (k: keyof HourlyRow) => rows.reduce((a, r) => a + (r[k] as number), 0);
+    const thinking = (m: MessageRecord) => m.thinkingBlocks > 0;
+    expect(sum("th_input_tokens")).toBe(rawSum("inputTokens", thinking));   // m1+m3 = 100+300 = 400
+    expect(sum("th_output_tokens")).toBe(rawSum("outputTokens", thinking)); // 10+30 = 40
+    expect(sum("th_cache_read_tokens")).toBe(rawSum("cacheReadTokens", thinking)); // 5+9 = 14
+    expect(sum("th_cache_creation_tokens")).toBe(rawSum("cacheCreationTokens", thinking)); // 1+3 = 4
+    expect(sum("th_msg_count")).toBe(messages.filter(m => m.sessionId !== "sZ" && m.thinkingBlocks > 0).length); // 2
+  });
+
+  it("(d) Σ msg_count == COUNT of EXISTS-included messages", () => {
+    const rows = readHourly();
+    const total = rows.reduce((a, r) => a + r.msg_count, 0);
+    expect(total).toBe(messages.filter(m => m.sessionId !== "sZ").length); // 5 (orphan m6 excluded)
+  });
+
+  it("groups distinct (hour, project, model, geo) and resolves project_path / sentinels", () => {
+    const rows = readHourly();
+    // m1+m2 share (hour 1, /Users/alice/a, opus, eu) → one merged row
+    const merged = rows.find(r => r.hour_utc === 1 && r.project_path === "/Users/alice/a" && r.model === "claude-opus-4-6" && r.inference_geo === "eu");
+    expect(merged).toBeDefined();
+    expect(merged!.msg_count).toBe(2);
+    expect(merged!.input_tokens).toBe(300); // 100 + 200
+    expect(merged!.min_ts).toBe(HOUR + 1);  // MIN(timestamp) in the group
+    // null geo stored as '' sentinel (m3)
+    expect(rows.some(r => r.inference_geo === "" && r.model === "claude-sonnet-4-6")).toBe(true);
+  });
+
+  it("recomputeMessageHourly([h]) recomputes only that bucket, leaving others untouched", () => {
+    const before = readHourly();
+    // Mutate the messages backing bucket 2 (m3), then recompute ONLY bucket 1.
+    store.upsertMessages([mkMsg({ uuid: "m3", sessionId: "sA", model: "claude-sonnet-4-6", inputTokens: 9999, outputTokens: 30, cacheReadTokens: 9, cacheCreationTokens: 3, inferenceGeo: null, thinkingBlocks: 1, timestamp: 2 * HOUR + 1 })],);
+    store.recomputeMessageHourly([1]); // touch bucket 1 only
+    const after = readHourly();
+    // bucket 2 row still reflects the OLD value (untouched)
+    const b2 = after.find(r => r.hour_utc === 2)!;
+    const b2Before = before.find(r => r.hour_utc === 2)!;
+    expect(b2.input_tokens).toBe(b2Before.input_tokens); // 300, not 9999
+    // bucket 1 rows unchanged in value (the mutation was in bucket 2)
+    const b1After = after.filter(r => r.hour_utc === 1).reduce((a, r) => a + r.input_tokens, 0);
+    const b1Before = before.filter(r => r.hour_utc === 1).reduce((a, r) => a + r.input_tokens, 0);
+    expect(b1After).toBe(b1Before);
+    // empty hours array is a no-op (no throw)
+    expect(() => store.recomputeMessageHourly([])).not.toThrow();
+  });
+
+  it("a second full backfill is idempotent (byte-identical table)", () => {
+    const first = readHourly();
+    store.recomputeMessageHourly(); // full rebuild again
+    const second = readHourly();
+    expect(second).toEqual(first);
   });
 });

@@ -20,7 +20,7 @@ import type {
 } from "@claude-stats/core/types";
 import { estimateCost } from "@claude-stats/core/pricing";
 
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 export class Store {
   private db: DatabaseSync;
@@ -64,6 +64,7 @@ export class Store {
     if (current < 9) this.migrateToV9();
     if (current < 10) this.migrateToV10();
     if (current < 11) this.migrateToV11();
+    if (current < 12) this.migrateToV12();
 
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
@@ -274,6 +275,112 @@ export class Store {
     // — non-zero Bash exit, failed Edit). Additive; old rows default to 0. Feeds
     // the Phase-B outcome signal; re-collection backfills it from the JSONL.
     addColumn("messages", "tool_error_count", "INTEGER NOT NULL DEFAULT 0");
+  }
+
+  private migrateToV12(): void {
+    // Persisted hourly rollup of per-message token sums (issue #7). Serves the
+    // additive energy/totals reads from O(hours) pre-aggregated rows instead of
+    // re-scanning every message. See doc/analysis/startup-performance/05-rollup-design.md.
+    //
+    // INCLUSION PREDICATE: EXISTS-only — a message contributes iff its session
+    // exists in `sessions` (orphan-drop), with NO is_interactive / source_deleted
+    // / is_subagent / model filter. This reproduces EXACTLY the raw reads in
+    // getMessageTotals / getEnergyAggregates (which filter only via the EXISTS
+    // membership subquery). NULL-model rows are stored under model='' so the
+    // totals read (counts null-model) sees them; the energy read later filters
+    // model!='' to drop them. NULL inference_geo is stored as '' and NULL/absent
+    // timestamps land in the hour_utc=-1 sentinel bucket.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS message_hourly (
+        hour_utc      INTEGER NOT NULL,
+        project_path  TEXT NOT NULL DEFAULT '',
+        model         TEXT NOT NULL DEFAULT '',
+        inference_geo TEXT NOT NULL DEFAULT '',
+        input_tokens          INTEGER NOT NULL,
+        output_tokens         INTEGER NOT NULL,
+        cache_read_tokens     INTEGER NOT NULL,
+        cache_creation_tokens INTEGER NOT NULL,
+        th_input_tokens          INTEGER NOT NULL,
+        th_output_tokens         INTEGER NOT NULL,
+        th_cache_read_tokens     INTEGER NOT NULL,
+        th_cache_creation_tokens INTEGER NOT NULL,
+        msg_count    INTEGER NOT NULL,
+        th_msg_count INTEGER NOT NULL,
+        min_ts       INTEGER,
+        PRIMARY KEY (hour_utc, project_path, model, inference_geo)
+      );
+      CREATE INDEX IF NOT EXISTS idx_message_hourly_hour ON message_hourly (hour_utc);
+    `);
+    // Idempotent one-shot backfill. The leading DELETE inside recomputeMessageHourly
+    // (full-rebuild branch) plus IF NOT EXISTS above make a crash-retry safe —
+    // a re-run rebuilds from current `messages` rather than double-counting.
+    this.recomputeMessageHourly();
+  }
+
+  // ─── Rollup recompute (shared: backfill + incremental) ──────────────────────
+
+  /**
+   * Recompute message_hourly from the current `messages` table. The SINGLE
+   * source of truth for both the migrateToV12 backfill and (Phase 2) the
+   * per-collect incremental maintenance, so the two cannot drift.
+   *
+   * - `hours` omitted → full rebuild: DELETE all rows, INSERT over every hour.
+   * - `hours` given → partition recompute: DELETE only those buckets, INSERT
+   *   only rows whose hour_utc is in the set. Hours not listed are untouched.
+   *
+   * The INSERT SELECT inclusion predicate is EXISTS-only (orphan-drop), matching
+   * the raw reads exactly. Hour list is bound via parameterized placeholders
+   * (one `?` each, like getStopReasonCounts) — never string-interpolated. Runs
+   * in a transaction so DELETE+INSERT are atomic.
+   */
+  recomputeMessageHourly(hours?: number[]): void {
+    if (hours && hours.length === 0) return;
+
+    // hour_utc = CAST(m.timestamp/3600000 AS INTEGER); NULL ts -> -1 sentinel.
+    const hourExpr = "COALESCE(CAST(m.timestamp / 3600000 AS INTEGER), -1)";
+    const placeholders = hours ? hours.map(() => "?").join(",") : "";
+
+    const deleteSql = hours
+      ? `DELETE FROM message_hourly WHERE hour_utc IN (${placeholders})`
+      : `DELETE FROM message_hourly`;
+
+    const hourFilter = hours ? ` AND ${hourExpr} IN (${placeholders})` : "";
+    const insertSql = `
+      INSERT INTO message_hourly
+      SELECT
+        ${hourExpr} AS hour_utc,
+        COALESCE((SELECT project_path FROM sessions s2 WHERE s2.session_id = m.session_id), '') AS project_path,
+        COALESCE(m.model, '') AS model,
+        COALESCE(m.inference_geo, '') AS inference_geo,
+        SUM(m.input_tokens),
+        SUM(m.output_tokens),
+        SUM(m.cache_read_tokens),
+        SUM(m.cache_creation_tokens),
+        SUM(CASE WHEN m.thinking_blocks > 0 THEN m.input_tokens ELSE 0 END),
+        SUM(CASE WHEN m.thinking_blocks > 0 THEN m.output_tokens ELSE 0 END),
+        SUM(CASE WHEN m.thinking_blocks > 0 THEN m.cache_read_tokens ELSE 0 END),
+        SUM(CASE WHEN m.thinking_blocks > 0 THEN m.cache_creation_tokens ELSE 0 END),
+        COUNT(*),
+        SUM(CASE WHEN m.thinking_blocks > 0 THEN 1 ELSE 0 END),
+        MIN(m.timestamp)
+      FROM messages m
+      WHERE EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = m.session_id)${hourFilter}
+      GROUP BY hour_utc, project_path, model, inference_geo
+    `;
+
+    this.transaction(() => {
+      if (hours) {
+        const del = this.db.prepare(deleteSql);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (del.run as (...args: any[]) => unknown)(...hours);
+        const ins = this.db.prepare(insertSql);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (ins.run as (...args: any[]) => unknown)(...hours);
+      } else {
+        this.db.exec(deleteSql);
+        this.db.prepare(insertSql).run();
+      }
+    });
   }
 
   // ─── Transaction wrapper ────────────────────────────────────────────────────
