@@ -1083,6 +1083,166 @@ export class Store {
     return (stmt.all as (...args: any[]) => unknown[])(...params) as ContextMessageRow[];
   }
 
+  /**
+   * Build the message-level seek WHERE clause + params shared by every energy
+   * aggregation query. Uses the same `m.session_id IN (SELECT session_id FROM
+   * sessions WHERE <session filters>)` membership subquery as
+   * getMessagesForEnergy, so each aggregate is O(period), not O(all messages).
+   */
+  private energyAggregateWhere(filters: {
+    projectPath?: string;
+    repoUrl?: string;
+    accountUuid?: string;
+    since?: number;
+  }): { where: string; params: unknown[] } {
+    const sessionConditions: string[] = [];
+    const params: unknown[] = [];
+    if (filters.projectPath) { sessionConditions.push("project_path = ?"); params.push(filters.projectPath); }
+    if (filters.repoUrl) { sessionConditions.push("repo_url = ?"); params.push(filters.repoUrl); }
+    if (filters.accountUuid) { sessionConditions.push("account_uuid = ?"); params.push(filters.accountUuid); }
+    if (filters.since !== undefined) { sessionConditions.push("first_timestamp >= ?"); params.push(filters.since); }
+    const sessionWhere = sessionConditions.length ? `WHERE ${sessionConditions.join(" AND ")}` : "";
+    const where = `WHERE m.model IS NOT NULL AND m.session_id IN (SELECT session_id FROM sessions ${sessionWhere})`;
+    return { where, params };
+  }
+
+  /**
+   * In-DB aggregations for the energy dashboard section. Replaces the
+   * per-message loop in buildEnergySection with GROUP BY rollups that are
+   * exact (to display-rounding precision) because estimateEnergy is linear in
+   * the four token counts at fixed per-model-class rates and a fixed
+   * section-level {region, gridIntensity}.
+   *
+   * All sub-queries share the same session-id membership seek (energyAggregateWhere)
+   * so the whole section is O(period).
+   */
+  getEnergyAggregates(filters: {
+    projectPath?: string;
+    repoUrl?: string;
+    accountUuid?: string;
+    since?: number;
+  } = {}): EnergyAggregates {
+    const { where, params } = this.energyAggregateWhere(filters);
+    const run = <T>(sql: string, ...extra: unknown[]): T[] => {
+      const stmt = this.db.prepare(sql);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (stmt.all as (...args: any[]) => unknown[])(...params, ...extra) as T[];
+    };
+    const runOne = <T>(sql: string): T | undefined => {
+      const stmt = this.db.prepare(sql);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (stmt.get as (...args: any[]) => unknown)(...params) as T | undefined;
+    };
+
+    // 1. GROUP BY model — per-model token sums + msg count. min_ts replicates
+    //    the legacy first-seen Map-insertion order used as the sort tiebreak.
+    const byModel = run<EnergyModelAgg>(`
+      SELECT m.model AS model,
+             SUM(m.input_tokens) AS input_tokens,
+             SUM(m.output_tokens) AS output_tokens,
+             SUM(m.cache_read_tokens) AS cache_read_tokens,
+             SUM(m.cache_creation_tokens) AS cache_creation_tokens,
+             COUNT(*) AS msgs,
+             MIN(m.timestamp) AS min_ts
+      FROM messages m
+      ${where}
+      GROUP BY m.model
+    `);
+
+    // 2. GROUP BY project_path, model — project_path resolved via the session
+    //    (correlated subquery, like getMessagesForEnergy's project_path).
+    //    model is needed for the per-class rate; project_path min_ts replicates
+    //    the legacy first-seen order.
+    const byProjectModel = run<EnergyProjectModelAgg>(`
+      SELECT (SELECT project_path FROM sessions WHERE session_id = m.session_id) AS project_path,
+             m.model AS model,
+             SUM(m.input_tokens) AS input_tokens,
+             SUM(m.output_tokens) AS output_tokens,
+             SUM(m.cache_read_tokens) AS cache_read_tokens,
+             SUM(m.cache_creation_tokens) AS cache_creation_tokens,
+             MIN(m.timestamp) AS min_ts
+      FROM messages m
+      ${where}
+      GROUP BY project_path, m.model
+    `);
+
+    // 3. GROUP BY (UTC hour bucket, model) — re-bucketed to local day in JS.
+    //    NULL timestamps land in their own bucket (hour_bucket IS NULL).
+    const byHourModel = run<EnergyHourModelAgg>(`
+      SELECT CAST(m.timestamp / 3600000 AS INTEGER) AS hour_bucket,
+             m.model AS model,
+             SUM(m.input_tokens) AS input_tokens,
+             SUM(m.output_tokens) AS output_tokens,
+             SUM(m.cache_read_tokens) AS cache_read_tokens,
+             SUM(m.cache_creation_tokens) AS cache_creation_tokens
+      FROM messages m
+      ${where}
+      GROUP BY hour_bucket, m.model
+    `);
+
+    // 4. GROUP BY inference_geo — histogram for coverage + region detection.
+    const byGeo = run<EnergyGeoAgg>(`
+      SELECT m.inference_geo AS inference_geo, COUNT(*) AS msgs
+      FROM messages m
+      ${where}
+      GROUP BY m.inference_geo
+    `);
+
+    // 5. detectedRegion source: distinct non-null geos with their earliest
+    //    in-period timestamp, ASC. The caller maps each to a region and takes
+    //    the first MAPPABLE one — matching aggregateEnergy's
+    //    estimates.find(e => e.detectedRegion) over ORDER BY timestamp ASC,
+    //    which skips messages whose geo does not map to a region.
+    const geoByEarliest = run<{ inference_geo: string; min_ts: number }>(`
+      SELECT m.inference_geo AS inference_geo, MIN(m.timestamp) AS min_ts
+      FROM messages m
+      ${where} AND m.inference_geo IS NOT NULL AND m.timestamp IS NOT NULL
+      GROUP BY m.inference_geo
+      ORDER BY min_ts ASC
+    `);
+
+    // 6a. thinkingImpact: distinct sessions with any thinking block.
+    const thinkingSessionsRow = runOne<{ c: number }>(`
+      SELECT COUNT(DISTINCT m.session_id) AS c
+      FROM messages m
+      ${where} AND m.thinking_blocks > 0
+    `);
+
+    // 6b. thinkingImpact energy: per-model token sums over thinking messages.
+    const thinkingByModel = run<EnergyModelAgg>(`
+      SELECT m.model AS model,
+             SUM(m.input_tokens) AS input_tokens,
+             SUM(m.output_tokens) AS output_tokens,
+             SUM(m.cache_read_tokens) AS cache_read_tokens,
+             SUM(m.cache_creation_tokens) AS cache_creation_tokens,
+             COUNT(*) AS msgs
+      FROM messages m
+      ${where} AND m.thinking_blocks > 0
+      GROUP BY m.model
+    `);
+
+    // Period bounds + total message count (for empty-period detection and the
+    // "all time" earliest-timestamp fallback). minTimestamp ignores NULLs,
+    // matching the legacy `m.timestamp != null` guard.
+    const boundsRow = runOne<{ total: number; min_ts: number | null }>(`
+      SELECT COUNT(*) AS total, MIN(m.timestamp) AS min_ts
+      FROM messages m
+      ${where}
+    `);
+
+    return {
+      byModel,
+      byProjectModel,
+      byHourModel,
+      byGeo,
+      geoByEarliest,
+      sessionsWithThinking: thinkingSessionsRow?.c ?? 0,
+      thinkingByModel,
+      totalMessages: boundsRow?.total ?? 0,
+      minTimestamp: boundsRow?.min_ts ?? null,
+    };
+  }
+
   getMessagesForEnergy(filters: {
     projectPath?: string;
     repoUrl?: string;
@@ -1452,6 +1612,61 @@ export interface EnergyMessageRow {
   thinking_blocks: number;
   inference_geo: string | null;
   project_path: string;
+}
+
+/** Per-model token sums + message count (GROUP BY model). */
+export interface EnergyModelAgg {
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  msgs: number;
+  /** MIN(timestamp) across the group (NULLs ignored); first-seen tiebreak. */
+  min_ts?: number | null;
+}
+
+/** Per-(project, model) token sums (GROUP BY project_path, model). */
+export interface EnergyProjectModelAgg {
+  project_path: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  /** MIN(timestamp) across the group (NULLs ignored); first-seen tiebreak. */
+  min_ts?: number | null;
+}
+
+/** Per-(UTC hour bucket, model) token sums (GROUP BY timestamp/3600000, model). */
+export interface EnergyHourModelAgg {
+  hour_bucket: number | null;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+}
+
+/** Per-inference-geo message count (GROUP BY inference_geo). */
+export interface EnergyGeoAgg {
+  inference_geo: string | null;
+  msgs: number;
+}
+
+/** Pre-grouped aggregates feeding buildEnergySection (replaces the per-message loop). */
+export interface EnergyAggregates {
+  byModel: EnergyModelAgg[];
+  byProjectModel: EnergyProjectModelAgg[];
+  byHourModel: EnergyHourModelAgg[];
+  byGeo: EnergyGeoAgg[];
+  /** Distinct non-null geos with their earliest in-period timestamp, ASC by timestamp. */
+  geoByEarliest: Array<{ inference_geo: string; min_ts: number }>;
+  sessionsWithThinking: number;
+  thinkingByModel: EnergyModelAgg[];
+  totalMessages: number;
+  /** MIN(timestamp) over in-period messages, NULLs ignored (for "all time" period start). */
+  minTimestamp: number | null;
 }
 
 export interface StatusInfo {
