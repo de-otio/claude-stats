@@ -1815,46 +1815,75 @@ function buildContextAnalysis(
 
 // ── Energy section builder ────────────────────────────────────────────────────
 
-function buildEnergySection(
+/**
+ * In-DB-aggregated energy section. Output-preserving refactor of the former
+ * per-message estimateEnergy + Intl date-format loop: replaces it with GROUP BY
+ * rollups (Store.getEnergyAggregates), then applies the SAME
+ * estimateEnergy/aggregateEnergy arithmetic over the grouped token sums.
+ * (Parity vs. the per-message implementation is locked by the reference-output
+ * test in __tests__/energy.test.ts.)
+ *
+ * Safe because estimateEnergy is linear in the four token counts at fixed
+ * per-model-class rates and a fixed section-level {region, gridIntensity}
+ * (per-message inference_geo does NOT override the section config — see the
+ * `!config.gridIntensity` guards in core/energy.ts), so SUM(tokens) GROUP BY
+ * model → estimate equals the per-message sum to display-rounding precision.
+ */
+export function buildEnergySection(
   store: Store,
   filters: { projectPath?: string; repoUrl?: string; accountUuid?: string; since?: number; timezone: string },
 ): DashboardEnergy | null {
-  const messages = store.getMessagesForEnergy({
+  const agg = store.getEnergyAggregates({
     projectPath: filters.projectPath,
     repoUrl: filters.repoUrl,
     accountUuid: filters.accountUuid,
     since: filters.since,
   });
 
-  if (messages.length === 0) return null;
+  if (agg.totalMessages === 0) return null;
 
   let effectiveSince = filters.since && filters.since > 0 ? filters.since : Date.now();
   if (!(filters.since && filters.since > 0)) {
-    for (const m of messages) {
-      if (m.timestamp != null && m.timestamp < effectiveSince) effectiveSince = m.timestamp;
-    }
+    // Legacy: min over non-null message timestamps, floored at Date.now().
+    if (agg.minTimestamp != null && agg.minTimestamp < effectiveSince) effectiveSince = agg.minTimestamp;
   }
   const daysInPeriod = Math.max(1, (Date.now() - effectiveSince) / (24 * 60 * 60 * 1000));
 
-  // Determine grid region: prefer most common detected inferenceGeo, fall back to locale
+  // ── Region detection (must run first: sets gridIntensity used by all sums) ──
+  // geoCount counts per non-null geo. Build it in first-seen (earliest-
+  // timestamp) order — the same insertion order the legacy per-message loop
+  // produced — so Object.entries iteration (used for dominantGeo's tiebreak)
+  // matches the legacy exactly. Counts come from the byGeo histogram.
+  const byGeoCounts = new Map<string, number>();
+  for (const g of agg.byGeo) {
+    if (g.inference_geo) byGeoCounts.set(g.inference_geo, g.msgs);
+  }
   const geoCount: Record<string, number> = {};
   let geoMessages = 0;
-  for (const m of messages) {
-    if (m.inference_geo) {
-      geoCount[m.inference_geo] = (geoCount[m.inference_geo] ?? 0) + 1;
-      geoMessages++;
+  for (const g of agg.geoByEarliest) {
+    if (geoCount[g.inference_geo] !== undefined) continue;
+    const cnt = byGeoCounts.get(g.inference_geo) ?? 0;
+    geoCount[g.inference_geo] = cnt;
+    geoMessages += cnt;
+  }
+  // Geos appearing only on null-timestamp messages aren't in geoByEarliest;
+  // append them so coverage/counts match the legacy (which counts all geos).
+  for (const [geo, cnt] of byGeoCounts) {
+    if (geoCount[geo] === undefined) {
+      geoCount[geo] = cnt;
+      geoMessages += cnt;
     }
   }
-  const coveragePct = messages.length > 0 ? (geoMessages / messages.length) * 100 : 0;
+  const coveragePct = agg.totalMessages > 0 ? (geoMessages / agg.totalMessages) * 100 : 0;
 
-  // Find dominant inferenceGeo for region detection
+  // Dominant geo: first geo with a strictly-greater count over Object.entries
+  // (first-seen) order — identical to the legacy loop.
   let dominantGeo: string | null = null;
   let maxCount = 0;
   for (const [geo, cnt] of Object.entries(geoCount)) {
     if (cnt > maxCount) { maxCount = cnt; dominantGeo = geo; }
   }
 
-  // Determine user locale-based region as fallback
   const localeRegion = localeToRegion(
     new Intl.DateTimeFormat().resolvedOptions().locale ?? "en-US",
   );
@@ -1875,111 +1904,120 @@ function buildEnergySection(
   const regionInfo = REGIONS[regionKey];
   const gridIntensity = regionInfo?.gridIntensity ?? 436;
 
-  // Per-day and per-model accumulators
+  // detectedRegion for equivalents = region of the earliest in-period message
+  // with a non-null MAPPABLE inference_geo (matches aggregateEnergy's
+  // estimates.find(e => e.detectedRegion) over ORDER BY timestamp ASC, which
+  // skips messages whose geo does not map to a region). geoByEarliest is sorted
+  // by earliest timestamp, so the first mappable geo is the winner.
+  let earliestMappableGeo: string | null = null;
+  let detectedRegion: string | null = null;
+  for (const g of agg.geoByEarliest) {
+    const region = estimateEnergy({
+      model: "claude-sonnet",
+      inputTokens: 0, outputTokens: 0,
+      cacheCreationTokens: 0, cacheReadTokens: 0,
+      ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0,
+      inferenceGeo: g.inference_geo,
+    }).detectedRegion;
+    if (region) { earliestMappableGeo = g.inference_geo; detectedRegion = region; break; }
+  }
+
+  // Estimate energy for a summed-token group using the section config.
+  const estimateGroup = (g: { model: string; input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_creation_tokens: number }) =>
+    estimateEnergy({
+      model: g.model,
+      inputTokens: g.input_tokens,
+      outputTokens: g.output_tokens,
+      cacheCreationTokens: g.cache_creation_tokens,
+      cacheReadTokens: g.cache_read_tokens,
+      ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0,
+      // inferenceGeo intentionally omitted: section passes {region, gridIntensity}
+      // to every estimate, and per-message geo never overrode it (guards above).
+    }, { region: regionKey, gridIntensity });
+
+  // ── Totals via per-model estimates → aggregateEnergy (exact reuse of math) ──
+  // aggregateEnergy picks detectedRegion via estimates.find(e => e.detectedRegion);
+  // none of these per-model estimates carry a geo, so we inject the earliest
+  // mappable geo's region by passing it through a leading zero-token estimate,
+  // reproducing the legacy aggregate's detectedRegion → equivalents region.
+  const modelEstimates = agg.byModel.map(estimateGroup);
+  // Prepend a zero-token estimate carrying detectedRegion so aggregateEnergy
+  // resolves the same equivalents region as the legacy per-message aggregate.
+  const aggInput = (detectedRegion && earliestMappableGeo)
+    ? [estimateEnergy({
+        model: "claude-sonnet",
+        inputTokens: 0, outputTokens: 0,
+        cacheCreationTokens: 0, cacheReadTokens: 0,
+        ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0,
+        inferenceGeo: earliestMappableGeo,
+      }, { region: regionKey, gridIntensity }), ...modelEstimates]
+    : modelEstimates;
+  const aggregated = aggregateEnergy(aggInput);
+  const totalEnergyWh = aggregated.totalEnergyWh;
+
+  // ── byModel ──
+  const byModelEntries = agg.byModel.map((g, i) => ({
+    model: g.model,
+    energyWh: modelEstimates[i]!.totalEnergyWh,
+    co2Grams: modelEstimates[i]!.co2Grams,
+    minTs: g.min_ts ?? Number.POSITIVE_INFINITY,
+  }));
+  // Legacy pre-sort order = first-seen (timestamp ASC) Map insertion; stable
+  // sort by energyWh desc preserves that for ties.
+  byModelEntries.sort((a, b) => a.minTs - b.minTs);
+  const byModel: DashboardEnergy["byModel"] = byModelEntries
+    .slice()
+    .sort((a, b) => b.energyWh - a.energyWh)
+    .map(e => ({
+      model: e.model,
+      energyWh: Math.round(e.energyWh * 10000) / 10000,
+      co2Grams: Math.round(e.co2Grams * 1000) / 1000,
+      pct: totalEnergyWh > 0 ? Math.round((e.energyWh / totalEnergyWh) * 1000) / 10 : 0,
+    }));
+
+  // ── byProject (sum per-(project,model) estimates into project totals) ──
+  const projectMap = new Map<string, { energyWh: number; co2Grams: number; minTs: number }>();
+  for (const g of agg.byProjectModel) {
+    const est = estimateGroup(g);
+    const entry = projectMap.get(g.project_path) ?? { energyWh: 0, co2Grams: 0, minTs: Number.POSITIVE_INFINITY };
+    entry.energyWh += est.totalEnergyWh;
+    entry.co2Grams += est.co2Grams;
+    const ts = g.min_ts ?? Number.POSITIVE_INFINITY;
+    if (ts < entry.minTs) entry.minTs = ts;
+    projectMap.set(g.project_path, entry);
+  }
+  const byProject: DashboardEnergy["byProject"] = Array.from(projectMap.entries())
+    .sort(([, a], [, b]) => a.minTs - b.minTs) // first-seen order pre-sort
+    .sort(([, a], [, b]) => b.energyWh - a.energyWh)
+    .map(([project, e]) => ({
+      project,
+      energyWh: Math.round(e.energyWh * 10000) / 10000,
+      co2Grams: Math.round(e.co2Grams * 1000) / 1000,
+    }));
+
+  // ── byDay: re-bucket (UTC hour, model) groups to local day in JS ──
+  // The legacy loop formats each message's exact instant to a local day. Here
+  // we format each UTC-hour-START instant. Hour grain is EXACT for integer-
+  // offset timezones (every local day boundary falls on a UTC-hour boundary).
+  // ACCEPTED DEVIATION: for fractional-offset zones (e.g. Asia/Kolkata, +5:30),
+  // a local-midnight instant falls mid-UTC-hour, so messages in that boundary
+  // hour can be misattributed by one local-day bucket. Callers needing exact
+  // byDay in fractional-offset zones must use the legacy per-message path.
   const dayFmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: filters.timezone,
     year: "numeric", month: "2-digit", day: "2-digit",
   });
-
   const dayEnergyMap = new Map<string, { energyWh: number; co2Grams: number }>();
-  const modelEnergyMap = new Map<string, { energyWh: number; co2Grams: number }>();
-  const projectEnergyMap = new Map<string, { energyWh: number; co2Grams: number }>();
-
-  const allEstimates = [];
-  let thinkingEnergy = 0;
-  let sessionsWithThinking = new Set<string>();
-
-  const emptyClass = () => ({ msgs: 0, inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0, rawEnergyWh: 0 });
-  const classAccum: Record<ModelClass, ReturnType<typeof emptyClass>> = {
-    haiku: emptyClass(), sonnet: emptyClass(), opus: emptyClass(),
-  };
-
-  // Cache impact: estimate energy saved by cache reads vs re-computing as input
-  let cacheEnergySavedWh = 0;
-  let cacheCO2SavedGrams = 0;
-  let totalCacheReadTokens = 0;
-  let totalInputTokens = 0;
-
-  for (const m of messages) {
-    const estimate = estimateEnergy({
-      model: m.model,
-      inputTokens: m.input_tokens,
-      outputTokens: m.output_tokens,
-      cacheCreationTokens: m.cache_creation_tokens,
-      cacheReadTokens: m.cache_read_tokens,
-      ephemeral5mCacheTokens: m.ephemeral_5m_cache_tokens,
-      ephemeral1hCacheTokens: m.ephemeral_1h_cache_tokens,
-      inferenceGeo: m.inference_geo,
-    }, { region: regionKey, gridIntensity });
-
-    allEstimates.push(estimate);
-
-    // byClass accumulator for the calculation-transparency panel
-    const cls = modelClass(m.model);
-    const acc = classAccum[cls];
-    acc.msgs += 1;
-    acc.inputTokens += m.input_tokens;
-    acc.outputTokens += m.output_tokens;
-    acc.cacheWriteTokens += m.cache_creation_tokens;
-    acc.cacheReadTokens += m.cache_read_tokens;
-    acc.rawEnergyWh += estimate.energyWh;
-
-    // byDay
-    const dateStr = m.timestamp != null
-      ? dayFmt.format(new Date(m.timestamp))
+  for (const g of agg.byHourModel) {
+    const est = estimateGroup(g);
+    const dateStr = g.hour_bucket != null
+      ? dayFmt.format(new Date(g.hour_bucket * 3600000))
       : "unknown";
     const dayEntry = dayEnergyMap.get(dateStr) ?? { energyWh: 0, co2Grams: 0 };
-    dayEntry.energyWh += estimate.totalEnergyWh;
-    dayEntry.co2Grams += estimate.co2Grams;
+    dayEntry.energyWh += est.totalEnergyWh;
+    dayEntry.co2Grams += est.co2Grams;
     dayEnergyMap.set(dateStr, dayEntry);
-
-    // byModel
-    const modelEntry = modelEnergyMap.get(m.model) ?? { energyWh: 0, co2Grams: 0 };
-    modelEntry.energyWh += estimate.totalEnergyWh;
-    modelEntry.co2Grams += estimate.co2Grams;
-    modelEnergyMap.set(m.model, modelEntry);
-
-    // byProject
-    const projEntry = projectEnergyMap.get(m.project_path) ?? { energyWh: 0, co2Grams: 0 };
-    projEntry.energyWh += estimate.totalEnergyWh;
-    projEntry.co2Grams += estimate.co2Grams;
-    projectEnergyMap.set(m.project_path, projEntry);
-
-    // Thinking impact
-    if (m.thinking_blocks > 0) {
-      sessionsWithThinking.add(m.session_id);
-      // Thinking tokens are output tokens — estimate their energy fraction
-      thinkingEnergy += estimate.totalEnergyWh * 0.3; // approximate thinking fraction
-    }
-
-    // Cache impact: energy cost of cache reads is ~3% of output rate.
-    // Without cache, those tokens would be input (full input rate).
-    // Saved = (cache_read / 1K) * (inputRate - outputRate * 0.03) * pue
-    totalCacheReadTokens += m.cache_read_tokens;
-    totalInputTokens += m.input_tokens;
   }
-
-  const aggregated = aggregateEnergy(allEstimates);
-  const totalEnergyWh = aggregated.totalEnergyWh;
-
-  // Compute cache savings: each 1K cache-read token saved ~inputRate vs charged ~outputRate*0.03
-  {
-    // Use sonnet rates as representative for the aggregate cache savings estimate
-    const { inputWhPer1K, outputWhPer1K } = MODEL_ENERGY.sonnet;
-    const pue = 1.2;
-    cacheEnergySavedWh = (totalCacheReadTokens / 1000) * (inputWhPer1K - outputWhPer1K * 0.03) * pue;
-    cacheCO2SavedGrams = (cacheEnergySavedWh / 1000) * gridIntensity;
-  }
-
-  const logicalInput = totalInputTokens + totalCacheReadTokens;
-  const cacheEfficiencyPct = logicalInput > 0
-    ? Math.round((totalCacheReadTokens / logicalInput) * 1000) / 10
-    : 0;
-
-  const pctEnergyFromThinking = totalEnergyWh > 0
-    ? Math.round((thinkingEnergy / totalEnergyWh) * 1000) / 10
-    : 0;
-
   const byDay: DashboardEnergy["byDay"] = Array.from(dayEnergyMap.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, e]) => ({
@@ -1988,22 +2026,46 @@ function buildEnergySection(
       co2Grams: Math.round(e.co2Grams * 1000) / 1000,
     }));
 
-  const byModel: DashboardEnergy["byModel"] = Array.from(modelEnergyMap.entries())
-    .sort(([, a], [, b]) => b.energyWh - a.energyWh)
-    .map(([model, e]) => ({
-      model,
-      energyWh: Math.round(e.energyWh * 10000) / 10000,
-      co2Grams: Math.round(e.co2Grams * 1000) / 1000,
-      pct: totalEnergyWh > 0 ? Math.round((e.energyWh / totalEnergyWh) * 1000) / 10 : 0,
-    }));
+  // ── byClass (model → class, re-sum token totals; rawEnergyWh = pre-PUE) ──
+  const emptyClass = () => ({ msgs: 0, inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0, rawEnergyWh: 0 });
+  const classAccum: Record<ModelClass, ReturnType<typeof emptyClass>> = {
+    haiku: emptyClass(), sonnet: emptyClass(), opus: emptyClass(),
+  };
+  agg.byModel.forEach((g, i) => {
+    const cls = modelClass(g.model);
+    const acc = classAccum[cls];
+    acc.msgs += g.msgs;
+    acc.inputTokens += g.input_tokens;
+    acc.outputTokens += g.output_tokens;
+    acc.cacheWriteTokens += g.cache_creation_tokens;
+    acc.cacheReadTokens += g.cache_read_tokens;
+    acc.rawEnergyWh += modelEstimates[i]!.energyWh;
+  });
 
-  const byProject: DashboardEnergy["byProject"] = Array.from(projectEnergyMap.entries())
-    .sort(([, a], [, b]) => b.energyWh - a.energyWh)
-    .map(([project, e]) => ({
-      project,
-      energyWh: Math.round(e.energyWh * 10000) / 10000,
-      co2Grams: Math.round(e.co2Grams * 1000) / 1000,
-    }));
+  // ── cacheImpact ──
+  let totalCacheReadTokens = 0;
+  let totalInputTokens = 0;
+  for (const g of agg.byModel) {
+    totalCacheReadTokens += g.cache_read_tokens;
+    totalInputTokens += g.input_tokens;
+  }
+  const { inputWhPer1K, outputWhPer1K } = MODEL_ENERGY.sonnet;
+  const pue = 1.2;
+  const cacheEnergySavedWh = (totalCacheReadTokens / 1000) * (inputWhPer1K - outputWhPer1K * 0.03) * pue;
+  const cacheCO2SavedGrams = (cacheEnergySavedWh / 1000) * gridIntensity;
+  const logicalInput = totalInputTokens + totalCacheReadTokens;
+  const cacheEfficiencyPct = logicalInput > 0
+    ? Math.round((totalCacheReadTokens / logicalInput) * 1000) / 10
+    : 0;
+
+  // ── thinkingImpact ──
+  let thinkingEnergy = 0;
+  for (const g of agg.thinkingByModel) {
+    thinkingEnergy += estimateGroup(g).totalEnergyWh * 0.3;
+  }
+  const pctEnergyFromThinking = totalEnergyWh > 0
+    ? Math.round((thinkingEnergy / totalEnergyWh) * 1000) / 10
+    : 0;
 
   return {
     totalEnergyWh: Math.round(aggregated.totalEnergyWh * 10000) / 10000,
@@ -2035,7 +2097,7 @@ function buildEnergySection(
       cacheEfficiencyPct,
     },
     thinkingImpact: {
-      sessionsWithThinking: sessionsWithThinking.size,
+      sessionsWithThinking: agg.sessionsWithThinking,
       pctEnergyFromThinking,
     },
     inferenceGeo: {

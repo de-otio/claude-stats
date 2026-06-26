@@ -24,7 +24,11 @@ export class DashboardPanel {
 
   private readonly panel: vscode.WebviewPanel;
   private readonly disposables: vscode.Disposable[] = [];
-  private period: ReportOptions["period"] = "all";
+  // Default to the cheapest period to compute. buildDashboard cost is O(messages
+  // in the period); "all" re-scans the entire message history on every open and
+  // grows unboundedly (see doc/analysis/startup-performance/). "day" keeps the
+  // first paint sub-300ms regardless of total history; users can widen on demand.
+  private period: ReportOptions["period"] = "day";
   private accountUuid: string | undefined;
   private activeTab: string = "overview";
   private readonly chartJsUri: vscode.Uri;

@@ -20,7 +20,7 @@ import type {
 } from "@claude-stats/core/types";
 import { estimateCost } from "@claude-stats/core/pricing";
 
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 export class Store {
   private db: DatabaseSync;
@@ -64,6 +64,7 @@ export class Store {
     if (current < 9) this.migrateToV9();
     if (current < 10) this.migrateToV10();
     if (current < 11) this.migrateToV11();
+    if (current < 12) this.migrateToV12();
 
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
@@ -274,6 +275,145 @@ export class Store {
     // — non-zero Bash exit, failed Edit). Additive; old rows default to 0. Feeds
     // the Phase-B outcome signal; re-collection backfills it from the JSONL.
     addColumn("messages", "tool_error_count", "INTEGER NOT NULL DEFAULT 0");
+  }
+
+  private migrateToV12(): void {
+    // Persisted hourly rollup of per-message token sums (issue #7). Serves the
+    // additive energy/totals reads from O(hours) pre-aggregated rows instead of
+    // re-scanning every message. See doc/analysis/startup-performance/05-rollup-design.md.
+    //
+    // INCLUSION PREDICATE: EXISTS-only — a message contributes iff its session
+    // exists in `sessions` (orphan-drop), with NO is_interactive / source_deleted
+    // / is_subagent / model filter. This reproduces EXACTLY the raw reads in
+    // getMessageTotals / getEnergyAggregates (which filter only via the EXISTS
+    // membership subquery). NULL-model rows are stored under model='' so the
+    // totals read (counts null-model) sees them; the energy read later filters
+    // model!='' to drop them. NULL inference_geo is stored as '' and NULL/absent
+    // timestamps land in the hour_utc=-1 sentinel bucket.
+    this.db.exec(`
+      -- message_hourly is a pure derived cache (rebuilt from messages by the
+      -- backfill below), so DROP+CREATE is safe and keeps the schema correct
+      -- if this migration's definition evolved before release.
+      DROP TABLE IF EXISTS message_hourly;
+      CREATE TABLE IF NOT EXISTS message_hourly (
+        hour_utc      INTEGER NOT NULL,
+        -- project_path/model/inference_geo are stored as their ACTUAL values
+        -- including NULL (no '' sentinel): real data has empty-string and NULL
+        -- inference_geo as DISTINCT values, so a '' sentinel would conflate
+        -- them. SQLite permits NULL in a PRIMARY KEY; the DELETE-by-hour +
+        -- GROUP BY recompute (no ON CONFLICT) treats NULL as one group safely.
+        project_path  TEXT,
+        model         TEXT,
+        inference_geo TEXT,
+        input_tokens          INTEGER NOT NULL,
+        output_tokens         INTEGER NOT NULL,
+        cache_read_tokens     INTEGER NOT NULL,
+        cache_creation_tokens INTEGER NOT NULL,
+        th_input_tokens          INTEGER NOT NULL,
+        th_output_tokens         INTEGER NOT NULL,
+        th_cache_read_tokens     INTEGER NOT NULL,
+        th_cache_creation_tokens INTEGER NOT NULL,
+        msg_count    INTEGER NOT NULL,
+        th_msg_count INTEGER NOT NULL,
+        min_ts       INTEGER,
+        PRIMARY KEY (hour_utc, project_path, model, inference_geo)
+      );
+      CREATE INDEX IF NOT EXISTS idx_message_hourly_hour ON message_hourly (hour_utc);
+    `);
+    // Idempotent one-shot backfill. The leading DELETE inside recomputeMessageHourly
+    // (full-rebuild branch) plus IF NOT EXISTS above make a crash-retry safe —
+    // a re-run rebuilds from current `messages` rather than double-counting.
+    this.recomputeMessageHourly();
+  }
+
+  // ─── Rollup recompute (shared: backfill + incremental) ──────────────────────
+
+  /**
+   * Recompute message_hourly from the current `messages` table. The SINGLE
+   * source of truth for both the migrateToV12 backfill and (Phase 2) the
+   * per-collect incremental maintenance, so the two cannot drift.
+   *
+   * - `hours` omitted → full rebuild: DELETE all rows, INSERT over every hour.
+   * - `hours` given → partition recompute: DELETE only those buckets, INSERT
+   *   only rows whose hour_utc is in the set. Hours not listed are untouched.
+   *
+   * The INSERT SELECT inclusion predicate is EXISTS-only (orphan-drop), matching
+   * the raw reads exactly. Hour list is bound via parameterized placeholders
+   * (one `?` each, like getStopReasonCounts) — never string-interpolated. Runs
+   * in a transaction so DELETE+INSERT are atomic.
+   */
+  recomputeMessageHourly(hours?: number[]): void {
+    if (hours && hours.length === 0) return;
+
+    // hour_utc = CAST(m.timestamp/3600000 AS INTEGER); NULL ts -> -1 sentinel.
+    const hourExpr = "COALESCE(CAST(m.timestamp / 3600000 AS INTEGER), -1)";
+    const placeholders = hours ? hours.map(() => "?").join(",") : "";
+
+    const deleteSql = hours
+      ? `DELETE FROM message_hourly WHERE hour_utc IN (${placeholders})`
+      : `DELETE FROM message_hourly`;
+
+    const hourFilter = hours ? ` AND ${hourExpr} IN (${placeholders})` : "";
+    const insertSql = `
+      INSERT INTO message_hourly
+      SELECT
+        ${hourExpr} AS hour_utc,
+        (SELECT project_path FROM sessions s2 WHERE s2.session_id = m.session_id) AS project_path,
+        m.model AS model,
+        m.inference_geo AS inference_geo,
+        SUM(m.input_tokens),
+        SUM(m.output_tokens),
+        SUM(m.cache_read_tokens),
+        SUM(m.cache_creation_tokens),
+        SUM(CASE WHEN m.thinking_blocks > 0 THEN m.input_tokens ELSE 0 END),
+        SUM(CASE WHEN m.thinking_blocks > 0 THEN m.output_tokens ELSE 0 END),
+        SUM(CASE WHEN m.thinking_blocks > 0 THEN m.cache_read_tokens ELSE 0 END),
+        SUM(CASE WHEN m.thinking_blocks > 0 THEN m.cache_creation_tokens ELSE 0 END),
+        COUNT(*),
+        SUM(CASE WHEN m.thinking_blocks > 0 THEN 1 ELSE 0 END),
+        MIN(m.timestamp)
+      FROM messages m
+      WHERE EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = m.session_id)${hourFilter}
+      GROUP BY hour_utc, project_path, model, inference_geo
+    `;
+
+    this.transaction(() => {
+      if (hours) {
+        const del = this.db.prepare(deleteSql);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (del.run as (...args: any[]) => unknown)(...hours);
+        const ins = this.db.prepare(insertSql);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (ins.run as (...args: any[]) => unknown)(...hours);
+      } else {
+        this.db.exec(deleteSql);
+        this.db.prepare(insertSql).run();
+      }
+      // Freshness watermark: the messages-table row count this rollup was last
+      // built/maintained against. The read dispatcher uses the rollup only when
+      // this still matches the current count (else falls back to the raw seek).
+      // collect() recomputes every touched hour and then this runs, so after a
+      // collect the watermark equals the current count and the rollup is fresh.
+      // Direct upsertMessages that bypass a recompute (e.g. tests) leave the
+      // count ahead of the watermark, so reads correctly fall back to raw.
+      this.db
+        .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES ('message_hourly_watermark', (SELECT CAST(COUNT(*) AS TEXT) FROM messages))")
+        .run();
+    });
+  }
+
+  /**
+   * True when message_hourly is in sync with the messages table — i.e. the
+   * recorded watermark equals the current message count. Cheap (two counts),
+   * and the guard that lets the unbounded read dispatch to the rollup safely.
+   */
+  private isMessageHourlyFresh(): boolean {
+    const wm = this.db
+      .prepare("SELECT value FROM metadata WHERE key = 'message_hourly_watermark'")
+      .get() as { value: string } | undefined;
+    if (!wm) return false;
+    const cur = this.db.prepare("SELECT COUNT(*) AS c FROM messages").get() as { c: number };
+    return Number(wm.value) === cur.c;
   }
 
   // ─── Transaction wrapper ────────────────────────────────────────────────────
@@ -630,33 +770,87 @@ export class Store {
 
   // ─── Reporting queries ──────────────────────────────────────────────────────
 
+  /**
+   * Per-model token totals. Dispatches to a rollup read when the request is
+   * FULLY UNBOUNDED (no period and no session-scoped filter) — the 'all'-period
+   * fast path, since period 'all' reaches the store with since===undefined.
+   * Any bound (since/until/projectPath/repoUrl) falls back to the Build-1 seek
+   * path (getMessageTotalsRaw), which is unchanged.
+   */
   getMessageTotals(filters: {
     projectPath?: string;
     repoUrl?: string;
     since?: number;
     until?: number;
   } = {}): MessageTotalRow[] {
-    const conditions: string[] = [];
+    const fullyUnbounded =
+      filters.since === undefined &&
+      filters.until === undefined &&
+      !filters.projectPath &&
+      !filters.repoUrl;
+    if (fullyUnbounded && this.isMessageHourlyFresh()) return this.getMessageTotalsFromRollup();
+    return this.getMessageTotalsRaw(filters);
+  }
+
+  /**
+   * 'all'-period fast path: reproduce getMessageTotalsRaw({}) EXACTLY from the
+   * message_hourly rollup. Sums every bucket per model; model is stored as its
+   * actual value (null-model messages keep model NULL), matching raw's
+   * GROUP BY m.model which returns model:null for null-model messages.
+   */
+  private getMessageTotalsFromRollup(): MessageTotalRow[] {
+    const stmt = this.db.prepare(`
+      SELECT
+        model,
+        SUM(input_tokens) AS input_tokens,
+        SUM(output_tokens) AS output_tokens,
+        SUM(cache_read_tokens) AS cache_read_tokens,
+        SUM(cache_creation_tokens) AS cache_creation_tokens
+      FROM message_hourly
+      GROUP BY model
+    `);
+    return stmt.all() as unknown as MessageTotalRow[];
+  }
+
+  private getMessageTotalsRaw(filters: {
+    projectPath?: string;
+    repoUrl?: string;
+    since?: number;
+    until?: number;
+  } = {}): MessageTotalRow[] {
+    // Period is filtered on the MESSAGE timestamp (messages SENT in the period),
+    // which seeks idx_messages_timestamp. Session-scoped filters (project/repo)
+    // stay in an always-emitted membership subquery — this preserves the prior
+    // inner join's orphan-message drop (a message whose session_id is absent
+    // from `sessions` matches neither form). Outer (m.timestamp) params are
+    // bound before the subquery params to match the `?` order in the SQL.
+    const outerConditions: string[] = [];
+    const sessionConditions: string[] = [];
     const params: unknown[] = [];
 
-    if (filters.projectPath) {
-      conditions.push("s.project_path = ?");
-      params.push(filters.projectPath);
-    }
-    if (filters.repoUrl) {
-      conditions.push("s.repo_url = ?");
-      params.push(filters.repoUrl);
-    }
     if (filters.since !== undefined) {
-      conditions.push("s.first_timestamp >= ?");
+      outerConditions.push("m.timestamp >= ?");
       params.push(filters.since);
     }
     if (filters.until !== undefined) {
-      conditions.push("s.first_timestamp < ?");
+      outerConditions.push("m.timestamp < ?");
       params.push(filters.until);
     }
+    if (filters.projectPath) {
+      sessionConditions.push("s.project_path = ?");
+      params.push(filters.projectPath);
+    }
+    if (filters.repoUrl) {
+      sessionConditions.push("s.repo_url = ?");
+      params.push(filters.repoUrl);
+    }
 
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    // EXISTS (not IN): preserves orphan-drop AND lets the m.timestamp filter
+    // seek idx_messages_timestamp. An `IN (SELECT all session_ids)` would make
+    // the planner iterate every session_id via idx_messages_session instead,
+    // defeating the timestamp seek.
+    const sessionAnd = sessionConditions.length ? ` AND ${sessionConditions.join(" AND ")}` : "";
+    const outerWhere = outerConditions.length ? `${outerConditions.join(" AND ")} AND ` : "";
     const sql = `
       SELECT
         m.model,
@@ -665,8 +859,9 @@ export class Store {
         SUM(m.cache_read_tokens) AS cache_read_tokens,
         SUM(m.cache_creation_tokens) AS cache_creation_tokens
       FROM messages m
-      JOIN sessions s ON m.session_id = s.session_id
-      ${where}
+      WHERE ${outerWhere}EXISTS (
+        SELECT 1 FROM sessions s WHERE s.session_id = m.session_id${sessionAnd}
+      )
       GROUP BY m.model
     `;
     const stmt = this.db.prepare(sql);
@@ -798,6 +993,33 @@ export class Store {
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (stmt.all as (...args: any[]) => unknown[])(sessionId) as MessageRow[];
+  }
+
+  /**
+   * Per-session MAX(uuid) over messages whose timestamp is in [startMs, endMs),
+   * for the given session ids. Used by the recap snapshot-hash to compute
+   * per-session and global last-message-uuid WITHOUT fetching every message row
+   * (the full rows are only needed on a cache miss). Sessions with no in-window
+   * message are simply absent from the result (caller defaults them to null).
+   */
+  getMaxMessageUuidsInWindow(
+    sessionIds: string[],
+    startMs: number,
+    endMs: number,
+  ): Array<{ session_id: string; max_uuid: string }> {
+    if (sessionIds.length === 0) return [];
+    const placeholders = sessionIds.map(() => "?").join(",");
+    const stmt = this.db.prepare(
+      `SELECT session_id, MAX(uuid) AS max_uuid
+       FROM messages
+       WHERE session_id IN (${placeholders})
+         AND timestamp >= ? AND timestamp < ?
+       GROUP BY session_id`
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(
+      ...sessionIds, startMs, endMs,
+    ) as Array<{ session_id: string; max_uuid: string }>;
   }
 
   /**
@@ -998,23 +1220,32 @@ export class Store {
     repoUrl?: string;
     since?: number;
   } = {}): EfficiencyMessageRow[] {
+    // Period is filtered on the MESSAGE timestamp (messages SENT in the
+    // period); session-scoped filters stay in an always-emitted membership
+    // subquery, preserving the prior inner join's orphan-message drop (see
+    // getMessageTotals). Param order follows the `?` order in the SQL.
     const conditions: string[] = ["m.model IS NOT NULL"];
+    const sessionConditions: string[] = [];
     const params: unknown[] = [];
 
+    if (filters.since !== undefined) {
+      conditions.push("m.timestamp >= ?");
+      params.push(filters.since);
+    }
     if (filters.projectPath) {
-      conditions.push("s.project_path = ?");
+      sessionConditions.push("s.project_path = ?");
       params.push(filters.projectPath);
     }
     if (filters.repoUrl) {
-      conditions.push("s.repo_url = ?");
+      sessionConditions.push("s.repo_url = ?");
       params.push(filters.repoUrl);
     }
-    if (filters.since !== undefined) {
-      conditions.push("s.first_timestamp >= ?");
-      params.push(filters.since);
-    }
 
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    // EXISTS preserves orphan-drop while letting the m.timestamp filter seek
+    // (see getMessageTotals).
+    const sessionAnd = sessionConditions.length ? ` AND ${sessionConditions.join(" AND ")}` : "";
+    conditions.push(`EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = m.session_id${sessionAnd})`);
+    const where = `WHERE ${conditions.join(" AND ")}`;
     const sql = `
       SELECT
         m.uuid, m.session_id, m.timestamp, m.model,
@@ -1022,7 +1253,6 @@ export class Store {
         m.cache_read_tokens, m.cache_creation_tokens,
         m.tools, m.thinking_blocks, m.prompt_text
       FROM messages m
-      JOIN sessions s ON m.session_id = s.session_id
       ${where}
       ORDER BY m.timestamp ASC
     `;
@@ -1036,34 +1266,354 @@ export class Store {
     repoUrl?: string;
     since?: number;
   } = {}): ContextMessageRow[] {
-    const conditions: string[] = [];
+    // Period is filtered on the MESSAGE timestamp; session-scoped filters stay
+    // in an always-emitted membership subquery, preserving orphan-drop (see
+    // getMessageTotals). Param order follows the `?` order in the SQL.
+    const outerConditions: string[] = [];
+    const sessionConditions: string[] = [];
     const params: unknown[] = [];
 
+    if (filters.since !== undefined) {
+      outerConditions.push("m.timestamp >= ?");
+      params.push(filters.since);
+    }
     if (filters.projectPath) {
-      conditions.push("s.project_path = ?");
+      sessionConditions.push("s.project_path = ?");
       params.push(filters.projectPath);
     }
     if (filters.repoUrl) {
-      conditions.push("s.repo_url = ?");
+      sessionConditions.push("s.repo_url = ?");
       params.push(filters.repoUrl);
     }
-    if (filters.since !== undefined) {
-      conditions.push("s.first_timestamp >= ?");
-      params.push(filters.since);
-    }
 
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    // EXISTS preserves orphan-drop while letting the m.timestamp filter seek
+    // (see getMessageTotals).
+    const sessionAnd = sessionConditions.length ? ` AND ${sessionConditions.join(" AND ")}` : "";
+    const outerWhere = outerConditions.length ? `${outerConditions.join(" AND ")} AND ` : "";
     const sql = `
       SELECT m.session_id, m.timestamp, m.input_tokens,
              m.cache_read_tokens, m.cache_creation_tokens
       FROM messages m
-      JOIN sessions s ON m.session_id = s.session_id
-      ${where}
+      WHERE ${outerWhere}EXISTS (
+        SELECT 1 FROM sessions s WHERE s.session_id = m.session_id${sessionAnd}
+      )
       ORDER BY m.session_id, m.timestamp ASC
     `;
     const stmt = this.db.prepare(sql);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (stmt.all as (...args: any[]) => unknown[])(...params) as ContextMessageRow[];
+  }
+
+  /**
+   * Build the message-level seek WHERE clause + params shared by every energy
+   * aggregation query. Uses the same `m.session_id IN (SELECT session_id FROM
+   * sessions WHERE <session filters>)` membership subquery as
+   * getMessagesForEnergy, so each aggregate is O(period), not O(all messages).
+   */
+  private energyAggregateWhere(filters: {
+    projectPath?: string;
+    repoUrl?: string;
+    accountUuid?: string;
+    since?: number;
+  }): { where: string; params: unknown[] } {
+    // Period filtered on MESSAGE timestamp; session-scoped filters in an
+    // always-emitted membership subquery (orphan-drop preserved). The since
+    // param is bound before the subquery params to match the `?` order.
+    const sessionConditions: string[] = [];
+    const params: unknown[] = [];
+    const tsClause = filters.since !== undefined ? "AND m.timestamp >= ? " : "";
+    if (filters.since !== undefined) { params.push(filters.since); }
+    if (filters.projectPath) { sessionConditions.push("s.project_path = ?"); params.push(filters.projectPath); }
+    if (filters.repoUrl) { sessionConditions.push("s.repo_url = ?"); params.push(filters.repoUrl); }
+    if (filters.accountUuid) { sessionConditions.push("s.account_uuid = ?"); params.push(filters.accountUuid); }
+    // EXISTS preserves orphan-drop while letting the m.timestamp filter seek
+    // (see getMessageTotals).
+    const sessionAnd = sessionConditions.length ? ` AND ${sessionConditions.join(" AND ")}` : "";
+    const where = `WHERE m.model IS NOT NULL ${tsClause}AND EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = m.session_id${sessionAnd})`;
+    return { where, params };
+  }
+
+  /**
+   * In-DB aggregations for the energy dashboard section. Replaces the
+   * per-message loop in buildEnergySection with GROUP BY rollups that are
+   * exact (to display-rounding precision) because estimateEnergy is linear in
+   * the four token counts at fixed per-model-class rates and a fixed
+   * section-level {region, gridIntensity}.
+   *
+   * All sub-queries share the same session-id membership seek (energyAggregateWhere)
+   * so the whole section is O(period).
+   */
+  /**
+   * Dispatcher: FULLY UNBOUNDED requests (no period, no session-scoped filter)
+   * read the message_hourly rollup ('all'-period fast path); any bound falls
+   * back to the Build-1 seek path (getEnergyAggregatesRaw), unchanged.
+   */
+  getEnergyAggregates(filters: {
+    projectPath?: string;
+    repoUrl?: string;
+    accountUuid?: string;
+    since?: number;
+  } = {}): EnergyAggregates {
+    const fullyUnbounded =
+      filters.since === undefined &&
+      !filters.projectPath &&
+      !filters.repoUrl &&
+      !filters.accountUuid;
+    if (fullyUnbounded && this.isMessageHourlyFresh()) return this.getEnergyAggregatesFromRollup();
+    return this.getEnergyAggregatesRaw(filters);
+  }
+
+  /**
+   * 'all'-period fast path: reproduce getEnergyAggregatesRaw({}) EXACTLY from
+   * message_hourly. Energy excludes null-model messages (the raw WHERE has
+   * `m.model IS NOT NULL`), so every aggregate filters `model IS NOT NULL`.
+   * model and inference_geo are stored as their ACTUAL values (incl. NULL —
+   * no '' sentinel, since real data has empty-string AND null geo as distinct
+   * values). Null-timestamp messages bucket at hour_utc = -1 (mapped back to a
+   * NULL hour_bucket in byHourModel). thinkingSessions (distinct
+   * session_id) is NOT additive, so it runs the same live COUNT(DISTINCT) query
+   * getEnergyAggregatesRaw uses.
+   */
+  private getEnergyAggregatesFromRollup(): EnergyAggregates {
+    // 1. byModel — per-model token sums + msg_count; MIN(min_ts) as the
+    //    first-seen tiebreak. model='' (null-model) excluded.
+    const byModel = this.db.prepare(`
+      SELECT model AS model,
+             SUM(input_tokens) AS input_tokens,
+             SUM(output_tokens) AS output_tokens,
+             SUM(cache_read_tokens) AS cache_read_tokens,
+             SUM(cache_creation_tokens) AS cache_creation_tokens,
+             SUM(msg_count) AS msgs,
+             MIN(min_ts) AS min_ts
+      FROM message_hourly
+      WHERE model IS NOT NULL
+      GROUP BY model
+    `).all() as unknown as EnergyModelAgg[];
+
+    // 2. byProjectModel — GROUP BY project_path, model (model='' excluded).
+    const byProjectModel = this.db.prepare(`
+      SELECT project_path AS project_path,
+             model AS model,
+             SUM(input_tokens) AS input_tokens,
+             SUM(output_tokens) AS output_tokens,
+             SUM(cache_read_tokens) AS cache_read_tokens,
+             SUM(cache_creation_tokens) AS cache_creation_tokens,
+             MIN(min_ts) AS min_ts
+      FROM message_hourly
+      WHERE model IS NOT NULL
+      GROUP BY project_path, model
+    `).all() as unknown as EnergyProjectModelAgg[];
+
+    // 3. byHourModel — GROUP BY hour_utc, model; hour_utc=-1 (null-timestamp
+    //    sentinel) maps back to a NULL hour_bucket (raw used NULL).
+    const byHourModelRows = this.db.prepare(`
+      SELECT hour_utc AS hour_utc,
+             model AS model,
+             SUM(input_tokens) AS input_tokens,
+             SUM(output_tokens) AS output_tokens,
+             SUM(cache_read_tokens) AS cache_read_tokens,
+             SUM(cache_creation_tokens) AS cache_creation_tokens
+      FROM message_hourly
+      WHERE model IS NOT NULL
+      GROUP BY hour_utc, model
+    `).all() as Array<Omit<EnergyHourModelAgg, "hour_bucket"> & { hour_utc: number }>;
+    const byHourModel: EnergyHourModelAgg[] = byHourModelRows.map(({ hour_utc, ...rest }) => ({
+      ...rest,
+      hour_bucket: hour_utc === -1 ? null : hour_utc,
+    }));
+
+    // 4. byGeo — GROUP BY inference_geo, SUM(msg_count). inference_geo is stored
+    //    as its actual value (incl. NULL and ''), matching raw's GROUP BY
+    //    m.inference_geo. model NULL excluded (raw byGeo is over the
+    //    model-not-null energy WHERE).
+    const byGeo = this.db.prepare(`
+      SELECT inference_geo AS inference_geo, SUM(msg_count) AS msgs
+      FROM message_hourly
+      WHERE model IS NOT NULL
+      GROUP BY inference_geo
+    `).all() as unknown as EnergyGeoAgg[];
+
+    // 5. geoByEarliest — distinct non-null geos with earliest min_ts, ASC.
+    const geoByEarliest = this.db.prepare(`
+      SELECT inference_geo AS inference_geo, MIN(min_ts) AS min_ts
+      FROM message_hourly
+      WHERE model IS NOT NULL AND inference_geo IS NOT NULL AND min_ts IS NOT NULL
+      GROUP BY inference_geo
+      ORDER BY min_ts ASC
+    `).all() as Array<{ inference_geo: string; min_ts: number }>;
+
+    // 6a. thinkingSessions — distinct session_id is NOT additive in the rollup,
+    //     so run the SAME live query getEnergyAggregatesRaw uses.
+    const { where, params } = this.energyAggregateWhere({});
+    const thinkingSessionsRow = (() => {
+      const stmt = this.db.prepare(`
+        SELECT COUNT(DISTINCT m.session_id) AS c
+        FROM messages m
+        ${where} AND m.thinking_blocks > 0
+      `);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (stmt.get as (...args: any[]) => unknown)(...params) as { c: number } | undefined;
+    })();
+
+    // 6b. thinkingByModel — th_* columns as the token sums, th_msg_count as
+    //     msgs; only buckets with thinking messages (th_msg_count > 0).
+    const thinkingByModel = this.db.prepare(`
+      SELECT model AS model,
+             SUM(th_input_tokens) AS input_tokens,
+             SUM(th_output_tokens) AS output_tokens,
+             SUM(th_cache_read_tokens) AS cache_read_tokens,
+             SUM(th_cache_creation_tokens) AS cache_creation_tokens,
+             SUM(th_msg_count) AS msgs
+      FROM message_hourly
+      WHERE model IS NOT NULL AND th_msg_count > 0
+      GROUP BY model
+    `).all() as unknown as EnergyModelAgg[];
+
+    // bounds — totalMessages = SUM(msg_count); minTimestamp = MIN(min_ts).
+    const boundsRow = this.db.prepare(`
+      SELECT SUM(msg_count) AS total, MIN(min_ts) AS min_ts
+      FROM message_hourly
+      WHERE model IS NOT NULL
+    `).get() as { total: number | null; min_ts: number | null };
+
+    return {
+      byModel,
+      byProjectModel,
+      byHourModel,
+      byGeo,
+      geoByEarliest,
+      sessionsWithThinking: thinkingSessionsRow?.c ?? 0,
+      thinkingByModel,
+      totalMessages: boundsRow?.total ?? 0,
+      minTimestamp: boundsRow?.min_ts ?? null,
+    };
+  }
+
+  private getEnergyAggregatesRaw(filters: {
+    projectPath?: string;
+    repoUrl?: string;
+    accountUuid?: string;
+    since?: number;
+  } = {}): EnergyAggregates {
+    const { where, params } = this.energyAggregateWhere(filters);
+    const run = <T>(sql: string, ...extra: unknown[]): T[] => {
+      const stmt = this.db.prepare(sql);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (stmt.all as (...args: any[]) => unknown[])(...params, ...extra) as T[];
+    };
+    const runOne = <T>(sql: string): T | undefined => {
+      const stmt = this.db.prepare(sql);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (stmt.get as (...args: any[]) => unknown)(...params) as T | undefined;
+    };
+
+    // 1. GROUP BY model — per-model token sums + msg count. min_ts replicates
+    //    the legacy first-seen Map-insertion order used as the sort tiebreak.
+    const byModel = run<EnergyModelAgg>(`
+      SELECT m.model AS model,
+             SUM(m.input_tokens) AS input_tokens,
+             SUM(m.output_tokens) AS output_tokens,
+             SUM(m.cache_read_tokens) AS cache_read_tokens,
+             SUM(m.cache_creation_tokens) AS cache_creation_tokens,
+             COUNT(*) AS msgs,
+             MIN(m.timestamp) AS min_ts
+      FROM messages m
+      ${where}
+      GROUP BY m.model
+    `);
+
+    // 2. GROUP BY project_path, model — project_path resolved via the session
+    //    (correlated subquery, like getMessagesForEnergy's project_path).
+    //    model is needed for the per-class rate; project_path min_ts replicates
+    //    the legacy first-seen order.
+    const byProjectModel = run<EnergyProjectModelAgg>(`
+      SELECT (SELECT project_path FROM sessions WHERE session_id = m.session_id) AS project_path,
+             m.model AS model,
+             SUM(m.input_tokens) AS input_tokens,
+             SUM(m.output_tokens) AS output_tokens,
+             SUM(m.cache_read_tokens) AS cache_read_tokens,
+             SUM(m.cache_creation_tokens) AS cache_creation_tokens,
+             MIN(m.timestamp) AS min_ts
+      FROM messages m
+      ${where}
+      GROUP BY project_path, m.model
+    `);
+
+    // 3. GROUP BY (UTC hour bucket, model) — re-bucketed to local day in JS.
+    //    NULL timestamps land in their own bucket (hour_bucket IS NULL).
+    const byHourModel = run<EnergyHourModelAgg>(`
+      SELECT CAST(m.timestamp / 3600000 AS INTEGER) AS hour_bucket,
+             m.model AS model,
+             SUM(m.input_tokens) AS input_tokens,
+             SUM(m.output_tokens) AS output_tokens,
+             SUM(m.cache_read_tokens) AS cache_read_tokens,
+             SUM(m.cache_creation_tokens) AS cache_creation_tokens
+      FROM messages m
+      ${where}
+      GROUP BY hour_bucket, m.model
+    `);
+
+    // 4. GROUP BY inference_geo — histogram for coverage + region detection.
+    const byGeo = run<EnergyGeoAgg>(`
+      SELECT m.inference_geo AS inference_geo, COUNT(*) AS msgs
+      FROM messages m
+      ${where}
+      GROUP BY m.inference_geo
+    `);
+
+    // 5. detectedRegion source: distinct non-null geos with their earliest
+    //    in-period timestamp, ASC. The caller maps each to a region and takes
+    //    the first MAPPABLE one — matching aggregateEnergy's
+    //    estimates.find(e => e.detectedRegion) over ORDER BY timestamp ASC,
+    //    which skips messages whose geo does not map to a region.
+    const geoByEarliest = run<{ inference_geo: string; min_ts: number }>(`
+      SELECT m.inference_geo AS inference_geo, MIN(m.timestamp) AS min_ts
+      FROM messages m
+      ${where} AND m.inference_geo IS NOT NULL AND m.timestamp IS NOT NULL
+      GROUP BY m.inference_geo
+      ORDER BY min_ts ASC
+    `);
+
+    // 6a. thinkingImpact: distinct sessions with any thinking block.
+    const thinkingSessionsRow = runOne<{ c: number }>(`
+      SELECT COUNT(DISTINCT m.session_id) AS c
+      FROM messages m
+      ${where} AND m.thinking_blocks > 0
+    `);
+
+    // 6b. thinkingImpact energy: per-model token sums over thinking messages.
+    const thinkingByModel = run<EnergyModelAgg>(`
+      SELECT m.model AS model,
+             SUM(m.input_tokens) AS input_tokens,
+             SUM(m.output_tokens) AS output_tokens,
+             SUM(m.cache_read_tokens) AS cache_read_tokens,
+             SUM(m.cache_creation_tokens) AS cache_creation_tokens,
+             COUNT(*) AS msgs
+      FROM messages m
+      ${where} AND m.thinking_blocks > 0
+      GROUP BY m.model
+    `);
+
+    // Period bounds + total message count (for empty-period detection and the
+    // "all time" earliest-timestamp fallback). minTimestamp ignores NULLs,
+    // matching the legacy `m.timestamp != null` guard.
+    const boundsRow = runOne<{ total: number; min_ts: number | null }>(`
+      SELECT COUNT(*) AS total, MIN(m.timestamp) AS min_ts
+      FROM messages m
+      ${where}
+    `);
+
+    return {
+      byModel,
+      byProjectModel,
+      byHourModel,
+      byGeo,
+      geoByEarliest,
+      sessionsWithThinking: thinkingSessionsRow?.c ?? 0,
+      thinkingByModel,
+      totalMessages: boundsRow?.total ?? 0,
+      minTimestamp: boundsRow?.min_ts ?? null,
+    };
   }
 
   getMessagesForEnergy(filters: {
@@ -1072,27 +1622,42 @@ export class Store {
     accountUuid?: string;
     since?: number;
   } = {}): EnergyMessageRow[] {
+    // Outer (message-level) conditions stay on the messages query; the
+    // session-scoped filters become a seek subquery (output-preserving vs.
+    // the prior inner join — see getMessageTotals). The selected
+    // s.project_path is preserved via a correlated subquery; because the
+    // membership subquery already restricts to existing sessions, exactly
+    // one matching session row exists per message and the value is identical
+    // to the join's.
+    // Period filtered on MESSAGE timestamp; session-scoped filters in an
+    // always-emitted membership subquery (orphan-drop preserved). since param
+    // is bound before the subquery params to match the `?` order.
     const conditions: string[] = ["m.model IS NOT NULL"];
+    const sessionConditions: string[] = [];
     const params: unknown[] = [];
 
+    if (filters.since !== undefined) {
+      conditions.push("m.timestamp >= ?");
+      params.push(filters.since);
+    }
     if (filters.projectPath) {
-      conditions.push("s.project_path = ?");
+      sessionConditions.push("s.project_path = ?");
       params.push(filters.projectPath);
     }
     if (filters.repoUrl) {
-      conditions.push("s.repo_url = ?");
+      sessionConditions.push("s.repo_url = ?");
       params.push(filters.repoUrl);
     }
     if (filters.accountUuid) {
-      conditions.push("s.account_uuid = ?");
+      sessionConditions.push("s.account_uuid = ?");
       params.push(filters.accountUuid);
     }
-    if (filters.since !== undefined) {
-      conditions.push("s.first_timestamp >= ?");
-      params.push(filters.since);
-    }
 
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    // EXISTS preserves orphan-drop while letting the m.timestamp filter seek
+    // (see getMessageTotals).
+    const sessionAnd = sessionConditions.length ? ` AND ${sessionConditions.join(" AND ")}` : "";
+    conditions.push(`EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = m.session_id${sessionAnd})`);
+    const where = `WHERE ${conditions.join(" AND ")}`;
     const sql = `
       SELECT
         m.session_id, m.timestamp, m.model,
@@ -1100,9 +1665,8 @@ export class Store {
         m.cache_read_tokens, m.cache_creation_tokens,
         m.ephemeral_5m_cache_tokens, m.ephemeral_1h_cache_tokens,
         m.thinking_blocks, m.inference_geo,
-        s.project_path
+        (SELECT project_path FROM sessions WHERE session_id = m.session_id) AS project_path
       FROM messages m
-      JOIN sessions s ON m.session_id = s.session_id
       ${where}
       ORDER BY m.timestamp ASC
     `;
@@ -1426,6 +1990,61 @@ export interface EnergyMessageRow {
   thinking_blocks: number;
   inference_geo: string | null;
   project_path: string;
+}
+
+/** Per-model token sums + message count (GROUP BY model). */
+export interface EnergyModelAgg {
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  msgs: number;
+  /** MIN(timestamp) across the group (NULLs ignored); first-seen tiebreak. */
+  min_ts?: number | null;
+}
+
+/** Per-(project, model) token sums (GROUP BY project_path, model). */
+export interface EnergyProjectModelAgg {
+  project_path: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  /** MIN(timestamp) across the group (NULLs ignored); first-seen tiebreak. */
+  min_ts?: number | null;
+}
+
+/** Per-(UTC hour bucket, model) token sums (GROUP BY timestamp/3600000, model). */
+export interface EnergyHourModelAgg {
+  hour_bucket: number | null;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+}
+
+/** Per-inference-geo message count (GROUP BY inference_geo). */
+export interface EnergyGeoAgg {
+  inference_geo: string | null;
+  msgs: number;
+}
+
+/** Pre-grouped aggregates feeding buildEnergySection (replaces the per-message loop). */
+export interface EnergyAggregates {
+  byModel: EnergyModelAgg[];
+  byProjectModel: EnergyProjectModelAgg[];
+  byHourModel: EnergyHourModelAgg[];
+  byGeo: EnergyGeoAgg[];
+  /** Distinct non-null geos with their earliest in-period timestamp, ASC by timestamp. */
+  geoByEarliest: Array<{ inference_geo: string; min_ts: number }>;
+  sessionsWithThinking: number;
+  thinkingByModel: EnergyModelAgg[];
+  totalMessages: number;
+  /** MIN(timestamp) over in-period messages, NULLs ignored (for "all time" period start). */
+  minTimestamp: number | null;
 }
 
 export interface StatusInfo {
