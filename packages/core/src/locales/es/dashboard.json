@@ -354,5 +354,19 @@
     "enabledNote": "Activado — la tasa de arriba incorpora las señales de precisión.",
     "disabledNote": "Desactivado — la tasa de arriba es solo la estimación.",
     "na": "n/d"
+  },
+  "costEfficiency": {
+    "title": "Frontera de Eficiencia de Costos",
+    "realised": "Costo realizado",
+    "frontier": "Costo frontera",
+    "recoverable": "Desperdicio recuperable",
+    "basisNote": "Basado en el proxy de finalización, no en supervivencia",
+    "insufficient": "Aún no hay suficiente diversidad de modelos para calcular una frontera: ningún arquetipo tiene una alternativa más barata comprobada.",
+    "leverKind": {
+      "route_by_archetype": "Enrutar tareas por arquetipo al modelo frontera",
+      "default_effort_down": "Reducir el nivel de esfuerzo predeterminado",
+      "cache_hygiene": "Mejorar la higiene de caché para reducir tokens repetidos",
+      "stop_after_repairs": "Detener sesiones tras completar las reparaciones"
+    }
   }
 }
