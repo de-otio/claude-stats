@@ -291,11 +291,20 @@ export class Store {
     // model!='' to drop them. NULL inference_geo is stored as '' and NULL/absent
     // timestamps land in the hour_utc=-1 sentinel bucket.
     this.db.exec(`
+      -- message_hourly is a pure derived cache (rebuilt from messages by the
+      -- backfill below), so DROP+CREATE is safe and keeps the schema correct
+      -- if this migration's definition evolved before release.
+      DROP TABLE IF EXISTS message_hourly;
       CREATE TABLE IF NOT EXISTS message_hourly (
         hour_utc      INTEGER NOT NULL,
-        project_path  TEXT NOT NULL DEFAULT '',
-        model         TEXT NOT NULL DEFAULT '',
-        inference_geo TEXT NOT NULL DEFAULT '',
+        -- project_path/model/inference_geo are stored as their ACTUAL values
+        -- including NULL (no '' sentinel): real data has empty-string and NULL
+        -- inference_geo as DISTINCT values, so a '' sentinel would conflate
+        -- them. SQLite permits NULL in a PRIMARY KEY; the DELETE-by-hour +
+        -- GROUP BY recompute (no ON CONFLICT) treats NULL as one group safely.
+        project_path  TEXT,
+        model         TEXT,
+        inference_geo TEXT,
         input_tokens          INTEGER NOT NULL,
         output_tokens         INTEGER NOT NULL,
         cache_read_tokens     INTEGER NOT NULL,
@@ -349,9 +358,9 @@ export class Store {
       INSERT INTO message_hourly
       SELECT
         ${hourExpr} AS hour_utc,
-        COALESCE((SELECT project_path FROM sessions s2 WHERE s2.session_id = m.session_id), '') AS project_path,
-        COALESCE(m.model, '') AS model,
-        COALESCE(m.inference_geo, '') AS inference_geo,
+        (SELECT project_path FROM sessions s2 WHERE s2.session_id = m.session_id) AS project_path,
+        m.model AS model,
+        m.inference_geo AS inference_geo,
         SUM(m.input_tokens),
         SUM(m.output_tokens),
         SUM(m.cache_read_tokens),
@@ -380,7 +389,31 @@ export class Store {
         this.db.exec(deleteSql);
         this.db.prepare(insertSql).run();
       }
+      // Freshness watermark: the messages-table row count this rollup was last
+      // built/maintained against. The read dispatcher uses the rollup only when
+      // this still matches the current count (else falls back to the raw seek).
+      // collect() recomputes every touched hour and then this runs, so after a
+      // collect the watermark equals the current count and the rollup is fresh.
+      // Direct upsertMessages that bypass a recompute (e.g. tests) leave the
+      // count ahead of the watermark, so reads correctly fall back to raw.
+      this.db
+        .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES ('message_hourly_watermark', (SELECT CAST(COUNT(*) AS TEXT) FROM messages))")
+        .run();
     });
+  }
+
+  /**
+   * True when message_hourly is in sync with the messages table — i.e. the
+   * recorded watermark equals the current message count. Cheap (two counts),
+   * and the guard that lets the unbounded read dispatch to the rollup safely.
+   */
+  private isMessageHourlyFresh(): boolean {
+    const wm = this.db
+      .prepare("SELECT value FROM metadata WHERE key = 'message_hourly_watermark'")
+      .get() as { value: string } | undefined;
+    if (!wm) return false;
+    const cur = this.db.prepare("SELECT COUNT(*) AS c FROM messages").get() as { c: number };
+    return Number(wm.value) === cur.c;
   }
 
   // ─── Transaction wrapper ────────────────────────────────────────────────────
@@ -737,7 +770,49 @@ export class Store {
 
   // ─── Reporting queries ──────────────────────────────────────────────────────
 
+  /**
+   * Per-model token totals. Dispatches to a rollup read when the request is
+   * FULLY UNBOUNDED (no period and no session-scoped filter) — the 'all'-period
+   * fast path, since period 'all' reaches the store with since===undefined.
+   * Any bound (since/until/projectPath/repoUrl) falls back to the Build-1 seek
+   * path (getMessageTotalsRaw), which is unchanged.
+   */
   getMessageTotals(filters: {
+    projectPath?: string;
+    repoUrl?: string;
+    since?: number;
+    until?: number;
+  } = {}): MessageTotalRow[] {
+    const fullyUnbounded =
+      filters.since === undefined &&
+      filters.until === undefined &&
+      !filters.projectPath &&
+      !filters.repoUrl;
+    if (fullyUnbounded && this.isMessageHourlyFresh()) return this.getMessageTotalsFromRollup();
+    return this.getMessageTotalsRaw(filters);
+  }
+
+  /**
+   * 'all'-period fast path: reproduce getMessageTotalsRaw({}) EXACTLY from the
+   * message_hourly rollup. Sums every bucket per model; model is stored as its
+   * actual value (null-model messages keep model NULL), matching raw's
+   * GROUP BY m.model which returns model:null for null-model messages.
+   */
+  private getMessageTotalsFromRollup(): MessageTotalRow[] {
+    const stmt = this.db.prepare(`
+      SELECT
+        model,
+        SUM(input_tokens) AS input_tokens,
+        SUM(output_tokens) AS output_tokens,
+        SUM(cache_read_tokens) AS cache_read_tokens,
+        SUM(cache_creation_tokens) AS cache_creation_tokens
+      FROM message_hourly
+      GROUP BY model
+    `);
+    return stmt.all() as unknown as MessageTotalRow[];
+  }
+
+  private getMessageTotalsRaw(filters: {
     projectPath?: string;
     repoUrl?: string;
     since?: number;
@@ -1241,7 +1316,153 @@ export class Store {
    * All sub-queries share the same session-id membership seek (energyAggregateWhere)
    * so the whole section is O(period).
    */
+  /**
+   * Dispatcher: FULLY UNBOUNDED requests (no period, no session-scoped filter)
+   * read the message_hourly rollup ('all'-period fast path); any bound falls
+   * back to the Build-1 seek path (getEnergyAggregatesRaw), unchanged.
+   */
   getEnergyAggregates(filters: {
+    projectPath?: string;
+    repoUrl?: string;
+    accountUuid?: string;
+    since?: number;
+  } = {}): EnergyAggregates {
+    const fullyUnbounded =
+      filters.since === undefined &&
+      !filters.projectPath &&
+      !filters.repoUrl &&
+      !filters.accountUuid;
+    if (fullyUnbounded && this.isMessageHourlyFresh()) return this.getEnergyAggregatesFromRollup();
+    return this.getEnergyAggregatesRaw(filters);
+  }
+
+  /**
+   * 'all'-period fast path: reproduce getEnergyAggregatesRaw({}) EXACTLY from
+   * message_hourly. Energy excludes null-model messages (the raw WHERE has
+   * `m.model IS NOT NULL`), so every aggregate filters `model IS NOT NULL`.
+   * model and inference_geo are stored as their ACTUAL values (incl. NULL —
+   * no '' sentinel, since real data has empty-string AND null geo as distinct
+   * values). Null-timestamp messages bucket at hour_utc = -1 (mapped back to a
+   * NULL hour_bucket in byHourModel). thinkingSessions (distinct
+   * session_id) is NOT additive, so it runs the same live COUNT(DISTINCT) query
+   * getEnergyAggregatesRaw uses.
+   */
+  private getEnergyAggregatesFromRollup(): EnergyAggregates {
+    // 1. byModel — per-model token sums + msg_count; MIN(min_ts) as the
+    //    first-seen tiebreak. model='' (null-model) excluded.
+    const byModel = this.db.prepare(`
+      SELECT model AS model,
+             SUM(input_tokens) AS input_tokens,
+             SUM(output_tokens) AS output_tokens,
+             SUM(cache_read_tokens) AS cache_read_tokens,
+             SUM(cache_creation_tokens) AS cache_creation_tokens,
+             SUM(msg_count) AS msgs,
+             MIN(min_ts) AS min_ts
+      FROM message_hourly
+      WHERE model IS NOT NULL
+      GROUP BY model
+    `).all() as unknown as EnergyModelAgg[];
+
+    // 2. byProjectModel — GROUP BY project_path, model (model='' excluded).
+    const byProjectModel = this.db.prepare(`
+      SELECT project_path AS project_path,
+             model AS model,
+             SUM(input_tokens) AS input_tokens,
+             SUM(output_tokens) AS output_tokens,
+             SUM(cache_read_tokens) AS cache_read_tokens,
+             SUM(cache_creation_tokens) AS cache_creation_tokens,
+             MIN(min_ts) AS min_ts
+      FROM message_hourly
+      WHERE model IS NOT NULL
+      GROUP BY project_path, model
+    `).all() as unknown as EnergyProjectModelAgg[];
+
+    // 3. byHourModel — GROUP BY hour_utc, model; hour_utc=-1 (null-timestamp
+    //    sentinel) maps back to a NULL hour_bucket (raw used NULL).
+    const byHourModelRows = this.db.prepare(`
+      SELECT hour_utc AS hour_utc,
+             model AS model,
+             SUM(input_tokens) AS input_tokens,
+             SUM(output_tokens) AS output_tokens,
+             SUM(cache_read_tokens) AS cache_read_tokens,
+             SUM(cache_creation_tokens) AS cache_creation_tokens
+      FROM message_hourly
+      WHERE model IS NOT NULL
+      GROUP BY hour_utc, model
+    `).all() as Array<Omit<EnergyHourModelAgg, "hour_bucket"> & { hour_utc: number }>;
+    const byHourModel: EnergyHourModelAgg[] = byHourModelRows.map(({ hour_utc, ...rest }) => ({
+      ...rest,
+      hour_bucket: hour_utc === -1 ? null : hour_utc,
+    }));
+
+    // 4. byGeo — GROUP BY inference_geo, SUM(msg_count). inference_geo is stored
+    //    as its actual value (incl. NULL and ''), matching raw's GROUP BY
+    //    m.inference_geo. model NULL excluded (raw byGeo is over the
+    //    model-not-null energy WHERE).
+    const byGeo = this.db.prepare(`
+      SELECT inference_geo AS inference_geo, SUM(msg_count) AS msgs
+      FROM message_hourly
+      WHERE model IS NOT NULL
+      GROUP BY inference_geo
+    `).all() as unknown as EnergyGeoAgg[];
+
+    // 5. geoByEarliest — distinct non-null geos with earliest min_ts, ASC.
+    const geoByEarliest = this.db.prepare(`
+      SELECT inference_geo AS inference_geo, MIN(min_ts) AS min_ts
+      FROM message_hourly
+      WHERE model IS NOT NULL AND inference_geo IS NOT NULL AND min_ts IS NOT NULL
+      GROUP BY inference_geo
+      ORDER BY min_ts ASC
+    `).all() as Array<{ inference_geo: string; min_ts: number }>;
+
+    // 6a. thinkingSessions — distinct session_id is NOT additive in the rollup,
+    //     so run the SAME live query getEnergyAggregatesRaw uses.
+    const { where, params } = this.energyAggregateWhere({});
+    const thinkingSessionsRow = (() => {
+      const stmt = this.db.prepare(`
+        SELECT COUNT(DISTINCT m.session_id) AS c
+        FROM messages m
+        ${where} AND m.thinking_blocks > 0
+      `);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (stmt.get as (...args: any[]) => unknown)(...params) as { c: number } | undefined;
+    })();
+
+    // 6b. thinkingByModel — th_* columns as the token sums, th_msg_count as
+    //     msgs; only buckets with thinking messages (th_msg_count > 0).
+    const thinkingByModel = this.db.prepare(`
+      SELECT model AS model,
+             SUM(th_input_tokens) AS input_tokens,
+             SUM(th_output_tokens) AS output_tokens,
+             SUM(th_cache_read_tokens) AS cache_read_tokens,
+             SUM(th_cache_creation_tokens) AS cache_creation_tokens,
+             SUM(th_msg_count) AS msgs
+      FROM message_hourly
+      WHERE model IS NOT NULL AND th_msg_count > 0
+      GROUP BY model
+    `).all() as unknown as EnergyModelAgg[];
+
+    // bounds — totalMessages = SUM(msg_count); minTimestamp = MIN(min_ts).
+    const boundsRow = this.db.prepare(`
+      SELECT SUM(msg_count) AS total, MIN(min_ts) AS min_ts
+      FROM message_hourly
+      WHERE model IS NOT NULL
+    `).get() as { total: number | null; min_ts: number | null };
+
+    return {
+      byModel,
+      byProjectModel,
+      byHourModel,
+      byGeo,
+      geoByEarliest,
+      sessionsWithThinking: thinkingSessionsRow?.c ?? 0,
+      thinkingByModel,
+      totalMessages: boundsRow?.total ?? 0,
+      minTimestamp: boundsRow?.min_ts ?? null,
+    };
+  }
+
+  private getEnergyAggregatesRaw(filters: {
     projectPath?: string;
     repoUrl?: string;
     accountUuid?: string;
