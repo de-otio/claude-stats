@@ -996,6 +996,33 @@ export class Store {
   }
 
   /**
+   * Per-session MAX(uuid) over messages whose timestamp is in [startMs, endMs),
+   * for the given session ids. Used by the recap snapshot-hash to compute
+   * per-session and global last-message-uuid WITHOUT fetching every message row
+   * (the full rows are only needed on a cache miss). Sessions with no in-window
+   * message are simply absent from the result (caller defaults them to null).
+   */
+  getMaxMessageUuidsInWindow(
+    sessionIds: string[],
+    startMs: number,
+    endMs: number,
+  ): Array<{ session_id: string; max_uuid: string }> {
+    if (sessionIds.length === 0) return [];
+    const placeholders = sessionIds.map(() => "?").join(",");
+    const stmt = this.db.prepare(
+      `SELECT session_id, MAX(uuid) AS max_uuid
+       FROM messages
+       WHERE session_id IN (${placeholders})
+         AND timestamp >= ? AND timestamp < ?
+       GROUP BY session_id`
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(
+      ...sessionIds, startMs, endMs,
+    ) as Array<{ session_id: string; max_uuid: string }>;
+  }
+
+  /**
    * Returns all message timestamps (ms since epoch) for sessions matching the
    * provided filters, sorted ascending. Used to compute active interaction time
    * by merging timestamps across parallel sessions before measuring gaps.

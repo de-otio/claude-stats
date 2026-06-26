@@ -447,6 +447,11 @@ export async function buildCostPerTaskReport(
       : undefined;
 
   // ── Pool digest items across the window ──
+  // One git-SHA memo for the whole report: HEAD is stable across the per-day
+  // digests, so this collapses N_days × N_projects git subprocesses into one
+  // per distinct project.
+  const commitShaCache = new Map<string, string | null>();
+  const digestDeps = { ...opts.digestDeps, commitShaCache };
   const records: TaskRecord[] = [];
   const tasks: LabellableTask[] = [];
   for (const date of dates) {
@@ -460,7 +465,7 @@ export async function buildCostPerTaskReport(
         repoUrl: opts.repoUrl,
         includeCI: opts.includeCI ?? false,
       },
-      opts.digestDeps,
+      digestDeps,
     );
 
     for (const item of digest.items) {
@@ -559,6 +564,9 @@ export async function buildCalibrationReport(
   const proxyPairs: LabelledPair[] = [];
   const signalPairs: LabelledPair[] = [];
 
+  // One git-SHA memo for the whole report (see buildCostPerTaskReport).
+  const commitShaCache = new Map<string, string | null>();
+  const digestDeps = { ...opts.digestDeps, commitShaCache };
   for (const date of dates) {
     const digest = await buildDailyDigest(
       store,
@@ -570,7 +578,7 @@ export async function buildCalibrationReport(
         repoUrl: opts.repoUrl,
         includeCI: opts.includeCI ?? false,
       },
-      opts.digestDeps,
+      digestDeps,
     );
 
     for (const item of digest.items) {
