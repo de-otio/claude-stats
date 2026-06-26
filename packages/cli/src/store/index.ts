@@ -636,33 +636,39 @@ export class Store {
     since?: number;
     until?: number;
   } = {}): MessageTotalRow[] {
-    // Session-scoped filters select qualifying sessions via a seek on
-    // idx_sessions_first_ts; the outer query then seeks those sessions'
-    // messages via idx_messages_session. Output-preserving vs. the prior
-    // inner join (the subquery selects exactly the same session_ids; the
-    // join's orphan-message drop is preserved because a message whose
-    // session_id is absent from `sessions` matches neither form).
+    // Period is filtered on the MESSAGE timestamp (messages SENT in the period),
+    // which seeks idx_messages_timestamp. Session-scoped filters (project/repo)
+    // stay in an always-emitted membership subquery — this preserves the prior
+    // inner join's orphan-message drop (a message whose session_id is absent
+    // from `sessions` matches neither form). Outer (m.timestamp) params are
+    // bound before the subquery params to match the `?` order in the SQL.
+    const outerConditions: string[] = [];
     const sessionConditions: string[] = [];
     const params: unknown[] = [];
 
-    if (filters.projectPath) {
-      sessionConditions.push("project_path = ?");
-      params.push(filters.projectPath);
-    }
-    if (filters.repoUrl) {
-      sessionConditions.push("repo_url = ?");
-      params.push(filters.repoUrl);
-    }
     if (filters.since !== undefined) {
-      sessionConditions.push("first_timestamp >= ?");
+      outerConditions.push("m.timestamp >= ?");
       params.push(filters.since);
     }
     if (filters.until !== undefined) {
-      sessionConditions.push("first_timestamp < ?");
+      outerConditions.push("m.timestamp < ?");
       params.push(filters.until);
     }
+    if (filters.projectPath) {
+      sessionConditions.push("s.project_path = ?");
+      params.push(filters.projectPath);
+    }
+    if (filters.repoUrl) {
+      sessionConditions.push("s.repo_url = ?");
+      params.push(filters.repoUrl);
+    }
 
-    const sessionWhere = sessionConditions.length ? `WHERE ${sessionConditions.join(" AND ")}` : "";
+    // EXISTS (not IN): preserves orphan-drop AND lets the m.timestamp filter
+    // seek idx_messages_timestamp. An `IN (SELECT all session_ids)` would make
+    // the planner iterate every session_id via idx_messages_session instead,
+    // defeating the timestamp seek.
+    const sessionAnd = sessionConditions.length ? ` AND ${sessionConditions.join(" AND ")}` : "";
+    const outerWhere = outerConditions.length ? `${outerConditions.join(" AND ")} AND ` : "";
     const sql = `
       SELECT
         m.model,
@@ -671,9 +677,8 @@ export class Store {
         SUM(m.cache_read_tokens) AS cache_read_tokens,
         SUM(m.cache_creation_tokens) AS cache_creation_tokens
       FROM messages m
-      WHERE m.session_id IN (
-        SELECT session_id FROM sessions
-        ${sessionWhere}
+      WHERE ${outerWhere}EXISTS (
+        SELECT 1 FROM sessions s WHERE s.session_id = m.session_id${sessionAnd}
       )
       GROUP BY m.model
     `;
@@ -1006,28 +1011,31 @@ export class Store {
     repoUrl?: string;
     since?: number;
   } = {}): EfficiencyMessageRow[] {
-    // Outer (message-level) conditions stay on the messages query; the
-    // session-scoped filters become a seek subquery (output-preserving vs.
-    // the prior inner join — see getMessageTotals).
+    // Period is filtered on the MESSAGE timestamp (messages SENT in the
+    // period); session-scoped filters stay in an always-emitted membership
+    // subquery, preserving the prior inner join's orphan-message drop (see
+    // getMessageTotals). Param order follows the `?` order in the SQL.
     const conditions: string[] = ["m.model IS NOT NULL"];
     const sessionConditions: string[] = [];
     const params: unknown[] = [];
 
+    if (filters.since !== undefined) {
+      conditions.push("m.timestamp >= ?");
+      params.push(filters.since);
+    }
     if (filters.projectPath) {
-      sessionConditions.push("project_path = ?");
+      sessionConditions.push("s.project_path = ?");
       params.push(filters.projectPath);
     }
     if (filters.repoUrl) {
-      sessionConditions.push("repo_url = ?");
+      sessionConditions.push("s.repo_url = ?");
       params.push(filters.repoUrl);
     }
-    if (filters.since !== undefined) {
-      sessionConditions.push("first_timestamp >= ?");
-      params.push(filters.since);
-    }
 
-    const sessionWhere = sessionConditions.length ? `WHERE ${sessionConditions.join(" AND ")}` : "";
-    conditions.push(`m.session_id IN (SELECT session_id FROM sessions ${sessionWhere})`);
+    // EXISTS preserves orphan-drop while letting the m.timestamp filter seek
+    // (see getMessageTotals).
+    const sessionAnd = sessionConditions.length ? ` AND ${sessionConditions.join(" AND ")}` : "";
+    conditions.push(`EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = m.session_id${sessionAnd})`);
     const where = `WHERE ${conditions.join(" AND ")}`;
     const sql = `
       SELECT
@@ -1049,32 +1057,36 @@ export class Store {
     repoUrl?: string;
     since?: number;
   } = {}): ContextMessageRow[] {
-    // Session-scoped filters become a seek subquery (output-preserving vs.
-    // the prior inner join — see getMessageTotals).
+    // Period is filtered on the MESSAGE timestamp; session-scoped filters stay
+    // in an always-emitted membership subquery, preserving orphan-drop (see
+    // getMessageTotals). Param order follows the `?` order in the SQL.
+    const outerConditions: string[] = [];
     const sessionConditions: string[] = [];
     const params: unknown[] = [];
 
+    if (filters.since !== undefined) {
+      outerConditions.push("m.timestamp >= ?");
+      params.push(filters.since);
+    }
     if (filters.projectPath) {
-      sessionConditions.push("project_path = ?");
+      sessionConditions.push("s.project_path = ?");
       params.push(filters.projectPath);
     }
     if (filters.repoUrl) {
-      sessionConditions.push("repo_url = ?");
+      sessionConditions.push("s.repo_url = ?");
       params.push(filters.repoUrl);
     }
-    if (filters.since !== undefined) {
-      sessionConditions.push("first_timestamp >= ?");
-      params.push(filters.since);
-    }
 
-    const sessionWhere = sessionConditions.length ? `WHERE ${sessionConditions.join(" AND ")}` : "";
+    // EXISTS preserves orphan-drop while letting the m.timestamp filter seek
+    // (see getMessageTotals).
+    const sessionAnd = sessionConditions.length ? ` AND ${sessionConditions.join(" AND ")}` : "";
+    const outerWhere = outerConditions.length ? `${outerConditions.join(" AND ")} AND ` : "";
     const sql = `
       SELECT m.session_id, m.timestamp, m.input_tokens,
              m.cache_read_tokens, m.cache_creation_tokens
       FROM messages m
-      WHERE m.session_id IN (
-        SELECT session_id FROM sessions
-        ${sessionWhere}
+      WHERE ${outerWhere}EXISTS (
+        SELECT 1 FROM sessions s WHERE s.session_id = m.session_id${sessionAnd}
       )
       ORDER BY m.session_id, m.timestamp ASC
     `;
@@ -1095,14 +1107,20 @@ export class Store {
     accountUuid?: string;
     since?: number;
   }): { where: string; params: unknown[] } {
+    // Period filtered on MESSAGE timestamp; session-scoped filters in an
+    // always-emitted membership subquery (orphan-drop preserved). The since
+    // param is bound before the subquery params to match the `?` order.
     const sessionConditions: string[] = [];
     const params: unknown[] = [];
-    if (filters.projectPath) { sessionConditions.push("project_path = ?"); params.push(filters.projectPath); }
-    if (filters.repoUrl) { sessionConditions.push("repo_url = ?"); params.push(filters.repoUrl); }
-    if (filters.accountUuid) { sessionConditions.push("account_uuid = ?"); params.push(filters.accountUuid); }
-    if (filters.since !== undefined) { sessionConditions.push("first_timestamp >= ?"); params.push(filters.since); }
-    const sessionWhere = sessionConditions.length ? `WHERE ${sessionConditions.join(" AND ")}` : "";
-    const where = `WHERE m.model IS NOT NULL AND m.session_id IN (SELECT session_id FROM sessions ${sessionWhere})`;
+    const tsClause = filters.since !== undefined ? "AND m.timestamp >= ? " : "";
+    if (filters.since !== undefined) { params.push(filters.since); }
+    if (filters.projectPath) { sessionConditions.push("s.project_path = ?"); params.push(filters.projectPath); }
+    if (filters.repoUrl) { sessionConditions.push("s.repo_url = ?"); params.push(filters.repoUrl); }
+    if (filters.accountUuid) { sessionConditions.push("s.account_uuid = ?"); params.push(filters.accountUuid); }
+    // EXISTS preserves orphan-drop while letting the m.timestamp filter seek
+    // (see getMessageTotals).
+    const sessionAnd = sessionConditions.length ? ` AND ${sessionConditions.join(" AND ")}` : "";
+    const where = `WHERE m.model IS NOT NULL ${tsClause}AND EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = m.session_id${sessionAnd})`;
     return { where, params };
   }
 
@@ -1256,29 +1274,34 @@ export class Store {
     // membership subquery already restricts to existing sessions, exactly
     // one matching session row exists per message and the value is identical
     // to the join's.
+    // Period filtered on MESSAGE timestamp; session-scoped filters in an
+    // always-emitted membership subquery (orphan-drop preserved). since param
+    // is bound before the subquery params to match the `?` order.
     const conditions: string[] = ["m.model IS NOT NULL"];
     const sessionConditions: string[] = [];
     const params: unknown[] = [];
 
+    if (filters.since !== undefined) {
+      conditions.push("m.timestamp >= ?");
+      params.push(filters.since);
+    }
     if (filters.projectPath) {
-      sessionConditions.push("project_path = ?");
+      sessionConditions.push("s.project_path = ?");
       params.push(filters.projectPath);
     }
     if (filters.repoUrl) {
-      sessionConditions.push("repo_url = ?");
+      sessionConditions.push("s.repo_url = ?");
       params.push(filters.repoUrl);
     }
     if (filters.accountUuid) {
-      sessionConditions.push("account_uuid = ?");
+      sessionConditions.push("s.account_uuid = ?");
       params.push(filters.accountUuid);
     }
-    if (filters.since !== undefined) {
-      sessionConditions.push("first_timestamp >= ?");
-      params.push(filters.since);
-    }
 
-    const sessionWhere = sessionConditions.length ? `WHERE ${sessionConditions.join(" AND ")}` : "";
-    conditions.push(`m.session_id IN (SELECT session_id FROM sessions ${sessionWhere})`);
+    // EXISTS preserves orphan-drop while letting the m.timestamp filter seek
+    // (see getMessageTotals).
+    const sessionAnd = sessionConditions.length ? ` AND ${sessionConditions.join(" AND ")}` : "";
+    conditions.push(`EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = m.session_id${sessionAnd})`);
     const where = `WHERE ${conditions.join(" AND ")}`;
     const sql = `
       SELECT

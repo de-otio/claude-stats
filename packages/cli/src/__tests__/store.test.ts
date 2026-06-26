@@ -1143,27 +1143,29 @@ describe("Store — message period filter (subquery seek parity)", () => {
       expect(rows.reduce((s, r) => s + r.input_tokens, 0)).toBe(100 + 300 + 500 + 200 + 400 + 11);
     });
 
-    it("since boundary excludes sB (first_timestamp < since) but the EDGE message mB_early stays bound to sB's first_timestamp", () => {
-      // since = T0 + 1: sA(T0) excluded, sB(T0+600_000) included, sC included.
-      // sB qualifies by its first_timestamp, so BOTH its messages (incl. mB_early
-      // at T0, earlier than the boundary) are selected — exactly as the join did.
+    it("since boundary filters on MESSAGE timestamp: mB_early (T0) drops, sA's later messages stay", () => {
+      // Message-timestamp semantics: since = T0 + 1 selects messages SENT at/after
+      // T0+1 (regardless of their session's first_timestamp). mB_early (T0) drops;
+      // mA1/mA_null/mA2 (all > T0) now qualify even though sA.first_ts = T0.
       const rows = store.getMessageTotals({ since: T0 + 1 });
       const byModel = new Map(rows.map(r => [r.model, r]));
-      // opus: mB_early(300) + mC1(500); sA's mA1 dropped (sA.first_ts < since)
-      expect(byModel.get("claude-opus-4-6")!.input_tokens).toBe(300 + 500);
-      // sonnet: mB_late(400) only; sA's mA2 dropped
-      expect(byModel.get("claude-sonnet-4-6")!.input_tokens).toBe(400);
-      // no null-model row (it belonged to sA)
-      expect(rows.some(r => r.model === null)).toBe(false);
+      // opus: mA1(100) + mC1(500); mB_early(300) dropped by its own timestamp
+      expect(byModel.get("claude-opus-4-6")!.input_tokens).toBe(100 + 500);
+      // sonnet: mA2(200) + mB_late(400)
+      expect(byModel.get("claude-sonnet-4-6")!.input_tokens).toBe(200 + 400);
+      // null-model row present now (mA_null at T0+300 ≥ since)
+      expect(rows.some(r => r.model === null)).toBe(true);
     });
 
-    it("until upper bound and project filter", () => {
-      // project /Users/alice/a → sessions sA, sC. until = T0 + DAY → sC (day 3)
-      // excluded. Only sA qualifies.
+    it("until upper bound (message timestamp) and project filter", () => {
+      // project /Users/alice/a → sessions sA, sC. until = T0 + DAY filters on
+      // MESSAGE timestamp: keeps messages sent before T0+DAY. From sA/sC that is
+      // mA1(T0+100) and mA_null(T0+300); mA2(T0+DAY+200) and mC1(T0+3DAY) drop.
       const rows = store.getMessageTotals({ projectPath: "/Users/alice/a", until: T0 + DAY });
       const byModel = new Map(rows.map(r => [r.model ?? "∅", r]));
       expect(byModel.get("claude-opus-4-6")!.input_tokens).toBe(100); // mA1
-      expect(byModel.get("claude-sonnet-4-6")!.input_tokens).toBe(200); // mA2
+      // sonnet row absent: mA2 is past `until` by its own timestamp
+      expect(byModel.has("claude-sonnet-4-6")).toBe(false);
       expect(byModel.get("∅")!.input_tokens).toBe(11); // mA_null
     });
 
@@ -1196,10 +1198,11 @@ describe("Store — message period filter (subquery seek parity)", () => {
       expect(rows.map(r => r.uuid)).toEqual(["mB_early", "mB_late"]);
     });
 
-    it("since window keeps the edge session's earlier message", () => {
+    it("since window filters on message timestamp: mB_early (T0) drops, sA's later messages stay", () => {
       const rows = store.getMessagesForEfficiency({ since: T0 + 1 });
-      // sA dropped; sB + sC kept. mB_early (T0, before boundary) STAYS.
-      expect(rows.map(r => r.uuid)).toEqual(["mB_early", "mB_late", "mC1"]);
+      // Message-timestamp semantics: mB_early (T0) drops; mA1/mA2 (sA, > T0) stay
+      // even though sA.first_ts = T0. Ordered by timestamp ASC.
+      expect(rows.map(r => r.uuid)).toEqual(["mA1", "mB_late", "mA2", "mC1"]);
     });
 
     it("empty period → empty array", () => {
@@ -1227,10 +1230,12 @@ describe("Store — message period filter (subquery seek parity)", () => {
       });
     });
 
-    it("project filter + since window", () => {
-      // /Users/alice/a → sA, sC. since = T0 + 1 drops sA → only sC.
+    it("project filter + since window (message timestamp)", () => {
+      // /Users/alice/a → sA, sC. since = T0 + 1 filters MESSAGE timestamp: all of
+      // sA's messages (mA1 T0+100, mA_null T0+300, mA2 T0+DAY+200) are > T0, so sA
+      // stays; sC's mC1 too. ORDER BY session_id, timestamp ASC.
       const rows = store.getMessagesForContext({ projectPath: "/Users/alice/a", since: T0 + 1 });
-      expect(rows.map(r => r.session_id)).toEqual(["sC"]);
+      expect(rows.map(r => r.session_id)).toEqual(["sA", "sA", "sA", "sC"]);
     });
 
     it("empty period → empty array", () => {
@@ -1269,17 +1274,38 @@ describe("Store — message period filter (subquery seek parity)", () => {
       expect(rows.every(r => r.project_path === "/Users/alice/b")).toBe(true);
     });
 
-    it("project filter + since window keeps the edge message", () => {
-      // /Users/alice/b → sB; since = T0 + 1 keeps sB (first_ts T0+600_000),
-      // and mB_early (T0) STAYS because sB qualifies.
+    it("project filter + since window (message timestamp) drops the edge message", () => {
+      // /Users/alice/b → sB; since = T0 + 1 filters MESSAGE timestamp: mB_early
+      // (T0) drops even though sB.first_ts = T0+600_000; only mB_late (T0+650k) stays.
       const rows = store.getMessagesForEnergy({ projectPath: "/Users/alice/b", since: T0 + 1 });
       expect(rows.map(r => `${r.session_id}@${r.timestamp}`)).toEqual([
-        `sB@${T0}`, `sB@${T0 + 650_000}`,
+        `sB@${T0 + 650_000}`,
       ]);
     });
 
     it("empty period → empty array", () => {
       expect(store.getMessagesForEnergy({ since: T0 + 100 * DAY })).toEqual([]);
+    });
+  });
+
+  // ── Message-timestamp semantics: explicit boundary-straddle guard ─────────
+  describe("boundary straddle (message-timestamp axis)", () => {
+    it("counts messages by their OWN timestamp, not their session's first_timestamp", () => {
+      // sB starts at T0+600_000 but owns mB_early at T0. With a window
+      // [T0+1, T0+700_000): mB_early (T0) is EXCLUDED though its session starts
+      // in-window; mB_late (T0+650k) is INCLUDED. Conversely sA starts at T0 but
+      // its mA2 (T0+DAY+200) lands outside this window. This is the signed-off
+      // behaviour change from session-start to message-timestamp semantics.
+      const rows = store.getMessageTotals({ since: T0 + 1, until: T0 + 700_000 });
+      const byModel = new Map(rows.map(r => [r.model ?? "∅", r]));
+      // opus: only mA1 (T0+100); mB_early (T0) excluded, mC1 (T0+3DAY) excluded
+      expect(byModel.get("claude-opus-4-6")!.input_tokens).toBe(100);
+      // sonnet: only mB_late (T0+650k); mA2 (T0+DAY+200) excluded
+      expect(byModel.get("claude-sonnet-4-6")!.input_tokens).toBe(400);
+      // null-model mA_null (T0+300) is in-window
+      expect(byModel.get("∅")!.input_tokens).toBe(11);
+      // orphan never appears regardless of axis
+      expect(rows.every(r => r.input_tokens !== 999)).toBe(true);
     });
   });
 });
