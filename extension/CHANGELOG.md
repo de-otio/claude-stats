@@ -2,6 +2,37 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.7.1 — 2026-06-26
+
+### Changed — Startup performance
+
+The dashboard now paints fast regardless of how much Claude Code history you
+have accumulated. Before, first open re-scanned the entire message history on
+every refresh, so load time grew without bound as history piled up ("Crunching
+your Claude Code history…" lingering for seconds).
+
+- **Opens on the Day period by default** (was All). `buildDashboard` cost is
+  O(messages in the period), so Day keeps first paint sub-300ms no matter the
+  total history; widen to Week/Month/All on demand from the period dropdown.
+  The CLI `report`/`serve` defaults are unchanged.
+- **Faster wide periods too.** Measured on a 214k-message history (warm):
+  Day **~3.3s → ~0.14s**, Month **~1.9s → ~0.92s**, All **~3.7s → ~1.3s**.
+
+### Fixed — under the hood (no output change)
+
+Every change below was verified output-preserving against the live database.
+
+- Message-level reads now seek by `timestamp` through a session-membership
+  subquery instead of scanning, and adopt message-timestamp period semantics.
+- The energy section is aggregated in SQL (`GROUP BY`) rather than looping every
+  in-period message in JS.
+- A persisted hourly rollup (`message_hourly`, schema V12) serves unbounded
+  energy/totals reads — those reads dropped from ~725ms to ~44ms on All — and is
+  maintained incrementally by the collector.
+- The recap pipeline no longer recomputes its per-day snapshot hash from every
+  message before the cache lookup; the warm month floor fell from ~967ms to
+  ~242ms.
+
 ## 0.7.0 — 2026-06-24
 
 ### Added — Outcome accuracy + in-dashboard calibration

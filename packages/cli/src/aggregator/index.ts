@@ -60,6 +60,16 @@ export async function collect(
   // Cache repo URLs per project path to avoid re-reading .git/config for each session file
   const repoUrlCache = new Map<string, string | null>();
 
+  // Accumulate the set of message_hourly hour buckets touched by this collect, so
+  // we can incrementally recompute only those partitions (DELETE+INSERT) instead
+  // of rebuilding the whole rollup. The bucket expression mirrors the store's
+  // recomputeMessageHourly: COALESCE(floor(timestamp/3600000), -1). For positive
+  // timestamps floor() matches SQLite's CAST(... AS INTEGER) truncation exactly.
+  // This covers both append (parsed.messages = new lines only) and rewrite
+  // (parsed.messages = the whole file from offset 0): every upserted message's
+  // bucket is added, so any partition that could have changed is recomputed.
+  const touchedHours = new Set<number>();
+
   for (const sf of sessionFiles) {
     const fileStats = getFileStats(sf.filePath);
 
@@ -155,6 +165,13 @@ export async function collect(
       if (parsed.messages.length > 0) {
         store.upsertMessages(parsed.messages);
         result.messagesUpserted += parsed.messages.length;
+        // Record the hour bucket of every upserted message for incremental
+        // message_hourly maintenance (recomputed once after the file loop).
+        for (const m of parsed.messages) {
+          touchedHours.add(
+            m.timestamp == null ? -1 : Math.floor(m.timestamp / 3600000)
+          );
+        }
       }
 
       if (parsed.errors.length > 0) {
@@ -205,6 +222,20 @@ export async function collect(
 
   // Schema check: sample stored sessions per version
   // (skipped for brevity in initial implementation — triggered by diagnose command)
+
+  // Incrementally maintain the message_hourly rollup: recompute exactly the hour
+  // partitions touched by the messages upserted above. Must run AFTER all message
+  // upserts are committed, since recomputeMessageHourly reads the messages table.
+  // One call per collect (not per file). Empty set → no-op (nothing changed).
+  //
+  // markSourceDeleted is deliberately NOT a trigger here: the raw reads (and the
+  // rollup's EXISTS predicate) don't filter on source_deleted, and markSourceDeleted
+  // leaves the message rows and the session row in place — so EXISTS stays true and
+  // the rollup value for those hours is unchanged. Recomputing on deletion would be
+  // wasted work that produces a byte-identical table.
+  if (touchedHours.size > 0) {
+    store.recomputeMessageHourly([...touchedHours]);
+  }
 
   // Recompute usage windows for the past 2 days to catch any in-progress windows
   const windowSince = Date.now() - 2 * 24 * 60 * 60 * 1000;

@@ -108,6 +108,15 @@ export interface BuildDailyDigestDeps {
    * as fresh (mtime = nowMs).  When absent, the production path is used.
    */
   getCacheMtimeMs?: (hash: string) => number | null;
+  /**
+   * Per-report memo of `getLastCommitSha` results, keyed by project path. A
+   * repo's HEAD does not change within a single multi-day report build, so the
+   * caller (buildCostPerTaskReport / buildCalibrationReport) passes ONE map for
+   * all per-day buildDailyDigest calls — collapsing N_days × N_projects git
+   * subprocesses into one per distinct project. A fresh map per report picks up
+   * new commits. When absent, getLastCommitSha is called directly (every day).
+   */
+  commitShaCache?: Map<string, string | null>;
 }
 
 // ─── Day-boundary helpers ─────────────────────────────────────────────────────
@@ -463,34 +472,39 @@ export async function buildDailyDigest(
   // session-level diffing by the incremental patcher (v3.06).
   const perSessionLastMessageUuid: Record<string, string | null> = {};
 
+  // Compute the hash inputs (global + per-session last message uuid) via a
+  // single SQL MAX(uuid) GROUP BY over the in-window messages — NOT by fetching
+  // every message row. The full rows (sessionMessages) are only needed on a
+  // cache MISS for segmentation, so they are fetched later (see below). This
+  // keeps cache-hit days off the O(messages) path. Output-preserving: MAX(uuid)
+  // is the same lexical max the prior per-message loop computed.
   for (const session of sessions) {
-    const msgs = store.getSessionMessages(session.session_id);
-    sessionMessages.set(session.session_id, msgs);
-    let sessionMax: string | null = null;
-    for (const msg of msgs) {
-      if (
-        msg.timestamp !== null &&
-        msg.timestamp >= startMs &&
-        msg.timestamp < endMs
-      ) {
-        if (maxMessageUuid === null || msg.uuid > maxMessageUuid) {
-          maxMessageUuid = msg.uuid;
-        }
-        if (sessionMax === null || msg.uuid > sessionMax) {
-          sessionMax = msg.uuid;
-        }
-      }
+    perSessionLastMessageUuid[session.session_id] = null;
+  }
+  for (const row of store.getMaxMessageUuidsInWindow(
+    sessions.map((s) => s.session_id),
+    startMs,
+    endMs,
+  )) {
+    perSessionLastMessageUuid[row.session_id] = row.max_uuid;
+    if (maxMessageUuid === null || row.max_uuid > maxMessageUuid) {
+      maxMessageUuid = row.max_uuid;
     }
-    perSessionLastMessageUuid[session.session_id] = sessionMax;
   }
 
-  // Per-project last commit SHA
+  // Per-project last commit SHA, memoised per-report via deps.commitShaCache
+  // (HEAD is stable within one multi-day report — see deps doc).
+  const commitShaCache = deps?.commitShaCache;
   const getLastCommit = (projectPath: string): string | null => {
+    if (commitShaCache?.has(projectPath)) return commitShaCache.get(projectPath)!;
+    let sha: string | null;
     try {
-      return getLastCommitSha(projectPath);
+      sha = getLastCommitSha(projectPath);
     } catch {
-      return null;
+      sha = null;
     }
+    commitShaCache?.set(projectPath, sha);
+    return sha;
   };
 
   const perProjectLastCommit: Record<string, string | null> = {};
@@ -544,6 +558,13 @@ export async function buildDailyDigest(
       clusteringMethod: method,
       cached: true,
     };
+  }
+
+  // Cache MISS from here on. NOW fetch the full message rows (deferred from the
+  // hash computation above) — the patcher (Step 4c) and segmentation (Step 5)
+  // need them, but cache-hit days returned above without paying this fetch.
+  for (const session of sessions) {
+    sessionMessages.set(session.session_id, store.getSessionMessages(session.session_id));
   }
 
   // ── Step 4b: Short-circuit for empty days (negative caching, v3.07) ────────
