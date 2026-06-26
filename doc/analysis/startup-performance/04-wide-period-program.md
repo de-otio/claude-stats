@@ -137,3 +137,21 @@ backfill). Own analyze→build→verify cycle.
 
 Each phase: analyze → plan → review → build → verify (parity gate) → commit,
 measuring after each. Target: "all" < 0.5 s after all three.
+
+---
+
+## Program status — Phases A, #7, and B all SHIPPED
+
+| period | full refresh, start of program | now (warm) |
+|---|---|---|
+| **day (default)** | 3.3 s (was "all" default) | **~0.14 s** |
+| week | 0.57 s | ~0.42 s |
+| month | 1.9 s | ~0.92 s |
+| all | 3.7 s | ~1.3 s |
+
+Shipped:
+- **Phase A** (`2a0e4cb`) — energy section via SQL GROUP BY.
+- **`#7`** (`606f363` semantics, `c5aa3a7` table, `367c4fb` reads+maintenance) — `message_hourly` rollup; energy/totals "all" reads 725ms → 44ms.
+- **Phase B** (`bd229c2`) — recap per-day snapshot-hash floor: memoise `getLastCommitSha` per report + SQL `MAX(uuid)` for hash inputs (deferring full message fetch to cache-miss). Profiled month digest was git 332ms + session-fetch 140ms + other 18ms; recap floor ~967ms → ~242ms. Output-preserving (snapshot hash byte-identical).
+
+**Remaining for "all" < 0.5s:** the dominant cost is now `buildDashboard`'s **non-additive passes** — `buildModelEfficiency` (turn classification) and `buildContextAnalysis` (per-session trajectory) — i.e. **`#5`** (compute at ingest into derived tables). That is the last large lever and the natural next phase.
