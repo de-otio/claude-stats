@@ -1419,11 +1419,11 @@ describe("Store — message_hourly rollup parity (Phase 1)", () => {
   });
 
   it("(b) Σ where model != '' == raw SUM over model IS NOT NULL (energy-read semantics)", () => {
-    const rows = readHourly().filter(r => r.model !== "");
+    const rows = readHourly().filter(r => r.model !== null);
     const sumIn = rows.reduce((a, r) => a + r.input_tokens, 0);
     expect(sumIn).toBe(rawSum("inputTokens", m => m.model !== null)); // excludes m4(null model)=400 → 1100
-    // null-model row is stored under model=''
-    const nullModelRow = readHourly().find(r => r.model === "");
+    // null-model row is stored as actual NULL (no '' sentinel)
+    const nullModelRow = readHourly().find(r => r.model === null);
     expect(nullModelRow).toBeDefined();
     expect(nullModelRow!.input_tokens).toBe(400);
   });
@@ -1453,8 +1453,8 @@ describe("Store — message_hourly rollup parity (Phase 1)", () => {
     expect(merged!.msg_count).toBe(2);
     expect(merged!.input_tokens).toBe(300); // 100 + 200
     expect(merged!.min_ts).toBe(HOUR + 1);  // MIN(timestamp) in the group
-    // null geo stored as '' sentinel (m3)
-    expect(rows.some(r => r.inference_geo === "" && r.model === "claude-sonnet-4-6")).toBe(true);
+    // null geo stored as actual NULL (no '' sentinel) (m3)
+    expect(rows.some(r => r.inference_geo === null && r.model === "claude-sonnet-4-6")).toBe(true);
   });
 
   it("recomputeMessageHourly([h]) recomputes only that bucket, leaving others untouched", () => {
@@ -1480,5 +1480,223 @@ describe("Store — message_hourly rollup parity (Phase 1)", () => {
     store.recomputeMessageHourly(); // full rebuild again
     const second = readHourly();
     expect(second).toEqual(first);
+  });
+});
+
+// ─── Build 2 Phase 1 (Stream B): rollup READ-PATH parity + dispatcher ─────────
+//
+// Synthetic data only (/Users/alice paths). Asserts that the unbounded
+// fast-path readers (getEnergyAggregatesFromRollup / getMessageTotalsFromRollup)
+// reproduce the raw readers EXACTLY, and that getEnergyAggregates/getMessageTotals
+// dispatch to the rollup ONLY when fully unbounded (no period, no session-scope).
+describe("Store — rollup read-path parity (Build 2 Phase 1, Stream B)", () => {
+  let store: Store;
+  let dbPath: string;
+  const HOUR = 3_600_000;
+
+  function mkMsg(o: Partial<MessageRecord> & { uuid: string; sessionId: string }): MessageRecord {
+    return {
+      timestamp: HOUR,
+      claudeVersion: "2.1.70",
+      model: "claude-opus-4-6",
+      stopReason: "end_turn",
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      tools: [],
+      filePaths: [],
+      thinkingBlocks: 0,
+      serviceTier: null,
+      inferenceGeo: null,
+      ephemeral5mCacheTokens: 0,
+      ephemeral1hCacheTokens: 0,
+      promptText: null,
+      ...o,
+    };
+  }
+
+  // Same fixture shape as the Phase-1 rollup test: multi-model (incl. null),
+  // multi-project, varied + null geo, thinking + non-thinking, a null-ts
+  // message (hour_utc=-1 sentinel), and an orphan (no session row).
+  const messages: MessageRecord[] = [
+    mkMsg({ uuid: "m1", sessionId: "sA", inputTokens: 100, outputTokens: 10, cacheReadTokens: 5, cacheCreationTokens: 1, inferenceGeo: "eu", thinkingBlocks: 2, timestamp: HOUR + 1 }),
+    mkMsg({ uuid: "m2", sessionId: "sA", inputTokens: 200, outputTokens: 20, cacheReadTokens: 7, cacheCreationTokens: 2, inferenceGeo: "eu", thinkingBlocks: 0, timestamp: HOUR + 2 }),
+    mkMsg({ uuid: "m3", sessionId: "sA", model: "claude-sonnet-4-6", inputTokens: 300, outputTokens: 30, cacheReadTokens: 9, cacheCreationTokens: 3, inferenceGeo: null, thinkingBlocks: 1, timestamp: 2 * HOUR + 1 }),
+    mkMsg({ uuid: "m4", sessionId: "sB", model: null, inputTokens: 400, outputTokens: 40, cacheReadTokens: 11, cacheCreationTokens: 4, inferenceGeo: "us", thinkingBlocks: 0, timestamp: HOUR + 3 }),
+    mkMsg({ uuid: "m5", sessionId: "sB", inputTokens: 500, outputTokens: 50, cacheReadTokens: 13, cacheCreationTokens: 5, inferenceGeo: null, thinkingBlocks: 0, timestamp: null }),
+    // a second project (sC, /Users/alice/c) sonnet in geo "us" with thinking, to
+    // exercise multi-project + multi-geo grouping in byProjectModel / byGeo.
+    mkMsg({ uuid: "m7", sessionId: "sC", model: "claude-sonnet-4-6", inputTokens: 600, outputTokens: 60, cacheReadTokens: 15, cacheCreationTokens: 6, inferenceGeo: "us", thinkingBlocks: 4, timestamp: 2 * HOUR + 5 }),
+    // orphan: never inserted into `sessions` → excluded everywhere.
+    mkMsg({ uuid: "m6", sessionId: "sZ", inputTokens: 999, outputTokens: 999, cacheReadTokens: 999, cacheCreationTokens: 999, inferenceGeo: "eu", thinkingBlocks: 3, timestamp: HOUR + 4 }),
+  ];
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+    store.upsertSession(makeSession({ sessionId: "sA", projectPath: "/Users/alice/a", firstTimestamp: HOUR }));
+    store.upsertSession(makeSession({ sessionId: "sB", projectPath: "/Users/alice/b", firstTimestamp: HOUR }));
+    store.upsertSession(makeSession({ sessionId: "sC", projectPath: "/Users/alice/c", firstTimestamp: HOUR }));
+    store.upsertMessages(messages);
+    store.recomputeMessageHourly();
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  // Access the private *Raw / *FromRollup methods (TS private, runtime public).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const s = () => store as any;
+
+  // Order-independent comparison: key each row by a composite of its grouping
+  // columns (the GROUP BY emission order is not guaranteed), then deep-compare
+  // the keyed maps. NULL/undefined min_ts normalised so the optional column
+  // doesn't spuriously differ.
+  function keyBy<T>(rows: T[], key: (r: T) => string): Record<string, T> {
+    const out: Record<string, T> = {};
+    for (const r of rows) out[key(r)] = r;
+    return out;
+  }
+  const normMinTs = <T extends { min_ts?: number | null }>(r: T): T => ({ ...r, min_ts: r.min_ts ?? null });
+
+  it("getMessageTotalsFromRollup deep-equals getMessageTotalsRaw({}) (order-independent, '' ↔ null model)", () => {
+    const raw = s().getMessageTotalsRaw({}) as Array<{ model: string | null }>;
+    const roll = s().getMessageTotalsFromRollup() as Array<{ model: string | null }>;
+    // null-model row is present in both (totals INCLUDE null model).
+    expect(roll.some(r => r.model === null)).toBe(true);
+    expect(raw.some(r => r.model === null)).toBe(true);
+    const k = (r: { model: string | null }) => String(r.model); // null → "null"
+    expect(keyBy(roll, k)).toEqual(keyBy(raw, k));
+  });
+
+  it("getEnergyAggregatesFromRollup deep-equals getEnergyAggregatesRaw({}) — byModel (excludes null model; min_ts tiebreak)", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    // energy excludes null-model: neither side has a null/'' model entry.
+    expect(roll.byModel.every((r: { model: string }) => r.model !== "" && r.model !== null)).toBe(true);
+    const k = (r: { model: string }) => r.model;
+    expect(keyBy(roll.byModel.map(normMinTs), k)).toEqual(keyBy(raw.byModel.map(normMinTs), k));
+  });
+
+  it("byProjectModel parity (multi-project, GROUP BY project_path, model)", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    const k = (r: { project_path: string; model: string }) => `${r.project_path} ${r.model}`;
+    expect(keyBy(roll.byProjectModel.map(normMinTs), k)).toEqual(keyBy(raw.byProjectModel.map(normMinTs), k));
+  });
+
+  it("byHourModel parity (-1 sentinel ↔ NULL hour_bucket)", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    // null-ts message (m5) surfaces as a NULL hour_bucket in BOTH.
+    expect(roll.byHourModel.some((r: { hour_bucket: number | null }) => r.hour_bucket === null)).toBe(true);
+    expect(raw.byHourModel.some((r: { hour_bucket: number | null }) => r.hour_bucket === null)).toBe(true);
+    const k = (r: { hour_bucket: number | null; model: string }) => `${r.hour_bucket} ${r.model}`;
+    expect(keyBy(roll.byHourModel, k)).toEqual(keyBy(raw.byHourModel, k));
+  });
+
+  it("byGeo parity ('' ↔ null geo; SUM over model-not-null)", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    // m3's null geo surfaces as inference_geo:null in BOTH.
+    expect(roll.byGeo.some((r: { inference_geo: string | null }) => r.inference_geo === null)).toBe(true);
+    expect(raw.byGeo.some((r: { inference_geo: string | null }) => r.inference_geo === null)).toBe(true);
+    const k = (r: { inference_geo: string | null }) => String(r.inference_geo);
+    expect(keyBy(roll.byGeo, k)).toEqual(keyBy(raw.byGeo, k));
+  });
+
+  it("geoByEarliest parity (non-null geos, MIN(min_ts) ASC) — order matters here", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    // This one is ORDER-BY min_ts ASC, so compare arrays directly.
+    expect(roll.geoByEarliest).toEqual(raw.geoByEarliest);
+  });
+
+  it("thinkingByModel parity (th_* sums, th_msg_count as msgs, only thinking buckets)", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    const k = (r: { model: string }) => r.model;
+    expect(keyBy(roll.thinkingByModel.map(normMinTs), k)).toEqual(keyBy(raw.thinkingByModel.map(normMinTs), k));
+  });
+
+  it("scalar fields parity (sessionsWithThinking, totalMessages, minTimestamp)", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    expect(roll.sessionsWithThinking).toBe(raw.sessionsWithThinking);
+    expect(roll.totalMessages).toBe(raw.totalMessages);
+    expect(roll.minTimestamp).toBe(raw.minTimestamp);
+  });
+
+  it("full EnergyAggregates parity, every collection keyed (single deep-equal)", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    expect({
+      byModel: keyBy(roll.byModel.map(normMinTs), (r: { model: string }) => r.model),
+      byProjectModel: keyBy(roll.byProjectModel.map(normMinTs), (r: { project_path: string; model: string }) => `${r.project_path} ${r.model}`),
+      byHourModel: keyBy(roll.byHourModel, (r: { hour_bucket: number | null; model: string }) => `${r.hour_bucket} ${r.model}`),
+      byGeo: keyBy(roll.byGeo, (r: { inference_geo: string | null }) => String(r.inference_geo)),
+      geoByEarliest: roll.geoByEarliest,
+      sessionsWithThinking: roll.sessionsWithThinking,
+      thinkingByModel: keyBy(roll.thinkingByModel.map(normMinTs), (r: { model: string }) => r.model),
+      totalMessages: roll.totalMessages,
+      minTimestamp: roll.minTimestamp,
+    }).toEqual({
+      byModel: keyBy(raw.byModel.map(normMinTs), (r: { model: string }) => r.model),
+      byProjectModel: keyBy(raw.byProjectModel.map(normMinTs), (r: { project_path: string; model: string }) => `${r.project_path} ${r.model}`),
+      byHourModel: keyBy(raw.byHourModel, (r: { hour_bucket: number | null; model: string }) => `${r.hour_bucket} ${r.model}`),
+      byGeo: keyBy(raw.byGeo, (r: { inference_geo: string | null }) => String(r.inference_geo)),
+      geoByEarliest: raw.geoByEarliest,
+      sessionsWithThinking: raw.sessionsWithThinking,
+      thinkingByModel: keyBy(raw.thinkingByModel.map(normMinTs), (r: { model: string }) => r.model),
+      totalMessages: raw.totalMessages,
+      minTimestamp: raw.minTimestamp,
+    });
+  });
+
+  // ─── Dispatcher: bound → raw path; unbounded → rollup path ─────────────────
+
+  it("getEnergyAggregates({}) (fully unbounded) returns the rollup result", () => {
+    const dispatched = store.getEnergyAggregates({});
+    const fromRollup = s().getEnergyAggregatesFromRollup();
+    expect(dispatched).toEqual(fromRollup);
+  });
+
+  it("getEnergyAggregates({since}) uses the RAW seek path, not the rollup", () => {
+    // A `since` above every timestamp yields an empty raw result; the rollup
+    // (which ignores since) would NOT be empty. So if the dispatcher routed to
+    // the rollup, totalMessages would be > 0. It must equal the raw path.
+    const since = 100 * HOUR;
+    const dispatched = store.getEnergyAggregates({ since });
+    const raw = s().getEnergyAggregatesRaw({ since });
+    expect(dispatched).toEqual(raw);
+    expect(dispatched.totalMessages).toBe(0); // proves it did NOT read the rollup
+  });
+
+  it("getEnergyAggregates({projectPath}) uses the RAW path (session-scoped)", () => {
+    const dispatched = store.getEnergyAggregates({ projectPath: "/Users/alice/a" });
+    const raw = s().getEnergyAggregatesRaw({ projectPath: "/Users/alice/a" });
+    expect(dispatched).toEqual(raw);
+    // scoped to project a → byModel has opus only (sonnet lives in /a bucket2 too,
+    // but at minimum it must differ from the unbounded rollup's total).
+    const rollupTotal = s().getEnergyAggregatesFromRollup().totalMessages;
+    expect(dispatched.totalMessages).toBeLessThan(rollupTotal);
+  });
+
+  it("getMessageTotals({}) (fully unbounded) returns the rollup result", () => {
+    const dispatched = store.getMessageTotals({});
+    const fromRollup = s().getMessageTotalsFromRollup();
+    const k = (r: { model: string | null }) => String(r.model);
+    expect(keyBy(dispatched, k)).toEqual(keyBy(fromRollup, k));
+  });
+
+  it("getMessageTotals({until}) uses the RAW seek path, not the rollup", () => {
+    const until = 0; // before every timestamp → raw is empty
+    const dispatched = store.getMessageTotals({ until });
+    const raw = s().getMessageTotalsRaw({ until });
+    expect(dispatched).toEqual(raw);
+    expect(dispatched).toHaveLength(0); // proves it did NOT read the rollup
   });
 });
