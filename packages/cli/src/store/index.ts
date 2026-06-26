@@ -636,27 +636,33 @@ export class Store {
     since?: number;
     until?: number;
   } = {}): MessageTotalRow[] {
-    const conditions: string[] = [];
+    // Session-scoped filters select qualifying sessions via a seek on
+    // idx_sessions_first_ts; the outer query then seeks those sessions'
+    // messages via idx_messages_session. Output-preserving vs. the prior
+    // inner join (the subquery selects exactly the same session_ids; the
+    // join's orphan-message drop is preserved because a message whose
+    // session_id is absent from `sessions` matches neither form).
+    const sessionConditions: string[] = [];
     const params: unknown[] = [];
 
     if (filters.projectPath) {
-      conditions.push("s.project_path = ?");
+      sessionConditions.push("project_path = ?");
       params.push(filters.projectPath);
     }
     if (filters.repoUrl) {
-      conditions.push("s.repo_url = ?");
+      sessionConditions.push("repo_url = ?");
       params.push(filters.repoUrl);
     }
     if (filters.since !== undefined) {
-      conditions.push("s.first_timestamp >= ?");
+      sessionConditions.push("first_timestamp >= ?");
       params.push(filters.since);
     }
     if (filters.until !== undefined) {
-      conditions.push("s.first_timestamp < ?");
+      sessionConditions.push("first_timestamp < ?");
       params.push(filters.until);
     }
 
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const sessionWhere = sessionConditions.length ? `WHERE ${sessionConditions.join(" AND ")}` : "";
     const sql = `
       SELECT
         m.model,
@@ -665,8 +671,10 @@ export class Store {
         SUM(m.cache_read_tokens) AS cache_read_tokens,
         SUM(m.cache_creation_tokens) AS cache_creation_tokens
       FROM messages m
-      JOIN sessions s ON m.session_id = s.session_id
-      ${where}
+      WHERE m.session_id IN (
+        SELECT session_id FROM sessions
+        ${sessionWhere}
+      )
       GROUP BY m.model
     `;
     const stmt = this.db.prepare(sql);
@@ -998,23 +1006,29 @@ export class Store {
     repoUrl?: string;
     since?: number;
   } = {}): EfficiencyMessageRow[] {
+    // Outer (message-level) conditions stay on the messages query; the
+    // session-scoped filters become a seek subquery (output-preserving vs.
+    // the prior inner join — see getMessageTotals).
     const conditions: string[] = ["m.model IS NOT NULL"];
+    const sessionConditions: string[] = [];
     const params: unknown[] = [];
 
     if (filters.projectPath) {
-      conditions.push("s.project_path = ?");
+      sessionConditions.push("project_path = ?");
       params.push(filters.projectPath);
     }
     if (filters.repoUrl) {
-      conditions.push("s.repo_url = ?");
+      sessionConditions.push("repo_url = ?");
       params.push(filters.repoUrl);
     }
     if (filters.since !== undefined) {
-      conditions.push("s.first_timestamp >= ?");
+      sessionConditions.push("first_timestamp >= ?");
       params.push(filters.since);
     }
 
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const sessionWhere = sessionConditions.length ? `WHERE ${sessionConditions.join(" AND ")}` : "";
+    conditions.push(`m.session_id IN (SELECT session_id FROM sessions ${sessionWhere})`);
+    const where = `WHERE ${conditions.join(" AND ")}`;
     const sql = `
       SELECT
         m.uuid, m.session_id, m.timestamp, m.model,
@@ -1022,7 +1036,6 @@ export class Store {
         m.cache_read_tokens, m.cache_creation_tokens,
         m.tools, m.thinking_blocks, m.prompt_text
       FROM messages m
-      JOIN sessions s ON m.session_id = s.session_id
       ${where}
       ORDER BY m.timestamp ASC
     `;
@@ -1036,29 +1049,33 @@ export class Store {
     repoUrl?: string;
     since?: number;
   } = {}): ContextMessageRow[] {
-    const conditions: string[] = [];
+    // Session-scoped filters become a seek subquery (output-preserving vs.
+    // the prior inner join — see getMessageTotals).
+    const sessionConditions: string[] = [];
     const params: unknown[] = [];
 
     if (filters.projectPath) {
-      conditions.push("s.project_path = ?");
+      sessionConditions.push("project_path = ?");
       params.push(filters.projectPath);
     }
     if (filters.repoUrl) {
-      conditions.push("s.repo_url = ?");
+      sessionConditions.push("repo_url = ?");
       params.push(filters.repoUrl);
     }
     if (filters.since !== undefined) {
-      conditions.push("s.first_timestamp >= ?");
+      sessionConditions.push("first_timestamp >= ?");
       params.push(filters.since);
     }
 
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const sessionWhere = sessionConditions.length ? `WHERE ${sessionConditions.join(" AND ")}` : "";
     const sql = `
       SELECT m.session_id, m.timestamp, m.input_tokens,
              m.cache_read_tokens, m.cache_creation_tokens
       FROM messages m
-      JOIN sessions s ON m.session_id = s.session_id
-      ${where}
+      WHERE m.session_id IN (
+        SELECT session_id FROM sessions
+        ${sessionWhere}
+      )
       ORDER BY m.session_id, m.timestamp ASC
     `;
     const stmt = this.db.prepare(sql);
@@ -1072,27 +1089,37 @@ export class Store {
     accountUuid?: string;
     since?: number;
   } = {}): EnergyMessageRow[] {
+    // Outer (message-level) conditions stay on the messages query; the
+    // session-scoped filters become a seek subquery (output-preserving vs.
+    // the prior inner join — see getMessageTotals). The selected
+    // s.project_path is preserved via a correlated subquery; because the
+    // membership subquery already restricts to existing sessions, exactly
+    // one matching session row exists per message and the value is identical
+    // to the join's.
     const conditions: string[] = ["m.model IS NOT NULL"];
+    const sessionConditions: string[] = [];
     const params: unknown[] = [];
 
     if (filters.projectPath) {
-      conditions.push("s.project_path = ?");
+      sessionConditions.push("project_path = ?");
       params.push(filters.projectPath);
     }
     if (filters.repoUrl) {
-      conditions.push("s.repo_url = ?");
+      sessionConditions.push("repo_url = ?");
       params.push(filters.repoUrl);
     }
     if (filters.accountUuid) {
-      conditions.push("s.account_uuid = ?");
+      sessionConditions.push("account_uuid = ?");
       params.push(filters.accountUuid);
     }
     if (filters.since !== undefined) {
-      conditions.push("s.first_timestamp >= ?");
+      sessionConditions.push("first_timestamp >= ?");
       params.push(filters.since);
     }
 
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const sessionWhere = sessionConditions.length ? `WHERE ${sessionConditions.join(" AND ")}` : "";
+    conditions.push(`m.session_id IN (SELECT session_id FROM sessions ${sessionWhere})`);
+    const where = `WHERE ${conditions.join(" AND ")}`;
     const sql = `
       SELECT
         m.session_id, m.timestamp, m.model,
@@ -1100,9 +1127,8 @@ export class Store {
         m.cache_read_tokens, m.cache_creation_tokens,
         m.ephemeral_5m_cache_tokens, m.ephemeral_1h_cache_tokens,
         m.thinking_blocks, m.inference_geo,
-        s.project_path
+        (SELECT project_path FROM sessions WHERE session_id = m.session_id) AS project_path
       FROM messages m
-      JOIN sessions s ON m.session_id = s.session_id
       ${where}
       ORDER BY m.timestamp ASC
     `;

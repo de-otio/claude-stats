@@ -999,3 +999,287 @@ describe("Store — getSpendingReport", () => {
     expect(report.subagentCosts[0]!.subagent_tokens).toBe(10_000 + 5_000 + 500 + 8_000 + 3_000 + 200);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Period-filter conversion: session-id subquery seek (output-preserving).
+//
+// The four message-querying methods (getMessageTotals, getMessagesForEfficiency,
+// getMessagesForContext, getMessagesForEnergy) were converted from
+//   FROM messages m JOIN sessions s ON m.session_id = s.session_id
+//   WHERE … s.first_timestamp >= ? …
+// to a session-id subquery seek. These tests assert ROW/AGGREGATE PARITY against
+// an explicitly-computed expectation from a small, known synthetic fixture —
+// covering a period boundary, the live edge case (session first_timestamp LATER
+// than one of its message timestamps), multiple models/projects/accounts, a
+// since/until window, a project_path filter, and an empty period. Synthetic data
+// only (no live DB). Fixed epoch-ms; no Date.now()/Math.random() in assertions.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("Store — message period filter (subquery seek parity)", () => {
+  let store: Store;
+  let dbPath: string;
+
+  // Fixed epoch-ms period boundaries (UTC; no tz-dependent buckets used here).
+  const T0 = 1_000_000_000_000; // day 0
+  const DAY = 86_400_000;
+
+  // mkMsg: a full MessageRecord with sensible defaults; only the fields the
+  // converted queries read/return are varied per test.
+  const mkMsg = (o: {
+    uuid: string;
+    sessionId: string;
+    timestamp: number;
+    model: string | null;
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheCreation?: number;
+    eph5m?: number;
+    eph1h?: number;
+    thinking?: number;
+    inferenceGeo?: string | null;
+    tools?: string[];
+    promptText?: string | null;
+  }) => ({
+    uuid: o.uuid,
+    sessionId: o.sessionId,
+    timestamp: o.timestamp,
+    claudeVersion: "2.1.70",
+    model: o.model,
+    stopReason: "end_turn",
+    inputTokens: o.input ?? 0,
+    outputTokens: o.output ?? 0,
+    cacheCreationTokens: o.cacheCreation ?? 0,
+    cacheReadTokens: o.cacheRead ?? 0,
+    tools: o.tools ?? [],
+    filePaths: [],
+    thinkingBlocks: o.thinking ?? 0,
+    serviceTier: null,
+    inferenceGeo: o.inferenceGeo ?? null,
+    ephemeral5mCacheTokens: o.eph5m ?? 0,
+    ephemeral1hCacheTokens: o.eph1h ?? 0,
+    promptText: o.promptText ?? null,
+  });
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+
+    // Sessions ----------------------------------------------------------------
+    // sA: project /Users/alice/a, account acct-1, spans day 0 → day 2 (multi-day,
+    //     straddles the day-1 boundary). first_timestamp = T0.
+    store.upsertSession(makeSession({
+      sessionId: "sA", projectPath: "/Users/alice/a", accountUuid: "acct-1",
+      firstTimestamp: T0, lastTimestamp: T0 + 2 * DAY,
+    }));
+    // sB: EDGE CASE — first_timestamp is T0 + 10min, but it owns a message at T0
+    //     (10 min EARLIER than the session's first_timestamp). Reproduces the
+    //     live case where first_timestamp (min over all parsed entries) is later
+    //     than an earliest persisted assistant message. project /Users/alice/b,
+    //     account acct-2.
+    store.upsertSession(makeSession({
+      sessionId: "sB", projectPath: "/Users/alice/b", accountUuid: "acct-2",
+      firstTimestamp: T0 + 600_000, lastTimestamp: T0 + 700_000,
+    }));
+    // sC: day 3, project /Users/alice/a, account acct-1.
+    store.upsertSession(makeSession({
+      sessionId: "sC", projectPath: "/Users/alice/a", accountUuid: "acct-1",
+      firstTimestamp: T0 + 3 * DAY, lastTimestamp: T0 + 3 * DAY + 1000,
+    }));
+
+    // Messages ----------------------------------------------------------------
+    store.upsertMessages([
+      // sA messages
+      mkMsg({ uuid: "mA1", sessionId: "sA", timestamp: T0 + 100, model: "claude-opus-4-6", input: 100, output: 10, cacheRead: 5, cacheCreation: 1, eph5m: 2, eph1h: 3, thinking: 1, inferenceGeo: "us", tools: ["Read"], promptText: "pa1" }),
+      mkMsg({ uuid: "mA2", sessionId: "sA", timestamp: T0 + DAY + 200, model: "claude-sonnet-4-6", input: 200, output: 20, cacheRead: 6, cacheCreation: 2, eph5m: 0, eph1h: 0, thinking: 0, inferenceGeo: null, tools: [], promptText: null }),
+      // sB messages — note mB_early at T0, BEFORE sB.first_timestamp (T0+600_000)
+      mkMsg({ uuid: "mB_early", sessionId: "sB", timestamp: T0, model: "claude-opus-4-6", input: 300, output: 30, cacheRead: 7, cacheCreation: 3, eph5m: 0, eph1h: 0, thinking: 2, inferenceGeo: "eu", tools: ["Edit"], promptText: "pb0" }),
+      mkMsg({ uuid: "mB_late", sessionId: "sB", timestamp: T0 + 650_000, model: "claude-sonnet-4-6", input: 400, output: 40, cacheRead: 8, cacheCreation: 4, eph5m: 1, eph1h: 1, thinking: 0, inferenceGeo: null, tools: [], promptText: null }),
+      // sC message (day 3)
+      mkMsg({ uuid: "mC1", sessionId: "sC", timestamp: T0 + 3 * DAY, model: "claude-opus-4-6", input: 500, output: 50, cacheRead: 9, cacheCreation: 5, eph5m: 0, eph1h: 0, thinking: 0, inferenceGeo: "us", tools: [], promptText: null }),
+      // A NULL-model message in sA: included by Context/Totals, excluded by
+      // Efficiency/Energy (m.model IS NOT NULL).
+      mkMsg({ uuid: "mA_null", sessionId: "sA", timestamp: T0 + 300, model: null, input: 11, output: 1, cacheRead: 1, cacheCreation: 0 }),
+      // ORPHAN message: session_id "sX" has NO row in sessions. The prior inner
+      // join dropped it; the subquery must drop it too (parity).
+      mkMsg({ uuid: "mOrphan", sessionId: "sX", timestamp: T0 + 50, model: "claude-opus-4-6", input: 999, output: 99 }),
+    ]);
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  // ── getMessageTotals ──────────────────────────────────────────────────────
+  describe("getMessageTotals", () => {
+    it("no filters: aggregates per model over all NON-ORPHAN messages (orphan dropped)", () => {
+      const rows = store.getMessageTotals();
+      const byModel = new Map(rows.map(r => [r.model ?? "∅", r]));
+      // opus: mA1(100) + mB_early(300) + mC1(500) = 900 in (mOrphan excluded)
+      expect(byModel.get("claude-opus-4-6")).toEqual({
+        model: "claude-opus-4-6",
+        input_tokens: 100 + 300 + 500,
+        output_tokens: 10 + 30 + 50,
+        cache_read_tokens: 5 + 7 + 9,
+        cache_creation_tokens: 1 + 3 + 5,
+      });
+      // sonnet: mA2(200) + mB_late(400)
+      expect(byModel.get("claude-sonnet-4-6")).toEqual({
+        model: "claude-sonnet-4-6",
+        input_tokens: 200 + 400,
+        output_tokens: 20 + 40,
+        cache_read_tokens: 6 + 8,
+        cache_creation_tokens: 2 + 4,
+      });
+      // null-model row aggregates under model = null
+      expect(byModel.get("∅")).toEqual({
+        model: null,
+        input_tokens: 11,
+        output_tokens: 1,
+        cache_read_tokens: 1,
+        cache_creation_tokens: 0,
+      });
+      // orphan never appears
+      expect(rows.reduce((s, r) => s + r.input_tokens, 0)).toBe(100 + 300 + 500 + 200 + 400 + 11);
+    });
+
+    it("since boundary excludes sB (first_timestamp < since) but the EDGE message mB_early stays bound to sB's first_timestamp", () => {
+      // since = T0 + 1: sA(T0) excluded, sB(T0+600_000) included, sC included.
+      // sB qualifies by its first_timestamp, so BOTH its messages (incl. mB_early
+      // at T0, earlier than the boundary) are selected — exactly as the join did.
+      const rows = store.getMessageTotals({ since: T0 + 1 });
+      const byModel = new Map(rows.map(r => [r.model, r]));
+      // opus: mB_early(300) + mC1(500); sA's mA1 dropped (sA.first_ts < since)
+      expect(byModel.get("claude-opus-4-6")!.input_tokens).toBe(300 + 500);
+      // sonnet: mB_late(400) only; sA's mA2 dropped
+      expect(byModel.get("claude-sonnet-4-6")!.input_tokens).toBe(400);
+      // no null-model row (it belonged to sA)
+      expect(rows.some(r => r.model === null)).toBe(false);
+    });
+
+    it("until upper bound and project filter", () => {
+      // project /Users/alice/a → sessions sA, sC. until = T0 + DAY → sC (day 3)
+      // excluded. Only sA qualifies.
+      const rows = store.getMessageTotals({ projectPath: "/Users/alice/a", until: T0 + DAY });
+      const byModel = new Map(rows.map(r => [r.model ?? "∅", r]));
+      expect(byModel.get("claude-opus-4-6")!.input_tokens).toBe(100); // mA1
+      expect(byModel.get("claude-sonnet-4-6")!.input_tokens).toBe(200); // mA2
+      expect(byModel.get("∅")!.input_tokens).toBe(11); // mA_null
+    });
+
+    it("empty period → no rows", () => {
+      expect(store.getMessageTotals({ since: T0 + 100 * DAY })).toEqual([]);
+    });
+  });
+
+  // ── getMessagesForEfficiency ──────────────────────────────────────────────
+  describe("getMessagesForEfficiency", () => {
+    it("no filters: every non-null-model, non-orphan message, ordered by timestamp ASC", () => {
+      const rows = store.getMessagesForEfficiency();
+      // Order by m.timestamp ASC: mB_early(T0), mA1(T0+100), mA2(T0+DAY+200),
+      // mB_late(T0+650_000)→ wait, recompute: T0, T0+100, T0+650_000, T0+DAY+200, T0+3DAY
+      // Actual ascending: mB_early(T0) < mA1(T0+100) < mB_late(T0+650_000)
+      //   < mA2(T0+DAY+200) < mC1(T0+3DAY). mA_null excluded (model null),
+      //   mOrphan excluded (no session).
+      expect(rows.map(r => r.uuid)).toEqual(["mB_early", "mA1", "mB_late", "mA2", "mC1"]);
+      const a1 = rows.find(r => r.uuid === "mA1")!;
+      expect(a1).toEqual({
+        uuid: "mA1", session_id: "sA", timestamp: T0 + 100, model: "claude-opus-4-6",
+        input_tokens: 100, output_tokens: 10, cache_read_tokens: 5, cache_creation_tokens: 1,
+        tools: JSON.stringify(["Read"]), thinking_blocks: 1, prompt_text: "pa1",
+      });
+    });
+
+    it("project filter excludes other projects' sessions", () => {
+      // /Users/alice/b → only sB
+      const rows = store.getMessagesForEfficiency({ projectPath: "/Users/alice/b" });
+      expect(rows.map(r => r.uuid)).toEqual(["mB_early", "mB_late"]);
+    });
+
+    it("since window keeps the edge session's earlier message", () => {
+      const rows = store.getMessagesForEfficiency({ since: T0 + 1 });
+      // sA dropped; sB + sC kept. mB_early (T0, before boundary) STAYS.
+      expect(rows.map(r => r.uuid)).toEqual(["mB_early", "mB_late", "mC1"]);
+    });
+
+    it("empty period → empty array", () => {
+      expect(store.getMessagesForEfficiency({ since: T0 + 100 * DAY })).toEqual([]);
+    });
+  });
+
+  // ── getMessagesForContext ─────────────────────────────────────────────────
+  describe("getMessagesForContext", () => {
+    it("no filters: all non-orphan messages (incl. null-model), ORDER BY session_id, timestamp ASC", () => {
+      const rows = store.getMessagesForContext();
+      // ORDER BY m.session_id, m.timestamp ASC →
+      //   sA: mA1(T0+100), mA_null(T0+300), mA2(T0+DAY+200)
+      //   sB: mB_early(T0), mB_late(T0+650_000)
+      //   sC: mC1
+      expect(rows.map(r => `${r.session_id}@${r.timestamp}`)).toEqual([
+        `sA@${T0 + 100}`, `sA@${T0 + 300}`, `sA@${T0 + DAY + 200}`,
+        `sB@${T0}`, `sB@${T0 + 650_000}`,
+        `sC@${T0 + 3 * DAY}`,
+      ]);
+      const a1 = rows.find(r => r.session_id === "sA" && r.timestamp === T0 + 100)!;
+      expect(a1).toEqual({
+        session_id: "sA", timestamp: T0 + 100, input_tokens: 100,
+        cache_read_tokens: 5, cache_creation_tokens: 1,
+      });
+    });
+
+    it("project filter + since window", () => {
+      // /Users/alice/a → sA, sC. since = T0 + 1 drops sA → only sC.
+      const rows = store.getMessagesForContext({ projectPath: "/Users/alice/a", since: T0 + 1 });
+      expect(rows.map(r => r.session_id)).toEqual(["sC"]);
+    });
+
+    it("empty period → empty array", () => {
+      expect(store.getMessagesForContext({ since: T0 + 100 * DAY })).toEqual([]);
+    });
+  });
+
+  // ── getMessagesForEnergy ──────────────────────────────────────────────────
+  describe("getMessagesForEnergy", () => {
+    it("no filters: non-null-model, non-orphan messages with project_path, ORDER BY timestamp ASC", () => {
+      const rows = store.getMessagesForEnergy();
+      // Order by timestamp ASC: mB_early(T0), mA1(T0+100), mB_late(T0+650_000),
+      // mA2(T0+DAY+200), mC1(T0+3DAY). mA_null + mOrphan excluded.
+      expect(rows.map(r => `${r.session_id}@${r.timestamp}`)).toEqual([
+        `sB@${T0}`, `sA@${T0 + 100}`, `sB@${T0 + 650_000}`,
+        `sA@${T0 + DAY + 200}`, `sC@${T0 + 3 * DAY}`,
+      ]);
+      // project_path comes from the correlated subquery — must match the session.
+      const mb0 = rows.find(r => r.session_id === "sB" && r.timestamp === T0)!;
+      expect(mb0).toEqual({
+        session_id: "sB", timestamp: T0, model: "claude-opus-4-6",
+        input_tokens: 300, output_tokens: 30, cache_read_tokens: 7, cache_creation_tokens: 3,
+        ephemeral_5m_cache_tokens: 0, ephemeral_1h_cache_tokens: 0,
+        thinking_blocks: 2, inference_geo: "eu", project_path: "/Users/alice/b",
+      });
+      const ma1 = rows.find(r => r.session_id === "sA" && r.timestamp === T0 + 100)!;
+      expect(ma1.project_path).toBe("/Users/alice/a");
+      expect(ma1.ephemeral_5m_cache_tokens).toBe(2);
+      expect(ma1.ephemeral_1h_cache_tokens).toBe(3);
+    });
+
+    it("account filter restricts to that account's sessions", () => {
+      // acct-2 → only sB
+      const rows = store.getMessagesForEnergy({ accountUuid: "acct-2" });
+      expect(rows.map(r => r.session_id)).toEqual(["sB", "sB"]);
+      expect(rows.every(r => r.project_path === "/Users/alice/b")).toBe(true);
+    });
+
+    it("project filter + since window keeps the edge message", () => {
+      // /Users/alice/b → sB; since = T0 + 1 keeps sB (first_ts T0+600_000),
+      // and mB_early (T0) STAYS because sB qualifies.
+      const rows = store.getMessagesForEnergy({ projectPath: "/Users/alice/b", since: T0 + 1 });
+      expect(rows.map(r => `${r.session_id}@${r.timestamp}`)).toEqual([
+        `sB@${T0}`, `sB@${T0 + 650_000}`,
+      ]);
+    });
+
+    it("empty period → empty array", () => {
+      expect(store.getMessagesForEnergy({ since: T0 + 100 * DAY })).toEqual([]);
+    });
+  });
+});
