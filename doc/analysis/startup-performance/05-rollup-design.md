@@ -260,3 +260,22 @@ Staged to contain the silent-corruption risk the reviews demonstrated:
   hour-bucket boundaries are exact; bounded periods keep the Build-1 direct
   seek (already fast, and avoids the partial-boundary-hour granularity issue).
   Parity oracle compares rollup output to the Build-1 raw output on the full DB.
+
+---
+
+## Status — SHIPPED
+
+Three commits after the message-timestamp decision:
+- `606f363` Build 1 — message-timestamp period semantics (the axis decision).
+- `c5aa3a7` Build 2 Phase 1 — `message_hourly` + `recomputeMessageHourly` + idempotent backfill.
+- `367c4fb` Build 2 Phase 2 — rollup-backed unbounded reads (dispatch + freshness watermark) + collector touched-hour maintenance.
+
+**Result (live 214k-message store):** `getEnergyAggregates` "all" read 725ms → 44ms (16×); `buildDashboard('all')` ~2150ms → ~1050ms. Output-preserving: rollup vs raw match field-by-field across every aggregate (0 mismatches).
+
+**Correction the live-DB verification caught (synthetic tests missed it):** real data has `inference_geo` as `''`(empty), `'not_available'`, AND `NULL` — three distinct values. The planned `COALESCE(geo,'')` sentinel (correction 3) **conflated empty-string with null** in `byGeo`/`geoByEarliest`. Fixed by storing `model`/`inference_geo`/`project_path` as their **actual values incl. NULL** (nullable columns; SQLite allows NULL in the PK, and the DELETE-by-hour + GROUP BY recompute has no ON CONFLICT so it's safe). Lesson: sentinel-collision bugs hide from synthetic fixtures that don't reproduce the real value space — verify aggregates against raw on the real store.
+
+Two safeguards added during the build:
+- **Freshness watermark** (not in the original design): the dispatcher reads the rollup only when a stored messages-count watermark matches the current count, else falls back to raw — so any reader that upserts outside a `collect()` recompute (tests, future callers) can't read a stale rollup.
+- **`migrateToV12` DROP+CREATEs** the (pure derived) table so the schema stays correct across pre-release iteration.
+
+Still open for "all" < 0.5s (separate efforts): **Phase B** (recap floor, the dominant *month* cost) and **`#5`** (non-additive efficiency/context → ingest tables).
