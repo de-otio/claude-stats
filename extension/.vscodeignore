@@ -32,4 +32,11 @@ node_modules/**/examples/**
 node_modules/**/.github/**
 node_modules/**/.bin/**
 node_modules/**/*.ts
-!node_modules/**/*.d.ts
+# Type declarations and sourcemaps are never loaded at runtime. The ML runtime
+# (@huggingface/transformers + onnxruntime-node) must ship unbundled because of
+# its native .node binaries, but its .d.ts/.map files are pure dead weight in
+# the VSIX — drop them to cut the file count the "should bundle" notice flags.
+node_modules/**/*.d.ts
+node_modules/**/*.d.cts
+node_modules/**/*.d.mts
+node_modules/**/*.map
