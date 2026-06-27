@@ -285,7 +285,19 @@
     "save": "Enregistrer",
     "savedReload": "Enregistré ! Rechargez pour voir le tableau de bord mis à jour.",
     "networkError": "Erreur réseau.",
-    "errorSaving": "Erreur lors de l'enregistrement."
+    "errorSaving": "Erreur lors de l'enregistrement.",
+    "subscriptions": "Abonnements",
+    "subscriptionsHint": "Définissez les frais mensuels que vous payez pour chaque compte Claude. Ils sont distribués entre les projets dans l'onglet Projets.",
+    "noAccounts": "Aucun compte trouvé pour le moment — exécutez quelques sessions et recollectez.",
+    "feePlaceholder": "Frais",
+    "labelPlaceholder": "Libellé (ex. Travail, Personnel)"
+  },
+  "fees": {
+    "title": "Frais d'abonnement par projet",
+    "notConfigured": "Définissez vos frais d'abonnement dans Paramètres pour les attribuer aux projets.",
+    "currencyHeader": "{{period}} cette période · {{monthly}}/mois",
+    "idle": "{{label}} — pas d'utilisation cette période",
+    "reconcile": "Attribué {{attributed}}"
   },
   "pricing": {
     "title": "Tarification des tokens (par 1M de tokens)",

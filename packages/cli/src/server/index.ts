@@ -19,7 +19,8 @@ import { URL } from "node:url";
 import type { Store } from "../store/index.js";
 import { buildDashboard } from "../dashboard/index.js";
 import type { ReportOptions } from "../reporter/index.js";
-import { loadConfig, saveConfig, getPlanConfig, type Config } from "../config.js";
+import { loadConfig, saveConfig, getPlanConfig, mergeConfig, buildAccountsForConfig, redactConfigForHttp } from "../config.js";
+import { readClaudeAccount } from "../account.js";
 import { t } from "../i18n.js";
 
 const AUTH_COOKIE_NAME = "claude_stats_token";
@@ -68,6 +69,11 @@ function sendHtml(res: http.ServerResponse, status: number, body: string, extraH
   res.writeHead(status, {
     "Content-Type": "text/html; charset=utf-8",
     "Content-Length": Buffer.byteLength(body),
+    // Defense-in-depth alongside output escaping: the dashboard ships inline
+    // scripts/styles (so 'unsafe-inline' is required), but constrain network
+    // egress to same-origin so an injected handler can't exfiltrate to a remote.
+    "Content-Security-Policy":
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'",
     ...extraHeaders,
   });
   res.end(body);
@@ -85,10 +91,22 @@ async function tryRenderDashboard(data: unknown): Promise<string> {
   }
 }
 
+/** Max accepted request body. Config payloads are a few KB; cap well above that. */
+const MAX_BODY_BYTES = 64 * 1024;
+
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    let size = 0;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error("payload too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
     req.on("error", reject);
   });
@@ -177,9 +195,11 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
 
         if (req.method === "GET" && pathname === "/") {
           const opts = parseOpts(url);
-          const planCfg = getPlanConfig(loadConfig());
+          const cfg = loadConfig();
+          const planCfg = getPlanConfig(cfg);
           if (planCfg && !opts.planFee) opts.planFee = planCfg.monthlyFee;
           if (planCfg && !opts.planType) opts.planType = planCfg.type;
+          if (!opts.accountFees) opts.accountFees = cfg.accountFees;
           const data = buildDashboard(store, opts);
           const { attachCostPerTask } = await import("../dashboard/index.js");
           await attachCostPerTask(store, data, opts);
@@ -195,6 +215,7 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
 
         if (req.method === "GET" && pathname === "/api/dashboard") {
           const opts = parseOpts(url);
+          if (!opts.accountFees) opts.accountFees = loadConfig().accountFees;
           const data = buildDashboard(store, opts);
           const { attachCostPerTask } = await import("../dashboard/index.js");
           await attachCostPerTask(store, data, opts);
@@ -209,7 +230,10 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
         }
 
         if (req.method === "GET" && pathname === "/api/config") {
-          sendJson(res, 200, loadConfig());
+          // Unauthenticated, localhost-only. Strip secrets (llmJudge.apiKey) and
+          // do NOT include account email here (PII on an unauth endpoint).
+          const accounts = buildAccountsForConfig(store.listAccounts(), readClaudeAccount(), false);
+          sendJson(res, 200, { ...redactConfigForHttp(loadConfig()), accounts });
           return;
         }
 
@@ -219,22 +243,18 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
             sendJson(res, 401, { error: "unauthorized" });
             return;
           }
-          const body = await readBody(req);
-          const incoming = JSON.parse(body) as Config;
-          const current = loadConfig();
-          // Deep merge nested objects so partial updates don't drop sibling keys
-          const merged: Config = {
-            ...current,
-            ...incoming,
-            plan: incoming.plan !== undefined
-              ? { ...current.plan, ...incoming.plan }
-              : current.plan,
-            costThresholds: incoming.costThresholds !== undefined
-              ? { ...current.costThresholds, ...incoming.costThresholds }
-              : current.costThresholds,
-          };
+          let body: string;
+          try {
+            body = await readBody(req);
+          } catch {
+            sendJson(res, 413, { error: "payload too large" });
+            return;
+          }
+          // mergeConfig allow-lists keys, shallow-merges siblings, and validates
+          // accountFees (prototype-safe, bounded). Never spread raw input.
+          const merged = mergeConfig(loadConfig(), JSON.parse(body));
           saveConfig(merged);
-          sendJson(res, 200, { ok: true, config: merged });
+          sendJson(res, 200, { ok: true, config: redactConfigForHttp(merged) });
           return;
         }
 

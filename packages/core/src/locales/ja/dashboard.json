@@ -285,7 +285,19 @@
     "save": "保存",
     "savedReload": "保存しました！更新されたダッシュボードを表示するには再読み込みしてください。",
     "networkError": "ネットワークエラー。",
-    "errorSaving": "保存エラー。"
+    "errorSaving": "保存エラー。",
+    "subscriptions": "サブスクリプション",
+    "subscriptionsHint": "各 Claude アカウントで支払う月額料金を設定します。これらはプロジェクトタブのプロジェクト全体に分配されます。",
+    "noAccounts": "アカウントがまだ見つかりません。セッションを実行して再度収集してください。",
+    "feePlaceholder": "料金",
+    "labelPlaceholder": "ラベル (例: 仕事、個人)"
+  },
+  "fees": {
+    "title": "プロジェクト別サブスクリプション料金",
+    "notConfigured": "設定でサブスクリプション料金を設定して、プロジェクトに配分します。",
+    "currencyHeader": "{{period}} この期間 · {{monthly}}/月",
+    "idle": "{{label}} — この期間は使用されていません",
+    "reconcile": "配分 {{attributed}}"
   },
   "pricing": {
     "title": "トークン料金（100 万トークンあたり）",

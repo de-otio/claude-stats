@@ -285,7 +285,19 @@
     "save": "Zapisz",
     "savedReload": "Zapisano! Przeładuj, aby zobaczyć zaktualizowany panel.",
     "networkError": "Błąd sieci.",
-    "errorSaving": "Błąd podczas zapisywania."
+    "errorSaving": "Błąd podczas zapisywania.",
+    "subscriptions": "Subskrypcje",
+    "subscriptionsHint": "Ustaw miesięczną opłatę, którą płacisz za każde konto Claude. Zostały rozdzielone między projekty na karcie Projekty.",
+    "noAccounts": "Nie znaleziono żadnych kont — uruchom kilka sesji i ponownie zbierz.",
+    "feePlaceholder": "Opłata",
+    "labelPlaceholder": "Etykieta (np. Praca, Osobiste)"
+  },
+  "fees": {
+    "title": "Opłata subskrypcji według projektu",
+    "notConfigured": "Ustaw opłaty subskrypcji w Ustawieniach, aby przypisać je do projektów.",
+    "currencyHeader": "{{period}} ten okres · {{monthly}}/mies",
+    "idle": "{{label}} — brak użycia ten okres",
+    "reconcile": "Przypisane {{attributed}}"
   },
   "pricing": {
     "title": "Cennik tokenów (za 1M tokenów)",

@@ -285,7 +285,19 @@
     "save": "保存",
     "savedReload": "已保存！重新加载以查看更新后的仪表板。",
     "networkError": "网络错误。",
-    "errorSaving": "保存错误。"
+    "errorSaving": "保存错误。",
+    "subscriptions": "订阅",
+    "subscriptionsHint": "设置您为每个 Claude 账户支付的月费。这些费用将在「项目」标签页中分配给各个项目。",
+    "noAccounts": "尚未找到账户——请运行一些会话并重新收集。",
+    "feePlaceholder": "费用",
+    "labelPlaceholder": "标签（例如 工作、个人）"
+  },
+  "fees": {
+    "title": "按项目的订阅费",
+    "notConfigured": "在「设置」中设置您的订阅费以将其分配给项目。",
+    "currencyHeader": "{{period}} 本期间 · {{monthly}}/月",
+    "idle": "{{label}} — 本期间无使用",
+    "reconcile": "已分配 {{attributed}}"
   },
   "pricing": {
     "title": "Token 定价（每 100 万 Token）",

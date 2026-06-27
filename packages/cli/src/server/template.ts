@@ -227,6 +227,87 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     )
     .join("\n          ");
 
+  // ── Subscription fee by project (server-rendered; all user data escaped) ──
+  const fmtMoney = (n: number, currency: string): string => {
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(n);
+    } catch {
+      return `${currency} ${n.toFixed(2)}`;
+    }
+  };
+  const projShort = (p: string): string => {
+    const parts = p.replace(/\\/g, "/").split("/").filter(Boolean);
+    return parts.length >= 2 ? parts.slice(-2).join("/") : (parts[parts.length - 1] ?? p);
+  };
+  // Largest-remainder rounding so displayed slices sum to the displayed total (M5).
+  const roundShares = (amounts: number[]): number[] => {
+    const cents = amounts.map((a) => Math.floor(a * 100));
+    const target = Math.round(amounts.reduce((s, a) => s + a, 0) * 100);
+    const residual = target - cents.reduce((s, c) => s + c, 0);
+    const order = amounts
+      .map((a, i) => ({ i, frac: a * 100 - Math.floor(a * 100) }))
+      .sort((x, y) => y.frac - x.frac);
+    for (let k = 0; k < residual && k < order.length; k++) cents[order[k]!.i]!++;
+    return cents.map((c) => c / 100);
+  };
+  const fee = data.feeAttribution;
+  let feeByProjectHtml = "";
+  if (!fee || !fee.configured) {
+    feeByProjectHtml = `
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h2>${escapeHtml(t("dashboard:fees.title"))}</h2>
+        <p style="font-size:0.78rem;color:#b0b0b0;margin:0.3rem 0 0 0;">${escapeHtml(t("dashboard:fees.notConfigured"))}</p>
+      </div>`;
+  } else {
+    const blocks = fee.byCurrency
+      .map((b) => {
+        const rounded = roundShares(b.perProject.map((p) => p.amount));
+        const barRows = b.perProject
+          .map((p, i) => {
+            const pct = Math.max(0, Math.min(100, p.percentOfTotal));
+            return `
+            <div style="display:flex;align-items:center;gap:0.5rem;padding:0.2rem 0;font-size:0.72rem;">
+              <span style="flex:0 0 38%;color:#e8e8e8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(p.projectPath)}">${escapeHtml(projShort(p.projectPath))}</span>
+              <span style="flex:1;background:#0f1830;border-radius:3px;overflow:hidden;height:0.85rem;"><span style="display:block;height:100%;width:${pct.toFixed(1)}%;background:#4e79a7;"></span></span>
+              <span style="flex:0 0 5rem;text-align:right;color:#fff;">${escapeHtml(fmtMoney(rounded[i] ?? 0, b.currency))}</span>
+              <span style="flex:0 0 3rem;text-align:right;color:#888;">${Math.round(pct)}%</span>
+            </div>`;
+          })
+          .join("");
+        const idleRows = b.idle
+          .map(
+            (it) => `
+            <div style="display:flex;align-items:center;gap:0.5rem;padding:0.2rem 0;font-size:0.72rem;color:#888;border-top:1px dashed #2a3552;">
+              <span style="flex:0 0 38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(t("dashboard:fees.idle", { label: it.label }))}</span>
+              <span style="flex:1;"></span>
+              <span style="flex:0 0 5rem;text-align:right;">${escapeHtml(fmtMoney(it.amount, b.currency))}</span>
+              <span style="flex:0 0 3rem;"></span>
+            </div>`
+          )
+          .join("");
+        return `
+          <div style="margin-bottom:0.75rem;">
+            <div style="font-size:0.7rem;color:#a0c4ff;margin-bottom:0.3rem;">${escapeHtml(
+              t("dashboard:fees.currencyHeader", {
+                period: fmtMoney(b.periodTotal, b.currency),
+                monthly: fmtMoney(b.monthlyTotal, b.currency),
+              })
+            )}</div>
+            ${barRows}
+            ${idleRows}
+            <div style="font-size:0.6rem;color:#666;margin-top:0.3rem;">${escapeHtml(
+              t("dashboard:fees.reconcile", { attributed: fmtMoney(b.attributed, b.currency) })
+            )}</div>
+          </div>`;
+      })
+      .join("");
+    feeByProjectHtml = `
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h2>${escapeHtml(t("dashboard:fees.title"))}</h2>
+        ${blocks}
+      </div>`;
+  }
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -502,6 +583,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   <!-- ═══════════════ TAB: Projects ═══════════════ -->
   <div class="tab-panel" id="tab-projects">
     <div class="charts-grid">
+      ${feeByProjectHtml}
       <div class="chart-card">
         <h2>${t("dashboard:charts.topProjects")}</h2>
         <canvas id="chart-project"></canvas>
@@ -1179,6 +1261,13 @@ CO₂_grams = total_kWh × grid_intensity</div>
             <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">${t("dashboard:settings.monthlyFee")}</label>
             <input id="cfg-monthly-fee" type="number" min="0" step="1" placeholder="${t("dashboard:settings.monthlyFeePlaceholder")}" style="width:100%; padding:0.4rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.8rem; box-sizing:border-box;">
             <div style="font-size:0.6rem; color:#999; margin-top:0.2rem;">${t("dashboard:settings.monthlyFeeHint")}</div>
+          </div>
+
+          <div style="border-top:1px solid #2a2a4a; padding-top:1rem;">
+            <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">${t("dashboard:settings.subscriptions")}</label>
+            <div style="font-size:0.6rem; color:#999; margin-bottom:0.5rem;">${t("dashboard:settings.subscriptionsHint")}</div>
+            <div id="account-fees-rows"></div>
+            <div id="account-fees-empty" style="font-size:0.7rem; color:#888; display:none;">${t("dashboard:settings.noAccounts")}</div>
           </div>
 
           <div style="border-top:1px solid #2a2a4a; padding-top:1rem; margin-top:0.5rem;">
@@ -2077,6 +2166,85 @@ CO₂_grams = total_kWh × grid_intensity</div>
           if (cfg.costThresholds.week != null) threshWeek.value = cfg.costThresholds.week;
           if (cfg.costThresholds.month != null) threshMonth.value = cfg.costThresholds.month;
         }
+        renderAccountFees(cfg);
+      }
+
+      // Build one fee row per account from cfg.accounts. Uses createElement +
+      // textContent/value (never innerHTML) so account labels/UUIDs can't inject.
+      var FEE_CURRENCIES = ['USD','EUR','GBP','CAD','AUD','JPY','CHF','SEK'];
+      function renderAccountFees(cfg) {
+        var rows = document.getElementById('account-fees-rows');
+        var empty = document.getElementById('account-fees-empty');
+        if (!rows) return;
+        rows.textContent = '';
+        var accounts = (cfg && cfg.accounts) || [];
+        var fees = (cfg && cfg.accountFees) || {};
+        if (!accounts.length) { if (empty) empty.style.display = 'block'; return; }
+        if (empty) empty.style.display = 'none';
+        accounts.forEach(function (a) {
+          var fee = fees[a.accountUuid] || {};
+          var row = document.createElement('div');
+          row.className = 'account-fee-row';
+          row.setAttribute('data-account', a.accountUuid);
+          row.style.cssText = 'display:grid; grid-template-columns:1fr 5rem 4rem; gap:0.4rem; align-items:center; margin-bottom:0.4rem;';
+
+          var name = document.createElement('div');
+          name.style.cssText = 'font-size:0.72rem; color:#e8e8e8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+          name.textContent = a.email || (a.accountUuid.slice(0, 8) + '…');
+          name.title = a.accountUuid + (a.subscriptionType ? ' · ' + a.subscriptionType : '') + ' · ' + a.sessionCount + ' sessions';
+          row.appendChild(name);
+
+          var amount = document.createElement('input');
+          amount.type = 'number'; amount.min = '0'; amount.step = '1';
+          amount.className = 'acct-fee-amount';
+          amount.style.cssText = 'width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;';
+          if (fee.monthlyFee != null) amount.value = fee.monthlyFee;
+          amount.placeholder = '${t("dashboard:settings.feePlaceholder")}';
+          row.appendChild(amount);
+
+          var currency = document.createElement('select');
+          currency.className = 'acct-fee-currency';
+          currency.style.cssText = 'width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;';
+          var selected = (fee.currency || 'USD').toUpperCase();
+          if (FEE_CURRENCIES.indexOf(selected) === -1) FEE_CURRENCIES.push(selected);
+          FEE_CURRENCIES.forEach(function (code) {
+            var opt = document.createElement('option');
+            opt.value = code; opt.textContent = code;
+            if (code === selected) opt.selected = true;
+            currency.appendChild(opt);
+          });
+          row.appendChild(currency);
+
+          var labelInput = document.createElement('input');
+          labelInput.type = 'text'; labelInput.maxLength = 100;
+          labelInput.className = 'acct-fee-label';
+          labelInput.style.cssText = 'grid-column:1 / -1; width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.7rem; box-sizing:border-box;';
+          labelInput.placeholder = '${t("dashboard:settings.labelPlaceholder")}';
+          if (fee.label) labelInput.value = fee.label;
+          row.appendChild(labelInput);
+
+          rows.appendChild(row);
+        });
+      }
+
+      function collectAccountFees() {
+        var out = {};
+        var rowEls = document.querySelectorAll('#account-fees-rows .account-fee-row');
+        for (var i = 0; i < rowEls.length; i++) {
+          var row = rowEls[i];
+          var uuid = row.getAttribute('data-account');
+          var amt = row.querySelector('.acct-fee-amount').value;
+          if (amt === '' || amt == null) continue;
+          var num = parseFloat(amt);
+          if (!isFinite(num) || num < 0) continue;
+          var entry = { monthlyFee: num };
+          var cur = row.querySelector('.acct-fee-currency').value;
+          if (cur) entry.currency = cur;
+          var lbl = row.querySelector('.acct-fee-label').value;
+          if (lbl) entry.label = lbl;
+          out[uuid] = entry;
+        }
+        return out;
       }
 
       // ═══════════════ ENERGY CHARTS ═══════════════
@@ -2273,6 +2441,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
           if (threshDay) config.costThresholds.day = parseFloat(threshDay);
           if (threshWeek) config.costThresholds.week = parseFloat(threshWeek);
           if (threshMonth) config.costThresholds.month = parseFloat(threshMonth);
+          config.accountFees = collectAccountFees();
 
           var statusEl = document.getElementById('settings-status');
           saveConfigAsync(config, function (err, result) {

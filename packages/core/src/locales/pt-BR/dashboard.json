@@ -285,7 +285,19 @@
     "save": "Salvar",
     "savedReload": "Salvo! Recarregue para ver o dashboard atualizado.",
     "networkError": "Erro de rede.",
-    "errorSaving": "Erro ao salvar."
+    "errorSaving": "Erro ao salvar.",
+    "subscriptions": "Assinaturas",
+    "subscriptionsHint": "Defina a taxa mensal que você paga para cada conta Claude. Elas são distribuídas entre projetos na aba Projetos.",
+    "noAccounts": "Nenhuma conta encontrada — execute algumas sessões e recolete.",
+    "feePlaceholder": "Taxa",
+    "labelPlaceholder": "Rótulo (ex: Trabalho, Pessoal)"
+  },
+  "fees": {
+    "title": "Taxa de Assinatura por Projeto",
+    "notConfigured": "Defina suas taxas de assinatura em Configurações para atribuí-las aos projetos.",
+    "currencyHeader": "{{period}} este período · {{monthly}}/mês",
+    "idle": "{{label}} — sem uso este período",
+    "reconcile": "Atribuído {{attributed}}"
   },
   "pricing": {
     "title": "Preço dos tokens (por 1M de tokens)",

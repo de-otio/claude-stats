@@ -109,6 +109,7 @@ const mockData: DashboardData = {
   byConversationCost: [],
   byWeek: [],
   planUtilization: null,
+  feeAttribution: null,
   modelEfficiency: null,
   contextAnalysis: null,
   spending: null,
