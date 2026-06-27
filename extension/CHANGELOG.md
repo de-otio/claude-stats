@@ -2,6 +2,30 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.8.0 — 2026-06-27
+
+### Added — Cost-efficiency frontier (value per cost)
+
+A new **Cost-efficiency** panel sits beside the cost-per-successful-task metric
+in the dashboard, answering "was AI used as efficiently as possible, and could
+the same result have come cheaper?"
+
+- For each kind of work (archetype — mechanical edit, multi-file refactor,
+  debugging, research, greenfield), it finds the **frontier model**: the
+  cheapest model that has historically cleared the completion proxy on your own
+  history at a high success rate, over enough tasks to be meaningful.
+- It estimates **recoverable waste** — spend that ran on a pricier model than
+  the proven-cheaper alternative — and surfaces concrete **routing levers**.
+- **Honest by design:** the estimate is strictly cross-model. On a single-model
+  workload (e.g. everything on one model) there is no cheaper alternative to
+  route to, so the panel says *"not enough model diversity yet to compute a
+  frontier"* rather than inventing a saving. The numbers reconcile
+  (`realised − frontier = recoverable`), small samples abstain, and the metric
+  rests on the completion proxy, not on survival.
+- Fully local and read-only: the panel shows numbers and model names only — no
+  prompt text, file paths, or project names leave your machine, and the
+  read-only MCP tool carries the same prompt-text-free payload.
+
 ## 0.7.1 — 2026-06-26
 
 ### Changed — Startup performance
