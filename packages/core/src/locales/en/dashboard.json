@@ -285,7 +285,19 @@
     "save": "Save",
     "savedReload": "Saved! Reload to see updated dashboard.",
     "networkError": "Network error.",
-    "errorSaving": "Error saving."
+    "errorSaving": "Error saving.",
+    "subscriptions": "Subscriptions",
+    "subscriptionsHint": "Set the monthly fee you pay for each Claude account. These are distributed across projects on the Projects tab.",
+    "noAccounts": "No accounts found yet — run some sessions and re-collect.",
+    "feePlaceholder": "Fee",
+    "labelPlaceholder": "Label (e.g. Work, Personal)"
+  },
+  "fees": {
+    "title": "Subscription Fee by Project",
+    "notConfigured": "Set your subscription fees in Settings to attribute them to projects.",
+    "currencyHeader": "{{period}} this period · {{monthly}}/mo",
+    "idle": "{{label}} — no usage this period",
+    "reconcile": "Attributed {{attributed}}"
   },
   "pricing": {
     "title": "Token Pricing (per 1M tokens)",

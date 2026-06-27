@@ -6,6 +6,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import type { PlanType, PlanConfig } from "@claude-stats/core/types";
+import { lookupPlanFee } from "@claude-stats/core/pricing";
 import { createHttpJudgeProvider } from "./cost-per-task/judge-http.js";
 import type { JudgeProvider } from "./cost-per-task/judge.js";
 
@@ -41,6 +42,163 @@ export interface Config {
     /** Max judge calls per report run (cost cap; default 25). */
     maxCalls?: number;
   };
+  /**
+   * Per-account subscription fees, keyed by `account_uuid`. The amount the user
+   * actually pays for each Claude account. Used to attribute the flat
+   * subscription cost across projects on the Projects tab. See
+   * doc/analysis/project-fee-attribution/.
+   */
+  accountFees?: Record<string, AccountFee>;
+}
+
+/** A user-recorded subscription fee for one Claude account. */
+export interface AccountFee {
+  /** Monthly subscription fee, in `currency`. The amount actually paid. */
+  monthlyFee: number;
+  /** ISO 4217 (e.g. "EUR", "USD"). Default "USD". Never auto-converted. */
+  currency?: string;
+  /** User-facing name, e.g. "Work" / "Personal". */
+  label?: string;
+}
+
+/** Keys we accept in a config write. Anything else is dropped (no injection). */
+const ALLOWED_CONFIG_KEYS: ReadonlyArray<keyof Config> = [
+  "costThresholds",
+  "plan",
+  "experimentalSignals",
+  "llmJudge",
+  "accountFees",
+];
+
+/** Account-fee bounds — defensive caps so a bad/hostile write can't corrupt or DoS. */
+const ACCOUNT_FEE_KEY_RE = /^[a-f0-9-]{8,64}$/i;
+const ACCOUNT_FEE_CURRENCY_RE = /^[A-Z]{3}$/;
+const MAX_ACCOUNT_FEE = 100_000;
+const MAX_ACCOUNT_FEE_ENTRIES = 50;
+const MAX_LABEL_LEN = 100;
+
+/**
+ * Validate and sanitise an untrusted `accountFees` map. Returns a clean object
+ * built on a null prototype (so `__proto__`/`constructor` keys can never poison
+ * the prototype chain). Invalid entries are dropped rather than throwing — the
+ * write path is unattended and must not crash on a single bad entry.
+ */
+export function validateAccountFees(input: unknown): Record<string, AccountFee> {
+  const out: Record<string, AccountFee> = Object.create(null) as Record<string, AccountFee>;
+  if (!input || typeof input !== "object") return out;
+  let count = 0;
+  for (const [key, raw] of Object.entries(input as Record<string, unknown>)) {
+    if (count >= MAX_ACCOUNT_FEE_ENTRIES) break;
+    if (!ACCOUNT_FEE_KEY_RE.test(key)) continue; // rejects __proto__, constructor, etc.
+    if (!raw || typeof raw !== "object") continue;
+    const r = raw as Record<string, unknown>;
+    const fee = r.monthlyFee;
+    if (typeof fee !== "number" || !Number.isFinite(fee) || fee < 0 || fee > MAX_ACCOUNT_FEE) continue;
+    const entry: AccountFee = { monthlyFee: fee };
+    if (typeof r.currency === "string" && ACCOUNT_FEE_CURRENCY_RE.test(r.currency)) {
+      entry.currency = r.currency;
+    }
+    if (typeof r.label === "string" && r.label.length > 0) {
+      entry.label = r.label.slice(0, MAX_LABEL_LEN);
+    }
+    out[key] = entry;
+    count++;
+  }
+  return out;
+}
+
+/**
+ * Merge an untrusted incoming config over the current one. Only allow-listed
+ * top-level keys are copied (no arbitrary key injection); object-valued keys are
+ * shallow-merged so a partial update doesn't wipe siblings; `accountFees` is
+ * validated. Shared by every write path (panel + HTTP server).
+ */
+export function mergeConfig(current: Config, incoming: unknown): Config {
+  const inc = (incoming && typeof incoming === "object" ? incoming : {}) as Partial<Config>;
+  const merged: Config = { ...current };
+  for (const key of ALLOWED_CONFIG_KEYS) {
+    if (inc[key] === undefined) continue;
+    if (key === "accountFees") {
+      merged.accountFees = { ...current.accountFees, ...validateAccountFees(inc.accountFees) };
+    } else if (key === "plan") {
+      merged.plan = { ...current.plan, ...inc.plan };
+    } else if (key === "costThresholds") {
+      merged.costThresholds = { ...current.costThresholds, ...inc.costThresholds };
+    } else if (key === "llmJudge") {
+      merged.llmJudge = { ...current.llmJudge, ...inc.llmJudge };
+    } else if (key === "experimentalSignals") {
+      merged.experimentalSignals = inc.experimentalSignals;
+    }
+  }
+  return merged;
+}
+
+/** A subscription fee resolved for one account, with its currency. */
+export interface ResolvedAccountFee {
+  monthlyFee: number;
+  currency: string;
+}
+
+/**
+ * Resolve the effective monthly fee for one account. Order:
+ *   1. an explicit per-account fee (`accountFees[uuid]`), in its own currency;
+ *   2. the single global `plan.monthly_fee` — only when there is exactly one
+ *      account in scope (otherwise it's ambiguous) — treated as USD;
+ *   3. the auto-detected default from the subscription type (`lookupPlanFee`), USD;
+ *   4. null when nothing is known.
+ */
+export function resolveAccountFee(
+  config: Config,
+  accountUuid: string,
+  subscriptionType: string | null,
+  accountCount: number,
+): ResolvedAccountFee | null {
+  const explicit = config.accountFees?.[accountUuid];
+  if (explicit && Number.isFinite(explicit.monthlyFee) && explicit.monthlyFee >= 0) {
+    return { monthlyFee: explicit.monthlyFee, currency: explicit.currency ?? "USD" };
+  }
+  if (accountCount === 1 && config.plan?.monthly_fee != null && config.plan.monthly_fee >= 0) {
+    return { monthlyFee: config.plan.monthly_fee, currency: "USD" };
+  }
+  const detected = lookupPlanFee(subscriptionType);
+  if (detected != null && detected > 0) {
+    return { monthlyFee: detected, currency: "USD" };
+  }
+  return null;
+}
+
+/** An account row for the Settings UI account list. */
+export interface ConfigAccount {
+  accountUuid: string;
+  subscriptionType: string | null;
+  sessionCount: number;
+  /** Only populated for the current account, and only on the webview path. */
+  email: string | null;
+}
+
+/**
+ * Build the account list the Settings tab renders, enriching the current
+ * account with its email when allowed. Pure; both the panel (includeEmail=true)
+ * and the HTTP server (includeEmail=false — never leak PII on the unauth GET)
+ * call this.
+ */
+export function buildAccountsForConfig(
+  accounts: ReadonlyArray<{ accountUuid: string; subscriptionType: string | null; sessionCount: number }>,
+  current: { accountUuid: string; emailAddress: string | null } | null,
+  includeEmail: boolean,
+): ConfigAccount[] {
+  return accounts.map((a) => ({
+    accountUuid: a.accountUuid,
+    subscriptionType: a.subscriptionType,
+    sessionCount: a.sessionCount,
+    email: includeEmail && current && current.accountUuid === a.accountUuid ? current.emailAddress : null,
+  }));
+}
+
+/** A copy of `config` safe to send over the unauthenticated HTTP GET — secrets stripped. */
+export function redactConfigForHttp(config: Config): Config {
+  if (!config.llmJudge?.apiKey) return config;
+  return { ...config, llmJudge: { ...config.llmJudge, apiKey: undefined } };
 }
 
 /**

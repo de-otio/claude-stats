@@ -12,7 +12,8 @@ import { Store } from "../store/index.js";
 import { getNonce, escapeHtml } from "./utils.js";
 import { buildDashboard, attachCostPerTask, attachCalibration } from "../dashboard/index.js";
 import { renderDashboard } from "../server/template.js";
-import { loadConfig, saveConfig, getPlanConfig, type Config } from "../config.js";
+import { loadConfig, saveConfig, getPlanConfig, mergeConfig, buildAccountsForConfig, type Config } from "../config.js";
+import { readClaudeAccount } from "../account.js";
 import { openCorrections, type CorrectionSignature, type OutcomeValue } from "../recap/corrections.js";
 import type { ReportOptions } from "../reporter/index.js";
 import type { SidebarProvider } from "./sidebar.js";
@@ -104,6 +105,7 @@ export class DashboardPanel {
         accountUuid: this.accountUuid,
         planFee: planCfg?.monthlyFee,
         planType: planCfg?.type,
+        accountFees: cfg.accountFees,
       };
       const data = buildDashboard(store, dashOpts);
       // includeTasks: this is the VS Code webview — the only surface allowed to
@@ -159,7 +161,17 @@ export class DashboardPanel {
     } else if (msg.command === "getConfig" && msg.callbackId) {
       try {
         const cfg = loadConfig();
-        void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, data: cfg });
+        // Enrich with the accounts present in the store so the Settings tab can
+        // render one fee row per account. Webview path → include the current
+        // account's email (same trust context; needed to label the row).
+        let accounts: ReturnType<typeof buildAccountsForConfig> = [];
+        const store = new Store();
+        try {
+          accounts = buildAccountsForConfig(store.listAccounts(), readClaudeAccount(), true);
+        } finally {
+          store.close();
+        }
+        void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, data: { ...cfg, accounts } });
       } catch {
         void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, error: t("extension:panel.errors.failedToLoadConfig") });
       }
@@ -167,16 +179,7 @@ export class DashboardPanel {
       try {
         const incoming = msg.config ?? {};
         const current = loadConfig();
-        const merged: Config = {
-          ...current,
-          ...incoming,
-          plan: incoming.plan !== undefined
-            ? { ...current.plan, ...incoming.plan }
-            : current.plan,
-          costThresholds: incoming.costThresholds !== undefined
-            ? { ...current.costThresholds, ...incoming.costThresholds }
-            : current.costThresholds,
-        };
+        const merged = mergeConfig(current, incoming);
         saveConfig(merged);
         void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, data: { ok: true, config: merged } });
         void this.refresh();

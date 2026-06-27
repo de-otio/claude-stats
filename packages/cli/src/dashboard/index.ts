@@ -8,6 +8,8 @@ import { periodStart } from "../reporter/index.js";
 import { estimateCost, lookupPlanFee } from "@claude-stats/core/pricing";
 import type { UsageWindow } from "@claude-stats/core/types";
 import { readClaudeAccount } from "../account.js";
+import { resolveAccountFee, type Config } from "../config.js";
+import { buildFeeAttribution, type FeeAttribution } from "./fee-attribution.js";
 import {
   scoreComplexity,
   scoreToTier,
@@ -175,6 +177,8 @@ export interface DashboardData {
       planVerdict: string;
     }>;
   } | null;
+  /** Subscription-fee-to-project attribution for the selected period. */
+  feeAttribution: FeeAttribution | null;
   modelEfficiency: ModelEfficiencyData | null;
   contextAnalysis: ContextAnalysis | null;
   spending: DashboardSpending | null;
@@ -579,6 +583,10 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   // ── Plan ROI metrics ─────────────────────────────────────────────────────
   const planFee = opts.planFee ?? 0;
   const planMultiplier = planFee > 0 ? Math.round((totalCost / planFee) * 10) / 10 : 0;
+  // Synthetic config for per-account fee resolution: the dashboard receives the
+  // resolved pieces (accountFees map + the single global plan fee) rather than a
+  // full Config, so reconstruct the minimal shape resolveAccountFee reads.
+  const feeConfig: Config = { accountFees: opts.accountFees, plan: { monthly_fee: planFee || undefined } };
   const costPerPrompt = totalPrompts > 0 ? totalCost / totalPrompts : 0;
   const daysInPeriod = since > 0 ? Math.max(1, (Date.now() - since) / (24 * 60 * 60 * 1000)) : 30;
   const dailyValueRate = totalCost / daysInPeriod;
@@ -775,11 +783,14 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     // from the dominant account's subscription type, or sum across accounts
     let effectivePlanFee = planFee;
     if (effectivePlanFee <= 0) {
-      // Auto-detect: sum detected fees across all known accounts
+      // Auto-detect: sum fees across all known accounts. Prefer a user-configured
+      // per-account fee (accountFees) over the subscription-type default, so the
+      // weekly budget agrees with the per-account verdicts below.
+      const feeAccountCount = accountMap.size;
       let detectedTotal = 0;
-      for (const [, acct] of accountMap) {
-        const detected = lookupPlanFee(acct.subscriptionType);
-        if (detected) detectedTotal += detected;
+      for (const [acctKey, acct] of accountMap) {
+        const resolved = resolveAccountFee(feeConfig, acctKey, acct.subscriptionType, feeAccountCount);
+        if (resolved) detectedTotal += resolved.monthlyFee;
       }
       if (detectedTotal > 0) effectivePlanFee = detectedTotal;
     }
@@ -838,7 +849,8 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
         .map(([acctKey, acct]) => {
           // Fall back to configured plan type when telemetry subscription_type is absent
           const subscriptionType = acct.subscriptionType ?? opts.planType ?? null;
-          const detectedFee = lookupPlanFee(subscriptionType);
+          // Prefer a user-configured per-account fee over the auto-detected default.
+          const detectedFee = resolveAccountFee(feeConfig, acctKey, subscriptionType, accountMap.size)?.monthlyFee ?? null;
           let verdict = "no-plan";
           if (detectedFee && detectedFee > 0) {
             verdict = acct.cost >= detectedFee ? "good-value" : "underusing";
@@ -901,6 +913,56 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     timezone: tz,
   });
 
+  // ── Subscription-fee attribution ────────────────────────────────────────
+  // Distribute each account's monthly fee across the projects it used in the
+  // selected period, weighted by API-equivalent cost (sessionCostMap). Pure math
+  // lives in fee-attribution.ts; here we only assemble its inputs from `rows`.
+  let feeAttribution: FeeAttribution | null = null;
+  {
+    // Apply the same lone-"(unknown)" repair planUtilization uses, so the fee
+    // tab and the plan tab attribute usage to the same account.
+    const distinctKeys = new Set(rows.map(r => r.account_uuid ?? "(unknown)"));
+    let repairUnknownTo: string | null = null;
+    if (distinctKeys.size === 1 && distinctKeys.has("(unknown)")) {
+      const claudeAcct = readClaudeAccount();
+      if (claudeAcct) repairUnknownTo = claudeAcct.accountUuid;
+    }
+    const keyFor = (raw: string | null): string => {
+      const k = raw ?? "(unknown)";
+      return k === "(unknown)" && repairUnknownTo ? repairUnknownTo : k;
+    };
+
+    const costByAccountProject = new Map<string, { accountUuid: string; projectPath: string; cost: number }>();
+    const subTypeByAccount = new Map<string, string | null>();
+    for (const row of rows) {
+      const acct = keyFor(row.account_uuid);
+      if (row.subscription_type || !subTypeByAccount.has(acct)) {
+        subTypeByAccount.set(acct, row.subscription_type ?? subTypeByAccount.get(acct) ?? null);
+      }
+      const cost = sessionCostMap.get(row.session_id)?.cost ?? 0;
+      const mapKey = acct + " " + row.project_path;
+      const existing = costByAccountProject.get(mapKey);
+      if (existing) existing.cost += cost;
+      else costByAccountProject.set(mapKey, { accountUuid: acct, projectPath: row.project_path, cost });
+    }
+
+    const accountCount = subTypeByAccount.size;
+    const fees: Record<string, { monthlyFee: number; currency: string; label: string } | null> =
+      Object.create(null) as Record<string, { monthlyFee: number; currency: string; label: string } | null>;
+    for (const [acct, subType] of subTypeByAccount) {
+      const resolved = resolveAccountFee(feeConfig, acct, subType, accountCount);
+      fees[acct] = resolved
+        ? { monthlyFee: resolved.monthlyFee, currency: resolved.currency, label: opts.accountFees?.[acct]?.label ?? "" }
+        : null;
+    }
+
+    feeAttribution = buildFeeAttribution({
+      costByAccountProject: Array.from(costByAccountProject.values()),
+      fees,
+      periodDays: daysInPeriod,
+    });
+  }
+
   // ── Actionable recommendations ─────────────────────────────────────────
   const recommendations = buildRecommendations({
     totalCost,
@@ -957,6 +1019,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     byConversationCost,
     byWeek,
     planUtilization,
+    feeAttribution,
     modelEfficiency,
     contextAnalysis,
     spending,

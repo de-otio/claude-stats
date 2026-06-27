@@ -285,7 +285,19 @@
     "save": "Guardar",
     "savedReload": "¡Guardado! Recarga para ver el panel actualizado.",
     "networkError": "Error de red.",
-    "errorSaving": "Error al guardar."
+    "errorSaving": "Error al guardar.",
+    "subscriptions": "Suscripciones",
+    "subscriptionsHint": "Establece la cuota mensual que pagas por cada cuenta de Claude. Estas se distribuyen entre proyectos en la pestaña Proyectos.",
+    "noAccounts": "Aún no se han encontrado cuentas — ejecuta algunas sesiones y recopila de nuevo.",
+    "feePlaceholder": "Cuota",
+    "labelPlaceholder": "Etiqueta (p. ej. Trabajo, Personal)"
+  },
+  "fees": {
+    "title": "Cuota de suscripción por proyecto",
+    "notConfigured": "Establece tus cuotas de suscripción en Configuración para atribuirlas a los proyectos.",
+    "currencyHeader": "{{period}} este período · {{monthly}}/mes",
+    "idle": "{{label}} — sin uso este período",
+    "reconcile": "Atribuido {{attributed}}"
   },
   "pricing": {
     "title": "Precio de tokens (por 1M de tokens)",

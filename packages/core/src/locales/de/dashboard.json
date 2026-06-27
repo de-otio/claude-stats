@@ -285,7 +285,19 @@
     "save": "Speichern",
     "savedReload": "Gespeichert! Seite neu laden, um das aktualisierte Dashboard zu sehen.",
     "networkError": "Netzwerkfehler.",
-    "errorSaving": "Fehler beim Speichern."
+    "errorSaving": "Fehler beim Speichern.",
+    "subscriptions": "Abos",
+    "subscriptionsHint": "Legen Sie die monatliche Gebühr fest, die Sie für jedes Claude-Konto zahlen. Diese werden auf der Registerkarte \"Projekte\" auf Projekte verteilt.",
+    "noAccounts": "Noch keine Konten gefunden — führen Sie einige Sitzungen durch und erfassen Sie erneut.",
+    "feePlaceholder": "Gebühr",
+    "labelPlaceholder": "Label (z. B. Arbeit, Persönlich)"
+  },
+  "fees": {
+    "title": "Abogebühr nach Projekt",
+    "notConfigured": "Legen Sie Ihre Abogebühren in den Einstellungen fest, um sie Projekten zuzuweisen.",
+    "currencyHeader": "{{period}} in diesem Zeitraum · {{monthly}}/Mo.",
+    "idle": "{{label}} — keine Nutzung in diesem Zeitraum",
+    "reconcile": "Zugerechnet {{attributed}}"
   },
   "pricing": {
     "title": "Token-Preise (pro 1M Token)",

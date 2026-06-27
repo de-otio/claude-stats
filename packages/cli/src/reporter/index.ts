@@ -26,6 +26,8 @@ export interface ReportOptions {
   planFee?: number;
   /** Plan type string (e.g. "pro", "max_5x") used as fallback when telemetry subscription_type is absent. */
   planType?: string;
+  /** Per-account subscription fees (keyed by account_uuid) for fee attribution. */
+  accountFees?: import("../config.js").Config["accountFees"];
 }
 
 export function formatEntrypoint(ep: string): string {
