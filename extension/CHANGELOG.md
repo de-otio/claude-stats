@@ -2,6 +2,29 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.9.0 — 2026-06-27
+
+### Added — Subscription fee attribution (per-account fees → per-project shares)
+
+You can now record what each of your Claude subscriptions actually costs and see
+that flat monthly fee distributed across the projects it paid for.
+
+- **Settings tab:** set a monthly fee, currency, and label for **each Claude
+  account** you use (the accounts are listed automatically from your history).
+  This replaces the single global fee for multi-account users while staying
+  backward-compatible for single-account ones.
+- **Projects tab:** a new **Subscription Fee by Project** card shows each
+  account's fee, pro-rated to the selected period, spread across that account's
+  projects in proportion to API-equivalent usage. Switch Day/Week/Month/All and
+  the attribution recomputes.
+- **Per-account pooling, not a global pool:** a work fee only flows to work
+  usage and a personal fee only to personal usage — no cross-account leakage.
+  Currencies are never mixed; each gets its own subtotal.
+- **Honest by design:** a configured account with no usage in the period shows
+  as an explicit *idle subscription* line rather than silently inflating active
+  projects, and usage that can't be attributed to an account is never invented.
+  The configured fees also feed the Plan tab's value verdicts.
+
 ## 0.8.0 — 2026-06-27
 
 ### Added — Cost-efficiency frontier (value per cost)

@@ -2,7 +2,7 @@
   "name": "claude-stats-vscode",
   "displayName": "Claude Stats by de-otio",
   "description": "View Claude Code usage statistics in VS Code",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "publisher": "de-otio",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -21,9 +21,22 @@
     "@huggingface/transformers": "^3.0.0",
     "onnxruntime-node": "1.21.0"
   },
-  "categories": ["Visualization", "Other"],
-  "keywords": ["claude", "claude-code", "statistics", "usage", "tokens", "mcp", "dashboard"],
-  "activationEvents": ["onStartupFinished"],
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "statistics",
+    "usage",
+    "tokens",
+    "mcp",
+    "dashboard"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -67,7 +80,10 @@
         },
         "claude-stats.recap.embeddings": {
           "type": "string",
-          "enum": ["auto", "off"],
+          "enum": [
+            "auto",
+            "off"
+          ],
           "default": "auto",
           "markdownDescription": "Semantic clustering for the daily-recap digest. `auto` uses local embeddings when a model is available and falls back to lexical clustering otherwise. `off` always uses lexical clustering. All inference runs on your machine; no data leaves your computer. Restart Claude Code after changing this setting for it to take effect."
         }
