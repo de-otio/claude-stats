@@ -812,6 +812,38 @@ export function printCostPerTask(
       write(`  ${name} ${cps}   ${rate} ${String(m.tasksObservable).padStart(4)} ${t("cli:report.costPerTaskObsShort")}   ${formatCost(m.costObservable).padStart(9)}`);
     }
   }
+
+  // ── Efficiency frontier (value-per-cost Phase 1) ──
+  // Shown when the report carries an efficiency block with non-trivial data.
+  // Human text for Lever.kind is rendered here from the enum (never in the
+  // payload). Only the top 3 levers are printed (sorted by estSavingUsd desc).
+  const eff = report.efficiency;
+  if (eff && (eff.byArchetype.some((a) => !a.abstained) || eff.levers.length > 0)) {
+    write("");
+    write(`─── ${t("dashboard:costEfficiency.title")} ───`);
+    if (eff.realisedCost <= 0) {
+      // No archetype has a proven cheaper alternative — show the honest note
+      // rather than a misleading all-zero comparison (review H1 / caption fix).
+      write(`  ${t("dashboard:costEfficiency.insufficient")}`);
+    } else {
+      write(
+        `  ${t("dashboard:costEfficiency.realised")} ${formatCost(eff.realisedCost).padStart(9)}` +
+        `   ${t("dashboard:costEfficiency.frontier")} ${formatCost(eff.frontierCost).padStart(9)}` +
+        `   ${t("dashboard:costEfficiency.recoverable")} ${formatCost(eff.recoverableWaste).padStart(9)}`,
+      );
+      if (eff.levers.length > 0) {
+        write("");
+        const topLevers = [...eff.levers]
+          .sort((a, b) => (b.estSavingUsd ?? 0) - (a.estSavingUsd ?? 0))
+          .slice(0, 3);
+        for (const lv of topLevers) {
+          const saving = lv.estSavingUsd != null ? `  (~${formatCost(lv.estSavingUsd)})` : "";
+          write(`  > ${t(`dashboard:costEfficiency.leverKind.${lv.kind}`)}${saving}`);
+        }
+      }
+    }
+    write(`  ${t("dashboard:costEfficiency.basisNote")}`);
+  }
   write("");
 }
 

@@ -354,5 +354,19 @@
     "enabledNote": "有効 — 上のレートは精度シグナルを取り込んでいます。",
     "disabledNote": "無効 — 上のレートは推定のみです。",
     "na": "なし"
+  },
+  "costEfficiency": {
+    "title": "コスト効率フロンティア",
+    "realised": "実現コスト",
+    "frontier": "フロンティアコスト",
+    "recoverable": "回収可能な無駄",
+    "basisNote": "完了プロキシに基づく（サバイバルではなく）",
+    "insufficient": "フロンティアを計算するにはモデルの多様性が不足しています。より安価で実績のある代替モデルを持つアーキタイプがありません。",
+    "leverKind": {
+      "route_by_archetype": "アーキタイプ別にタスクをフロンティアモデルへルーティング",
+      "default_effort_down": "デフォルトの労力レベルを下げる",
+      "cache_hygiene": "キャッシュ衛生を改善して繰り返しトークンを削減",
+      "stop_after_repairs": "修復完了後にセッションを停止"
+    }
   }
 }
