@@ -175,6 +175,42 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       <div style="font-size:0.65rem;color:${signalsOn ? "#8ec07c" : "#888"};margin-top:0.2rem;">${signalsOn ? t("dashboard:calibration.enabledNote") : t("dashboard:calibration.disabledNote")}</div>
     </div>` : "";
 
+  // ── Cost-efficiency frontier panel (value-per-cost Phase 1) ──
+  // Shown beside the cost-per-task headline on the Spending tab whenever
+  // the report carries an efficiency block. Human text for Lever.kind is
+  // rendered here from the enum; the payload never carries free text (plan §1).
+  const eff = cpt?.efficiency;
+  const leverKindText = (kind: string): string =>
+    t(`dashboard:costEfficiency.leverKind.${kind}`);
+  const costEfficiencyHtml = (eff && cpt && cpt.tasksTotal > 0) ? `
+    <div class="cpt-card" style="margin-bottom:1rem;background:#16213e;border:1px solid #2a3552;border-radius:6px;padding:0.75rem 1rem;">
+      <div style="font-size:0.75rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">${t("dashboard:costEfficiency.title")}</div>
+      ${eff.realisedCost <= 0 ? `
+      <div style="font-size:0.78rem;color:#b0b0b0;">${t("dashboard:costEfficiency.insufficient")}</div>` : `
+      <div style="display:flex;flex-wrap:wrap;gap:1.5rem;align-items:baseline;margin-bottom:0.5rem;">
+        <div>
+          <div style="font-size:1.1rem;font-weight:bold;color:#fff;">${fmtUsd(eff.realisedCost)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:costEfficiency.realised")}</div>
+        </div>
+        <div>
+          <div style="font-size:1.1rem;font-weight:bold;color:#59a14f;">${fmtUsd(eff.frontierCost)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:costEfficiency.frontier")}</div>
+        </div>
+        <div>
+          <div style="font-size:1.1rem;font-weight:bold;color:#f28e2b;">${fmtUsd(eff.recoverableWaste)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:costEfficiency.recoverable")}</div>
+        </div>
+      </div>`}
+      ${eff.realisedCost > 0 && eff.levers.length > 0 ? `
+      <div style="margin-top:0.4rem;">
+        ${eff.levers.slice(0, 3).map(lv => `
+        <div style="font-size:0.75rem;color:#cfd8ea;padding:0.2rem 0;border-top:1px solid #2a3552;">
+          <span style="color:#a0c4ff;margin-right:0.3rem;">&#9656;</span>${leverKindText(lv.kind)}${lv.estSavingUsd != null ? ` <span style="color:#59a14f;font-size:0.7rem;">(~${fmtUsd(lv.estSavingUsd)})</span>` : ""}
+        </div>`).join("")}
+      </div>` : ""}
+      <div style="font-size:0.6rem;color:#666;margin-top:0.5rem;">${t("dashboard:costEfficiency.basisNote")}</div>
+    </div>` : "";
+
   // Build pricing info rows for the cost-related panel
   const pricingRows = Object.entries(PRICING)
     .map(([model, p]) =>
@@ -781,6 +817,8 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     </div>
 
     ${costPerTaskHtml}
+
+    ${costEfficiencyHtml}
 
     ${calibrationHtml}
 

@@ -354,5 +354,19 @@
     "enabledNote": "Aktiviert — die Rate oben bezieht die Genauigkeitssignale ein.",
     "disabledNote": "Deaktiviert — die Rate oben ist nur die Schätzung.",
     "na": "k. A."
+  },
+  "costEfficiency": {
+    "title": "Kosten-Effizienz-Frontier",
+    "realised": "Realisierte Kosten",
+    "frontier": "Frontier-Kosten",
+    "recoverable": "Vermeidbare Verschwendung",
+    "basisNote": "Basiert auf dem Fertigstellungs-Proxy, nicht auf Überlebensdaten",
+    "insufficient": "Noch zu wenig Modellvielfalt für eine Frontier — für keinen Archetyp gibt es eine günstigere, bewährte Alternative.",
+    "leverKind": {
+      "route_by_archetype": "Aufgaben nach Archetyp zum Frontier-Modell weiterleiten",
+      "default_effort_down": "Standard-Aufwandsstufe reduzieren",
+      "cache_hygiene": "Cache-Hygiene verbessern, um wiederholte Token zu reduzieren",
+      "stop_after_repairs": "Sitzungen nach abgeschlossenen Korrekturen beenden"
+    }
   }
 }

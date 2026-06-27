@@ -600,6 +600,64 @@ describe("MCP Server", () => {
       expect(tool!.description!.toUpperCase()).toContain("READ-ONLY");
       expect(tool!.description).toMatch(/cannot set an outcome label|no stored prompt text/i);
     });
+
+    // ── efficiency block structural walk (T7) ─────────────────────────────
+    // The efficiency block rides the existing report (no new tool/param).
+    // This test:
+    //   1. Asserts the efficiency block is always present in the payload.
+    //   2. Performs a structural walk of every leaf — all must be numbers,
+    //      null, or fixed-enum strings. Specifically: no '/' character in any
+    //      leaf string (no file paths), and no stored prompt text.
+    // The walk verifies the A4/A5 privacy invariant on the MCP surface.
+    it("efficiency block is always present and every leaf is path-free and prompt-text-free", async () => {
+      const report = await callCostPerTask({ period: "all" });
+
+      // Always attached (plan H3 contract: efficiency is never undefined).
+      expect(report).toHaveProperty("efficiency");
+      const eff = report["efficiency"] as Record<string, unknown>;
+      expect(eff).toHaveProperty("basis", "completion_proxy");
+      expect(eff).toHaveProperty("realisedCost");
+      expect(eff).toHaveProperty("frontierCost");
+      expect(eff).toHaveProperty("recoverableWaste");
+      expect(Array.isArray(eff["byArchetype"])).toBe(true);
+      expect(Array.isArray(eff["levers"])).toBe(true);
+
+      // Structural walk: every leaf must be a number, null, or a string with
+      // no '/' character (no paths) and no prompt-derived text.
+      // We also assert no known prompt substrings appear anywhere in the
+      // serialized block.
+      const raw = JSON.stringify(eff);
+      // No file path separators — no paths leaked into the payload.
+      // Model names may contain hyphens but never forward slashes.
+      expect(raw).not.toMatch(/"[^"]*\/[^"]*"/);
+      // No stored prompt text fragments.
+      expect(raw).not.toContain("Refactor");
+      expect(raw).not.toContain("auth module");
+      expect(raw).not.toContain("JWT");
+      expect(raw).not.toContain("firstPrompt");
+      expect(raw).not.toContain("promptText");
+
+      // Walk all leaf values and assert they are numbers, booleans, null,
+      // or fixed-enum strings (no arbitrary user-derived text).
+      const ALLOWED_STRING_PATTERN =
+        /^(completion_proxy|research_qa|greenfield|mechanical_edit|debugging|multi_file_refactor|other|low|medium|high|route_by_archetype|default_effort_down|cache_hygiene|stop_after_repairs|claude[-a-z0-9.]+)$/;
+      function walkLeaves(node: unknown): void {
+        if (node === null || typeof node === "number" || typeof node === "boolean") return;
+        if (typeof node === "string") {
+          expect(node).toMatch(ALLOWED_STRING_PATTERN);
+          return;
+        }
+        if (Array.isArray(node)) {
+          for (const item of node) walkLeaves(item);
+          return;
+        }
+        if (typeof node === "object" && node !== null) {
+          for (const val of Object.values(node as Record<string, unknown>)) walkLeaves(val);
+          return;
+        }
+      }
+      walkLeaves(eff);
+    });
   });
 
   // ── Prompt-injection hardening ────────────────────────────────────────────

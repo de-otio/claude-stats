@@ -354,5 +354,19 @@
     "enabledNote": "Enabled — the rate above folds in the accuracy signals.",
     "disabledNote": "Disabled — the rate above is the proxy only.",
     "na": "n/a"
+  },
+  "costEfficiency": {
+    "title": "Cost-Efficiency Frontier",
+    "realised": "Realised cost",
+    "frontier": "Frontier cost",
+    "recoverable": "Recoverable waste",
+    "basisNote": "Based on the completion proxy, not survival",
+    "insufficient": "Not enough model diversity yet to compute a frontier — no cheaper proven alternative for any archetype.",
+    "leverKind": {
+      "route_by_archetype": "Route tasks by archetype to the frontier model",
+      "default_effort_down": "Reduce the default effort tier",
+      "cache_hygiene": "Improve cache hygiene to cut repeated tokens",
+      "stop_after_repairs": "Stop sessions after repairs complete"
+    }
   }
 }

@@ -354,5 +354,19 @@
     "enabledNote": "已启用——上方比率已纳入准确度信号。",
     "disabledNote": "已禁用——上方比率仅为代理估计。",
     "na": "无"
+  },
+  "costEfficiency": {
+    "title": "成本效率前沿",
+    "realised": "实际成本",
+    "frontier": "前沿成本",
+    "recoverable": "可挽回的浪费",
+    "basisNote": "基于完成代理，而非存活率",
+    "insufficient": "模型多样性尚不足以计算前沿——没有任何原型存在更便宜且经过验证的替代模型。",
+    "leverKind": {
+      "route_by_archetype": "按原型将任务路由到前沿模型",
+      "default_effort_down": "降低默认努力级别",
+      "cache_hygiene": "改善缓存卫生以减少重复令牌",
+      "stop_after_repairs": "修复完成后停止会话"
+    }
   }
 }

@@ -354,5 +354,19 @@
     "enabledNote": "Włączone — wskaźnik powyżej uwzględnia sygnały dokładności.",
     "disabledNote": "Wyłączone — wskaźnik powyżej to tylko szacunek.",
     "na": "bd."
+  },
+  "costEfficiency": {
+    "title": "Granica efektywności kosztowej",
+    "realised": "Koszt zrealizowany",
+    "frontier": "Koszt graniczny",
+    "recoverable": "Możliwe do odzyskania straty",
+    "basisNote": "Na podstawie proxy ukończenia, nie przetrwania",
+    "insufficient": "Zbyt mała różnorodność modeli, aby wyznaczyć granicę — żaden archetyp nie ma tańszej, sprawdzonej alternatywy.",
+    "leverKind": {
+      "route_by_archetype": "Kieruj zadania według archetypu do modelu granicznego",
+      "default_effort_down": "Zmniejsz domyślny poziom wysiłku",
+      "cache_hygiene": "Popraw higienę pamięci podręcznej, aby zmniejszyć powtarzające się tokeny",
+      "stop_after_repairs": "Zatrzymaj sesje po zakończeniu napraw"
+    }
   }
 }

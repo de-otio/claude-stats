@@ -354,5 +354,19 @@
     "enabledNote": "Activé — le taux ci-dessus intègre les signaux de précision.",
     "disabledNote": "Désactivé — le taux ci-dessus est uniquement l'estimation.",
     "na": "n/d"
+  },
+  "costEfficiency": {
+    "title": "Frontière d'efficacité des coûts",
+    "realised": "Coût réalisé",
+    "frontier": "Coût frontière",
+    "recoverable": "Gaspillage récupérable",
+    "basisNote": "Basé sur le proxy de complétion, pas sur la survie",
+    "insufficient": "Pas encore assez de diversité de modèles pour calculer une frontière — aucun archétype n'a d'alternative moins chère éprouvée.",
+    "leverKind": {
+      "route_by_archetype": "Acheminer les tâches par archétype vers le modèle frontière",
+      "default_effort_down": "Réduire le niveau d'effort par défaut",
+      "cache_hygiene": "Améliorer l'hygiène du cache pour réduire les tokens répétés",
+      "stop_after_repairs": "Arrêter les sessions après les réparations terminées"
+    }
   }
 }
