@@ -144,7 +144,13 @@ export interface CacheClient {
 }
 
 const DEFAULT_ROOT_DIR = path.join(os.homedir(), '.claude-stats', 'recap-cache');
-const DEFAULT_MAX_ENTRIES = 30;
+// A "month" cost-per-task report builds ~31 per-day digests; the dashboard also
+// caches filtered variants (all-accounts + each account) and the daily-recap
+// feature/precompute share this dir. At 30 a single month-view self-evicted and
+// went cold on every revisit. Entries are small (~17 KB median) and the cache is
+// pure derived data, so a higher cap is cheap (~3.4 MB at 200) and keeps month
+// warm across the common filter combinations. Prune is still oldest-by-mtime.
+const DEFAULT_MAX_ENTRIES = 200;
 
 /**
  * Parse a cache file's raw JSON into a { digest, inputs? } shape.
