@@ -2,6 +2,31 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.10.0 — 2026-06-29
+
+### Fixed — Switching the dashboard to "Month" no longer takes ~a minute
+
+Selecting the **Month** period could hang the dashboard for close to a minute on
+a cold cache. The cost-per-task metric was shelling out to `git` and `gh` once
+per day per project across the whole window (~30 days), and most of that work —
+the author email, the push state, the merged-PR lookup — was identical every
+day. It now fetches each project's git/PR data **once over the whole window** and
+reuses it per day. Cold "Month" drops from ~57 s to a few seconds; repeated views
+stay fast (the digest cache also holds more days now).
+
+### Changed — Per-account subscription *plan type* (different plans per account)
+
+The Settings tab assumed all your subscriptions were the same plan. You can now
+set a **plan type per account** — e.g. a personal **Max 20x** alongside a work
+**Team Premium** — and selecting a type fills in its standard monthly fee
+(still editable).
+
+- Each account row in **Settings → Subscriptions** has its own plan-type picker;
+  the single global plan-type/fee fields are gone.
+- The Plan tab's headline fee is now the **sum of your accounts' plans**
+  (e.g. $200 + $125 = $325), and each account is judged against its own plan
+  rather than one shared number.
+
 ## 0.9.0 — 2026-06-27
 
 ### Added — Subscription fee attribution (per-account fees → per-project shares)
