@@ -128,7 +128,7 @@ export interface BuildDailyDigestDeps {
  * We build the boundary timestamps by constructing a Date from the formatted
  * parts so we never read TZ from the environment.
  */
-function dayWindowInTz(
+export function dayWindowInTz(
   dateYmd: string,
   tz: string,
 ): { startMs: number; endMs: number } {

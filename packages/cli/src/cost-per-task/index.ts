@@ -23,7 +23,8 @@
  */
 import type { Store } from '../store/index.js';
 import type { BuildDailyDigestDeps } from '../recap/index.js';
-import { buildDailyDigest } from '../recap/index.js';
+import { buildDailyDigest, dayWindowInTz } from '../recap/index.js';
+import { createWindowedGitProvider } from '../recap/git.js';
 import type { Confidence, ProjectGitActivity, DailyDigestItem } from '../recap/types.js';
 import {
   computeSignature,
@@ -374,6 +375,39 @@ export function datesForPeriod(period: Period, tz: string, nowMs: number, earlie
   return [...out].sort();
 }
 
+/**
+ * Augment digestDeps with a windowed git provider so the per-day digest loop
+ * fetches git/gh data ONCE per project over the whole window instead of once
+ * per (day × project) — the dominant cost of a cold multi-day report (a "month"
+ * window spawned ~30·N git/gh subprocesses; this collapses it to ~3·N).
+ *
+ * Production-path only: when the caller already injected its own git deps
+ * (tests pass fakes for `getProjectGitActivity` / `getAuthorEmail`), those win
+ * unchanged — the windowed provider, which shells out to real git/gh, must not
+ * shadow an injected fake.
+ */
+function withWindowedGit(
+  digestDeps: BuildDailyDigestDeps,
+  dates: string[],
+  tz: string,
+): BuildDailyDigestDeps {
+  if (
+    digestDeps.getProjectGitActivity !== undefined ||
+    digestDeps.getAuthorEmail !== undefined ||
+    dates.length === 0
+  ) {
+    return digestDeps;
+  }
+  const windowStartMs = dayWindowInTz(dates[0]!, tz).startMs;
+  const windowEndMs = dayWindowInTz(dates[dates.length - 1]!, tz).endMs;
+  const provider = createWindowedGitProvider(windowStartMs, windowEndMs);
+  return {
+    ...digestDeps,
+    getAuthorEmail: provider.getAuthorEmail,
+    getProjectGitActivity: provider.getProjectGitActivity,
+  };
+}
+
 function windowBoundsMs(dates: string[], tz: string, nowMs: number): { windowStart: number; windowEnd: number } {
   // Approximate the window from the first date's UTC midnight; exact bounds are
   // not load-bearing (they are reporting metadata, not used for filtering).
@@ -471,7 +505,7 @@ export async function buildCostPerTaskReport(
   // digests, so this collapses N_days × N_projects git subprocesses into one
   // per distinct project.
   const commitShaCache = new Map<string, string | null>();
-  const digestDeps = { ...opts.digestDeps, commitShaCache };
+  const digestDeps = withWindowedGit({ ...opts.digestDeps, commitShaCache }, dates, tz);
   const records: TaskRecord[] = [];
   const tasks: LabellableTask[] = [];
   for (const date of dates) {
@@ -594,7 +628,7 @@ export async function buildCalibrationReport(
 
   // One git-SHA memo for the whole report (see buildCostPerTaskReport).
   const commitShaCache = new Map<string, string | null>();
-  const digestDeps = { ...opts.digestDeps, commitShaCache };
+  const digestDeps = withWindowedGit({ ...opts.digestDeps, commitShaCache }, dates, tz);
   for (const date of dates) {
     const digest = await buildDailyDigest(
       store,

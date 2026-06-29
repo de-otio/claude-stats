@@ -51,8 +51,15 @@ export interface Config {
   accountFees?: Record<string, AccountFee>;
 }
 
-/** A user-recorded subscription fee for one Claude account. */
+/** A user-recorded subscription for one Claude account. */
 export interface AccountFee {
+  /**
+   * Plan type for this account (e.g. `max_20x`, `team_premium`). Per-account —
+   * two accounts can hold different plans. Drives the default `monthlyFee` and
+   * the per-account plan verdict. Optional/back-compat: entries written before
+   * this field carry only a fee.
+   */
+  type?: PlanType;
   /** Monthly subscription fee, in `currency`. The amount actually paid. */
   monthlyFee: number;
   /** ISO 4217 (e.g. "EUR", "USD"). Default "USD". Never auto-converted. */
@@ -60,6 +67,16 @@ export interface AccountFee {
   /** User-facing name, e.g. "Work" / "Personal". */
   label?: string;
 }
+
+/** Valid per-account plan types (mirrors the `PlanType` union). */
+const VALID_PLAN_TYPES: ReadonlySet<string> = new Set<PlanType>([
+  "pro",
+  "max_5x",
+  "max_20x",
+  "team_standard",
+  "team_premium",
+  "custom",
+]);
 
 /** Keys we accept in a config write. Anything else is dropped (no injection). */
 const ALLOWED_CONFIG_KEYS: ReadonlyArray<keyof Config> = [
@@ -92,9 +109,21 @@ export function validateAccountFees(input: unknown): Record<string, AccountFee> 
     if (!ACCOUNT_FEE_KEY_RE.test(key)) continue; // rejects __proto__, constructor, etc.
     if (!raw || typeof raw !== "object") continue;
     const r = raw as Record<string, unknown>;
-    const fee = r.monthlyFee;
-    if (typeof fee !== "number" || !Number.isFinite(fee) || fee < 0 || fee > MAX_ACCOUNT_FEE) continue;
+    // Per-account plan type (optional). A known, non-custom type implies a
+    // default fee, so a row that carries only a type still records a usable fee.
+    const type =
+      typeof r.type === "string" && VALID_PLAN_TYPES.has(r.type) ? (r.type as PlanType) : undefined;
+    const rawFee = r.monthlyFee;
+    const feeValid = typeof rawFee === "number" && Number.isFinite(rawFee) && rawFee >= 0 && rawFee <= MAX_ACCOUNT_FEE;
+    const fee = feeValid
+      ? (rawFee as number)
+      : type && type !== "custom"
+        ? PLAN_FEES[type]
+        : undefined;
+    // Drop the entry only when neither a valid fee nor a fee-implying type is present.
+    if (fee === undefined) continue;
     const entry: AccountFee = { monthlyFee: fee };
+    if (type !== undefined) entry.type = type;
     if (typeof r.currency === "string" && ACCOUNT_FEE_CURRENCY_RE.test(r.currency)) {
       entry.currency = r.currency;
     }

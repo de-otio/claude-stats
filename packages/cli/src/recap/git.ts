@@ -261,3 +261,263 @@ export function getProjectGitActivity(
     prMerged,
   };
 }
+
+// ─── Windowed (multi-day) git provider ──────────────────────────────────────
+//
+// Performance: the per-day `getProjectGitActivity` above spawns FOUR
+// subprocesses (git config, git log, git rev-list, gh pr list — one of them a
+// GitHub network call). A multi-day report (cost-per-task / calibration) calls
+// it once per day per project, so a 30-day "month" with N projects spawns
+// ~120·N processes — almost all redundant, since the author email and push
+// state are window-invariant and the commit/PR data can be fetched once over
+// the whole window and bucketed by day in memory.
+//
+// `createWindowedGitProvider` does exactly that: per project it lazily runs ONE
+// `git log` over the full window, ONE `git rev-list` (isPushed), and ONE
+// `gh pr list`, then answers each per-day query from the prefetched data. The
+// returned `getProjectGitActivity` produces the SAME `ProjectGitActivity` shape
+// the per-day path produces (commit stats sliced to the day; window-invariant
+// `pushed`; per-day `prMerged` reconstructed from merge dates), so the digest —
+// and the metric built on it — is unchanged.
+
+interface WindowedCommit {
+  /** Commit time in epoch ms (from %ct). */
+  tsMs: number;
+  subject: string;
+  files: number;
+  added: number;
+  removed: number;
+}
+
+interface PrefetchedProjectGit {
+  /** Resolved git dir (absolute). */
+  dir: string;
+  /** Commits by @author over the window, newest-first (git log default order). */
+  commits: readonly WindowedCommit[];
+  /** HEAD pushed to upstream — window-invariant. */
+  pushed: boolean;
+  /**
+   * YYYY-MM-DD (UTC) merge dates of @me's merged PRs since the window start, or
+   * null when `gh` is missing / unauthenticated / errored (mirrors the per-day
+   * null). Used to reconstruct per-day `prMerged` via `merged:>=<day>` counting.
+   */
+  prMergeDatesUtc: readonly string[] | null;
+}
+
+export interface WindowedGitProvider {
+  getAuthorEmail(projectPath: string): string | null;
+  getProjectGitActivity(
+    projectPath: string,
+    startMs: number,
+    endMs: number,
+    authorEmail: string,
+  ): ProjectGitActivity | null;
+}
+
+/**
+ * Parse a windowed `git log --shortstat --format=%H|%ct|%s` into per-commit
+ * records, attributing each shortstat line to the commit header that precedes
+ * it. Same field extraction as the per-day parser, but keyed per commit so the
+ * caller can slice by day.
+ */
+function parseWindowedGitLog(raw: string): WindowedCommit[] {
+  const lines = raw.split('\n');
+  const commits: WindowedCommit[] = [];
+  let cur: WindowedCommit | null = null;
+  for (const line of lines) {
+    if (/^[0-9a-f]{7,64}\|/.test(line)) {
+      const pipeIdx = line.indexOf('|');
+      const rest = line.slice(pipeIdx + 1);
+      const pipeIdx2 = rest.indexOf('|');
+      const ctStr = pipeIdx2 >= 0 ? rest.slice(0, pipeIdx2) : rest;
+      const subjectRaw = pipeIdx2 >= 0 ? rest.slice(pipeIdx2 + 1) : '';
+      const ct = parseInt(ctStr, 10);
+      cur = {
+        tsMs: Number.isFinite(ct) ? ct * 1000 : NaN,
+        subject: subjectRaw.split('\n')[0]!.slice(0, MAX_SUBJECT_LEN),
+        files: 0,
+        added: 0,
+        removed: 0,
+      };
+      commits.push(cur);
+    } else if (line.trim().match(/^\d+\s+files?\s+changed/)) {
+      const stats = parseShortstat(line);
+      if (cur !== null) {
+        cur.files += stats.files;
+        cur.added += stats.added;
+        cur.removed += stats.removed;
+      }
+    }
+  }
+  return commits;
+}
+
+/**
+ * Run ONE `gh pr list` for @me's merged PRs since `sinceYmd`, returning their
+ * UTC merge dates (YYYY-MM-DD). Returns null on any failure (gh missing / not
+ * authed / rate-limited / non-zero exit) — same silent-null contract as
+ * `getMergedPrCountToday`. The `--limit 200` lifts the per-day call's implicit
+ * 30-cap so per-day reconstruction is exact for any realistic window (the
+ * common <30-PRs case is identical to the old behaviour).
+ */
+function getMergedPrDatesSince(gitDir: string, sinceYmd: string): string[] | null {
+  try {
+    const out = execFileSync(
+      'gh',
+      [
+        'pr',
+        'list',
+        '--author=@me',
+        '--state=merged',
+        `--search=merged:>=${sinceYmd}`,
+        '--limit=200',
+        '--json=mergedAt',
+      ],
+      { encoding: 'utf8', cwd: gitDir },
+    );
+    const parsed: unknown = JSON.parse(out);
+    if (!Array.isArray(parsed)) return null;
+    const dates: string[] = [];
+    for (const row of parsed) {
+      const mergedAt = (row as { mergedAt?: unknown }).mergedAt;
+      if (typeof mergedAt === 'string' && mergedAt.length >= 10) {
+        dates.push(mergedAt.slice(0, 10)); // YYYY-MM-DD (UTC, as gh emits it)
+      }
+    }
+    return dates;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build a multi-day git provider whose `getProjectGitActivity` answers per-day
+ * queries from data fetched ONCE per project over [windowStartMs, windowEndMs).
+ *
+ * Drop-in for the `getAuthorEmail` / `getProjectGitActivity` deps of
+ * {@link buildDailyDigest}. Per-day windows passed to `getProjectGitActivity`
+ * MUST fall within the provider's window (callers in the cost-per-task /
+ * calibration loop guarantee this by deriving the window from the same dates).
+ */
+export function createWindowedGitProvider(
+  windowStartMs: number,
+  windowEndMs: number,
+): WindowedGitProvider {
+  const emailCache = new Map<string, string | null>();
+  const prefetchCache = new Map<string, PrefetchedProjectGit | null>();
+  const windowStartYmd = new Date(windowStartMs).toISOString().slice(0, 10);
+
+  const resolveEmail = (projectPath: string): string | null => {
+    if (emailCache.has(projectPath)) return emailCache.get(projectPath)!;
+    const email = getAuthorEmail(projectPath);
+    emailCache.set(projectPath, email);
+    return email;
+  };
+
+  const prefetch = (projectPath: string): PrefetchedProjectGit | null => {
+    if (prefetchCache.has(projectPath)) return prefetchCache.get(projectPath)!;
+
+    const email = resolveEmail(projectPath);
+    // No email (not a repo / git missing) → no enrichment, matching the per-day
+    // path where buildDailyDigest skips getGitActivity when email is null.
+    if (email === null || !EMAIL_OK.test(email)) {
+      prefetchCache.set(projectPath, null);
+      return null;
+    }
+    const dir = resolveGitDir(projectPath);
+    if (dir === null) {
+      prefetchCache.set(projectPath, null);
+      return null;
+    }
+
+    const startIso = new Date(windowStartMs).toISOString();
+    const endIso = new Date(windowEndMs).toISOString();
+    let commits: WindowedCommit[];
+    try {
+      const raw = execFileSync(
+        'git',
+        [
+          '-C',
+          dir,
+          'log',
+          `--since=${startIso}`,
+          `--until=${endIso}`,
+          `--author=${email}`,
+          '--no-merges',
+          '--shortstat',
+          '--format=%H|%ct|%s',
+          '--',
+        ],
+        { encoding: 'utf8', maxBuffer: MAX_BUFFER },
+      );
+      commits = parseWindowedGitLog(raw);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      console.warn(`git enrichment failed for ${dir}: ${message.slice(0, 80)}`);
+      prefetchCache.set(projectPath, null);
+      return null;
+    }
+
+    const data: PrefetchedProjectGit = {
+      dir,
+      commits,
+      pushed: isPushed(dir),
+      prMergeDatesUtc: getMergedPrDatesSince(dir, windowStartYmd),
+    };
+    prefetchCache.set(projectPath, data);
+    return data;
+  };
+
+  return {
+    getAuthorEmail: resolveEmail,
+    getProjectGitActivity(projectPath, startMs, endMs, _authorEmail): ProjectGitActivity | null {
+      void _authorEmail; // email is resolved/cached internally
+      const data = prefetch(projectPath);
+      if (data === null) return null;
+
+      let commitsToday = 0;
+      let filesChanged = 0;
+      let linesAdded = 0;
+      let linesRemoved = 0;
+      const rawSubjects: string[] = [];
+      for (const c of data.commits) {
+        if (c.tsMs >= startMs && c.tsMs < endMs) {
+          commitsToday++;
+          filesChanged += c.files;
+          linesAdded += c.added;
+          linesRemoved += c.removed;
+          if (c.subject) rawSubjects.push(c.subject);
+        }
+      }
+
+      let subjects: string[];
+      if (rawSubjects.length <= MAX_SUBJECTS) {
+        subjects = rawSubjects;
+      } else {
+        const extra = rawSubjects.length - MAX_SUBJECTS;
+        subjects = [...rawSubjects.slice(0, MAX_SUBJECTS), `+${extra} more`];
+      }
+
+      // Per-day prMerged reconstructs the per-day `merged:>=<dayYmd>` semantics:
+      // count of @me's merged PRs whose UTC merge date is >= this day's UTC date
+      // (the per-day path keyed on new Date(startMs) UTC, not the tz date).
+      let prMerged: number | null;
+      if (data.prMergeDatesUtc === null) {
+        prMerged = null;
+      } else {
+        const dayYmd = new Date(startMs).toISOString().slice(0, 10);
+        prMerged = data.prMergeDatesUtc.filter((d) => d >= dayYmd).length;
+      }
+
+      return {
+        commitsToday,
+        filesChanged,
+        linesAdded,
+        linesRemoved,
+        subjects,
+        pushed: data.pushed,
+        prMerged,
+      };
+    },
+  };
+}

@@ -19,7 +19,7 @@ import { URL } from "node:url";
 import type { Store } from "../store/index.js";
 import { buildDashboard } from "../dashboard/index.js";
 import type { ReportOptions } from "../reporter/index.js";
-import { loadConfig, saveConfig, getPlanConfig, mergeConfig, buildAccountsForConfig, redactConfigForHttp } from "../config.js";
+import { loadConfig, saveConfig, mergeConfig, buildAccountsForConfig, redactConfigForHttp } from "../config.js";
 import { readClaudeAccount } from "../account.js";
 import { t } from "../i18n.js";
 
@@ -196,9 +196,11 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
         if (req.method === "GET" && pathname === "/") {
           const opts = parseOpts(url);
           const cfg = loadConfig();
-          const planCfg = getPlanConfig(cfg);
-          if (planCfg && !opts.planFee) opts.planFee = planCfg.monthlyFee;
-          if (planCfg && !opts.planType) opts.planType = planCfg.type;
+          // Per-account subscriptions are the source of truth: buildDashboard
+          // sums each in-scope account's fee (from accountFees, by type) for the
+          // headline plan fee and budget. We deliberately do NOT seed a single
+          // global planFee/planType here — that would override the per-account
+          // split when two accounts hold different plans.
           if (!opts.accountFees) opts.accountFees = cfg.accountFees;
           const data = buildDashboard(store, opts);
           const { attachCostPerTask } = await import("../dashboard/index.js");
