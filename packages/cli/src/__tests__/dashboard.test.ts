@@ -816,3 +816,64 @@ describe("buildDashboard — context analysis", () => {
     expect(shortBucket!.cacheEfficiency).toBeGreaterThan(0);
   });
 });
+
+describe("buildDashboard — per-account subscriptions", () => {
+  let store: Store;
+  let dbPath: string;
+  const ACCT_A = "11111111-aaaa-bbbb-cccc-000000000001";
+  const ACCT_B = "22222222-aaaa-bbbb-cccc-000000000002";
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+  });
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  it("sums two different per-account fees into the headline plan fee", () => {
+    store.upsertSession(makeSession({ sessionId: "a1", accountUuid: ACCT_A }));
+    store.upsertSession(makeSession({ sessionId: "b1", accountUuid: ACCT_B }));
+
+    const data = buildDashboard(store, {
+      timezone: "UTC",
+      accountFees: {
+        [ACCT_A]: { type: "max_20x", monthlyFee: 200 },
+        [ACCT_B]: { type: "team_premium", monthlyFee: 125 },
+      },
+    });
+    // Personal Max 20x ($200) + work Team Premium ($125) = $325, not one shared plan.
+    expect(data.summary.planFee).toBe(325);
+  });
+
+  it("derives each account's fee from its plan type alone (no explicit amount)", () => {
+    store.upsertSession(makeSession({ sessionId: "a1", accountUuid: ACCT_A }));
+    store.upsertSession(makeSession({ sessionId: "b1", accountUuid: ACCT_B }));
+
+    const data = buildDashboard(store, {
+      timezone: "UTC",
+      accountFees: {
+        [ACCT_A]: { type: "max_20x" } as never, // validateAccountFees fills the fee upstream
+        [ACCT_B]: { type: "team_standard" } as never,
+      },
+    });
+    expect(data.summary.planFee).toBe(225); // 200 + 25
+  });
+
+  it("falls back to telemetry subscription type per account when unconfigured", () => {
+    store.upsertSession(makeSession({ sessionId: "a1", accountUuid: ACCT_A, subscriptionType: "max_20x" }));
+    store.upsertSession(makeSession({ sessionId: "b1", accountUuid: ACCT_B, subscriptionType: "team_premium" }));
+
+    const data = buildDashboard(store, { timezone: "UTC" });
+    expect(data.summary.planFee).toBe(325);
+  });
+
+  it("an explicit --plan-fee still overrides the per-account sum", () => {
+    store.upsertSession(makeSession({ sessionId: "a1", accountUuid: ACCT_A, subscriptionType: "max_20x" }));
+    store.upsertSession(makeSession({ sessionId: "b1", accountUuid: ACCT_B, subscriptionType: "team_premium" }));
+
+    const data = buildDashboard(store, { timezone: "UTC", planFee: 150 });
+    expect(data.summary.planFee).toBe(150);
+  });
+});
