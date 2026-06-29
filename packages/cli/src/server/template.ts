@@ -1245,25 +1245,6 @@ CO₂_grams = total_kWh × grid_intensity</div>
 
         <form id="settings-form" style="display:flex; flex-direction:column; gap:1rem; max-width:400px;">
           <div>
-            <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">${t("dashboard:settings.planType")}</label>
-            <select id="cfg-plan-type" style="width:100%; padding:0.4rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.8rem;">
-              <option value="">${t("dashboard:settings.notSetAutoDetect")}</option>
-              <option value="pro">${t("dashboard:settings.planOptions.pro")}</option>
-              <option value="max_5x">${t("dashboard:settings.planOptions.max_5x")}</option>
-              <option value="max_20x">${t("dashboard:settings.planOptions.max_20x")}</option>
-              <option value="team_standard">${t("dashboard:settings.planOptions.team_standard")}</option>
-              <option value="team_premium">${t("dashboard:settings.planOptions.team_premium")}</option>
-              <option value="custom">${t("dashboard:settings.planOptions.custom")}</option>
-            </select>
-            <div style="font-size:0.6rem; color:#999; margin-top:0.2rem;">${t("dashboard:settings.planAutoDetectHint")}</div>
-          </div>
-          <div>
-            <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">${t("dashboard:settings.monthlyFee")}</label>
-            <input id="cfg-monthly-fee" type="number" min="0" step="1" placeholder="${t("dashboard:settings.monthlyFeePlaceholder")}" style="width:100%; padding:0.4rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.8rem; box-sizing:border-box;">
-            <div style="font-size:0.6rem; color:#999; margin-top:0.2rem;">${t("dashboard:settings.monthlyFeeHint")}</div>
-          </div>
-
-          <div style="border-top:1px solid #2a2a4a; padding-top:1rem;">
             <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">${t("dashboard:settings.subscriptions")}</label>
             <div style="font-size:0.6rem; color:#999; margin-bottom:0.5rem;">${t("dashboard:settings.subscriptionsHint")}</div>
             <div id="account-fees-rows"></div>
@@ -2153,20 +2134,42 @@ CO₂_grams = total_kWh × grid_intensity</div>
       });
 
       function populateSettingsForm(cfg) {
-        var planType = document.getElementById('cfg-plan-type');
-        var monthlyFee = document.getElementById('cfg-monthly-fee');
         var threshDay = document.getElementById('cfg-threshold-day');
         var threshWeek = document.getElementById('cfg-threshold-week');
         var threshMonth = document.getElementById('cfg-threshold-month');
 
-        if (cfg.plan && cfg.plan.type) planType.value = cfg.plan.type;
-        if (cfg.plan && cfg.plan.monthly_fee != null) monthlyFee.value = cfg.plan.monthly_fee;
         if (cfg.costThresholds) {
           if (cfg.costThresholds.day != null) threshDay.value = cfg.costThresholds.day;
           if (cfg.costThresholds.week != null) threshWeek.value = cfg.costThresholds.week;
           if (cfg.costThresholds.month != null) threshMonth.value = cfg.costThresholds.month;
         }
         renderAccountFees(cfg);
+      }
+
+      // Per-account plan types + their default monthly fee (USD). Labels are
+      // localized server-side; the fee map mirrors core/pricing PLAN_FEES so
+      // selecting a type auto-fills its default amount.
+      var PLAN_OPTIONS = [
+        { value: '', label: '${t("dashboard:settings.notSetAutoDetect")}' },
+        { value: 'pro', label: '${t("dashboard:settings.planOptions.pro")}' },
+        { value: 'max_5x', label: '${t("dashboard:settings.planOptions.max_5x")}' },
+        { value: 'max_20x', label: '${t("dashboard:settings.planOptions.max_20x")}' },
+        { value: 'team_standard', label: '${t("dashboard:settings.planOptions.team_standard")}' },
+        { value: 'team_premium', label: '${t("dashboard:settings.planOptions.team_premium")}' },
+        { value: 'custom', label: '${t("dashboard:settings.planOptions.custom")}' }
+      ];
+      var PLAN_FEE_DEFAULTS = { pro: 20, max_5x: 100, max_20x: 200, team_standard: 25, team_premium: 125 };
+
+      // Best-effort map of a telemetry subscriptionType string to a plan-type
+      // option value (normalises case/separators); '' when it doesn't match.
+      function normalizePlanType(sub) {
+        if (!sub) return '';
+        var k = String(sub).toLowerCase().replace(/[- ]/g, '_');
+        if (PLAN_FEE_DEFAULTS[k] != null) return k;
+        for (var key in PLAN_FEE_DEFAULTS) {
+          if (k.indexOf(key) === 0) return key;
+        }
+        return '';
       }
 
       // Build one fee row per account from cfg.accounts. Uses createElement +
@@ -2186,13 +2189,27 @@ CO₂_grams = total_kWh × grid_intensity</div>
           var row = document.createElement('div');
           row.className = 'account-fee-row';
           row.setAttribute('data-account', a.accountUuid);
-          row.style.cssText = 'display:grid; grid-template-columns:1fr 5rem 4rem; gap:0.4rem; align-items:center; margin-bottom:0.4rem;';
+          row.style.cssText = 'display:grid; grid-template-columns:1fr 5rem 4rem; gap:0.4rem; align-items:center; margin-bottom:0.6rem;';
 
           var name = document.createElement('div');
-          name.style.cssText = 'font-size:0.72rem; color:#e8e8e8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+          name.style.cssText = 'grid-column:1 / -1; font-size:0.72rem; color:#e8e8e8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
           name.textContent = a.email || (a.accountUuid.slice(0, 8) + '…');
           name.title = a.accountUuid + (a.subscriptionType ? ' · ' + a.subscriptionType : '') + ' · ' + a.sessionCount + ' sessions';
           row.appendChild(name);
+
+          // Per-account plan type. Default: explicitly-saved type, else the
+          // telemetry-detected subscription type, else "auto".
+          var planType = document.createElement('select');
+          planType.className = 'acct-fee-type';
+          planType.style.cssText = 'width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;';
+          var selectedType = fee.type || normalizePlanType(a.subscriptionType);
+          PLAN_OPTIONS.forEach(function (o) {
+            var opt = document.createElement('option');
+            opt.value = o.value; opt.textContent = o.label;
+            if (o.value === selectedType) opt.selected = true;
+            planType.appendChild(opt);
+          });
+          row.appendChild(planType);
 
           var amount = document.createElement('input');
           amount.type = 'number'; amount.min = '0'; amount.step = '1';
@@ -2201,6 +2218,12 @@ CO₂_grams = total_kWh × grid_intensity</div>
           if (fee.monthlyFee != null) amount.value = fee.monthlyFee;
           amount.placeholder = '${t("dashboard:settings.feePlaceholder")}';
           row.appendChild(amount);
+
+          // Selecting a known plan type fills its default fee (still editable).
+          planType.addEventListener('change', function () {
+            var def = PLAN_FEE_DEFAULTS[planType.value];
+            if (def != null) amount.value = def;
+          });
 
           var currency = document.createElement('select');
           currency.className = 'acct-fee-currency';
@@ -2233,11 +2256,17 @@ CO₂_grams = total_kWh × grid_intensity</div>
         for (var i = 0; i < rowEls.length; i++) {
           var row = rowEls[i];
           var uuid = row.getAttribute('data-account');
+          var type = row.querySelector('.acct-fee-type').value;
           var amt = row.querySelector('.acct-fee-amount').value;
-          if (amt === '' || amt == null) continue;
-          var num = parseFloat(amt);
-          if (!isFinite(num) || num < 0) continue;
-          var entry = { monthlyFee: num };
+          var num = (amt === '' || amt == null) ? null : parseFloat(amt);
+          var hasFee = num != null && isFinite(num) && num >= 0;
+          // Keep a row that carries a fee OR a non-custom plan type (the type
+          // implies a default fee server-side). A bare "auto"/custom row with no
+          // fee is dropped.
+          if (!hasFee && (type === '' || type === 'custom')) continue;
+          var entry = {};
+          if (hasFee) entry.monthlyFee = num;
+          if (type) entry.type = type;
           var cur = row.querySelector('.acct-fee-currency').value;
           if (cur) entry.currency = cur;
           var lbl = row.querySelector('.acct-fee-label').value;
@@ -2427,16 +2456,11 @@ CO₂_grams = total_kWh × grid_intensity</div>
 
         document.getElementById('settings-form').addEventListener('submit', function (e) {
           e.preventDefault();
-          var planType = document.getElementById('cfg-plan-type').value;
-          var monthlyFee = document.getElementById('cfg-monthly-fee').value;
           var threshDay = document.getElementById('cfg-threshold-day').value;
           var threshWeek = document.getElementById('cfg-threshold-week').value;
           var threshMonth = document.getElementById('cfg-threshold-month').value;
 
           var config = {};
-          config.plan = {};
-          if (planType) config.plan.type = planType;
-          if (monthlyFee) config.plan.monthly_fee = parseFloat(monthlyFee);
           config.costThresholds = {};
           if (threshDay) config.costThresholds.day = parseFloat(threshDay);
           if (threshWeek) config.costThresholds.week = parseFloat(threshWeek);

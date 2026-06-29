@@ -12,7 +12,7 @@ import { Store } from "../store/index.js";
 import { getNonce, escapeHtml } from "./utils.js";
 import { buildDashboard, attachCostPerTask, attachCalibration } from "../dashboard/index.js";
 import { renderDashboard } from "../server/template.js";
-import { loadConfig, saveConfig, getPlanConfig, mergeConfig, buildAccountsForConfig, type Config } from "../config.js";
+import { loadConfig, saveConfig, mergeConfig, buildAccountsForConfig, type Config } from "../config.js";
 import { readClaudeAccount } from "../account.js";
 import { openCorrections, type CorrectionSignature, type OutcomeValue } from "../recap/corrections.js";
 import type { ReportOptions } from "../reporter/index.js";
@@ -99,12 +99,13 @@ export class DashboardPanel {
       }
 
       const cfg = loadConfig();
-      const planCfg = getPlanConfig(cfg);
+      // Per-account subscriptions are the source of truth — buildDashboard sums
+      // each in-scope account's fee from accountFees (by plan type). No single
+      // global planFee/planType is seeded here; that would override the
+      // per-account split when accounts hold different plans.
       const dashOpts = {
         period: this.period,
         accountUuid: this.accountUuid,
-        planFee: planCfg?.monthlyFee,
-        planType: planCfg?.type,
         accountFees: cfg.accountFees,
       };
       const data = buildDashboard(store, dashOpts);

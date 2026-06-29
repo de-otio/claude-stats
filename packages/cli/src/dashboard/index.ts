@@ -581,12 +581,35 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     : [];
 
   // ── Plan ROI metrics ─────────────────────────────────────────────────────
-  const planFee = opts.planFee ?? 0;
-  const planMultiplier = planFee > 0 ? Math.round((totalCost / planFee) * 10) / 10 : 0;
+  // An explicit CLI `--plan-fee` (opts.planFee) is a deliberate single-number
+  // override and wins. Otherwise per-account subscriptions are the source of
+  // truth: sum each in-scope account's resolved fee (explicit per-account fee →
+  // its plan-type default → telemetry-detected), so two different plans
+  // (e.g. personal Max 20x + work Team Premium) add up correctly.
+  const explicitPlanFee = opts.planFee && opts.planFee > 0 ? opts.planFee : 0;
   // Synthetic config for per-account fee resolution: the dashboard receives the
-  // resolved pieces (accountFees map + the single global plan fee) rather than a
+  // resolved pieces (accountFees map + any explicit global fee) rather than a
   // full Config, so reconstruct the minimal shape resolveAccountFee reads.
-  const feeConfig: Config = { accountFees: opts.accountFees, plan: { monthly_fee: planFee || undefined } };
+  const feeConfig: Config = { accountFees: opts.accountFees, plan: { monthly_fee: explicitPlanFee || undefined } };
+  const sumPerAccountFees = (): number => {
+    // Effective plan type per in-scope account: explicit per-account type →
+    // telemetry subscription_type → (legacy) global configured type.
+    const typeByAccount = new Map<string, string | null>();
+    for (const row of rows) {
+      const key = row.account_uuid ?? "(unknown)";
+      const prev = typeByAccount.get(key) ?? null;
+      typeByAccount.set(key, row.subscription_type ?? prev);
+    }
+    let total = 0;
+    for (const [key, subType] of typeByAccount) {
+      const effType = opts.accountFees?.[key]?.type ?? subType ?? opts.planType ?? null;
+      const resolved = resolveAccountFee(feeConfig, key, effType, typeByAccount.size);
+      if (resolved) total += resolved.monthlyFee;
+    }
+    return total;
+  };
+  const planFee = explicitPlanFee > 0 ? explicitPlanFee : sumPerAccountFees();
+  const planMultiplier = planFee > 0 ? Math.round((totalCost / planFee) * 10) / 10 : 0;
   const costPerPrompt = totalPrompts > 0 ? totalCost / totalPrompts : 0;
   const daysInPeriod = since > 0 ? Math.max(1, (Date.now() - since) / (24 * 60 * 60 * 1000)) : 30;
   const dailyValueRate = totalCost / daysInPeriod;
@@ -779,21 +802,11 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       }
     }
 
-    // Determine effective plan fee: use explicit --plan-fee, or auto-detect
-    // from the dominant account's subscription type, or sum across accounts
-    let effectivePlanFee = planFee;
-    if (effectivePlanFee <= 0) {
-      // Auto-detect: sum fees across all known accounts. Prefer a user-configured
-      // per-account fee (accountFees) over the subscription-type default, so the
-      // weekly budget agrees with the per-account verdicts below.
-      const feeAccountCount = accountMap.size;
-      let detectedTotal = 0;
-      for (const [acctKey, acct] of accountMap) {
-        const resolved = resolveAccountFee(feeConfig, acctKey, acct.subscriptionType, feeAccountCount);
-        if (resolved) detectedTotal += resolved.monthlyFee;
-      }
-      if (detectedTotal > 0) effectivePlanFee = detectedTotal;
-    }
+    // `planFee` already resolves the effective subscription cost: an explicit
+    // --plan-fee, else the sum of each in-scope account's per-account fee (see
+    // sumPerAccountFees above). The per-account verdicts below use the same
+    // resolveAccountFee, so the weekly budget and the per-account rows agree.
+    const effectivePlanFee = planFee;
 
     const weeklyPlanBudget = effectivePlanFee > 0 ? effectivePlanFee / 4.33 : 0;
     const weeklyCosts = byWeek.map(w => w.estimatedCost);
@@ -847,9 +860,12 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       Array.from(accountMap.entries())
         .sort(([, a], [, b]) => b.cost - a.cost)
         .map(([acctKey, acct]) => {
-          // Fall back to configured plan type when telemetry subscription_type is absent
-          const subscriptionType = acct.subscriptionType ?? opts.planType ?? null;
-          // Prefer a user-configured per-account fee over the auto-detected default.
+          // Effective plan type, per account: an explicitly-configured per-account
+          // type wins, then telemetry's subscription_type, then the (legacy)
+          // global configured type. Two accounts can resolve to different plans.
+          const subscriptionType =
+            feeConfig.accountFees?.[acctKey]?.type ?? acct.subscriptionType ?? opts.planType ?? null;
+          // Prefer a user-configured per-account fee over the type-derived default.
           const detectedFee = resolveAccountFee(feeConfig, acctKey, subscriptionType, accountMap.size)?.monthlyFee ?? null;
           let verdict = "no-plan";
           if (detectedFee && detectedFee > 0) {

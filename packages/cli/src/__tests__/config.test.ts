@@ -180,6 +180,26 @@ describe("validateAccountFees", () => {
     expect(validateAccountFees(null)).toEqual({});
     expect(validateAccountFees("nope")).toEqual({});
   });
+
+  it("keeps a valid per-account plan type alongside the explicit fee", () => {
+    const out = validateAccountFees({ [UUID]: { type: "max_20x", monthlyFee: 200, currency: "USD" } });
+    expect(out[UUID]).toEqual({ type: "max_20x", monthlyFee: 200, currency: "USD" });
+  });
+
+  it("derives the default fee from a non-custom type when the amount is missing", () => {
+    const out = validateAccountFees({ [UUID]: { type: "team_premium" } });
+    expect(out[UUID]).toEqual({ type: "team_premium", monthlyFee: 125 });
+  });
+
+  it("drops an invalid plan type but keeps the entry when a fee is present", () => {
+    const out = validateAccountFees({ [UUID]: { type: "platinum", monthlyFee: 99 } });
+    expect(out[UUID]).toEqual({ monthlyFee: 99 });
+  });
+
+  it("drops a row with a custom/auto type and no fee (no implied default)", () => {
+    expect(validateAccountFees({ [UUID]: { type: "custom" } })[UUID]).toBeUndefined();
+    expect(validateAccountFees({ [UUID]: {} })[UUID]).toBeUndefined();
+  });
 });
 
 describe("mergeConfig", () => {

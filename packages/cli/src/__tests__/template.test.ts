@@ -668,12 +668,17 @@ describe("renderDashboard", () => {
     expect(html).toContain("Potential Savings");
   });
 
-  it("includes Settings tab with plan type select and monthly fee input", () => {
+  it("includes Settings tab with per-account subscriptions and cost thresholds", () => {
     const html = renderDashboard(mockData, t);
     expect(html).toContain('data-tab="settings"');
     expect(html).toContain('id="tab-settings"');
-    expect(html).toContain('id="cfg-plan-type"');
-    expect(html).toContain('id="cfg-monthly-fee"');
+    // Per-account subscription rows (plan type + fee) replace the old single
+    // global plan-type/monthly-fee fields.
+    expect(html).toContain('id="account-fees-rows"');
+    expect(html).toContain('acct-fee-type');
+    expect(html).toContain('PLAN_FEE_DEFAULTS');
+    expect(html).not.toContain('id="cfg-plan-type"');
+    expect(html).not.toContain('id="cfg-monthly-fee"');
     expect(html).toContain('id="cfg-threshold-day"');
     expect(html).toContain('id="settings-form"');
     expect(html).toContain('/api/config');
