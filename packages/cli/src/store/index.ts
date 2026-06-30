@@ -17,10 +17,12 @@ import type {
   SchemaFingerprint,
   ParseError,
   UsageWindow,
+  AccountObservation,
+  AccountRecord,
 } from "@claude-stats/core/types";
 import { estimateCost } from "@claude-stats/core/pricing";
 
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 13;
 
 export class Store {
   private db: DatabaseSync;
@@ -65,6 +67,7 @@ export class Store {
     if (current < 10) this.migrateToV10();
     if (current < 11) this.migrateToV11();
     if (current < 12) this.migrateToV12();
+    if (current < 13) this.migrateToV13();
 
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
@@ -324,6 +327,65 @@ export class Store {
     // (full-rebuild branch) plus IF NOT EXISTS above make a crash-retry safe —
     // a re-run rebuilds from current `messages` rather than double-counting.
     this.recomputeMessageHourly();
+  }
+
+  private migrateToV13(): void {
+    // Account-attribution foundation (Phase 1). All statements are
+    // independently idempotent (migrations run outside a wrapping txn); we open
+    // V13's own BEGIN/COMMIT so the schema lands atomically. ZERO backfill —
+    // attribution is computed later by the Phase-2 engine.
+    const addColumn = (table: string, column: string, def: string): void => {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === column)) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+      }
+    };
+
+    this.db.exec("BEGIN");
+    try {
+      // Latest-known metadata per account (one row per account_uuid).
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS accounts (
+          account_uuid         TEXT PRIMARY KEY,
+          organization_uuid    TEXT,
+          email_hash           TEXT,
+          email_label          TEXT,
+          organization_type    TEXT,
+          rate_limit_tier      TEXT,
+          user_rate_limit_tier TEXT,
+          seat_tier            TEXT,
+          billing_type         TEXT,
+          subscription_type    TEXT,
+          first_observed_at    INTEGER,
+          last_observed_at     INTEGER
+        );
+      `);
+
+      // Append-only log of account activity observations (one row per sighting).
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS account_observations (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          account_uuid    TEXT NOT NULL,
+          observed_at     INTEGER NOT NULL,
+          source          TEXT NOT NULL,
+          surface         TEXT,
+          rate_limit_tier TEXT,
+          billing_type    TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_acct_obs_time ON account_observations (observed_at);
+      `);
+
+      // Per-session attribution provenance (filled by the Phase-2 engine).
+      addColumn("sessions", "account_source", "TEXT");
+      addColumn("sessions", "account_confidence", "TEXT");
+      // Per-message account attribution (filled by the Phase-2 engine).
+      addColumn("messages", "account_uuid", "TEXT");
+
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
   }
 
   // ─── Rollup recompute (shared: backfill + incremental) ──────────────────────
@@ -745,6 +807,259 @@ export class Store {
       if (result.changes > 0) updated++;
     }
     return updated;
+  }
+
+  // ─── Account attribution (Phase 1 foundation) ───────────────────────────────
+
+  /** Append one observation of an account being active (append-only log). */
+  recordAccountObservation(obs: AccountObservation): void {
+    this.db.prepare(`
+      INSERT INTO account_observations
+        (account_uuid, observed_at, source, surface, rate_limit_tier, billing_type)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      obs.accountUuid,
+      obs.observedAt,
+      obs.source,
+      obs.surface,
+      obs.rateLimitTier,
+      obs.billingType,
+    );
+  }
+
+  /**
+   * Read observations ordered by observed_at ascending. When `surface` is
+   * given, only observations for that surface are returned.
+   */
+  getAccountObservations(surface?: string): AccountObservation[] {
+    const where = surface !== undefined ? "WHERE surface = ?" : "";
+    const params: unknown[] = surface !== undefined ? [surface] : [];
+    const stmt = this.db.prepare(`
+      SELECT account_uuid, observed_at, source, surface, rate_limit_tier, billing_type
+      FROM account_observations
+      ${where}
+      ORDER BY observed_at ASC
+    `);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (stmt.all as (...args: any[]) => unknown[])(...params) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      accountUuid: r["account_uuid"] as string,
+      observedAt: r["observed_at"] as number,
+      source: r["source"] as string,
+      surface: r["surface"] as string | null,
+      rateLimitTier: r["rate_limit_tier"] as string | null,
+      billingType: r["billing_type"] as string | null,
+    }));
+  }
+
+  /**
+   * Upsert an account row, refreshing last_observed_at and the tier/billing
+   * metadata. first_observed_at is set on insert and never moved backwards;
+   * COALESCE keeps an existing non-null value when the incoming field is null.
+   */
+  upsertAccount(a: AccountRecord): void {
+    this.db.prepare(`
+      INSERT INTO accounts (
+        account_uuid, organization_uuid, email_hash, email_label,
+        organization_type, rate_limit_tier, user_rate_limit_tier, seat_tier,
+        billing_type, subscription_type, first_observed_at, last_observed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (account_uuid) DO UPDATE SET
+        organization_uuid    = COALESCE(excluded.organization_uuid, accounts.organization_uuid),
+        email_hash           = COALESCE(excluded.email_hash, accounts.email_hash),
+        email_label          = COALESCE(excluded.email_label, accounts.email_label),
+        organization_type    = COALESCE(excluded.organization_type, accounts.organization_type),
+        rate_limit_tier      = COALESCE(excluded.rate_limit_tier, accounts.rate_limit_tier),
+        user_rate_limit_tier = COALESCE(excluded.user_rate_limit_tier, accounts.user_rate_limit_tier),
+        seat_tier            = COALESCE(excluded.seat_tier, accounts.seat_tier),
+        billing_type         = COALESCE(excluded.billing_type, accounts.billing_type),
+        subscription_type    = COALESCE(excluded.subscription_type, accounts.subscription_type),
+        first_observed_at    = MIN(
+                                 COALESCE(accounts.first_observed_at, excluded.first_observed_at),
+                                 COALESCE(excluded.first_observed_at, accounts.first_observed_at)
+                               ),
+        last_observed_at     = MAX(
+                                 COALESCE(accounts.last_observed_at, excluded.last_observed_at),
+                                 COALESCE(excluded.last_observed_at, accounts.last_observed_at)
+                               )
+    `).run(
+      a.accountUuid,
+      a.organizationUuid,
+      a.emailHash,
+      a.emailLabel,
+      a.organizationType,
+      a.rateLimitTier,
+      a.userRateLimitTier,
+      a.seatTier,
+      a.billingType,
+      a.subscriptionType,
+      a.firstObservedAt,
+      a.lastObservedAt,
+    );
+  }
+
+  /** All rows from the accounts table. */
+  listAccountsFull(): AccountRecord[] {
+    const stmt = this.db.prepare(`
+      SELECT account_uuid, organization_uuid, email_hash, email_label,
+             organization_type, rate_limit_tier, user_rate_limit_tier, seat_tier,
+             billing_type, subscription_type, first_observed_at, last_observed_at
+      FROM accounts
+      ORDER BY last_observed_at DESC
+    `);
+    const rows = stmt.all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      accountUuid: r["account_uuid"] as string,
+      organizationUuid: r["organization_uuid"] as string | null,
+      emailHash: r["email_hash"] as string | null,
+      emailLabel: r["email_label"] as string | null,
+      organizationType: r["organization_type"] as string | null,
+      rateLimitTier: r["rate_limit_tier"] as string | null,
+      userRateLimitTier: r["user_rate_limit_tier"] as string | null,
+      seatTier: r["seat_tier"] as string | null,
+      billingType: r["billing_type"] as string | null,
+      subscriptionType: r["subscription_type"] as string | null,
+      firstObservedAt: r["first_observed_at"] as number | null,
+      lastObservedAt: r["last_observed_at"] as number | null,
+    }));
+  }
+
+  /**
+   * Re-attribution reset (plan §4, B1). Clears account attribution on rows
+   * that were never authoritatively attributed (NULL source = pre-V13 / blind
+   * fallback) or only weakly guessed (low/medium confidence). NEVER touches
+   * rows whose source is otel/telemetry/anchor/override. Returns rows changed.
+   */
+  resetAttributableSessions(): number {
+    const result = this.db.prepare(`
+      UPDATE sessions SET
+        account_uuid       = NULL,
+        organization_uuid  = NULL,
+        account_source     = NULL,
+        account_confidence = NULL
+      WHERE account_source IS NULL
+         OR account_source NOT IN ('override', 'otel', 'telemetry', 'anchor')
+    `).run();
+    return Number(result.changes);
+  }
+
+  /**
+   * Apply a computed attribution mapping to sessions. Monotonic: a row is only
+   * updated when it is currently unattributed or weakly attributed
+   * (account_uuid IS NULL OR account_source IS NULL OR confidence in low/medium)
+   * AND its existing source is not one of the strong sources
+   * (override/otel/telemetry/anchor) — so a stronger source is never overwritten
+   * by a later, weaker assignment. Parameterized; clock injected via `now`.
+   * Returns the number of rows changed.
+   */
+  applyAttribution(
+    mapping: Map<string, { accountUuid: string; organizationUuid: string | null; subscriptionType: string | null; source: string; confidence: string }>,
+    now: () => number,
+  ): number {
+    const stmt = this.db.prepare(`
+      UPDATE sessions SET
+        account_uuid       = ?,
+        organization_uuid  = ?,
+        subscription_type  = COALESCE(?, subscription_type),
+        account_source     = ?,
+        account_confidence = ?,
+        updated_at         = ?
+      WHERE session_id = ?
+        AND (account_uuid IS NULL OR account_source IS NULL OR account_confidence IN ('low', 'medium'))
+        AND (account_source IS NULL OR account_source NOT IN ('override', 'otel', 'telemetry', 'anchor'))
+    `);
+    let changed = 0;
+    for (const [sessionId, info] of mapping) {
+      const result = stmt.run(
+        info.accountUuid,
+        info.organizationUuid,
+        info.subscriptionType,
+        info.source,
+        info.confidence,
+        now(),
+        sessionId,
+      );
+      if (result.changes > 0) changed++;
+    }
+    return changed;
+  }
+
+  /**
+   * Delete and recompute usage_windows whose window_start falls in
+   * [since, until]. Used by re-attribution so windows reflect corrected
+   * session accounts over the affected range (the incremental collect path
+   * uses computeAndUpsertWindows). Runs in one transaction.
+   */
+  recomputeWindowsInRange(since: number, until: number): void {
+    this.transaction(() => {
+      this.db
+        .prepare("DELETE FROM usage_windows WHERE window_start >= ? AND window_start <= ?")
+        .run(since, until);
+      // Recompute from sessions whose first_timestamp is in range. Reuses the
+      // same greedy 5-hour grouping as the aggregator's computeAndUpsertWindows.
+      const windows = this.computeWindowsSince(since, until);
+      for (const w of windows) {
+        this.upsertUsageWindow(w);
+      }
+    });
+  }
+
+  /**
+   * Pure-ish window computation shared with recomputeWindowsInRange: greedy
+   * 5-hour grouping of sessions whose first_timestamp is in [since, until].
+   * Mirrors the aggregator's computeAndUpsertWindows algorithm exactly.
+   */
+  private computeWindowsSince(since: number, until: number): UsageWindow[] {
+    const WINDOW_DURATION_MS = 5 * 60 * 60 * 1000; // 5 hours
+    const sessions = this.getSessions({ since, until, includeCI: true, includeDeleted: true });
+    const sorted = sessions
+      .filter((s) => s.first_timestamp != null)
+      .sort((a, b) => a.first_timestamp! - b.first_timestamp!);
+    if (sorted.length === 0) return [];
+
+    const sessionIds = sorted.map((s) => s.session_id);
+    const msgTotals = this.getMessageTotalsBySession(sessionIds);
+    const sessionCostMap = new Map<string, { cost: number; tokensByModel: Record<string, number> }>();
+    for (const row of msgTotals) {
+      const entry = sessionCostMap.get(row.session_id) ?? { cost: 0, tokensByModel: {} };
+      const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens);
+      entry.cost += cost;
+      entry.tokensByModel[row.model] = (entry.tokensByModel[row.model] ?? 0) + row.input_tokens + row.output_tokens;
+      sessionCostMap.set(row.session_id, entry);
+    }
+
+    const windows: UsageWindow[] = [];
+    let windowStart: number | null = null;
+    let currentWindow: UsageWindow | null = null;
+    for (const session of sorted) {
+      const ts = session.first_timestamp!;
+      if (windowStart === null || ts >= windowStart + WINDOW_DURATION_MS) {
+        windowStart = ts;
+        currentWindow = {
+          windowStart: ts,
+          windowEnd: ts + WINDOW_DURATION_MS,
+          accountUuid: session.account_uuid,
+          totalCostEquivalent: 0,
+          promptCount: 0,
+          tokensByModel: {},
+          throttled: false,
+        };
+        windows.push(currentWindow);
+      }
+      const costs = sessionCostMap.get(session.session_id);
+      if (costs) {
+        currentWindow!.totalCostEquivalent += costs.cost;
+        for (const [model, tokens] of Object.entries(costs.tokensByModel)) {
+          currentWindow!.tokensByModel[model] = (currentWindow!.tokensByModel[model] ?? 0) + tokens;
+        }
+      }
+      currentWindow!.promptCount += session.prompt_count;
+      if (session.throttle_events > 0) currentWindow!.throttled = true;
+    }
+    for (const w of windows) {
+      w.totalCostEquivalent = Math.round(w.totalCostEquivalent * 10000) / 10000;
+    }
+    return windows;
   }
 
   // ─── Stop reason distribution ──────────────────────────────────────────────

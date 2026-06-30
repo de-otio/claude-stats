@@ -165,10 +165,12 @@ export class DashboardPanel {
         // Enrich with the accounts present in the store so the Settings tab can
         // render one fee row per account. Webview path → include the current
         // account's email (same trust context; needed to label the row).
+        // Also pass listAccountsFull() so buildAccountsForConfig can derive a
+        // richer planLabel from the tier/subscription data in the accounts table.
         let accounts: ReturnType<typeof buildAccountsForConfig> = [];
         const store = new Store();
         try {
-          accounts = buildAccountsForConfig(store.listAccounts(), readClaudeAccount(), true);
+          accounts = buildAccountsForConfig(store.listAccounts(), readClaudeAccount(), true, store.listAccountsFull());
         } finally {
           store.close();
         }
