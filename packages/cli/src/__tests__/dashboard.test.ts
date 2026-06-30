@@ -798,6 +798,44 @@ describe("buildDashboard — context analysis", () => {
     expect(data.contextAnalysis!.longSessions[0]!.compacted).toBe(false);
   });
 
+  it("does not count out-of-scope sessions in compactionRate (regression: >100%)", () => {
+    // One interactive session in scope, with no compaction.
+    store.upsertSession(makeSession({ sessionId: "ctx-int", promptCount: 5, isInteractive: true }));
+    store.upsertMessages(
+      Array.from({ length: 5 }, (_, i) =>
+        makeMessage({
+          uuid: `ctx-int-${i}`,
+          sessionId: "ctx-int",
+          inputTokens: 5_000 * (i + 1),
+          timestamp: 1_700_000_000_000 + i * 1000,
+        })
+      )
+    );
+
+    // Two CI (non-interactive) sessions, each with a compaction event. These
+    // are excluded from `rows` (includeCI defaults to false → is_interactive=1)
+    // but their messages still come back from getMessagesForContext. Before the
+    // fix the numerator counted them while the denominator did not, yielding
+    // compactionRate = 2/1 * 100 = 200%.
+    for (const s of ["ci-1", "ci-2"]) {
+      store.upsertSession(makeSession({ sessionId: s, promptCount: 3, isInteractive: false }));
+      store.upsertMessages([
+        makeMessage({ uuid: `${s}-m0`, sessionId: s, inputTokens: 80_000, timestamp: 1_700_000_000_000 }),
+        // 80K → 20K: a 75% drop, detected as compaction.
+        makeMessage({ uuid: `${s}-m1`, sessionId: s, inputTokens: 20_000, timestamp: 1_700_000_001_000 }),
+        makeMessage({ uuid: `${s}-m2`, sessionId: s, inputTokens: 30_000, timestamp: 1_700_000_002_000 }),
+      ]);
+    }
+
+    const data = buildDashboard(store, { timezone: "UTC" });
+    expect(data.contextAnalysis).not.toBeNull();
+    // Rate is a percentage of in-scope sessions; it can never exceed 100%.
+    expect(data.contextAnalysis!.compactionRate).toBeLessThanOrEqual(100);
+    // The only in-scope session had no compaction, and CI sessions must not leak in.
+    expect(data.contextAnalysis!.compactionRate).toBe(0);
+    expect(data.contextAnalysis!.compactionEvents.length).toBe(0);
+  });
+
   it("computes cache efficiency by conversation length", () => {
     // Short session (3 prompts)
     store.upsertSession(makeSession({
