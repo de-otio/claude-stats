@@ -590,6 +590,52 @@ describe("reattribute", () => {
       fs.rmSync(dbPath, { force: true });
     }
   });
+
+  it("refuses a real run that would wipe attribution with nothing to reassign; --force overrides", () => {
+    const dbPath = tmpDbPath();
+    const store = new Store(dbPath);
+    const refusedTs = T0 + 9 * HOUR;
+    try {
+      // Two CLI sessions already attributed (account_uuid set, source NULL — the
+      // pre-V13 fallback state) and NO observations recorded.
+      for (const id of ["c1", "c2"]) {
+        const r = makeSessionRow({ session_id: id, entrypoint: "cli", first_timestamp: T0 + HOUR, last_timestamp: T0 + HOUR + 1000 });
+        store.upsertSession({
+          sessionId: r.session_id, projectPath: r.project_path, sourceFile: r.source_file,
+          firstTimestamp: r.first_timestamp, lastTimestamp: r.last_timestamp,
+          claudeVersion: r.claude_version, entrypoint: r.entrypoint, gitBranch: r.git_branch,
+          permissionMode: null, isInteractive: true, promptCount: 1, assistantMessageCount: 1,
+          inputTokens: 10, outputTokens: 10, cacheCreationTokens: 0, cacheReadTokens: 0,
+          webSearchRequests: 0, webFetchRequests: 0, toolUseCounts: [], models: [], repoUrl: null,
+          accountUuid: ACCOUNT_A_UUID, organizationUuid: null, subscriptionType: null, thinkingBlocks: 0,
+          parentSessionId: null, isSubagent: false, sourceDeleted: false, throttleEvents: 0,
+          activeDurationMs: null, medianResponseTimeMs: null,
+        });
+      }
+
+      // Real run, no force → refused: no backup, no writes, attribution intact.
+      const refused = reattribute(store, { dryRun: false, dbPath }, fixedClock(refusedTs));
+      expect(refused.refused).toBe(true);
+      expect(refused.attributedBefore).toBe(2);
+      expect(refused.changed).toBe(0);
+      expect(refused.backupPath).toBeNull();
+      expect(fs.existsSync(`${dbPath}.pre-reattribute-${refusedTs}`)).toBe(false);
+      expect(store.getSessions({ includeCI: true, includeDeleted: true }).every((s) => s.account_uuid === ACCOUNT_A_UUID)).toBe(true);
+
+      // Dry-run reports a real run WOULD be refused.
+      expect(reattribute(store, { dryRun: true, dbPath }, fixedClock(refusedTs)).refused).toBe(true);
+
+      // --force overrides → proceeds; resets the inferred rows (nothing to reassign → unknown).
+      const forced = reattribute(store, { dryRun: false, force: true, dbPath }, fixedClock(refusedTs));
+      expect(forced.refused).toBe(false);
+      expect(forced.resetCount).toBe(2);
+      expect(store.getSessions({ includeCI: true, includeDeleted: true }).every((s) => s.account_uuid === null)).toBe(true);
+      if (forced.backupPath) fs.rmSync(forced.backupPath, { force: true });
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
 });
 
 // ── property tests (seeded deterministic generator; no fast-check) ────────────
