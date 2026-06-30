@@ -1730,9 +1730,18 @@ function buildContextAnalysis(
   const contextMsgs = store.getMessagesForContext(filters);
   if (contextMsgs.length === 0) return null;
 
+  // getMessagesForContext only filters by project/repo/period — it ignores the
+  // account/entrypoint/includeCI scoping that getSessions (and therefore `rows`)
+  // applies. Restrict the message set to the same sessions as `rows` so the
+  // numerator of compactionRate can never exceed its denominator (and so every
+  // context metric below stays consistent with the dashboard's scope). Without
+  // this, e.g. a second account's compactions inflate the rate past 100%.
+  const rowSessionIds = new Set(rows.map(r => r.session_id));
+
   // Group messages by session
   const bySession = new Map<string, Array<{ inputTokens: number; cacheRead: number; cacheCreate: number }>>();
   for (const msg of contextMsgs) {
+    if (!rowSessionIds.has(msg.session_id)) continue;
     const arr = bySession.get(msg.session_id) ?? [];
     arr.push({
       inputTokens: msg.input_tokens,
