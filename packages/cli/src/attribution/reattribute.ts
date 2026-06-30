@@ -28,8 +28,14 @@ import type { ExternalAccountInfo } from "./assign.js";
 export interface ReattributeOptions {
   dryRun?: boolean;
   /**
+   * Proceed even when the run would clear existing attributions while assigning
+   * none (the "no observations yet → everything unknown" footgun). Without this,
+   * a real run that would wipe-for-nothing is refused. Ignored in dry-run.
+   */
+  force?: boolean;
+  /**
    * Path to the live DB file, used to make the pre-reattribute backup. The
-   * frozen Store does not expose its path, so the command layer passes it
+   * Store does not expose its path back, so the command layer passes it
    * (defaults to `paths.statsDb`, the same default the Store constructor uses).
    */
   dbPath?: string;
@@ -37,6 +43,14 @@ export interface ReattributeOptions {
 
 export interface ReattributeSummary {
   dryRun: boolean;
+  /**
+   * True when the run was (or, in dry-run, would be) refused by the safety
+   * guard: it would clear existing attributions while assigning none, and
+   * `force` was not set. A refused run makes no backup and no writes.
+   */
+  refused: boolean;
+  /** How many sessions are attributed (account_uuid set) BEFORE this run. */
+  attributedBefore: number;
   /** Sessions considered (the whole store, including deleted). */
   totalSessions: number;
   /** Rows the reset predicate cleared (0 in dry-run — not executed). */
@@ -121,16 +135,43 @@ export function reattribute(
       ? { since: Math.min(...firstTs), until: Math.max(...firstTs) }
       : null;
 
+  // Safety guard: a real run resets the inferred rows BEFORE reassigning, so if
+  // the engine produced zero applicable assignments (e.g. no observations or
+  // telemetry yet) while sessions are currently attributed, the run would wipe
+  // attribution for nothing. Refuse unless forced — the fix is to run `collect`
+  // first so observations accrue.
+  const attributedBefore = sessions.filter((s) => s.account_uuid != null).length;
+  const force = opts.force ?? false;
+  const refused = applyMap.size === 0 && attributedBefore > 0 && !force;
+
   if (dryRun) {
     // Compute-only: report how many rows WOULD change. We approximate "changed"
     // as the number of applicable (non-unknown) assignments; the exact figure
     // depends on the store's monotonic guard, which we deliberately do not run.
     return {
       dryRun: true,
+      refused, // a real run with these same inputs would be refused
+      attributedBefore,
       totalSessions: sessions.length,
       resetCount: 0,
       bySource,
       changed: applyMap.size,
+      messageOverrides: messageOverrides.length,
+      backupPath: null,
+      windowRange,
+    };
+  }
+
+  if (refused) {
+    // Real run blocked by the guard — no backup, no writes.
+    return {
+      dryRun: false,
+      refused: true,
+      attributedBefore,
+      totalSessions: sessions.length,
+      resetCount: 0,
+      bySource,
+      changed: 0,
       messageOverrides: messageOverrides.length,
       backupPath: null,
       windowRange,
@@ -163,6 +204,8 @@ export function reattribute(
 
   return {
     dryRun: false,
+    refused: false,
+    attributedBefore,
     totalSessions: sessions.length,
     resetCount,
     bySource,
