@@ -2194,7 +2194,10 @@ CO₂_grams = total_kWh × grid_intensity</div>
           var name = document.createElement('div');
           name.style.cssText = 'grid-column:1 / -1; font-size:0.72rem; color:#e8e8e8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
           name.textContent = a.email || (a.accountUuid.slice(0, 8) + '…');
-          name.title = a.accountUuid + (a.subscriptionType ? ' · ' + a.subscriptionType : '') + ' · ' + a.sessionCount + ' sessions';
+          // Use the derived plan label (e.g. "Max 20x") rather than the raw
+          // subscription type string. planLabel is always populated by
+          // buildAccountsForConfig and never exposes raw tier/billing data.
+          name.title = a.accountUuid + ' · ' + (a.planLabel || a.subscriptionType || '') + ' · ' + a.sessionCount + ' sessions';
           row.appendChild(name);
 
           // Per-account plan type. Default: explicitly-saved type, else the

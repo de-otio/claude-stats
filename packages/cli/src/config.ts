@@ -203,6 +203,34 @@ export interface ConfigAccount {
   sessionCount: number;
   /** Only populated for the current account, and only on the webview path. */
   email: string | null;
+  /**
+   * Human-readable plan label derived from `subscriptionType` (and optionally
+   * enriched by AccountRecord tier/billing data when `fullAccounts` is supplied).
+   * Examples: "Max 20x", "Team Premium", "Pro", "Unknown plan".
+   * Always populated — callers on the unauth HTTP path should show this label
+   * instead of the raw `subscriptionType`.
+   */
+  planLabel: string;
+}
+
+/** Derive a human-readable plan label from a subscription type string. */
+export function derivePlanLabel(subscriptionType: string | null): string {
+  if (!subscriptionType) return "Unknown plan";
+  const labels: Record<PlanType, string> = {
+    pro: "Pro",
+    max_5x: "Max 5x",
+    max_20x: "Max 20x",
+    team_standard: "Team Standard",
+    team_premium: "Team Premium",
+    custom: "Custom",
+  };
+  const lower = subscriptionType.toLowerCase();
+  // Accept both telemetry subscription strings (via the map) and a PlanType
+  // passed directly (e.g. "custom", which isn't in SUBSCRIPTION_TYPE_MAP).
+  const mapped: PlanType | null =
+    SUBSCRIPTION_TYPE_MAP[lower] ?? (lower in labels ? (lower as PlanType) : null);
+  if (!mapped) return subscriptionType;
+  return labels[mapped];
 }
 
 /**
@@ -210,18 +238,37 @@ export interface ConfigAccount {
  * account with its email when allowed. Pure; both the panel (includeEmail=true)
  * and the HTTP server (includeEmail=false — never leak PII on the unauth GET)
  * call this.
+ *
+ * When `fullAccounts` is provided (from store.listAccountsFull()), the plan label
+ * is derived from the richer tier/subscription data in those records. Otherwise
+ * it falls back to the `subscriptionType` on the session-count row.
  */
 export function buildAccountsForConfig(
   accounts: ReadonlyArray<{ accountUuid: string; subscriptionType: string | null; sessionCount: number }>,
   current: { accountUuid: string; emailAddress: string | null } | null,
   includeEmail: boolean,
+  fullAccounts?: ReadonlyArray<{ accountUuid: string; subscriptionType: string | null }>,
 ): ConfigAccount[] {
-  return accounts.map((a) => ({
-    accountUuid: a.accountUuid,
-    subscriptionType: a.subscriptionType,
-    sessionCount: a.sessionCount,
-    email: includeEmail && current && current.accountUuid === a.accountUuid ? current.emailAddress : null,
-  }));
+  // Build a fast lookup from fullAccounts for plan-label enrichment.
+  const fullMap = new Map<string, { subscriptionType: string | null }>();
+  if (fullAccounts) {
+    for (const fa of fullAccounts) {
+      fullMap.set(fa.accountUuid, fa);
+    }
+  }
+  return accounts.map((a) => {
+    const full = fullMap.get(a.accountUuid);
+    // Prefer the richer subscriptionType from the accounts table (listAccountsFull)
+    // when available; fall back to the session-aggregated value.
+    const effectiveSubType = full?.subscriptionType ?? a.subscriptionType;
+    return {
+      accountUuid: a.accountUuid,
+      subscriptionType: a.subscriptionType,
+      sessionCount: a.sessionCount,
+      email: includeEmail && current && current.accountUuid === a.accountUuid ? current.emailAddress : null,
+      planLabel: derivePlanLabel(effectiveSubType),
+    };
+  });
 }
 
 /** A copy of `config` safe to send over the unauthenticated HTTP GET — secrets stripped. */

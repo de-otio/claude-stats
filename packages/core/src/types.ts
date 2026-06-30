@@ -208,6 +208,65 @@ export interface PlanConfig {
   monthlyFee: number;
 }
 
+// ─── Account attribution ──────────────────────────────────────────────────────
+
+/**
+ * Precedence (strongest → weakest):
+ *   override > otel > telemetry > anchor > observation > backfill > unknown
+ * The attribution engine never overwrites a stronger source with a weaker one.
+ */
+export type AttributionSource =
+  | "override"
+  | "otel"
+  | "telemetry"
+  | "anchor"
+  | "observation"
+  | "backfill"
+  | "unknown";
+
+export type AttributionConfidence =
+  | "authoritative"
+  | "high"
+  | "medium"
+  | "low"
+  | "none";
+
+/** A session entrypoint value (`cli`, `claude`, `claude-vscode`, …). */
+export type Surface = string;
+
+/**
+ * Surfaces eligible for the observation-interval assignment path. ALLOWLIST,
+ * not denylist: any entrypoint not in this set falls through to `unknown`
+ * unless otel/telemetry/anchor supplies an account.
+ */
+export const CLI_SURFACES = ["cli", "claude"] as const;
+
+/** One append-only observation of an account being active on a surface. */
+export interface AccountObservation {
+  accountUuid: string;
+  observedAt: number;
+  source: string;
+  surface: string | null;
+  rateLimitTier: string | null;
+  billingType: string | null;
+}
+
+/** A row in the `accounts` table — the latest known metadata for an account. */
+export interface AccountRecord {
+  accountUuid: string;
+  organizationUuid: string | null;
+  emailHash: string | null;
+  emailLabel: string | null;
+  organizationType: string | null;
+  rateLimitTier: string | null;
+  userRateLimitTier: string | null;
+  seatTier: string | null;
+  billingType: string | null;
+  subscriptionType: string | null;
+  firstObservedAt: number | null;
+  lastObservedAt: number | null;
+}
+
 // ─── Parse errors / quarantine ───────────────────────────────────────────────
 
 export interface ParseError {

@@ -3,7 +3,6 @@ import { DatabaseSync } from "node:sqlite";
 import { collect } from "../aggregator/index.js";
 import { Store } from "../store/index.js";
 import * as pathsMod from "@claude-stats/core/paths";
-import * as accountMod from "../account.js";
 import os from "os";
 import path from "path";
 import fs from "fs";
@@ -165,59 +164,11 @@ describe("collect", () => {
     expect(result2.filesDeleted).toBe(1);
   });
 
-  it("stamps account from ~/.claude.json when telemetry has no match", async () => {
-    vi.spyOn(accountMod, "readClaudeAccount").mockReturnValue({
-      accountUuid: "acct-from-config",
-      emailAddress: "me@example.com",
-      organizationUuid: "org-123",
-    });
-
-    const projDir = path.join(projectsDir, "-proj-acct");
-    fs.mkdirSync(projDir);
-    fs.writeFileSync(
-      path.join(projDir, "sess-agg-1.jsonl"),
-      [makeUserLine(), makeSessionLine()].join("\n") + "\n",
-    );
-
-    await collect(store);
-    const sessions = store.getSessions({ includeCI: true, includeDeleted: true });
-    expect(sessions).toHaveLength(1);
-    expect(sessions[0]!.account_uuid).toBe("acct-from-config");
-  });
-
-  it("does not overwrite existing account_uuid on reparse", async () => {
-    // First parse: stamp with account A
-    vi.spyOn(accountMod, "readClaudeAccount").mockReturnValue({
-      accountUuid: "acct-A",
-      emailAddress: "a@example.com",
-      organizationUuid: null,
-    });
-
-    const projDir = path.join(projectsDir, "-proj-reparse");
-    fs.mkdirSync(projDir);
-    const sessFile = path.join(projDir, "sess-agg-1.jsonl");
-    fs.writeFileSync(sessFile, [makeUserLine(), makeSessionLine()].join("\n") + "\n");
-
-    await collect(store);
-    let sessions = store.getSessions({ includeCI: true, includeDeleted: true });
-    expect(sessions[0]!.account_uuid).toBe("acct-A");
-
-    // Simulate switching to account B and reparsing (file rewrite triggers full reparse)
-    vi.spyOn(accountMod, "readClaudeAccount").mockReturnValue({
-      accountUuid: "acct-B",
-      emailAddress: "b@example.com",
-      organizationUuid: null,
-    });
-
-    // Force reparse by rewriting the file with different first-KB hash
-    fs.writeFileSync(sessFile, [makeUserLine(), makeSessionLine({ uuid: "msg-rewrite" })].join("\n") + "\n");
-
-    await collect(store);
-    sessions = store.getSessions({ includeCI: true, includeDeleted: true });
-    expect(sessions).toHaveLength(1);
-    // Account A should be preserved — COALESCE(sessions.account_uuid, excluded.account_uuid)
-    expect(sessions[0]!.account_uuid).toBe("acct-A");
-  });
+  // NOTE: the two tests that asserted the surface-blind ~/.claude.json account
+  // fallback during collect were removed in Phase 1 — that fallback was
+  // deliberately deleted from the aggregator (it mis-attributed non-CLI
+  // surfaces; see plan B4). Surface-aware attribution + its tests land in
+  // Phase 2 (A).
 
   it("sets is_subagent = 1 for files in subagents/ directory", async () => {
     const projDir = path.join(projectsDir, "-proj-sub");

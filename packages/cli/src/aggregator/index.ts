@@ -7,12 +7,16 @@
 import { discoverSessionFiles, getFileStats } from "../scanner/index.js";
 import { getGitRemoteUrl } from "../git.js";
 import { parseSessionFile, hashFirstKb } from "@claude-stats/core/parser/session";
-import { collectAccountMap } from "@claude-stats/core/parser/telemetry";
-import { readClaudeAccount } from "../account.js";
 import { checkSchema } from "../schema/monitor.js";
 import { estimateCost } from "@claude-stats/core/pricing";
+import { collectAccountMap } from "@claude-stats/core/parser/telemetry";
 import type { Store } from "../store/index.js";
 import type { RawSessionEntry, UsageWindow } from "@claude-stats/core/types";
+import { readClaudeAccount } from "../account.js";
+import { writeObservation } from "../attribution/observer.js";
+import { buildCliIntervals } from "../attribution/intervals.js";
+import { assignAccounts } from "../attribution/assign.js";
+import type { ExternalAccountInfo } from "../attribution/assign.js";
 
 export interface CollectOptions {
   verbose?: boolean;
@@ -31,7 +35,8 @@ export interface CollectResult {
 
 export async function collect(
   store: Store,
-  opts: CollectOptions = {}
+  opts: CollectOptions = {},
+  now: () => number = Date.now
 ): Promise<CollectResult> {
   const result: CollectResult = {
     filesProcessed: 0,
@@ -46,14 +51,16 @@ export async function collect(
 
   const sessionFiles = discoverSessionFiles();
 
-  // Best-effort: build session → account mapping from telemetry
-  const accountMap = collectAccountMap();
+  // Phase-2 (A) seam 1 — observation writer (once per collect): record the
+  // current CLI account as an observation iff it changed since the last CLI
+  // sighting, and refresh the accounts metadata row. Surface-aware assignment
+  // happens after the file loop (seam 2). The injected `now` clock keeps the
+  // observation timestamp deterministic in tests.
+  writeObservation(store, readClaudeAccount(), now);
 
-  // Fallback: current logged-in account from ~/.claude.json
-  // Only used when telemetry doesn't provide account info for a session.
-  // Safe for reparse: the store uses COALESCE(sessions.account_uuid, excluded.account_uuid)
-  // so an existing DB value is never overwritten.
-  const currentAccount = readClaudeAccount();
+  // Track the session ids upserted in THIS collect run so seam 2 only assigns
+  // accounts to sessions we just touched (the incremental path).
+  const upsertedSessionIds = new Set<string>();
 
   // Accumulate entries per version for schema fingerprinting
   const entriesByVersion = new Map<string, RawSessionEntry[]>();
@@ -137,19 +144,10 @@ export async function collect(
         parsed.session.parentSessionId = store.resolveParentSessionId(parsed.parentUuid);
       }
 
-      // Best-effort account enrichment from telemetry
-      const acct = accountMap.get(parsed.session.sessionId);
-      if (acct) {
-        parsed.session.accountUuid = acct.accountUuid;
-        parsed.session.organizationUuid = acct.organizationUuid;
-        parsed.session.subscriptionType = acct.subscriptionType;
-      } else if (currentAccount) {
-        // Fallback to currently logged-in account from ~/.claude.json.
-        // The store's COALESCE preserves existing DB values, so this
-        // won't overwrite accounts stamped by a previous parse.
-        parsed.session.accountUuid = currentAccount.accountUuid;
-        parsed.session.organizationUuid = currentAccount.organizationUuid;
-      }
+      // Surface-aware assignment runs once after the file loop (seam 2); no
+      // per-session account stamping here. Record the id so seam 2 only
+      // considers sessions touched by this run.
+      upsertedSessionIds.add(parsed.session.sessionId);
     }
 
     store.transaction(() => {
@@ -215,9 +213,55 @@ export async function collect(
     }
   }
 
-  // Best-effort: backfill account info for previously-collected sessions
-  if (accountMap.size > 0) {
-    result.accountsMatched = store.updateSessionAccounts(accountMap);
+  // Phase-2 (A) seam 2 — surface-aware assignment for this run's sessions.
+  // Build the CLI observation timeline + telemetry map, assign accounts
+  // surface-aware (CLI surfaces → observation interval; otel/telemetry any
+  // surface; everything else → unknown), and apply monotonically. Only the
+  // sessions upserted in THIS run are considered; `applyAttribution`'s guard
+  // ensures a stronger source is never overwritten by a weaker one. Uses the
+  // injected `now` clock so attribution writes are deterministic in tests.
+  if (upsertedSessionIds.size > 0) {
+    const allSessions = store.getSessions({
+      includeCI: true,
+      includeDeleted: true,
+      includeSubagents: true,
+    });
+    const runSessions = allSessions.filter((s) => upsertedSessionIds.has(s.session_id));
+
+    const intervals = buildCliIntervals(store.getAccountObservations());
+
+    const rawTelemetry = collectAccountMap();
+    const telemetryMap = new Map<string, ExternalAccountInfo>();
+    for (const [sessionId, info] of rawTelemetry) {
+      telemetryMap.set(sessionId, {
+        accountUuid: info.accountUuid,
+        organizationUuid: info.organizationUuid,
+        subscriptionType: info.subscriptionType,
+      });
+    }
+
+    const { assignments } = assignAccounts({
+      sessions: runSessions,
+      intervals,
+      telemetryMap,
+    });
+
+    const applyMap = new Map<
+      string,
+      { accountUuid: string; organizationUuid: string | null; subscriptionType: string | null; source: string; confidence: string }
+    >();
+    for (const [sessionId, a] of assignments) {
+      if (a.source === "unknown" || a.accountUuid === "") continue;
+      applyMap.set(sessionId, {
+        accountUuid: a.accountUuid,
+        organizationUuid: a.organizationUuid,
+        subscriptionType: a.subscriptionType,
+        source: a.source,
+        confidence: a.confidence,
+      });
+    }
+
+    result.accountsMatched = store.applyAttribution(applyMap, now);
   }
 
   // Schema check: sample stored sessions per version
@@ -237,8 +281,10 @@ export async function collect(
     store.recomputeMessageHourly([...touchedHours]);
   }
 
-  // Recompute usage windows for the past 2 days to catch any in-progress windows
-  const windowSince = Date.now() - 2 * 24 * 60 * 60 * 1000;
+  // Recompute usage windows for the past 2 days to catch any in-progress
+  // windows. Uses the injected `now` clock (threaded through collect) for
+  // determinism in tests.
+  const windowSince = now() - 2 * 24 * 60 * 60 * 1000;
   computeAndUpsertWindows(store, windowSince);
 
   return result;

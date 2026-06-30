@@ -1,4 +1,35 @@
 {
+  "account": {
+    "description": "Show the current Claude account and the accounts known to claude-stats.",
+    "currentHeader": "Current account",
+    "accountUuid": "Account UUID",
+    "email": "Email",
+    "organizationType": "Organization type",
+    "rateLimitTier": "Rate-limit tier",
+    "seatTier": "Seat tier",
+    "billingType": "Billing type",
+    "extraUsage": "Extra usage",
+    "enabled": "enabled",
+    "disabled": "disabled",
+    "noCurrentAccount": "No account is currently logged in (no oauthAccount in ~/.claude.json).",
+    "noKnownAccounts": "No accounts recorded yet — run 'collect' first.",
+    "knownHeader": "Known accounts:",
+    "reattributeDescription": "Recompute account attribution across all stored sessions.",
+    "dryRunOption": "Preview the changes without writing or creating a backup.",
+    "reattributeDryRunHeader": "Re-attribution (dry run) — no changes written:",
+    "reattributeDoneHeader": "Re-attribution complete:",
+    "backupWritten": "Backup written to {{path}}",
+    "reattributeSummary": "{{total}} sessions, {{reset}} reset, {{changed}} re-attributed. By source:"
+  },
+  "otel": {
+    "description": "OpenTelemetry-based authoritative account attribution.",
+    "enableHelp": "To produce an OTLP export, set CLAUDE_CODE_ENABLE_TELEMETRY=1 and configure an OTLP file destination in your environment, then ingest the file. See doc/user-doc/account-otel.md.",
+    "ingestDescription": "Ingest a Claude Code OTLP export file and apply authoritative attribution.",
+    "fileOption": "Path to the OTLP export file (OTLP/JSON or JSONL).",
+    "ingestSummary": "Ingested {{records}} records: {{sessions}} sessions, {{accounts}} accounts, {{changed}} re-attributed.",
+    "malformedSkipped": "{{count}} malformed records skipped.",
+    "truncated": "Event cap reached — not all records were processed."
+  },
   "commands": {
     "programDescription": "Сбор и анализ статистики использования Claude Code",
     "collect": "Выполнить инкрементальный сбор из ~/.claude/projects/",
