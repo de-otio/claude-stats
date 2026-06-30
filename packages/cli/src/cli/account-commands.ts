@@ -31,8 +31,9 @@ export function registerAccountCommands(program: Command): void {
     .command("reattribute")
     .description(t("cli:account.reattributeDescription"))
     .option("--dry-run", t("cli:account.dryRunOption"))
-    .action((opts: { dryRun?: boolean }) => {
-      runReattribute(opts.dryRun ?? false);
+    .option("--force", t("cli:account.forceOption"))
+    .action((opts: { dryRun?: boolean; force?: boolean }) => {
+      runReattribute(opts.dryRun ?? false, opts.force ?? false);
     });
 }
 
@@ -88,12 +89,23 @@ function printCurrentAccount(): void {
 }
 
 /** Run (or dry-run) re-attribution and print the summary. */
-function runReattribute(dryRun: boolean): void {
+function runReattribute(dryRun: boolean, force: boolean): void {
   const store = new Store();
   try {
-    const summary = reattribute(store, { dryRun }, Date.now);
+    const summary = reattribute(store, { dryRun, force }, Date.now);
+
+    // Real run blocked by the safety guard: warn and stop (no changes made).
+    if (summary.refused && !dryRun) {
+      console.log(t("cli:account.reattributeRefused", { attributed: summary.attributedBefore }));
+      printBySource(summary.bySource);
+      return;
+    }
+
     if (summary.dryRun) {
       console.log(t("cli:account.reattributeDryRunHeader"));
+      if (summary.refused) {
+        console.log(t("cli:account.reattributeRefused", { attributed: summary.attributedBefore }));
+      }
     } else {
       console.log(t("cli:account.reattributeDoneHeader"));
       if (summary.backupPath) {
@@ -107,10 +119,15 @@ function runReattribute(dryRun: boolean): void {
         changed: summary.changed,
       }),
     );
-    for (const [source, count] of Object.entries(summary.bySource)) {
-      console.log(`  ${source}: ${count}`);
-    }
+    printBySource(summary.bySource);
   } finally {
     store.close();
+  }
+}
+
+/** Print the per-source assignment breakdown (indented). */
+function printBySource(bySource: Record<string, number>): void {
+  for (const [source, count] of Object.entries(bySource)) {
+    console.log(`  ${source}: ${count}`);
   }
 }
