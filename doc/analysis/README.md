@@ -34,6 +34,7 @@ Read in order for full context, or jump to 07 and 02 to start implementing.
 | [energy-dashboard/](energy-dashboard/) | Energy consumption and carbon footprint estimation dashboard |
 | [cost-per-successful-task/](cost-per-successful-task/) | "What does a correct result actually cost?" — outcome-cost metric per model, for the post-subsidy pricing era |
 | [value-per-cost/](value-per-cost/) | Reanalysis of the above: splits the one value-flavoured number into efficiency (machine-owned) + output/survival + value (user-owned), to answer "was the AI investment justified, was it efficient, what to change?" |
+| [account-attribution/](account-attribution/) | "Whose account ran this?" — reliably attributing usage to one of several accounts that share a machine, when transcripts carry no account id; observation-timeline + anchors + optional OTEL |
 
 ## Architecture Summary
 

@@ -18,10 +18,12 @@ import crypto from "node:crypto";
 import { URL } from "node:url";
 import type { Store } from "../store/index.js";
 import { buildDashboard } from "../dashboard/index.js";
+import type { DashboardData } from "../dashboard/index.js";
 import type { ReportOptions } from "../reporter/index.js";
 import { loadConfig, saveConfig, mergeConfig, buildAccountsForConfig, redactConfigForHttp } from "../config.js";
 import { readClaudeAccount } from "../account.js";
 import { t } from "../i18n.js";
+import { escapeHtml } from "./utils.js";
 
 const AUTH_COOKIE_NAME = "claude_stats_token";
 
@@ -87,8 +89,47 @@ async function tryRenderDashboard(data: unknown): Promise<string> {
     return mod.renderDashboard(data, t);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return `<!DOCTYPE html><html><body><p>Render error: ${msg}</p><pre>${JSON.stringify(data, null, 2)}</pre></body></html>`;
+    // sec#2: HTML-escape both the error message and the JSON payload so that
+    // attacker-controlled string values (e.g., a session title containing
+    // </pre><script>…</script>) cannot break out of the <pre> block.
+    const safeMsg = escapeHtml(msg);
+    const safeJson = escapeHtml(JSON.stringify(data, null, 2));
+    return `<!DOCTYPE html><html><body><p>Render error: ${safeMsg}</p><pre>${safeJson}</pre></body></html>`;
   }
+}
+
+/**
+ * Strip PII and raw rate-limit/billing/seat fields from dashboard data before
+ * sending it on the unauthenticated HTTP path (GET / and GET /api/dashboard).
+ *
+ * Specifically:
+ *  - availableAccounts[].emailAddress → null  (sec#1 email leak)
+ *  - planUtilization.byAccount[].emailAddress → null  (sec#1)
+ *  - availableAccounts[].subscriptionType, rateLimitTier, billingType,
+ *    seatTier are NOT present on DashboardData (those live in AccountRecord).
+ *    The raw `subscriptionType` field on availableAccounts is kept since it is
+ *    derived data already present in the template's account selector label;
+ *    raw rate-limit / billing / seat fields are not present here.
+ *
+ * The VS Code panel path (panel.ts) is authenticated and keeps full data.
+ */
+export function redactDashboardForHttp(data: DashboardData): DashboardData {
+  return {
+    ...data,
+    availableAccounts: data.availableAccounts.map((a) => ({
+      ...a,
+      emailAddress: null,
+    })),
+    planUtilization: data.planUtilization
+      ? {
+          ...data.planUtilization,
+          byAccount: data.planUtilization.byAccount.map((ba) => ({
+            ...ba,
+            emailAddress: null,
+          })),
+        }
+      : null,
+  };
 }
 
 /** Max accepted request body. Config payloads are a few KB; cap well above that. */
@@ -205,7 +246,8 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
           const data = buildDashboard(store, opts);
           const { attachCostPerTask } = await import("../dashboard/index.js");
           await attachCostPerTask(store, data, opts);
-          const html = await tryRenderDashboard(data);
+          // sec#1 / sec#8: strip email and raw tier/billing/seat from unauth path.
+          const html = await tryRenderDashboard(redactDashboardForHttp(data));
           // Set auth cookie so SPA can authenticate subsequent mutating
           // requests. SameSite=Strict prevents CSRF; Path=/ so same-origin
           // fetch carries it automatically. Not HttpOnly because we want to
@@ -221,7 +263,8 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
           const data = buildDashboard(store, opts);
           const { attachCostPerTask } = await import("../dashboard/index.js");
           await attachCostPerTask(store, data, opts);
-          sendJson(res, 200, data);
+          // sec#1 / sec#8: strip email and raw tier/billing/seat from unauth path.
+          sendJson(res, 200, redactDashboardForHttp(data));
           return;
         }
 
@@ -234,7 +277,14 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
         if (req.method === "GET" && pathname === "/api/config") {
           // Unauthenticated, localhost-only. Strip secrets (llmJudge.apiKey) and
           // do NOT include account email here (PII on an unauth endpoint).
-          const accounts = buildAccountsForConfig(store.listAccounts(), readClaudeAccount(), false);
+          // Pass listAccountsFull() so buildAccountsForConfig can derive a richer
+          // planLabel from the tier/subscription data in the accounts table.
+          const accounts = buildAccountsForConfig(
+            store.listAccounts(),
+            readClaudeAccount(),
+            false,
+            store.listAccountsFull(),
+          );
           sendJson(res, 200, { ...redactConfigForHttp(loadConfig()), accounts });
           return;
         }

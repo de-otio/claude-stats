@@ -21,6 +21,8 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as readline from "node:readline";
 import { initCliI18n, t } from "../i18n.js";
+import { registerAccountCommands } from "./account-commands.js";
+import { registerOtelCommands } from "./otel-commands.js";
 import {
   loadSyncConfig,
   saveSyncConfig,
@@ -1081,6 +1083,10 @@ export async function buildCli(): Promise<Command> {
         store.close();
       }
     });
+
+  // Account-attribution command groups (bodies filled in Phase 2).
+  registerAccountCommands(program);
+  registerOtelCommands(program);
 
   return program;
 }
