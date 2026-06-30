@@ -63,6 +63,31 @@ function tmpDbPath(): string {
   );
 }
 
+/** Insert a minimal message row (uuid, session, timestamp) for store tests. */
+function insertMessage(
+  store: Store,
+  uuid: string,
+  sessionId: string,
+  timestamp: number | null,
+): void {
+  store.upsertMessages([
+    {
+      uuid, sessionId, timestamp,
+      claudeVersion: null, model: null, stopReason: null,
+      inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0,
+      tools: [], thinkingBlocks: 0, serviceTier: null, inferenceGeo: null,
+      ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0, promptText: null,
+    },
+  ]);
+}
+
+/** uuid → account_uuid map for a session's messages. */
+function messageAccounts(store: Store, sessionId: string): Map<string, string | null> {
+  return new Map(
+    store.getSessionMessages(sessionId).map((r) => [r.uuid, r.account_uuid ?? null]),
+  );
+}
+
 // ── intervals: disjoint cover ─────────────────────────────────────────────────
 
 describe("buildCliIntervals", () => {
@@ -261,8 +286,9 @@ describe("assignAccounts — straddle", () => {
       last_timestamp: T0 + 3 * HOUR,
     });
     const r = assignAccounts({ sessions: [s], intervals: ivs, telemetryMap: new Map() });
+    // B is the open final interval [T0+2h, ∞).
     expect(r.messageOverrides).toEqual([
-      { sessionId: "straddle", boundaryFrom: T0 + 2 * HOUR, accountUuid: ACCOUNT_B_UUID },
+      { sessionId: "straddle", boundaryFrom: T0 + 2 * HOUR, boundaryTo: Infinity, accountUuid: ACCOUNT_B_UUID },
     ]);
   });
 
@@ -291,10 +317,11 @@ describe("assignAccounts — straddle", () => {
       last_timestamp: T0 + 5 * HOUR, // crosses into B then back to A
     });
     const r = assignAccounts({ sessions: [s], intervals: ivs2, telemetryMap: new Map() });
-    // boundary into B is a different account → one override; the later A
-    // boundary matches the start account so it is not emitted.
+    // boundary into B is a different account → one BOUNDED override spanning B's
+    // interval [T0+2h, T0+4h); the later A boundary matches the start account so
+    // it is not emitted (those messages keep the session-level account A).
     expect(r.messageOverrides).toEqual([
-      { sessionId: "x", boundaryFrom: T0 + 2 * HOUR, accountUuid: ACCOUNT_B_UUID },
+      { sessionId: "x", boundaryFrom: T0 + 2 * HOUR, boundaryTo: T0 + 4 * HOUR, accountUuid: ACCOUNT_B_UUID },
     ]);
   });
 });
@@ -631,6 +658,202 @@ describe("reattribute", () => {
       expect(forced.resetCount).toBe(2);
       expect(store.getSessions({ includeCI: true, includeDeleted: true }).every((s) => s.account_uuid === null)).toBe(true);
       if (forced.backupPath) fs.rmSync(forced.backupPath, { force: true });
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
+});
+
+// ── per-message straddle persistence (store writers) ──────────────────────────
+
+describe("applyMessageOverrides / resetMessageAttribution (store)", () => {
+  function freshStore(): { store: Store; dbPath: string } {
+    const dbPath = tmpDbPath();
+    return { store: new Store(dbPath), dbPath };
+  }
+
+  it("stamps only messages inside [from, to); leaves earlier ones null", () => {
+    const { store, dbPath } = freshStore();
+    try {
+      insertMessage(store, "m0", "s", T0 + HOUR);     // before boundary → null
+      insertMessage(store, "m1", "s", T0 + 2 * HOUR); // at boundary → B
+      insertMessage(store, "m2", "s", T0 + 3 * HOUR); // after → B
+      const n = store.applyMessageOverrides([
+        { sessionId: "s", boundaryFrom: T0 + 2 * HOUR, boundaryTo: Infinity, accountUuid: ACCOUNT_B_UUID },
+      ]);
+      expect(n).toBe(2); // exact distinct count
+      const by = messageAccounts(store, "s");
+      expect(by.get("m0")).toBeNull();
+      expect(by.get("m1")).toBe(ACCOUNT_B_UUID);
+      expect(by.get("m2")).toBe(ACCOUNT_B_UUID);
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
+
+  it("A→B→A: a bounded override does NOT bleed past the re-entry to A", () => {
+    // The bug guard: an open-ended `>= boundary` override would wrongly leave
+    // post-re-entry messages stamped B. Bounded [2h,4h) keeps them on A.
+    const { store, dbPath } = freshStore();
+    try {
+      insertMessage(store, "a1", "s", T0 + HOUR);     // A span → null (session account)
+      insertMessage(store, "b1", "s", T0 + 3 * HOUR); // B span [2h,4h) → B
+      insertMessage(store, "a2", "s", T0 + 5 * HOUR); // back in A → null, NOT B
+      const n = store.applyMessageOverrides([
+        { sessionId: "s", boundaryFrom: T0 + 2 * HOUR, boundaryTo: T0 + 4 * HOUR, accountUuid: ACCOUNT_B_UUID },
+      ]);
+      expect(n).toBe(1);
+      const by = messageAccounts(store, "s");
+      expect(by.get("a1")).toBeNull();
+      expect(by.get("b1")).toBe(ACCOUNT_B_UUID);
+      expect(by.get("a2")).toBeNull();
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
+
+  it("never stamps null-timestamp messages", () => {
+    const { store, dbPath } = freshStore();
+    try {
+      insertMessage(store, "nt", "s", null);
+      const n = store.applyMessageOverrides([
+        { sessionId: "s", boundaryFrom: T0, boundaryTo: Infinity, accountUuid: ACCOUNT_B_UUID },
+      ]);
+      expect(n).toBe(0);
+      expect(messageAccounts(store, "s").get("nt")).toBeNull();
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
+
+  it("scopes by session — other sessions are untouched", () => {
+    const { store, dbPath } = freshStore();
+    try {
+      insertMessage(store, "x", "s1", T0 + 3 * HOUR);
+      insertMessage(store, "y", "s2", T0 + 3 * HOUR);
+      store.applyMessageOverrides([
+        { sessionId: "s1", boundaryFrom: T0 + 2 * HOUR, boundaryTo: Infinity, accountUuid: ACCOUNT_B_UUID },
+      ]);
+      expect(messageAccounts(store, "s1").get("x")).toBe(ACCOUNT_B_UUID);
+      expect(messageAccounts(store, "s2").get("y")).toBeNull();
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
+
+  it("is idempotent, and resetMessageAttribution clears the stamps", () => {
+    const { store, dbPath } = freshStore();
+    try {
+      insertMessage(store, "m1", "s", T0 + 3 * HOUR);
+      const ov = [{ sessionId: "s", boundaryFrom: T0 + 2 * HOUR, boundaryTo: Infinity, accountUuid: ACCOUNT_B_UUID }];
+      store.applyMessageOverrides(ov);
+      store.applyMessageOverrides(ov); // re-apply → same end state
+      expect(messageAccounts(store, "s").get("m1")).toBe(ACCOUNT_B_UUID);
+      expect(store.resetMessageAttribution()).toBe(1);
+      expect(messageAccounts(store, "s").get("m1")).toBeNull();
+      expect(store.resetMessageAttribution()).toBe(0); // nothing left to clear
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
+
+  it("empty overrides → no writes", () => {
+    const { store, dbPath } = freshStore();
+    try {
+      expect(store.applyMessageOverrides([])).toBe(0);
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
+});
+
+// ── reattribute end-to-end: per-message straddle persistence ──────────────────
+
+describe("reattribute — per-message straddle persistence", () => {
+  function seedSession(store: Store, id: string, first: number, last: number): void {
+    const r = makeSessionRow({ session_id: id, entrypoint: "cli", first_timestamp: first, last_timestamp: last });
+    store.upsertSession({
+      sessionId: r.session_id, projectPath: r.project_path, sourceFile: r.source_file,
+      firstTimestamp: r.first_timestamp, lastTimestamp: r.last_timestamp,
+      claudeVersion: r.claude_version, entrypoint: r.entrypoint, gitBranch: r.git_branch,
+      permissionMode: null, isInteractive: true, promptCount: 1, assistantMessageCount: 1,
+      inputTokens: 10, outputTokens: 10, cacheCreationTokens: 0, cacheReadTokens: 0,
+      webSearchRequests: 0, webFetchRequests: 0, toolUseCounts: [], models: [], repoUrl: null,
+      accountUuid: null, organizationUuid: null, subscriptionType: null, thinkingBlocks: 0,
+      parentSessionId: null, isSubagent: false, sourceDeleted: false, throttleEvents: 0,
+      activeDurationMs: null, medianResponseTimeMs: null,
+    });
+  }
+
+  it("attributes the session to the first account and splits later messages", () => {
+    const dbPath = tmpDbPath();
+    const store = new Store(dbPath);
+    try {
+      store.recordAccountObservation(obs(ACCOUNT_A_UUID, T0));
+      store.recordAccountObservation(obs(ACCOUNT_B_UUID, T0 + 2 * HOUR));
+      seedSession(store, "sx", T0 + HOUR, T0 + 3 * HOUR); // straddles A→B
+      insertMessage(store, "m_a", "sx", T0 + HOUR);     // in A's span
+      insertMessage(store, "m_b", "sx", T0 + 3 * HOUR); // in B's span
+
+      const summary = reattribute(store, { dryRun: false, dbPath }, fixedClock(T0 + 9 * HOUR));
+      expect(summary.messageOverrides).toBe(1);
+      expect(summary.messagesStamped).toBe(1);
+
+      // Session → A (covers first_timestamp); later message → B.
+      const s = store.getSessions({ includeCI: true, includeDeleted: true }).find((x) => x.session_id === "sx")!;
+      expect(s.account_uuid).toBe(ACCOUNT_A_UUID);
+      const by = messageAccounts(store, "sx");
+      expect(by.get("m_a")).toBeNull();
+      expect(by.get("m_b")).toBe(ACCOUNT_B_UUID);
+
+      if (summary.backupPath) fs.rmSync(summary.backupPath, { force: true });
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
+
+  it("dry-run reports overrides but stamps nothing", () => {
+    const dbPath = tmpDbPath();
+    const store = new Store(dbPath);
+    try {
+      store.recordAccountObservation(obs(ACCOUNT_A_UUID, T0));
+      store.recordAccountObservation(obs(ACCOUNT_B_UUID, T0 + 2 * HOUR));
+      seedSession(store, "sx", T0 + HOUR, T0 + 3 * HOUR);
+      insertMessage(store, "m_b", "sx", T0 + 3 * HOUR);
+
+      const summary = reattribute(store, { dryRun: true, dbPath }, fixedClock(T0 + 9 * HOUR));
+      expect(summary.messageOverrides).toBe(1);
+      expect(summary.messagesStamped).toBe(0);
+      expect(messageAccounts(store, "sx").get("m_b")).toBeNull();
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
+
+  it("a second reattribute clears stale stamps then re-derives (no drift)", () => {
+    const dbPath = tmpDbPath();
+    const store = new Store(dbPath);
+    try {
+      store.recordAccountObservation(obs(ACCOUNT_A_UUID, T0));
+      store.recordAccountObservation(obs(ACCOUNT_B_UUID, T0 + 2 * HOUR));
+      seedSession(store, "sx", T0 + HOUR, T0 + 3 * HOUR);
+      insertMessage(store, "m_b", "sx", T0 + 3 * HOUR);
+
+      const s1 = reattribute(store, { dryRun: false, dbPath }, fixedClock(T0 + 9 * HOUR));
+      if (s1.backupPath) fs.rmSync(s1.backupPath, { force: true });
+      const s2 = reattribute(store, { dryRun: false, dbPath }, fixedClock(T0 + 10 * HOUR));
+      expect(s2.messagesStamped).toBe(1);
+      expect(messageAccounts(store, "sx").get("m_b")).toBe(ACCOUNT_B_UUID);
+      if (s2.backupPath) fs.rmSync(s2.backupPath, { force: true });
     } finally {
       store.close();
       fs.rmSync(dbPath, { force: true });

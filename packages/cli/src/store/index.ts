@@ -985,6 +985,59 @@ export class Store {
   }
 
   /**
+   * Clear per-message straddle attribution (messages.account_uuid). Message-
+   * level account_uuid is produced ONLY by the attribution engine's straddle
+   * path — nothing else writes it — so a full re-attribution can safely clear it
+   * all and re-derive from the freshly computed overrides. Returns rows changed.
+   */
+  resetMessageAttribution(): number {
+    const result = this.db
+      .prepare("UPDATE messages SET account_uuid = NULL WHERE account_uuid IS NOT NULL")
+      .run();
+    return Number(result.changes);
+  }
+
+  /**
+   * Persist per-message straddle splits onto messages.account_uuid. Each
+   * override stamps the messages of one session whose timestamp falls in the
+   * half-open range [boundaryFrom, boundaryTo) with that range's account. The
+   * ranges mirror disjoint CLI intervals, so within a session they never
+   * overlap — application is order-independent and no message is stamped twice,
+   * so the returned count is the exact number of distinct messages stamped.
+   * Null-timestamp messages never match and keep the session-level account.
+   * `boundaryTo === Infinity` means the still-open final interval (no upper
+   * bound). The override shape is inlined (not imported from ../attribution) to
+   * keep the store free of a store→attribution dependency cycle.
+   */
+  applyMessageOverrides(
+    overrides: Array<{
+      sessionId: string;
+      boundaryFrom: number;
+      boundaryTo: number;
+      accountUuid: string;
+    }>,
+  ): number {
+    if (overrides.length === 0) return 0;
+    const bounded = this.db.prepare(
+      `UPDATE messages SET account_uuid = ?
+         WHERE session_id = ? AND timestamp IS NOT NULL
+           AND timestamp >= ? AND timestamp < ?`,
+    );
+    const open = this.db.prepare(
+      `UPDATE messages SET account_uuid = ?
+         WHERE session_id = ? AND timestamp IS NOT NULL AND timestamp >= ?`,
+    );
+    let changed = 0;
+    for (const o of overrides) {
+      const result = Number.isFinite(o.boundaryTo)
+        ? bounded.run(o.accountUuid, o.sessionId, o.boundaryFrom, o.boundaryTo)
+        : open.run(o.accountUuid, o.sessionId, o.boundaryFrom);
+      changed += Number(result.changes);
+    }
+    return changed;
+  }
+
+  /**
    * Delete and recompute usage_windows whose window_start falls in
    * [since, until]. Used by re-attribution so windows reflect corrected
    * session accounts over the affected range (the incremental collect path
@@ -2242,6 +2295,12 @@ export interface MessageRow {
   prompt_text: string | null;
   /** Count of failed tool calls in this message (added schema v11; old rows = 0). */
   tool_error_count?: number;
+  /**
+   * Per-message account override (added schema v13). Non-null ONLY for messages
+   * that fall in a later account's interval within a straddling CLI session
+   * (see attribution/assign.ts); null means the session-level account applies.
+   */
+  account_uuid?: string | null;
 }
 
 export interface SessionMessageTotalRow {

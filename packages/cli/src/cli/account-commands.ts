@@ -120,6 +120,11 @@ function runReattribute(dryRun: boolean, force: boolean): void {
       }),
     );
     printBySource(summary.bySource);
+    if (summary.messagesStamped > 0) {
+      console.log(
+        t("cli:account.reattributeMessagesStamped", { count: summary.messagesStamped }),
+      );
+    }
   } finally {
     store.close();
   }
