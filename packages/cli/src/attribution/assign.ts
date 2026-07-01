@@ -93,12 +93,17 @@ function isCliSurface(entrypoint: string | null): boolean {
  *   2. telemetry  (high)           — any surface
  *   3. observation (high)          — CLI surfaces ONLY, from the interval
  *                                     covering first_timestamp
- *   4. unknown    (none)           — fallthrough
+ *   4. backfill   (medium)         — CLI surfaces ONLY, when the session
+ *                                     PREDATES the first observation and exactly
+ *                                     one CLI account has ever been observed
+ *                                     (single-account fast-path, doc 03 §D.1)
+ *   5. unknown    (none)           — fallthrough
  *
- * `override`, `anchor`, and `backfill` ranks exist in the precedence enum but
- * are not produced here (override = manual user action handled elsewhere;
- * anchor/backfill = reserved for future signals). They are still honoured by
- * the store's monotonic `applyAttribution` guard.
+ * `override` and `anchor` ranks exist in the precedence enum but are not
+ * produced here (override = manual user action handled elsewhere; anchor =
+ * separate pin signal). They are still honoured by the store's monotonic
+ * `applyAttribution` guard, which also lets a later observation/telemetry/otel
+ * pass UPGRADE a `backfill`/medium row (confidence ∈ {low,medium} is updatable).
  */
 export function assignAccounts(input: AssignInput): AssignResult {
   const { sessions, intervals, telemetryMap } = input;
@@ -106,6 +111,11 @@ export function assignAccounts(input: AssignInput): AssignResult {
 
   const assignments = new Map<string, Assignment>();
   const messageOverrides: MessageOverride[] = [];
+
+  // Distinct CLI accounts ever observed — the single-account backfill signal.
+  // `intervals` are already CLI-only (buildCliIntervals filters surfaces), so a
+  // size of 1 means exactly one account has ever been seen on the CLI surface.
+  const distinctCliAccounts = new Set(intervals.map((iv) => iv.accountUuid));
 
   for (const s of sessions) {
     const sessionId = s.session_id;
@@ -158,11 +168,28 @@ export function assignAccounts(input: AssignInput): AssignResult {
         }
         continue;
       }
-      // CLI surface but no covering interval (e.g. session predates the first
-      // observation) → falls through to unknown.
+
+      // 4. backfill — CLI surface but NO covering interval: the session predates
+      // the first observation. Single-account fast-path (doc 03 §D.1): if only
+      // ONE CLI account has ever been observed, attribute pre-observation CLI
+      // usage to it at MEDIUM confidence (we cannot confirm the machine was
+      // single-account back then, so not 'high'; a later stronger signal can
+      // upgrade it). With ≥2 accounts observed we cannot safely guess → unknown.
+      if (distinctCliAccounts.size === 1) {
+        const only = intervals[0]!.accountUuid;
+        assignments.set(sessionId, {
+          accountUuid: only,
+          organizationUuid: null,
+          subscriptionType: null,
+          source: "backfill",
+          confidence: "medium",
+        });
+        continue;
+      }
+      // CLI surface, predates observations, and ≥2 accounts seen → unknown.
     }
 
-    // 4. unknown — fallthrough. Non-CLI surfaces with no otel/telemetry land
+    // 5. unknown — fallthrough. Non-CLI surfaces with no otel/telemetry land
     // here; they NEVER get the CLI interval.
     assignments.set(sessionId, {
       accountUuid: "",
