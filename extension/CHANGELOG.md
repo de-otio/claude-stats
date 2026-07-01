@@ -2,6 +2,22 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.12.1 — 2026-07-01
+
+### Fixed — Non-active accounts showed a truncated ID instead of an email
+
+On the **Settings** and **Classify** tabs, only the currently logged-in account
+showed its email address — every other known account fell back to a truncated
+account ID, even after you'd been logged in with it before. The dashboard now
+remembers the email of any account it has previously seen locally, so
+switching accounts no longer blanks out a label you already had.
+
+### Changed — Auto-refresh interval increased
+
+The dashboard's auto-refresh (browser mode) reloaded every 30 seconds by
+default, which was more often than needed for a stats view. It now defaults
+to every 2 minutes.
+
 ## 0.12.0 — 2026-07-01
 
 ### Added — Attribute a project's cost to the subscription that owns it
