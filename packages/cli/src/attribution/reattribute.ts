@@ -103,10 +103,19 @@ export function reattribute(
   const intervals = buildCliIntervals(observations);
   const telemetryMap = buildTelemetryMap();
 
+  // Anchor pins (doc 03 §B): durable live-session ground truth, applied above
+  // observation. Because reattribute resets the inferred rows first, an anchor
+  // correctly supersedes a prior `observation` assignment for the same session.
+  const anchorMap = new Map<string, { accountUuid: string }>();
+  for (const [sid, p] of store.getAnchorPins()) {
+    anchorMap.set(sid, { accountUuid: p.accountUuid });
+  }
+
   const { assignments, messageOverrides } = assignAccounts({
     sessions,
     intervals,
     telemetryMap,
+    anchorMap,
   });
 
   // Count assignments by source for the summary (drop `unknown` from the

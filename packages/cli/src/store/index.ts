@@ -22,7 +22,7 @@ import type {
 } from "@claude-stats/core/types";
 import { estimateCost } from "@claude-stats/core/pricing";
 
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
 
 export class Store {
   private db: DatabaseSync;
@@ -68,6 +68,7 @@ export class Store {
     if (current < 11) this.migrateToV11();
     if (current < 12) this.migrateToV12();
     if (current < 13) this.migrateToV13();
+    if (current < 14) this.migrateToV14();
 
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
@@ -386,6 +387,25 @@ export class Store {
       this.db.exec("ROLLBACK");
       throw err;
     }
+  }
+
+  /**
+   * V14 — anchor pins. Durable, session-keyed ground-truth pins produced by the
+   * attribution engine's anchor signal (live CLI sessions observed active under
+   * the currently-read account). Persisted because the live-session files are
+   * ephemeral, so `reattribute` can re-apply them at the `anchor` precedence
+   * long after the session ended. Additive + idempotent (CREATE IF NOT EXISTS),
+   * zero backfill.
+   */
+  private migrateToV14(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS anchor_pins (
+        session_id   TEXT PRIMARY KEY,
+        account_uuid TEXT NOT NULL,
+        observed_at  INTEGER NOT NULL,
+        source       TEXT NOT NULL
+      );
+    `);
   }
 
   // ─── Rollup recompute (shared: backfill + incremental) ──────────────────────
@@ -850,6 +870,48 @@ export class Store {
       rateLimitTier: r["rate_limit_tier"] as string | null,
       billingType: r["billing_type"] as string | null,
     }));
+  }
+
+  /**
+   * Record (upsert) an anchor pin — durable, session-keyed ground truth that a
+   * session belonged to an account (V14). One row per session; a later pin with
+   * a `observed_at` at/after the stored one refreshes it (an older sighting
+   * never overwrites a newer one). Produced by the live-session anchor writer
+   * during `collect`; consumed by the attribution engine at `anchor` precedence.
+   */
+  recordAnchorPin(pin: {
+    sessionId: string;
+    accountUuid: string;
+    observedAt: number;
+    source: string;
+  }): void {
+    this.db
+      .prepare(`
+        INSERT INTO anchor_pins (session_id, account_uuid, observed_at, source)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT (session_id) DO UPDATE SET
+          account_uuid = excluded.account_uuid,
+          observed_at  = excluded.observed_at,
+          source       = excluded.source
+        WHERE excluded.observed_at >= anchor_pins.observed_at
+      `)
+      .run(pin.sessionId, pin.accountUuid, pin.observedAt, pin.source);
+  }
+
+  /** Load all anchor pins as sessionId → {accountUuid, observedAt, source}. */
+  getAnchorPins(): Map<string, { accountUuid: string; observedAt: number; source: string }> {
+    const rows = this.db
+      .prepare("SELECT session_id, account_uuid, observed_at, source FROM anchor_pins")
+      .all() as Array<Record<string, unknown>>;
+    const map = new Map<string, { accountUuid: string; observedAt: number; source: string }>();
+    for (const r of rows) {
+      map.set(r["session_id"] as string, {
+        accountUuid: r["account_uuid"] as string,
+        observedAt: r["observed_at"] as number,
+        source: r["source"] as string,
+      });
+    }
+    return map;
   }
 
   /**
