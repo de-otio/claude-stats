@@ -59,8 +59,10 @@ export interface ReattributeSummary {
   bySource: Record<string, number>;
   /** Sessions whose attribution would change / changed. */
   changed: number;
-  /** Per-message straddle overrides produced (informational; see note below). */
+  /** Per-message straddle overrides produced by the engine (range count). */
   messageOverrides: number;
+  /** Messages actually stamped with a straddle account (0 in dry-run/refused). */
+  messagesStamped: number;
   /** Path the DB was backed up to (null in dry-run). */
   backupPath: string | null;
   /** Window-recompute range actually applied (null when no sessions / dry-run). */
@@ -157,6 +159,7 @@ export function reattribute(
       bySource,
       changed: applyMap.size,
       messageOverrides: messageOverrides.length,
+      messagesStamped: 0,
       backupPath: null,
       windowRange,
     };
@@ -173,6 +176,7 @@ export function reattribute(
       bySource,
       changed: 0,
       messageOverrides: messageOverrides.length,
+      messagesStamped: 0,
       backupPath: null,
       windowRange,
     };
@@ -194,9 +198,15 @@ export function reattribute(
   // the attribution commit is safe and order-correct.
   let resetCount = 0;
   let changed = 0;
+  let messagesStamped = 0;
   store.transaction(() => {
     resetCount = store.resetAttributableSessions();
+    // Message-level straddle splits are a pure function of the intervals too,
+    // so clear and re-derive them alongside the session attribution in the same
+    // atomic step.
+    store.resetMessageAttribution();
     changed = store.applyAttribution(applyMap, now);
+    messagesStamped = store.applyMessageOverrides(messageOverrides);
   });
   if (windowRange) {
     store.recomputeWindowsInRange(windowRange.since, windowRange.until);
@@ -211,6 +221,7 @@ export function reattribute(
     bySource,
     changed,
     messageOverrides: messageOverrides.length,
+    messagesStamped,
     backupPath,
     windowRange,
   };

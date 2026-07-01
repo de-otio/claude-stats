@@ -29,6 +29,8 @@ export interface CollectResult {
   sessionsUpserted: number;
   messagesUpserted: number;
   accountsMatched: number;
+  /** Messages stamped with a straddle-split account this run (see assign.ts). */
+  messagesStamped: number;
   parseErrors: number;
   schemaChanges: string[];
 }
@@ -45,6 +47,7 @@ export async function collect(
     sessionsUpserted: 0,
     messagesUpserted: 0,
     accountsMatched: 0,
+    messagesStamped: 0,
     parseErrors: 0,
     schemaChanges: [],
   };
@@ -240,7 +243,7 @@ export async function collect(
       });
     }
 
-    const { assignments } = assignAccounts({
+    const { assignments, messageOverrides } = assignAccounts({
       sessions: runSessions,
       intervals,
       telemetryMap,
@@ -262,6 +265,11 @@ export async function collect(
     }
 
     result.accountsMatched = store.applyAttribution(applyMap, now);
+    // Persist per-message straddle splits for this run's sessions. The
+    // incremental path does not reset (reattribute is the authoritative full
+    // recompute); the bounded ranges make re-applying on a later collect
+    // idempotent for unchanged intervals.
+    result.messagesStamped = store.applyMessageOverrides(messageOverrides);
   }
 
   // Schema check: sample stored sessions per version

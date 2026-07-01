@@ -1,5 +1,6 @@
 {
   "account": {
+    "reattributeMessagesStamped": "{{count}} message(s) split to a different account within straddling sessions.",
     "forceOption": "Proceed even if re-attribution would clear existing attributions.",
     "reattributeRefused": "Refusing: this would clear {{attributed}} existing attribution(s) and assign 0 (no observations or telemetry recorded yet). Run 'collect' first, or pass --force to override.",
     "description": "Show the current Claude account and the accounts known to claude-stats.",
