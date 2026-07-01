@@ -103,13 +103,20 @@ describe("periodStart", () => {
     expect(start).toBeLessThanOrEqual(Date.now());
   });
 
-  it("day start is <= week start is <= month start for same point in time", () => {
-    // All three start at or before now, and day >= month (day is more recent)
+  it("month and week starts are on or before the day start, which is on or before now", () => {
+    // The day start (today 00:00) is the most recent of the three boundaries;
+    // the month and week starts are on or before it, and all are on or before
+    // now. We deliberately do NOT assert `month <= week`: when the current week
+    // began in the previous month (a week straddling a month boundary, e.g.
+    // Wed 1 Jul whose week started Sun 28 Jun), the week start is BEFORE the
+    // month start, so that ordering does not hold on all dates.
     const day = periodStart("day", "UTC");
     const week = periodStart("week", "UTC");
     const month = periodStart("month", "UTC");
-    expect(month).toBeLessThanOrEqual(week);
+    const now = Date.now();
+    expect(month).toBeLessThanOrEqual(day);
     expect(week).toBeLessThanOrEqual(day);
+    expect(day).toBeLessThanOrEqual(now);
   });
 });
 
