@@ -1366,7 +1366,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
         setTimeout(function () { location.reload(); }, refreshSecs * 1000);
       }
       window.toggleRefresh = function () {
-        window.location.href = refreshSecs > 0 ? setUrlParam('refresh', null) : setUrlParam('refresh', '30');
+        window.location.href = refreshSecs > 0 ? setUrlParam('refresh', null) : setUrlParam('refresh', '120');
       };
 
       // ── Tab navigation ────────────────────────────────────────────────────
