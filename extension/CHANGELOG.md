@@ -2,6 +2,30 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.12.0 — 2026-07-01
+
+### Added — Attribute a project's cost to the subscription that owns it
+
+Building on per-account attribution, you can now bill each **project** to the
+subscription that should pay for it — regardless of which account actually ran a
+given session. Use two accounts in one repo, or run a session an IDE couldn't
+attribute automatically, and the cost still lands on the right subscription.
+
+- New **Classify** tab in the dashboard: your projects, grouped and **ranked by
+  cost**, each with a picker to assign it to a subscription — or **Split across
+  usage** for a project shared between subscriptions (e.g. when one plan's limit
+  isn't enough). Classifying the few highest-cost projects covers most of your
+  spend; one **Apply** re-bills everything and refreshes the dashboard.
+- New CLI: `claude-stats account classify` lists your projects ranked by cost
+  with the total still unassigned; `claude-stats account own` sets a rule by
+  project path or git remote (`--path`, `--remote`, `--account <uuid|split>`,
+  plus `--list`, `--clear <id>`, `--dry-run`).
+- Ownership rules take precedence over automatic attribution. A **split** project
+  keeps each session on the account that actually ran it, so its cost divides by
+  real usage.
+
+Everything is computed **locally**.
+
 ## 0.11.0 — 2026-07-01
 
 ### Added — Per-account usage attribution
