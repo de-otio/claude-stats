@@ -20,6 +20,9 @@ export const paths = {
   /** ~/.claude/cache/changelog.md — used to detect Claude Code version updates */
   changelogFile: path.join(home, ".claude", "cache", "changelog.md"),
 
+  /** ~/.claude/sessions/ — per-process live-session state files (anchor pins) */
+  sessionsDir: path.join(home, ".claude", "sessions"),
+
   /** ~/.claude-stats/ — tool's own storage, separate from Claude Code's directory */
   statsDir: path.join(home, ".claude-stats"),
 
