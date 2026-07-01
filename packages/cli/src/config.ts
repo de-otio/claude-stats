@@ -201,7 +201,14 @@ export interface ConfigAccount {
   accountUuid: string;
   subscriptionType: string | null;
   sessionCount: number;
-  /** Only populated for the current account, and only on the webview path. */
+  /**
+   * Only populated on the webview/local path (never on the unauth HTTP path).
+   * For the current account this is the live `emailAddress` from
+   * `~/.claude.json`; for other accounts it falls back to the `emailLabel`
+   * persisted in the accounts table the last time that account was current
+   * (see `attribution/observer.ts`), so switching accounts doesn't blank out
+   * a previously-known email.
+   */
   email: string | null;
   /**
    * Human-readable plan label derived from `subscriptionType` (and optionally
@@ -247,10 +254,14 @@ export function buildAccountsForConfig(
   accounts: ReadonlyArray<{ accountUuid: string; subscriptionType: string | null; sessionCount: number }>,
   current: { accountUuid: string; emailAddress: string | null } | null,
   includeEmail: boolean,
-  fullAccounts?: ReadonlyArray<{ accountUuid: string; subscriptionType: string | null }>,
+  fullAccounts?: ReadonlyArray<{
+    accountUuid: string;
+    subscriptionType: string | null;
+    emailLabel?: string | null;
+  }>,
 ): ConfigAccount[] {
-  // Build a fast lookup from fullAccounts for plan-label enrichment.
-  const fullMap = new Map<string, { subscriptionType: string | null }>();
+  // Build a fast lookup from fullAccounts for plan-label/email enrichment.
+  const fullMap = new Map<string, { subscriptionType: string | null; emailLabel?: string | null }>();
   if (fullAccounts) {
     for (const fa of fullAccounts) {
       fullMap.set(fa.accountUuid, fa);
@@ -261,11 +272,16 @@ export function buildAccountsForConfig(
     // Prefer the richer subscriptionType from the accounts table (listAccountsFull)
     // when available; fall back to the session-aggregated value.
     const effectiveSubType = full?.subscriptionType ?? a.subscriptionType;
+    const isCurrent = current !== null && current.accountUuid === a.accountUuid;
+    // For the current account use the live email; for others fall back to the
+    // emailLabel persisted last time that account was current, so switching
+    // accounts doesn't blank out an already-known address.
+    const email = includeEmail ? (isCurrent ? current!.emailAddress : (full?.emailLabel ?? null)) : null;
     return {
       accountUuid: a.accountUuid,
       subscriptionType: a.subscriptionType,
       sessionCount: a.sessionCount,
-      email: includeEmail && current && current.accountUuid === a.accountUuid ? current.emailAddress : null,
+      email,
       planLabel: derivePlanLabel(effectiveSubType),
     };
   });

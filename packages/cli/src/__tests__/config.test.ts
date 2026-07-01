@@ -264,6 +264,34 @@ describe("buildAccountsForConfig", () => {
     const out = buildAccountsForConfig(accounts, { accountUuid: "aaaa1111", emailAddress: "you@example.com" }, false);
     expect(out.every((a) => a.email === null)).toBe(true);
   });
+
+  it("falls back to the persisted emailLabel for a non-current account", () => {
+    const fullAccounts = [
+      { accountUuid: "aaaa1111", subscriptionType: "max_20x", emailLabel: "stale@example.com" },
+      { accountUuid: "bbbb2222", subscriptionType: "team_premium", emailLabel: "teammate@example.com" },
+    ];
+    const out = buildAccountsForConfig(
+      accounts,
+      { accountUuid: "aaaa1111", emailAddress: "you@example.com" },
+      true,
+      fullAccounts,
+    );
+    // Current account: live email wins over its own stale persisted label.
+    expect(out[0]!.email).toBe("you@example.com");
+    // Non-current account: persisted emailLabel is used instead of null.
+    expect(out[1]!.email).toBe("teammate@example.com");
+  });
+
+  it("never leaks a persisted emailLabel when includeEmail is false", () => {
+    const fullAccounts = [{ accountUuid: "bbbb2222", subscriptionType: "team_premium", emailLabel: "teammate@example.com" }];
+    const out = buildAccountsForConfig(
+      accounts,
+      { accountUuid: "aaaa1111", emailAddress: "you@example.com" },
+      false,
+      fullAccounts,
+    );
+    expect(out.every((a) => a.email === null)).toBe(true);
+  });
 });
 
 describe("redactConfigForHttp", () => {
