@@ -59,10 +59,14 @@ every "present / absent / constant" claim was verified, not assumed.
    different accounts at once; the extension's account is not on disk. Scopes the
    whole method to "per surface."
 8. [Manual account labelling (historical split)](08-manual-labelling.md) —
-   implementation plan for the `override` source: paint a date range (optionally
-   project-scoped) onto an account to split a **multi-account history** that
-   inference cannot (the observation timeline is forward-only; single-account
-   backfill abstains once ≥2 accounts are seen).
+   the `override` escape hatch: paint a date range (optionally project-scoped)
+   onto an account. Used as the *seed/fallback* for doc 09, not the main plan.
+9. [Historical split without hand-labelling](09-historical-split-without-labelling.md)
+   — **the automatic solution.** A measured signal inventory (account is not in
+   transcripts; telemetry/backup/userID are dead) and a **seed-and-propagate**
+   method: project-affinity + the per-account, cross-surface 5-hour window
+   propagate a few seeds across ~960 sessions — including the 26% non-CLI ones no
+   per-session method can reach.
 
 ## TL;DR verdict
 
