@@ -2,6 +2,35 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.11.0 — 2026-07-01
+
+### Added — Per-account usage attribution
+
+Claude Stats now works out **which Claude account each session belonged to**, so
+your stats split cleanly when you use more than one account (for example a
+personal Max plan alongside a work Team plan) on the same machine.
+
+- The dashboard groups usage, cost, and plan value **by account**, with a
+  selector to filter to one account at a time.
+- Attribution is layered strongest-to-weakest: an OpenTelemetry export (if you
+  enable it) → Claude's own telemetry → live-session pins → an observed
+  account-switch timeline → a single-account backfill for older history. Each
+  session records the source and confidence behind its account.
+- New commands: `claude-stats account` shows the current account and the
+  accounts known from your history; `account reattribute` recomputes attribution
+  across all stored sessions (with `--dry-run`); `account otel ingest` loads an
+  OTLP export for exact, no-inference attribution.
+
+Everything is computed **locally**, and email addresses are stored only as a hash.
+
+### Fixed — Overview no longer looks empty at the start of a day or month
+
+In the first hours of a new day or month, the **Day**/**Month** view could show
+"0 sessions / 0 tokens" next to a non-zero cost — a session still running across
+midnight was counted for cost but not for sessions. Sessions active in the
+selected period are now counted consistently, and a genuinely empty period shows
+a short hint to switch to **Week** or **All** instead of a wall of zeros.
+
 ## 0.10.0 — 2026-06-29
 
 ### Fixed — Switching the dashboard to "Month" no longer takes ~a minute
