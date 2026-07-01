@@ -24,6 +24,7 @@ import { collectAccountMap } from "@claude-stats/core/parser/telemetry";
 import { buildCliIntervals } from "./intervals.js";
 import { assignAccounts } from "./assign.js";
 import type { ExternalAccountInfo } from "./assign.js";
+import { resolveOwner } from "./ownership.js";
 
 export interface ReattributeOptions {
   dryRun?: boolean;
@@ -67,6 +68,12 @@ export interface ReattributeSummary {
   backupPath: string | null;
   /** Window-recompute range actually applied (null when no sessions / dry-run). */
   windowRange: { since: number; until: number } | null;
+  /**
+   * Number of sessions stamped with account_source='override' from owner rules
+   * this run. In dry-run: would-be count (no writes). In real run: rows changed.
+   * 0 when refused or when no account-target rules match.
+   */
+  ownerOverrides: number;
 }
 
 /** Build the telemetry sessionId→account map at the `telemetry` precedence. */
@@ -155,6 +162,22 @@ export function reattribute(
   const force = opts.force ?? false;
   const refused = applyMap.size === 0 && attributedBefore > 0 && !force;
 
+  // Compute the would-be owner override mapping for dry-run reporting and real
+  // run application. Done outside any transaction — resolveOwner is pure; the
+  // map is built regardless of dryRun so the dry-run summary includes a count.
+  const ownerRules = store.listOwnerRules();
+  const ownerOverrideMap = new Map<string, string>(); // sessionId → accountUuid
+  for (const s of sessions) {
+    const target = resolveOwner(
+      { projectPath: s.project_path, repoUrl: s.repo_url ?? null },
+      ownerRules,
+    );
+    if (target !== null && target.kind === "account") {
+      ownerOverrideMap.set(s.session_id, target.accountUuid);
+    }
+    // split target → no override; unmatched (null) → no override
+  }
+
   if (dryRun) {
     // Compute-only: report how many rows WOULD change. We approximate "changed"
     // as the number of applicable (non-unknown) assignments; the exact figure
@@ -171,6 +194,7 @@ export function reattribute(
       messagesStamped: 0,
       backupPath: null,
       windowRange,
+      ownerOverrides: ownerOverrideMap.size,
     };
   }
 
@@ -188,6 +212,7 @@ export function reattribute(
       messagesStamped: 0,
       backupPath: null,
       windowRange,
+      ownerOverrides: 0,
     };
   }
 
@@ -217,6 +242,18 @@ export function reattribute(
     changed = store.applyAttribution(applyMap, now);
     messagesStamped = store.applyMessageOverrides(messageOverrides);
   });
+
+  // Apply owner overrides AFTER the attribution transaction commits. Owner
+  // rules are unconditional (override outranks otel/telemetry/anchor), so they
+  // run after inference is settled. applyOwnerOverride opens its own
+  // transaction internally — do NOT nest it inside the one above.
+  // Only sessions with an account-target rule receive an override;
+  // split-target and unmatched sessions are left on their inferred source.
+  let ownerOverrides = 0;
+  if (ownerOverrideMap.size > 0) {
+    ownerOverrides = store.applyOwnerOverride(ownerOverrideMap, now);
+  }
+
   if (windowRange) {
     store.recomputeWindowsInRange(windowRange.since, windowRange.until);
   }
@@ -233,5 +270,6 @@ export function reattribute(
     messagesStamped,
     backupPath,
     windowRange,
+    ownerOverrides,
   };
 }

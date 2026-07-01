@@ -22,3 +22,9 @@ export { writeObservation, hashEmail } from "./observer.js";
 
 export { reattribute } from "./reattribute.js";
 export type { ReattributeOptions, ReattributeSummary } from "./reattribute.js";
+
+export { resolveOwner, ownerOf, matchGlob } from "./ownership.js";
+export type { OwnerMatchInput } from "./ownership.js";
+
+export { clusterProjects } from "./clustering.js";
+export type { ClusterInput } from "./clustering.js";

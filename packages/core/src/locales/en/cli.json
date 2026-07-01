@@ -22,7 +22,30 @@
     "reattributeDryRunHeader": "Re-attribution (dry run) — no changes written:",
     "reattributeDoneHeader": "Re-attribution complete:",
     "backupWritten": "Backup written to {{path}}",
-    "reattributeSummary": "{{total}} sessions, {{reset}} reset, {{changed}} re-attributed. By source:"
+    "reattributeSummary": "{{total}} sessions, {{reset}} reset, {{changed}} re-attributed. By source:",
+    "own": {
+      "description": "Manage cost-ownership rules (assign a path or remote glob to an account).",
+      "accountOption": "Account UUID to assign cost to, or 'split' to keep measured attribution.",
+      "pathOption": "Glob pattern matching project paths (e.g. ~/repos/work/**).",
+      "remoteOption": "Glob pattern matching git remote owner (e.g. github.com/example-org/*).",
+      "dryRunOption": "Preview how many sessions the rule would match without creating it.",
+      "forceOption": "Create the rule even if it matches more than 90% of sessions.",
+      "listOption": "List all existing owner rules.",
+      "clearOption": "Remove the owner rule with the given id and revert its sessions.",
+      "created": "Owner rule {{id}} created. Re-attribution applied.",
+      "deleted": "Owner rule cleared; {{count}} session(s) reverted. Re-attribution applied.",
+      "refusedOverbroad": "Refusing: this rule would match {{pct}}% of all sessions (> 90%). Pass --force to override.",
+      "dryRunSummary": "Dry run: {{matched}} session(s) matched, estimated cost {{cost}}, {{displaced}} otel/telemetry session(s) would be displaced.",
+      "listHeader": "Owner rules:",
+      "noRules": "No owner rules defined. Use 'account own --account <uuid|split> --path <glob>' to add one."
+    },
+    "classify": {
+      "description": "Show project clusters ranked by estimated cost to help identify ownership.",
+      "header": "Project clusters by cost:",
+      "row": "  {{label}}  ({{projects}} project(s), {{sessions}} session(s), {{cost}})",
+      "unclassified": "Unclassified (no matching owner rule): {{cost}}",
+      "noData": "No sessions found."
+    }
   },
   "otel": {
     "description": "OpenTelemetry-based authoritative account attribution.",
@@ -97,17 +120,17 @@
     "collecting": "Collecting...",
     "done": "Done. {{filesProcessed}} files processed, {{filesSkipped}} skipped, {{sessionsUpserted}} sessions upserted, {{messagesUpserted}} messages upserted.",
     "doneWithAccounts": "Done. {{filesProcessed}} files processed, {{filesSkipped}} skipped, {{sessionsUpserted}} sessions upserted, {{messagesUpserted}} messages upserted, {{accountsMatched}} accounts matched from telemetry.",
-    "parseErrors": "\u26a0  {{count}} parse errors quarantined \u2014 run 'diagnose' for details.",
-    "schemaChanges": "\u26a0  Schema changes detected: {{changes}}",
-    "costExceeded": "\u26a0  {{period}} cost: ~{{currentCost}} exceeds threshold of {{threshold}}"
+    "parseErrors": "⚠  {{count}} parse errors quarantined — run 'diagnose' for details.",
+    "schemaChanges": "⚠  Schema changes detected: {{changes}}",
+    "costExceeded": "⚠  {{period}} cost: ~{{currentCost}} exceeds threshold of {{threshold}}"
   },
   "report": {
     "noSessions": "No sessions found.",
     "noSessionsFiltered": "No sessions found for the given filters.",
     "noSessionMatch": "No session found matching \"{{sessionId}}\".",
     "noMessages": "No messages recorded for this session.",
-    "titleSummary": "Claude Stats \u2014 {{period}}",
-    "titleSessions": "Sessions \u2014 {{period}}",
+    "titleSummary": "Claude Stats — {{period}}",
+    "titleSessions": "Sessions — {{period}}",
     "titleTrend": "{{period}} Trend ({{timezone}})",
     "titleSearch": "Search: \"{{query}}\"",
     "titleSessionDetail": "Session {{sessionId}}",
@@ -139,16 +162,16 @@
     "cacheDetail": "{{read}} read, {{created}} created ({{efficiency}}% efficiency)",
     "costLine": "~{{cost}} (equivalent API cost)",
     "costUnknown": "({{tokens}} tokens from unknown models excluded)",
-    "planROI": "{{planFee}}/mo plan \u2192 {{multiplier}}\u00d7 API value received",
+    "planROI": "{{planFee}}/mo plan → {{multiplier}}× API value received",
     "planPerUnit": "{{costPerPrompt}}/prompt   {{costPerSession}}/session",
     "velocityDetail": "{{tokPerMin}} tok/min   {{promptsPerHr}} prompts/hr   {{outputPerPrompt}} output/prompt",
     "throttleDetail": "{{count}} suspected usage-limit truncations detected",
     "thinkingDetail": "{{blocks}} blocks ({{percent}}% of sessions)",
-    "maxTokensWarning": "\u26a0  {{count}} responses were truncated (max_tokens)",
+    "maxTokensWarning": "⚠  {{count}} responses were truncated (max_tokens)",
     "resultsFound_one": "{{count}} result found.",
     "resultsFound_other": "{{count}} results found.",
     "wroteFile": "Wrote {{file}}",
-    "planValueUsed": "Plan: {{planFee}}/mo \u2192 {{percent}}% of plan value used this period",
+    "planValueUsed": "Plan: {{planFee}}/mo → {{percent}}% of plan value used this period",
     "trendColumnDay": "Day",
     "trendColumnWeek": "Week",
     "trendColumnMonth": "Month",
@@ -226,7 +249,7 @@
   "backfill": {
     "resetCheckpoints": "Reset {{count}} file checkpoints. Running full re-collection...",
     "complete": "Backfill complete. {{filesProcessed}} files re-processed, {{messagesUpserted}} messages updated.",
-    "parseErrors": "\u26a0  {{count}} parse errors quarantined."
+    "parseErrors": "⚠  {{count}} parse errors quarantined."
   },
   "diagnose": {
     "quarantinedLines": "Quarantined lines : {{count}}",
