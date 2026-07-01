@@ -5,10 +5,13 @@ The generalizable answer to "split a multi-account back-catalogue by cost."
 ## Problem
 
 Users run more than one Claude subscription (e.g. a personal plan and a
-work/client plan) and often use **both accounts within the same project**. For
-**cost** attribution the question is not *which account was logged in* — it is
-*which subscription should bear the project's cost*, by the project's nature
-(personal vs work/client). That is a **business policy**, so:
+work/client plan) and often use **both accounts within the same project** —
+sometimes by *nature* (a work project touched from a personal login), sometimes
+by *necessity* (rotating through several subscriptions on one project because
+even the largest plan's limits are insufficient). For **cost** attribution the
+question is usually not *which account was logged in* — it is *which subscription
+should bear the project's cost*, by the project's nature (personal vs
+work/client). That is a **business policy**, so:
 
 - it **cannot be inferred** from the transcripts (the account isn't even there —
   doc [09](09-historical-split-without-labelling.md));
@@ -31,22 +34,35 @@ well-guided decisions**, and apply it deterministically.
 
 ## Rule model
 
-An **owner rule** maps a project matcher to an owning account (= subscription):
+An **owner rule** maps a project matcher to a cost target:
 
 ```
-rule := { match: { path?: glob, remote?: glob }, account: <uuid|label> }
+rule := { match: { path?: glob, remote?: glob }, target: <uuid|label> | "split" }
 ```
 
 - **Matcher basis: path + remote** (chosen default). A session matches if its
   `project_path` matches `path` **or** its `repo_url` owner matches `remote`.
   Path is always present; the remote is a robust fallback (survives moved
   folders) but only ~25% of sessions carry one — hence *both*.
+- **`target`** is one of:
+  - **an account/subscription** — the project has a single owner; every session
+    in it is billed there regardless of the account actually used (`override`
+    rank, authoritative).
+  - **`split`** — the project has **no single owner** because the user rotates
+    through several subscriptions on it to get enough capacity (a single plan's
+    5-hour/weekly limits are insufficient). Cost must divide across subscriptions
+    **by actual usage**, so these sessions are *not* overridden — they fall
+    through to the measured-account engine (observation timeline → propagation →
+    OTEL, docs [03](03-attribution-methods.md)/[09](09-historical-split-without-labelling.md)),
+    and each session lands on whichever account actually ran it. This is why the
+    actual-account inference is part of the **cost** path, not merely a
+    usage-limit view.
 - **Resolution**: most-specific match wins (longer path prefix / exact remote >
   broader), ties broken by most-recent rule.
 - **Unmatched → `unknown`** (chosen default): surfaced, never guessed.
 - Rules live in the user's **local `~/.claude-stats/config.toml`** — never in the
-  repo. Applied as the `override` rank (authoritative user policy), so they win
-  over all inference and survive `reattribute`.
+  repo. Owner rules are applied at the `override` rank; `split` rules apply no
+  override and defer to inference. Both survive `reattribute`.
 
 ## The guided GUI flow (what keeps it a "handful")
 
@@ -61,9 +77,11 @@ The tool does the clustering so the user only makes cluster-level decisions:
    number of clusters cover most spend (in the reference dataset, ~23 projects =
    80%), the top few decisions capture almost everything.
 3. **"Classify your projects" panel** — one row per cluster: label, # projects,
-   # sessions, **$ at stake**, and a **subscription picker** (the known accounts,
-   shown by their plan label). Assign top-down; stop when the remainder is
-   negligible.
+   # sessions, **$ at stake**, and a picker with the choices **[a subscription] ·
+   [Split by usage] · [Leave unknown]**. "Split by usage" marks a project whose
+   cost should divide across subscriptions by the account actually used (the
+   limits-driven multi-subscription case). Assign top-down; stop when the
+   remainder is negligible.
 4. Each pick creates a **rule** covering the whole cluster (a handful of clicks,
    not per project). **Drill in** to reassign the odd project that differs.
 5. **Live preview** — cost-by-subscription updates as rules are added, with
@@ -83,19 +101,27 @@ they operate on whatever projects/remotes a user happens to have. The concrete
 globs are per-user data entered through the GUI and stored locally. The shipped
 tool contains **no** org names, paths, or client identifiers.
 
-## Two lenses, one surface
+## How the two engines compose
 
-- **Cost-ownership** (this doc) — policy: project → owning subscription,
-  regardless of the account used. Answers "what did each subscription cost me."
-- **Actual account** (docs [03](03-attribution-methods.md)/[09]) — measurement:
-  which account actually ran each session. Answers "why am I hitting *this*
-  account's limits."
+Cost attribution is **policy first, measurement second** — per project:
 
-They diverge exactly when you use the non-owning account on a project. Both are
-useful; the dashboard exposes cost-ownership as the default cost view and keeps
-the measured account available for usage-limit analysis. Doc
-[08](08-manual-labelling.md)'s date-range labels and this doc's project-owner
-rules are the same `override` rule engine with two matcher types, surfaced by the
+- **Owned** project → **policy** wins: every session billed to the owning
+  subscription (`override`), regardless of the account used.
+- **`split`** project → **measurement**: cost divides across subscriptions by the
+  account that actually ran each session, via the inference engine (observation
+  timeline → propagation → OTEL, docs [03](03-attribution-methods.md)/[09]).
+- **Unknown** project → surfaced for classification; excluded from per-account
+  totals until resolved.
+
+So the actual-account inference (doc 09) is not a separate "usage-limit view" —
+it is the **cost method for split projects**, and it independently answers "why
+am I hitting *this* account's limits." The measurement only diverges from the
+policy on owned projects where you used the non-owning account — there, policy
+(cost) and measurement (limits) legitimately differ, and the dashboard shows
+each in its own view.
+
+Doc [08](08-manual-labelling.md)'s date-range labels and this doc's
+project-owner/`split` rules are the same `override`/rule engine surfaced by the
 one guided GUI.
 
 ## Data model
@@ -121,6 +147,9 @@ persistence beyond the rules.
 - `resolveOwner`: path-glob and remote-glob match; **both** bases; specificity
   (longer prefix wins); recency tiebreak; unmatched → `unknown`; override beats
   every inferred source.
+- `split` target: a matching project writes **no** override — its sessions
+  retain their measured account, so a project used from two accounts divides
+  across both (cost splits by actual usage, not forced to one owner).
 - `clusterProjects`: groups by shared path root and by remote owner; ranks by
   cost; stable/deterministic; singletons handled.
 - e2e: a rule reclassifies all of a project's sessions (both accounts) to the
