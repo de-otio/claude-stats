@@ -17,6 +17,7 @@ import { writeObservation } from "../attribution/observer.js";
 import { buildCliIntervals } from "../attribution/intervals.js";
 import { assignAccounts } from "../attribution/assign.js";
 import type { ExternalAccountInfo } from "../attribution/assign.js";
+import { collectLiveSessionPins } from "../attribution/anchors.js";
 
 export interface CollectOptions {
   verbose?: boolean;
@@ -59,7 +60,22 @@ export async function collect(
   // sighting, and refresh the accounts metadata row. Surface-aware assignment
   // happens after the file loop (seam 2). The injected `now` clock keeps the
   // observation timestamp deterministic in tests.
-  writeObservation(store, readClaudeAccount(), now);
+  const currentAccount = readClaudeAccount();
+  writeObservation(store, currentAccount, now);
+
+  // Phase-2 (B) seam 1b — live-session anchor pins (doc 03 §B). For each
+  // CLI-surface session currently active under the read account, persist a pin
+  // so reattribute can apply it at `anchor` precedence after the (ephemeral)
+  // session file is gone. currentIntervalStart = start of the current account's
+  // open interval (the recency guard against stale session files).
+  if (currentAccount) {
+    const nowMs = now();
+    const intervals = buildCliIntervals(store.getAccountObservations());
+    const currentIntervalStart = intervals.length > 0 ? intervals[intervals.length - 1]!.start : nowMs;
+    for (const pin of collectLiveSessionPins(currentAccount.accountUuid, currentIntervalStart, nowMs)) {
+      store.recordAnchorPin(pin);
+    }
+  }
 
   // Track the session ids upserted in THIS collect run so seam 2 only assigns
   // accounts to sessions we just touched (the incremental path).
@@ -243,10 +259,17 @@ export async function collect(
       });
     }
 
+    // Anchor pins (doc 03 §B) — sessionId → account, applied above observation.
+    const anchorMap = new Map<string, { accountUuid: string }>();
+    for (const [sid, p] of store.getAnchorPins()) {
+      anchorMap.set(sid, { accountUuid: p.accountUuid });
+    }
+
     const { assignments, messageOverrides } = assignAccounts({
       sessions: runSessions,
       intervals,
       telemetryMap,
+      anchorMap,
     });
 
     const applyMap = new Map<

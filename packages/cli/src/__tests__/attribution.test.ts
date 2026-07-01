@@ -20,6 +20,7 @@ import { buildCliIntervals, intervalAt } from "../attribution/intervals.js";
 import { assignAccounts } from "../attribution/assign.js";
 import type { ExternalAccountInfo } from "../attribution/assign.js";
 import { writeObservation, hashEmail } from "../attribution/observer.js";
+import { collectLiveSessionPins } from "../attribution/anchors.js";
 import { reattribute } from "../attribution/reattribute.js";
 import { Store } from "../store/index.js";
 import type { SessionRow } from "../store/index.js";
@@ -385,6 +386,117 @@ describe("assignAccounts — backfill (single-account fast-path)", () => {
   });
 });
 
+// ── anchor pins: precedence (above observation, below telemetry/otel) ──────────
+
+describe("assignAccounts — anchor precedence", () => {
+  const ivs = buildCliIntervals([obs(ACCOUNT_A_UUID, T0)]); // A active [T0, ∞)
+  const anchor = (uuid: string) => new Map([["s1", { accountUuid: uuid }]]);
+
+  it("anchor beats the observation interval for a CLI session", () => {
+    // Observation would say A (covers first_timestamp); the pin says B → B wins.
+    const s = makeSessionRow({ session_id: "s1", entrypoint: "cli", first_timestamp: T0 + HOUR });
+    const r = assignAccounts({ sessions: [s], intervals: ivs, telemetryMap: new Map(), anchorMap: anchor(ACCOUNT_B_UUID) });
+    expect(r.assignments.get("s1")).toMatchObject({ source: "anchor", confidence: "high", accountUuid: ACCOUNT_B_UUID });
+  });
+
+  it("telemetry and otel outrank anchor", () => {
+    const s = makeSessionRow({ session_id: "s1", entrypoint: "cli", first_timestamp: T0 + HOUR });
+    const ext = new Map([["s1", { accountUuid: ACCOUNT_A_UUID, organizationUuid: null, subscriptionType: null }]]);
+    expect(
+      assignAccounts({ sessions: [s], intervals: ivs, telemetryMap: ext, anchorMap: anchor(ACCOUNT_B_UUID) }).assignments.get("s1"),
+    ).toMatchObject({ source: "telemetry" });
+    expect(
+      assignAccounts({ sessions: [s], intervals: ivs, telemetryMap: new Map(), otelMap: ext, anchorMap: anchor(ACCOUNT_B_UUID) }).assignments.get("s1"),
+    ).toMatchObject({ source: "otel" });
+  });
+
+  it("does NOT apply an anchor to a non-CLI surface (→ unknown)", () => {
+    const s = makeSessionRow({ session_id: "s1", entrypoint: "claude-vscode", first_timestamp: T0 + HOUR });
+    const r = assignAccounts({ sessions: [s], intervals: ivs, telemetryMap: new Map(), anchorMap: anchor(ACCOUNT_B_UUID) });
+    expect(r.assignments.get("s1")).toMatchObject({ source: "unknown" });
+  });
+
+  it("anchor wins even for a pre-observation CLI session (over backfill)", () => {
+    const s = makeSessionRow({ session_id: "s1", entrypoint: "cli", first_timestamp: T0 - 10 * HOUR });
+    const r = assignAccounts({ sessions: [s], intervals: ivs, telemetryMap: new Map(), anchorMap: anchor(ACCOUNT_B_UUID) });
+    expect(r.assignments.get("s1")).toMatchObject({ source: "anchor", accountUuid: ACCOUNT_B_UUID });
+  });
+});
+
+// ── anchor pins: live-session pin writer ──────────────────────────────────────
+
+describe("collectLiveSessionPins", () => {
+  function makeSessionsDir(files: Array<{ name: string; content: unknown; mtimeMs?: number }>): string {
+    const dir = path.join(os.tmpdir(), `cs-sessions-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    fs.mkdirSync(dir, { recursive: true });
+    for (const f of files) {
+      const fp = path.join(dir, f.name);
+      fs.writeFileSync(fp, typeof f.content === "string" ? f.content : JSON.stringify(f.content));
+      if (f.mtimeMs != null) fs.utimesSync(fp, new Date(f.mtimeMs), new Date(f.mtimeMs));
+    }
+    return dir;
+  }
+
+  it("pins a CLI-entrypoint session active within the current interval", () => {
+    const dir = makeSessionsDir([{ name: "a.json", content: { sessionId: "cli-1", entrypoint: "cli" }, mtimeMs: T0 + 2 * HOUR }]);
+    try {
+      expect(collectLiveSessionPins(ACCOUNT_A_UUID, T0, T0 + 3 * HOUR, dir)).toEqual([
+        { sessionId: "cli-1", accountUuid: ACCOUNT_A_UUID, observedAt: T0 + 3 * HOUR, source: "live-session" },
+      ]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("skips non-CLI entrypoints and stale (pre-interval) files", () => {
+    const dir = makeSessionsDir([
+      { name: "vs.json", content: { sessionId: "vs-1", entrypoint: "claude-vscode" }, mtimeMs: T0 + 2 * HOUR },
+      { name: "old.json", content: { sessionId: "cli-old", entrypoint: "cli" }, mtimeMs: T0 - HOUR },
+    ]);
+    try {
+      expect(collectLiveSessionPins(ACCOUNT_A_UUID, T0, T0 + 3 * HOUR, dir)).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("skips malformed JSON / no-sessionId / non-.json; missing dir → []", () => {
+    const dir = makeSessionsDir([
+      { name: "bad.json", content: "{not json", mtimeMs: T0 + 2 * HOUR },
+      { name: "noid.json", content: { entrypoint: "cli" }, mtimeMs: T0 + 2 * HOUR },
+      { name: "skip.txt", content: { sessionId: "x", entrypoint: "cli" }, mtimeMs: T0 + 2 * HOUR },
+    ]);
+    try {
+      expect(collectLiveSessionPins(ACCOUNT_A_UUID, T0, T0 + 3 * HOUR, dir)).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    expect(collectLiveSessionPins(ACCOUNT_A_UUID, T0, T0 + 3 * HOUR, path.join(os.tmpdir(), "cs-nope-xyz-does-not-exist"))).toEqual([]);
+  });
+});
+
+// ── anchor pins: store recordAnchorPin / getAnchorPins ────────────────────────
+
+describe("anchor pins (store)", () => {
+  it("records, reads back, and keeps the most-recent observedAt on conflict", () => {
+    const dbPath = tmpDbPath();
+    const store = new Store(dbPath);
+    try {
+      store.recordAnchorPin({ sessionId: "s1", accountUuid: ACCOUNT_A_UUID, observedAt: T0, source: "live-session" });
+      expect(store.getAnchorPins().get("s1")).toMatchObject({ accountUuid: ACCOUNT_A_UUID, source: "live-session" });
+      // Newer observedAt with a different account → updates.
+      store.recordAnchorPin({ sessionId: "s1", accountUuid: ACCOUNT_B_UUID, observedAt: T0 + HOUR, source: "live-session" });
+      expect(store.getAnchorPins().get("s1")!.accountUuid).toBe(ACCOUNT_B_UUID);
+      // Older observedAt → ignored (guard keeps the newer pin).
+      store.recordAnchorPin({ sessionId: "s1", accountUuid: ACCOUNT_A_UUID, observedAt: T0 - HOUR, source: "live-session" });
+      expect(store.getAnchorPins().get("s1")!.accountUuid).toBe(ACCOUNT_B_UUID);
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
+});
+
 // ── monotonic: re-apply never lowers/overwrites strong sources ────────────────
 
 describe("applyAttribution monotonicity (store guard)", () => {
@@ -694,6 +806,28 @@ describe("reattribute", () => {
       expect(rows.find((s) => s.session_id === "old")!.account_uuid).toBe(ACCOUNT_A_UUID);
       expect(rows.find((s) => s.session_id === "new")!.account_uuid).toBe(ACCOUNT_A_UUID);
 
+      if (summary.backupPath) fs.rmSync(summary.backupPath, { force: true });
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
+
+  it("applies an anchor pin over the observation interval (end-to-end)", () => {
+    const dbPath = tmpDbPath();
+    const store = new Store(dbPath);
+    const backupTs = T0 + 5 * HOUR;
+    try {
+      // Observed A → interval [T0, ∞). A CLI session the interval would call A…
+      store.recordAccountObservation(obs(ACCOUNT_A_UUID, T0));
+      seedSession(store, "s1", "cli", T0 + HOUR);
+      // …but a live-session pin says B → anchor wins.
+      store.recordAnchorPin({ sessionId: "s1", accountUuid: ACCOUNT_B_UUID, observedAt: T0 + HOUR, source: "live-session" });
+
+      const summary = reattribute(store, { dryRun: false, dbPath }, fixedClock(backupTs));
+      expect(summary.bySource.anchor).toBe(1);
+      const s = store.getSessions({ includeCI: true, includeDeleted: true }).find((x) => x.session_id === "s1")!;
+      expect(s.account_uuid).toBe(ACCOUNT_B_UUID);
       if (summary.backupPath) fs.rmSync(summary.backupPath, { force: true });
     } finally {
       store.close();
