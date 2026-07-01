@@ -70,6 +70,41 @@ function makeMessage(overrides: Partial<MessageRecord> = {}): MessageRecord {
   };
 }
 
+describe("getSessions activeSince — period-boundary overlap", () => {
+  let store: Store;
+  let dbPath: string;
+  const T0 = 1_700_000_000_000;
+  const HOUR = 3_600_000;
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+  });
+  afterEach(() => {
+    store.close();
+    fs.rmSync(dbPath, { force: true });
+  });
+
+  it("counts a session ACTIVE in the period even though it STARTED before it", () => {
+    // Straddles the T0+1h boundary: started T0, still active at T0+2h.
+    store.upsertSession(makeSession({ sessionId: "straddle", firstTimestamp: T0, lastTimestamp: T0 + 2 * HOUR }));
+    // `since` (start-in-period) excludes it; `activeSince` (active-in-period) includes it.
+    expect(store.getSessions({ since: T0 + HOUR }).map((s) => s.session_id)).not.toContain("straddle");
+    expect(store.getSessions({ activeSince: T0 + HOUR }).map((s) => s.session_id)).toContain("straddle");
+  });
+
+  it("excludes a session whose last activity is before the period start", () => {
+    store.upsertSession(makeSession({ sessionId: "old", firstTimestamp: T0, lastTimestamp: T0 + HOUR }));
+    expect(store.getSessions({ activeSince: T0 + 2 * HOUR }).map((s) => s.session_id)).not.toContain("old");
+  });
+
+  it("falls back to first_timestamp when last_timestamp is null", () => {
+    store.upsertSession(makeSession({ sessionId: "nolast", firstTimestamp: T0 + 3 * HOUR, lastTimestamp: null }));
+    expect(store.getSessions({ activeSince: T0 + HOUR }).map((s) => s.session_id)).toContain("nolast");
+    expect(store.getSessions({ activeSince: T0 + 5 * HOUR }).map((s) => s.session_id)).not.toContain("nolast");
+  });
+});
+
 describe("buildDashboard — empty store", () => {
   let store: Store;
   let dbPath: string;
