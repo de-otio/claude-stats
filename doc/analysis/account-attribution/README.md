@@ -58,6 +58,11 @@ every "present / absent / constant" claim was verified, not assumed.
    correction:** the CLI and the IDE extension log in independently and can be on
    different accounts at once; the extension's account is not on disk. Scopes the
    whole method to "per surface."
+8. [Manual account labelling (historical split)](08-manual-labelling.md) —
+   implementation plan for the `override` source: paint a date range (optionally
+   project-scoped) onto an account to split a **multi-account history** that
+   inference cannot (the observation timeline is forward-only; single-account
+   backfill abstains once ≥2 accounts are seen).
 
 ## TL;DR verdict
 
