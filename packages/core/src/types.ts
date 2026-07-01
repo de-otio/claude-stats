@@ -267,6 +267,45 @@ export interface AccountRecord {
   lastObservedAt: number | null;
 }
 
+// ─── Cost-ownership rules (doc 10) ───────────────────────────────────────────
+// A per-project COST policy: which subscription owns a project's spend,
+// regardless of which account was logged in. `split` = no owner; defer to the
+// measured account so cost divides by actual usage. See
+// doc/analysis/account-attribution/10-cost-ownership-guided-classification.md.
+
+/** Target of an owner rule: a specific account, or "split by actual usage". */
+export type OwnerTarget =
+  | { kind: "account"; accountUuid: string }
+  | { kind: "split" };
+
+/**
+ * A durable owner rule. Matches a session when `pathGlob` matches its
+ * project_path OR `remoteGlob` matches the parsed owner of its repo_url. At
+ * least one matcher is non-null (enforced at write time). Stored in the local
+ * `account_owner_rules` table (never in the repo).
+ */
+export interface OwnerRule {
+  id: number;
+  pathGlob: string | null;
+  remoteGlob: string | null;
+  target: OwnerTarget;
+  createdAt: number;
+}
+
+/** A cost-ranked cluster of projects for the guided classifier. */
+export interface ProjectCluster {
+  /** Stable identity of the cluster (the shared path root or remote owner). */
+  key: string;
+  kind: "path" | "remote";
+  /** Human label (the path root or `host/org`). */
+  label: string;
+  projectPaths: string[];
+  sessionCount: number;
+  estimatedCost: number;
+  /** A matcher that would classify the whole cluster in one rule. */
+  suggestedMatcher: { pathGlob?: string; remoteGlob?: string };
+}
+
 // ─── Parse errors / quarantine ───────────────────────────────────────────────
 
 export interface ParseError {

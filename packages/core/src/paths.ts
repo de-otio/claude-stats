@@ -26,14 +26,17 @@ export const paths = {
   /** ~/.claude-stats/ — tool's own storage, separate from Claude Code's directory */
   statsDir: path.join(home, ".claude-stats"),
 
-  /** ~/.claude-stats/stats.db */
-  statsDb: path.join(home, ".claude-stats", "stats.db"),
+  /** ~/.claude-stats/stats.db — override with CLAUDE_STATS_DB (tests / a
+   *  disposable exercise DB) so tooling never has to touch the live DB. */
+  statsDb: process.env.CLAUDE_STATS_DB && process.env.CLAUDE_STATS_DB.length > 0
+    ? process.env.CLAUDE_STATS_DB
+    : path.join(home, ".claude-stats", "stats.db"),
 
   /** ~/.claude-stats/quarantine/ */
   quarantineDir: path.join(home, ".claude-stats", "quarantine"),
 
-  /** ~/.claude-stats/config.toml */
-  configFile: path.join(home, ".claude-stats", "config.toml"),
+  /** ~/.claude-stats/config.json (config.ts is the authoritative loader) */
+  configFile: path.join(home, ".claude-stats", "config.json"),
 
   /** ~/.claude.json — Claude Code's main config (account info, OAuth) */
   claudeConfigFile: path.join(home, ".claude.json"),

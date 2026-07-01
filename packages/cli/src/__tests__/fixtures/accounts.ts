@@ -7,7 +7,7 @@
  * import their account/observation/session shapes from this module so the
  * confidentiality grep gate stays green.
  */
-import type { AccountObservation, AccountRecord } from "@claude-stats/core/types";
+import type { AccountObservation, AccountRecord, OwnerRule } from "@claude-stats/core/types";
 import type { SessionRow } from "../../store/index.js";
 
 // ─── Account UUIDs (placeholder) ──────────────────────────────────────────────
@@ -129,3 +129,25 @@ export const sampleVscodeSession: SessionRow = makeSessionRow({
   session_id: "00000000-0000-0000-0000-0000000000v1",
   entrypoint: "claude-vscode",
 });
+
+// ─── Cost-ownership rule fixtures (placeholder) ───────────────────────────────
+// Globs use the repo's placeholder path convention (/home/user/…) and a
+// placeholder git host (github.com/example-org). `~` is expanded at rule-creation
+// in the CLI, so stored/fixture globs are always concrete.
+
+export const PERSONAL_PATH_GLOB = "/home/user/personal/**";
+export const WORK_PATH_GLOB = "/home/user/work/**";
+export const PERSONAL_REMOTE_GLOB = "github.com/example-org/*";
+export const WORK_REMOTE_GLOB = "gitlab.example.com/*";
+
+/** A minimal OwnerRule; spread + override per test. Deterministic (fixed id/time). */
+export function makeOwnerRule(overrides: Partial<OwnerRule> = {}): OwnerRule {
+  return {
+    id: 1,
+    pathGlob: PERSONAL_PATH_GLOB,
+    remoteGlob: null,
+    target: { kind: "account", accountUuid: ACCOUNT_A_UUID },
+    createdAt: 1_700_000_000_000,
+    ...overrides,
+  };
+}

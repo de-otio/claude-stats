@@ -19,10 +19,12 @@ import type {
   UsageWindow,
   AccountObservation,
   AccountRecord,
+  OwnerRule,
+  OwnerTarget,
 } from "@claude-stats/core/types";
 import { estimateCost } from "@claude-stats/core/pricing";
 
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 15;
 
 export class Store {
   private db: DatabaseSync;
@@ -69,6 +71,7 @@ export class Store {
     if (current < 12) this.migrateToV12();
     if (current < 13) this.migrateToV13();
     if (current < 14) this.migrateToV14();
+    if (current < 15) this.migrateToV15();
 
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
@@ -387,6 +390,24 @@ export class Store {
       this.db.exec("ROLLBACK");
       throw err;
     }
+  }
+
+  /**
+   * V15 — cost-ownership rules (doc 10). Durable per-project cost policy: which
+   * subscription owns a project's spend. The SINGLE source of truth for owner
+   * rules (no config-file storage). Additive + idempotent, zero backfill.
+   */
+  private migrateToV15(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS account_owner_rules (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        path_glob   TEXT,
+        remote_glob TEXT,
+        target      TEXT NOT NULL,
+        created_at  INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_owner_rules_created ON account_owner_rules (created_at);
+    `);
   }
 
   /**
@@ -2275,6 +2296,206 @@ export class Store {
     return { topSessions, topMessages, byModel, byProject, cacheEfficiency, subagentCosts };
   }
 
+  // ─── Cost-ownership rules (V15) ─────────────────────────────────────────────
+
+  /**
+   * Validate and insert an owner rule. Enforces:
+   *   - at least one of pathGlob/remoteGlob is non-null
+   *   - neither glob is all-wildcards (strip "*" and "/" — if empty, reject)
+   *   - target is either {kind:'split'} or {kind:'account', accountUuid} where
+   *     the UUID matches the expected format AND exists in the accounts table
+   *   - total rule count does not exceed 200
+   * Returns the created OwnerRule (with id + createdAt from DB).
+   */
+  createOwnerRule(
+    input: { pathGlob: string | null; remoteGlob: string | null; target: OwnerTarget },
+    now: () => number,
+  ): OwnerRule {
+    // ─── validation ───────────────────────────────────────────────────────────
+
+    if (input.pathGlob === null && input.remoteGlob === null) {
+      throw new Error("At least one of pathGlob or remoteGlob must be non-null");
+    }
+
+    // Helper: reject a glob whose non-wildcard, non-separator content is empty
+    const isAllWildcard = (glob: string): boolean => {
+      return glob.replace(/[*/]/g, "").length === 0;
+    };
+
+    if (input.pathGlob !== null && isAllWildcard(input.pathGlob)) {
+      throw new Error(
+        `pathGlob "${input.pathGlob}" is too broad (only wildcards/slashes) — it would match everything`,
+      );
+    }
+    if (input.remoteGlob !== null && isAllWildcard(input.remoteGlob)) {
+      throw new Error(
+        `remoteGlob "${input.remoteGlob}" is too broad (only wildcards/slashes) — it would match everything`,
+      );
+    }
+
+    // Validate target
+    if (input.target.kind === "account") {
+      const uuid = input.target.accountUuid;
+      if (!/^[0-9a-f-]{8,64}$/i.test(uuid)) {
+        throw new Error(
+          `target.accountUuid "${uuid}" does not match expected UUID format (^[0-9a-f-]{8,64}$)`,
+        );
+      }
+      const accountRow = this.db
+        .prepare("SELECT 1 FROM accounts WHERE account_uuid = ?")
+        .get(uuid);
+      if (!accountRow) {
+        throw new Error(`target.accountUuid "${uuid}" does not exist in the accounts table`);
+      }
+    }
+    // else: target.kind === 'split' — valid, no further checks needed
+
+    // Cap at 200 rules
+    const countRow = this.db
+      .prepare("SELECT COUNT(*) AS c FROM account_owner_rules")
+      .get() as { c: number };
+    if (countRow.c >= 200) {
+      throw new Error(
+        `Cannot create owner rule: limit of 200 rules reached (currently ${countRow.c}). Delete an existing rule first.`,
+      );
+    }
+
+    // Serialize target to storage form
+    const targetStr = input.target.kind === "split" ? "split" : input.target.accountUuid;
+    const createdAt = now();
+
+    const result = this.db
+      .prepare(`
+        INSERT INTO account_owner_rules (path_glob, remote_glob, target, created_at)
+        VALUES (?, ?, ?, ?)
+      `)
+      .run(input.pathGlob, input.remoteGlob, targetStr, createdAt);
+
+    const id = Number(result.lastInsertRowid);
+    return {
+      id,
+      pathGlob: input.pathGlob,
+      remoteGlob: input.remoteGlob,
+      target: input.target,
+      createdAt,
+    };
+  }
+
+  /** Read all owner rules, parsing the stored target string to OwnerTarget. */
+  listOwnerRules(): OwnerRule[] {
+    const rows = this.db
+      .prepare(
+        "SELECT id, path_glob, remote_glob, target, created_at FROM account_owner_rules ORDER BY created_at ASC, id ASC",
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r["id"] as number,
+      pathGlob: r["path_glob"] as string | null,
+      remoteGlob: r["remote_glob"] as string | null,
+      target: ownerTargetFromString(r["target"] as string),
+      createdAt: r["created_at"] as number,
+    }));
+  }
+
+  /** Delete an owner rule by id. */
+  deleteOwnerRule(id: number): void {
+    this.db.prepare("DELETE FROM account_owner_rules WHERE id = ?").run(id);
+  }
+
+  /**
+   * Apply an explicit owner override to sessions. UNCONDITIONAL — an explicit
+   * policy outranks all inference and even otel/telemetry/anchor sources. Runs
+   * all updates in a single transaction with ONE prepared statement bound per row.
+   * The organization_uuid is COALESCE'd from the target account (never nulled).
+   * Returns the number of rows changed.
+   */
+  applyOwnerOverride(
+    mapping: Map<string, string> /* sessionId -> accountUuid */,
+    now: () => number,
+  ): number {
+    if (mapping.size === 0) return 0;
+    const stmt = this.db.prepare(`
+      UPDATE sessions SET
+        account_uuid       = ?,
+        organization_uuid  = COALESCE(
+          (SELECT organization_uuid FROM accounts WHERE account_uuid = ?),
+          organization_uuid
+        ),
+        account_source     = 'override',
+        account_confidence = 'authoritative',
+        updated_at         = ?
+      WHERE session_id = ?
+    `);
+    let changed = 0;
+    this.transaction(() => {
+      const ts = now();
+      for (const [sessionId, accountUuid] of mapping) {
+        const result = stmt.run(accountUuid, accountUuid, ts, sessionId);
+        changed += Number(result.changes);
+      }
+    });
+    return changed;
+  }
+
+  /**
+   * Clear override attribution for a specific set of sessions. Only clears rows
+   * whose account_source='override' — otel/telemetry/anchor rows are preserved.
+   * This is the rule-scoped revert path: the caller passes the matched sessionIds
+   * for the rule being cleared. Returns the number of rows changed.
+   */
+  clearOverridesForRule(sessionIds: string[]): number {
+    if (sessionIds.length === 0) return 0;
+    let changed = 0;
+    const stmt = this.db.prepare(`
+      UPDATE sessions SET
+        account_uuid       = NULL,
+        organization_uuid  = NULL,
+        account_source     = NULL,
+        account_confidence = NULL
+      WHERE session_id = ? AND account_source = 'override'
+    `);
+    for (const sessionId of sessionIds) {
+      const result = stmt.run(sessionId);
+      changed += Number(result.changes);
+    }
+    return changed;
+  }
+
+  /**
+   * Compute estimated cost per session. Reuses getMessageTotalsBySession and
+   * estimateCost. When sessionIds is provided, restricts to those sessions;
+   * otherwise reads all sessions (by fetching all distinct session IDs from the
+   * messages table).
+   */
+  getCostBySession(sessionIds?: string[]): Map<string, number> {
+    let ids: string[];
+    if (sessionIds !== undefined) {
+      ids = sessionIds;
+    } else {
+      // Read all session IDs that have messages
+      const rows = this.db
+        .prepare("SELECT DISTINCT session_id FROM messages")
+        .all() as Array<{ session_id: string }>;
+      ids = rows.map((r) => r.session_id);
+    }
+    if (ids.length === 0) return new Map();
+
+    const totals = this.getMessageTotalsBySession(ids);
+    const costMap = new Map<string, number>();
+    for (const row of totals) {
+      const current = costMap.get(row.session_id) ?? 0;
+      const { cost } = estimateCost(
+        row.model,
+        row.input_tokens,
+        row.output_tokens,
+        row.cache_read_tokens,
+        row.cache_creation_tokens,
+      );
+      costMap.set(row.session_id, current + cost);
+    }
+    return costMap;
+  }
+
   // ─── MCP server token breakdown ─────────────────────────────────────────────
 
   /**
@@ -2320,6 +2541,15 @@ export function validateTag(tag: string): string {
   return normalized;
 }
 
+/**
+ * Parse the stored target string back to a typed OwnerTarget.
+ * The DB stores 'split' or the raw account UUID.
+ */
+export function ownerTargetFromString(stored: string): OwnerTarget {
+  if (stored === "split") return { kind: "split" };
+  return { kind: "account", accountUuid: stored };
+}
+
 export interface SessionRow {
   session_id: string;
   project_path: string;
@@ -2344,6 +2574,9 @@ export interface SessionRow {
   account_uuid: string | null;
   organization_uuid: string | null;
   subscription_type: string | null;
+  /** Attribution provenance (V13 columns; present at runtime via SELECT *). */
+  account_source?: string | null;
+  account_confidence?: string | null;
   thinking_blocks: number;
   parent_session_id: string | null;
   is_subagent: number;

@@ -18,6 +18,7 @@ import { buildCliIntervals } from "../attribution/intervals.js";
 import { assignAccounts } from "../attribution/assign.js";
 import type { ExternalAccountInfo } from "../attribution/assign.js";
 import { collectLiveSessionPins } from "../attribution/anchors.js";
+import { resolveOwner } from "../attribution/ownership.js";
 
 export interface CollectOptions {
   verbose?: boolean;
@@ -32,6 +33,12 @@ export interface CollectResult {
   accountsMatched: number;
   /** Messages stamped with a straddle-split account this run (see assign.ts). */
   messagesStamped: number;
+  /**
+   * Sessions stamped with account_source='override' from owner rules this run.
+   * Freshly-collected sessions under an owned project path or remote are
+   * overridden immediately so they appear attributed without a full reattribute.
+   */
+  ownerOverrides: number;
   parseErrors: number;
   schemaChanges: string[];
 }
@@ -49,6 +56,7 @@ export async function collect(
     messagesUpserted: 0,
     accountsMatched: 0,
     messagesStamped: 0,
+    ownerOverrides: 0,
     parseErrors: 0,
     schemaChanges: [],
   };
@@ -293,6 +301,29 @@ export async function collect(
     // recompute); the bounded ranges make re-applying on a later collect
     // idempotent for unchanged intervals.
     result.messagesStamped = store.applyMessageOverrides(messageOverrides);
+
+    // Phase-3 (F) seam 2 — apply owner overrides for freshly-collected sessions.
+    // Load the current owner rules and stamp each run session whose project path
+    // or remote matches an account-target rule. applyOwnerOverride is
+    // unconditional (override outranks otel/telemetry/anchor), so it runs after
+    // applyAttribution. split-target and unmatched sessions keep their inferred
+    // source. applyOwnerOverride opens its own transaction internally.
+    const ownerRules = store.listOwnerRules();
+    if (ownerRules.length > 0) {
+      const ownerOverrideMap = new Map<string, string>(); // sessionId → accountUuid
+      for (const s of runSessions) {
+        const target = resolveOwner(
+          { projectPath: s.project_path, repoUrl: s.repo_url ?? null },
+          ownerRules,
+        );
+        if (target !== null && target.kind === "account") {
+          ownerOverrideMap.set(s.session_id, target.accountUuid);
+        }
+      }
+      if (ownerOverrideMap.size > 0) {
+        result.ownerOverrides = store.applyOwnerOverride(ownerOverrideMap, now);
+      }
+    }
   }
 
   // Schema check: sample stored sessions per version
