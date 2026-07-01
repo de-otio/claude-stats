@@ -4,6 +4,12 @@
 follow-ups (backfill #29, anchor pins #31). **Precedence rank:** `override` — the
 one rank the engine already reserves but does not yet produce.
 
+> **Role:** hand-labelling ~960 sessions is impractical, so this is the **seed /
+> fallback** for the automatic **seed-and-propagate** method in doc
+> [09](09-historical-split-without-labelling.md) — used at *project* granularity
+> for the residual projects propagation can't resolve, not for the bulk. Read 09
+> first.
+
 ## Why
 
 The observation timeline attributes **forward** usage; single-account backfill
