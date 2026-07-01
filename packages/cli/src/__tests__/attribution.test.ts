@@ -247,10 +247,13 @@ describe("assignAccounts — surface allowlist", () => {
     expect(r.assignments.get("x")).toMatchObject({ source: "unknown", confidence: "none" });
   });
 
-  it("CLI surface but session precedes first interval → unknown", () => {
+  it("CLI surface but session precedes first interval → backfill (single account observed)", () => {
+    // ivs has exactly one observed account, so the single-account fast-path
+    // backfills a pre-observation CLI session (medium). See the dedicated
+    // "assignAccounts — backfill" describe for the multi-account → unknown case.
     const s = makeSessionRow({ session_id: "x", entrypoint: "cli", first_timestamp: T0 - HOUR });
     const r = assignAccounts({ sessions: [s], intervals: ivs, telemetryMap: new Map() });
-    expect(r.assignments.get("x")).toMatchObject({ source: "unknown", confidence: "none" });
+    expect(r.assignments.get("x")).toMatchObject({ source: "backfill", confidence: "medium", accountUuid: ACCOUNT_A_UUID });
   });
 });
 
@@ -323,6 +326,62 @@ describe("assignAccounts — straddle", () => {
     expect(r.messageOverrides).toEqual([
       { sessionId: "x", boundaryFrom: T0 + 2 * HOUR, boundaryTo: T0 + 4 * HOUR, accountUuid: ACCOUNT_B_UUID },
     ]);
+  });
+});
+
+// ── backfill: single-account fast-path for pre-observation CLI sessions ────────
+
+describe("assignAccounts — backfill (single-account fast-path)", () => {
+  const oneAccount = buildCliIntervals([obs(ACCOUNT_A_UUID, T0)]); // [T0, ∞) → A
+  const twoAccounts = buildCliIntervals([
+    obs(ACCOUNT_A_UUID, T0),
+    obs(ACCOUNT_B_UUID, T0 + 2 * HOUR),
+  ]);
+
+  /** A CLI session whose whole span PREDATES the first observation. */
+  function preObsSession(id: string, entrypoint = "cli"): SessionRow {
+    return makeSessionRow({
+      session_id: id,
+      entrypoint,
+      first_timestamp: T0 - 10 * HOUR,
+      last_timestamp: T0 - 9 * HOUR,
+    });
+  }
+
+  it("backfills a pre-observation CLI session to the only account (medium)", () => {
+    const r = assignAccounts({ sessions: [preObsSession("old")], intervals: oneAccount, telemetryMap: new Map() });
+    expect(r.assignments.get("old")).toMatchObject({
+      source: "backfill",
+      confidence: "medium",
+      accountUuid: ACCOUNT_A_UUID,
+    });
+  });
+
+  it("does NOT backfill when two accounts have been observed (→ unknown)", () => {
+    const r = assignAccounts({ sessions: [preObsSession("old")], intervals: twoAccounts, telemetryMap: new Map() });
+    expect(r.assignments.get("old")).toMatchObject({ source: "unknown", confidence: "none" });
+  });
+
+  it("does NOT backfill a non-CLI surface (→ unknown)", () => {
+    const r = assignAccounts({ sessions: [preObsSession("vs", "claude-vscode")], intervals: oneAccount, telemetryMap: new Map() });
+    expect(r.assignments.get("vs")).toMatchObject({ source: "unknown", confidence: "none" });
+  });
+
+  it("does NOT backfill when there are no observations at all (→ unknown)", () => {
+    const r = assignAccounts({ sessions: [preObsSession("orphan")], intervals: [], telemetryMap: new Map() });
+    expect(r.assignments.get("orphan")).toMatchObject({ source: "unknown", confidence: "none" });
+  });
+
+  it("prefers the covering interval over backfill for in-range sessions", () => {
+    const s = makeSessionRow({ session_id: "recent", entrypoint: "cli", first_timestamp: T0 + HOUR, last_timestamp: T0 + 2 * HOUR });
+    const r = assignAccounts({ sessions: [s], intervals: oneAccount, telemetryMap: new Map() });
+    expect(r.assignments.get("recent")).toMatchObject({ source: "observation", confidence: "high" });
+  });
+
+  it("telemetry still outranks backfill for a pre-observation session", () => {
+    const tel = new Map([["old", { accountUuid: ACCOUNT_B_UUID, organizationUuid: null, subscriptionType: null }]]);
+    const r = assignAccounts({ sessions: [preObsSession("old")], intervals: oneAccount, telemetryMap: tel });
+    expect(r.assignments.get("old")).toMatchObject({ source: "telemetry", accountUuid: ACCOUNT_B_UUID });
   });
 });
 
@@ -612,6 +671,30 @@ describe("reattribute", () => {
 
       // backup cleanup
       fs.rmSync(summary.backupPath!, { force: true });
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
+
+  it("backfills a pre-observation CLI session end-to-end (single account)", () => {
+    const dbPath = tmpDbPath();
+    const store = new Store(dbPath);
+    const backupTs = T0 + HOUR;
+    try {
+      store.recordAccountObservation(obs(ACCOUNT_A_UUID, T0));
+      seedSession(store, "old", "cli", T0 - 10 * HOUR); // predates the observation
+      seedSession(store, "new", "cli", T0 + HOUR);       // covered by the interval
+
+      const summary = reattribute(store, { dryRun: false, dbPath }, fixedClock(backupTs));
+      expect(summary.bySource.backfill).toBe(1);    // the pre-observation session
+      expect(summary.bySource.observation).toBe(1); // the in-range session
+
+      const rows = store.getSessions({ includeCI: true, includeDeleted: true });
+      expect(rows.find((s) => s.session_id === "old")!.account_uuid).toBe(ACCOUNT_A_UUID);
+      expect(rows.find((s) => s.session_id === "new")!.account_uuid).toBe(ACCOUNT_A_UUID);
+
+      if (summary.backupPath) fs.rmSync(summary.backupPath, { force: true });
     } finally {
       store.close();
       fs.rmSync(dbPath, { force: true });
