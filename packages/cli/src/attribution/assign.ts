@@ -17,8 +17,13 @@
  * Straddle: when a CLI session's [first_timestamp, last_timestamp] crosses an
  * interval boundary, the SESSION is attributed to the interval covering its
  * first_timestamp (confidence 'high'), and per-message overrides are returned
- * for the boundary so the caller can stamp `messages.account_uuid` for the
- * messages that fall in the later interval.
+ * — one per later interval the session reaches that belongs to a DIFFERENT
+ * account — so the caller can stamp `messages.account_uuid` for the messages
+ * that fall in that interval. Each override is a half-open range
+ * `[boundaryFrom, boundaryTo)`; because the ranges mirror the disjoint
+ * intervals they never overlap, so the caller can apply them in any order and a
+ * re-entry to the session's own account is simply not emitted (those messages
+ * keep the session-level account).
  */
 import { CLI_SURFACES } from "@claude-stats/core/types";
 import type { AccountInterval } from "./intervals.js";
@@ -45,14 +50,18 @@ export interface Assignment {
 
 /**
  * A per-message account override produced by a straddling CLI session: messages
- * with `timestamp >= boundaryFrom` belong to `accountUuid` (the next interval),
- * not the session-level account. The caller resolves the concrete message uuids
- * (this module is session/interval-level and message-id agnostic).
+ * whose `timestamp` falls in the half-open range `[boundaryFrom, boundaryTo)`
+ * belong to `accountUuid` (a later interval), not the session-level account.
+ * The range mirrors one disjoint CLI interval, so overrides for a session never
+ * overlap. The caller resolves the concrete message uuids (this module is
+ * session/interval-level and message-id agnostic).
  */
 export interface MessageOverride {
   sessionId: string;
-  /** Messages at/after this timestamp (epoch-ms) get `accountUuid`. */
+  /** Inclusive start (epoch-ms): messages at/after this get `accountUuid`. */
   boundaryFrom: number;
+  /** Exclusive end (epoch-ms); `Infinity` for the still-open final interval. */
+  boundaryTo: number;
   accountUuid: string;
 }
 
@@ -170,12 +179,15 @@ export function assignAccounts(input: AssignInput): AssignResult {
 /**
  * Emit per-message overrides for a CLI session that straddles one or more
  * interval boundaries past the interval covering its first_timestamp. For each
- * later interval that overlaps [iv.end, session.last_timestamp], messages at or
- * after that interval's start belong to that interval's account.
+ * later interval the session reaches that belongs to a DIFFERENT account, emit
+ * one override spanning exactly that interval's half-open range
+ * `[iv.start, iv.end)` — so messages whose timestamp falls in it take that
+ * interval's account.
  *
- * We emit ONE override per distinct later account boundary the session reaches;
- * the caller applies them in boundary order (a message takes the account of the
- * latest boundary it is at/after).
+ * Because the ranges mirror the disjoint intervals they never overlap, the
+ * caller can apply them in any order. A later re-entry to the session's OWN
+ * account is deliberately NOT emitted: those messages simply keep the
+ * session-level account (the bounded earlier override does not bleed into them).
  */
 function collectStraddleOverrides(
   intervals: AccountInterval[],
@@ -196,6 +208,7 @@ function collectStraddleOverrides(
     out.push({
       sessionId: session.session_id,
       boundaryFrom: iv.start,
+      boundaryTo: iv.end,
       accountUuid: iv.accountUuid,
     });
   }
