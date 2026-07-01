@@ -72,6 +72,8 @@ export interface AssignInput {
   telemetryMap: Map<string, ExternalAccountInfo>;
   /** sessionId → otel account (precedence `otel`, authoritative). Optional. */
   otelMap?: Map<string, ExternalAccountInfo>;
+  /** sessionId → anchor pin (precedence `anchor`, above observation). Optional. */
+  anchorMap?: Map<string, { accountUuid: string }>;
 }
 
 export interface AssignResult {
@@ -91,23 +93,27 @@ function isCliSurface(entrypoint: string | null): boolean {
  * For each session, the strongest available signal wins:
  *   1. otel       (authoritative)  — any surface
  *   2. telemetry  (high)           — any surface
- *   3. observation (high)          — CLI surfaces ONLY, from the interval
+ *   3. anchor     (high)           — CLI surfaces ONLY, from a live-session pin
+ *                                     (doc 03 §B); overrides the interval choice
+ *   4. observation (high)          — CLI surfaces ONLY, from the interval
  *                                     covering first_timestamp
- *   4. backfill   (medium)         — CLI surfaces ONLY, when the session
+ *   5. backfill   (medium)         — CLI surfaces ONLY, when the session
  *                                     PREDATES the first observation and exactly
  *                                     one CLI account has ever been observed
  *                                     (single-account fast-path, doc 03 §D.1)
- *   5. unknown    (none)           — fallthrough
+ *   6. unknown    (none)           — fallthrough
  *
- * `override` and `anchor` ranks exist in the precedence enum but are not
- * produced here (override = manual user action handled elsewhere; anchor =
- * separate pin signal). They are still honoured by the store's monotonic
- * `applyAttribution` guard, which also lets a later observation/telemetry/otel
- * pass UPGRADE a `backfill`/medium row (confidence ∈ {low,medium} is updatable).
+ * The `override` rank exists in the precedence enum but is not produced here
+ * (manual user action, handled elsewhere). All ranks are honoured by the store's
+ * monotonic `applyAttribution` guard, which also lets a later
+ * observation/telemetry/otel pass UPGRADE a `backfill`/medium row (confidence ∈
+ * {low,medium} is updatable). A pinned session is attributed WHOLE (no straddle
+ * split): a live-session pin is a point-in-time ground truth for the session.
  */
 export function assignAccounts(input: AssignInput): AssignResult {
   const { sessions, intervals, telemetryMap } = input;
   const otelMap = input.otelMap;
+  const anchorMap = input.anchorMap;
 
   const assignments = new Map<string, Assignment>();
   const messageOverrides: MessageOverride[] = [];
@@ -146,7 +152,23 @@ export function assignAccounts(input: AssignInput): AssignResult {
       continue;
     }
 
-    // 3. observation interval — CLI SURFACES ONLY (allowlist).
+    // 3. anchor pin — CLI SURFACES ONLY. A live-session pin is exact ground
+    // truth that this session ran under `accountUuid`; it overrides the interval
+    // choice (sharpening the boundary within the observation lag). Surface-gated
+    // for defence-in-depth (the writer only pins CLI-entrypoint sessions).
+    const pin = anchorMap?.get(sessionId);
+    if (pin && isCliSurface(s.entrypoint)) {
+      assignments.set(sessionId, {
+        accountUuid: pin.accountUuid,
+        organizationUuid: null,
+        subscriptionType: null,
+        source: "anchor",
+        confidence: "high",
+      });
+      continue;
+    }
+
+    // 4. observation interval — CLI SURFACES ONLY (allowlist).
     if (isCliSurface(s.entrypoint) && s.first_timestamp != null) {
       const iv = intervalAt(intervals, s.first_timestamp);
       if (iv) {
@@ -169,7 +191,7 @@ export function assignAccounts(input: AssignInput): AssignResult {
         continue;
       }
 
-      // 4. backfill — CLI surface but NO covering interval: the session predates
+      // 5. backfill — CLI surface but NO covering interval: the session predates
       // the first observation. Single-account fast-path (doc 03 §D.1): if only
       // ONE CLI account has ever been observed, attribute pre-observation CLI
       // usage to it at MEDIUM confidence (we cannot confirm the machine was
@@ -189,7 +211,7 @@ export function assignAccounts(input: AssignInput): AssignResult {
       // CLI surface, predates observations, and ≥2 accounts seen → unknown.
     }
 
-    // 5. unknown — fallthrough. Non-CLI surfaces with no otel/telemetry land
+    // 6. unknown — fallthrough. Non-CLI surfaces with no otel/telemetry land
     // here; they NEVER get the CLI interval.
     assignments.set(sessionId, {
       accountUuid: "",
