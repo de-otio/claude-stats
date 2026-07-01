@@ -21,6 +21,7 @@
     "accountCurrent": "(actual)"
   },
   "summary": {
+    "emptyPeriodHint": "No sessions in this period yet — switch Period to Week or All to see your data.",
     "sessions": "Sesiones",
     "prompts": "Prompts",
     "totalInput": "Entrada total",

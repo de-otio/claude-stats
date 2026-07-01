@@ -21,6 +21,7 @@
     "accountCurrent": "(当前)"
   },
   "summary": {
+    "emptyPeriodHint": "No sessions in this period yet — switch Period to Week or All to see your data.",
     "sessions": "会话",
     "prompts": "提示词",
     "totalInput": "总输入",

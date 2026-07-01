@@ -21,6 +21,7 @@
     "accountCurrent": "(поточний)"
   },
   "summary": {
+    "emptyPeriodHint": "No sessions in this period yet — switch Period to Week or All to see your data.",
     "sessions": "Сесії",
     "prompts": "Промпти",
     "totalInput": "Усього на вхід",
