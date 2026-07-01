@@ -1244,6 +1244,16 @@ export class Store {
     entrypoint?: string;
     tag?: string;
     since?: number;
+    /**
+     * Include sessions that were ACTIVE at/after this epoch-ms — i.e. their last
+     * message lands in the period even if the session STARTED before it. Filters
+     * on `COALESCE(last_timestamp, first_timestamp) >= activeSince`, so a session
+     * straddling the period boundary (e.g. one running across midnight) is
+     * counted. Use this instead of `since` when the count must agree with
+     * message-timestamp-filtered metrics (cost/energy). Mutually complementary
+     * with `since` (start-in-period); pass one or the other, not both.
+     */
+    activeSince?: number;
     until?: number;
     includeCI?: boolean;
     includeDeleted?: boolean;
@@ -1277,6 +1287,13 @@ export class Store {
     if (filters.since !== undefined) {
       conditions.push("first_timestamp >= ?");
       params.push(filters.since);
+    }
+    if (filters.activeSince !== undefined) {
+      // Session overlaps [activeSince, ∞): its last activity is at/after the
+      // period start. COALESCE so sessions with a null last_timestamp fall back
+      // to their start time rather than being dropped.
+      conditions.push("COALESCE(last_timestamp, first_timestamp) >= ?");
+      params.push(filters.activeSince);
     }
     if (filters.until !== undefined) {
       conditions.push("first_timestamp < ?");

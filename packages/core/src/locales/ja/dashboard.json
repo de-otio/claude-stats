@@ -21,6 +21,7 @@
     "accountCurrent": "(現在)"
   },
   "summary": {
+    "emptyPeriodHint": "No sessions in this period yet — switch Period to Week or All to see your data.",
     "sessions": "セッション",
     "prompts": "プロンプト",
     "totalInput": "入力合計",
