@@ -474,6 +474,11 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <span style="font-size:0.7rem; color:#888;">${t("dashboard:toolbar.period")} </span>
         <span style="font-size:0.75rem; color:#a0c4ff;">${data.sinceIso ? t("dashboard:summary.periodRange", { start: data.sinceIso }) : t("dashboard:summary.allTime")}</span>
       </div>
+      ${data.summary.sessions === 0 ? `
+      <div class="summary-card" style="grid-column: 1 / -1; text-align: left; padding: 0.5rem 0.75rem; border-color:#e0a458; background:rgba(224,164,88,0.08);">
+        <span style="font-size:0.75rem; color:#e0a458;">${t("dashboard:summary.emptyPeriodHint")}</span>
+      </div>
+      ` : ""}
       <div class="summary-card">
         <div class="label">${t("dashboard:summary.sessions")}</div>
         <div class="value">${data.summary.sessions}</div>

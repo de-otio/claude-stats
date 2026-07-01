@@ -391,12 +391,17 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   const tz = opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const since = periodStart(opts.period, tz);
 
+  // Include sessions ACTIVE in the period (last activity at/after `since`), not
+  // just those that STARTED in it. A session running across the period boundary
+  // (e.g. one straddling midnight into a new day/month) contributes cost, energy
+  // and active-hours — all filtered by MESSAGE timestamp below — so it must be
+  // counted here too, else the summary shows "0 sessions" beside a non-zero cost.
   const rows = store.getSessions({
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
     accountUuid: opts.accountUuid,
     entrypoint: opts.entrypoint,
-    since: since > 0 ? since : undefined,
+    activeSince: since > 0 ? since : undefined,
     includeCI: opts.includeCI ?? false,
   });
 
