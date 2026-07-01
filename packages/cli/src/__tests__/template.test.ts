@@ -1013,4 +1013,42 @@ describe("renderDashboard", () => {
       expect(html).not.toContain('id="signals-toggle"');
     });
   });
+
+  // The dashboard's client-side scripts live inside a template literal, so a
+  // stray backtick or `${` silently breaks them at runtime with nothing in the
+  // Node test suite exercising the browser code. Parse every inline <script>
+  // with `new Function` (compiles without executing) so a syntax error fails
+  // here rather than in a user's webview.
+  describe("client script integrity", () => {
+    function inlineScripts(html: string): string[] {
+      const out: string[] = [];
+      const re = /<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(html)) !== null) {
+        const body = m[1] ?? "";
+        if (body.trim().length > 0) out.push(body);
+      }
+      return out;
+    }
+
+    it("every inline <script> parses as valid JavaScript", () => {
+      const html = renderDashboard(mockData, t);
+      const scripts = inlineScripts(html);
+      expect(scripts.length).toBeGreaterThan(0);
+      for (const body of scripts) {
+        // Throws on a syntax error; does not execute (no DOM needed).
+        expect(() => new Function(body)).not.toThrow();
+      }
+    });
+
+    it("renders the Classify tab button and panel", () => {
+      const html = renderDashboard(mockData, t);
+      expect(html).toContain('data-tab="classify"');
+      expect(html).toContain('id="tab-classify"');
+      expect(html).toContain('id="classify-list"');
+      expect(html).toContain('id="classify-apply"');
+      // initClassify must be wired into the tab dispatch.
+      expect(html).toContain("initClassify()");
+    });
+  });
 });

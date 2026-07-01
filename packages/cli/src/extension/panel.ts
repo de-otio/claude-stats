@@ -15,6 +15,9 @@ import { renderDashboard } from "../server/template.js";
 import { loadConfig, saveConfig, mergeConfig, buildAccountsForConfig, type Config } from "../config.js";
 import { readClaudeAccount } from "../account.js";
 import { openCorrections, type CorrectionSignature, type OutcomeValue } from "../recap/corrections.js";
+import { clusterProjects, enrichClusters, planApply, reattribute } from "../attribution/index.js";
+import type { ClassifyAssignment } from "../attribution/classify.js";
+import type { OwnerTarget } from "@claude-stats/core/types";
 import type { ReportOptions } from "../reporter/index.js";
 import type { SidebarProvider } from "./sidebar.js";
 import { t } from "./i18n.js";
@@ -130,7 +133,7 @@ export class DashboardPanel {
     }
   }
 
-  private handleMessage(msg: { command: string; period?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean }): void {
+  private handleMessage(msg: { command: string; period?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean; assignments?: unknown }): void {
     if (msg.command === "changePeriod" && msg.period) {
       this.period = msg.period as ReportOptions["period"];
       void this.refresh();
@@ -189,6 +192,112 @@ export class DashboardPanel {
       } catch {
         void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, error: t("extension:panel.errors.failedToSaveConfig") });
       }
+    } else if (msg.command === "getClusters" && msg.callbackId) {
+      this.getClusters(msg.callbackId);
+    } else if (msg.command === "applyClassification") {
+      // Fire-and-forget: apply writes rules + reattributes, then refresh()
+      // re-renders every tab with the new attribution (and re-fetches the
+      // Classify list). Errors surface as a native notification.
+      this.applyClassification(msg.assignments);
+    }
+  }
+
+  /**
+   * Load cost-ranked project clusters for the Classify panel, each enriched with
+   * its current owner target and own-rule id. Read-only. Responds on the same
+   * callbackId the webview is awaiting.
+   */
+  private getClusters(callbackId: number): void {
+    const store = new Store();
+    try {
+      const sessions = store.getSessions({ includeCI: false });
+      const costBySession = store.getCostBySession(sessions.map((s) => s.session_id));
+      const clusters = clusterProjects(
+        sessions.map((s) => ({
+          sessionId: s.session_id,
+          projectPath: s.project_path,
+          repoUrl: s.repo_url ?? null,
+        })),
+        costBySession,
+      );
+      const rules = store.listOwnerRules();
+      const enriched = enrichClusters(clusters, rules);
+      const totalCost = enriched.reduce((sum, c) => sum + c.estimatedCost, 0);
+      const classifiedCost = enriched
+        .filter((c) => c.currentTarget !== null)
+        .reduce((sum, c) => sum + c.estimatedCost, 0);
+      const accounts = buildAccountsForConfig(
+        store.listAccounts(),
+        readClaudeAccount(),
+        true,
+        store.listAccountsFull(),
+      ).map((a) => ({
+        accountUuid: a.accountUuid,
+        email: a.email ?? null,
+        planLabel: a.planLabel ?? null,
+      }));
+      void this.panel.webview.postMessage({
+        command: "clustersResult",
+        callbackId,
+        data: { clusters: enriched, accounts, totalCost, classifiedCost },
+      });
+    } catch {
+      void this.panel.webview.postMessage({
+        command: "clustersResult",
+        callbackId,
+        error: t("extension:panel.errors.failedToLoadClusters"),
+      });
+    } finally {
+      store.close();
+    }
+  }
+
+  /**
+   * Apply a batch of classification assignments. Order (mirrors the tested CLI
+   * `--clear` flow, applied globally): clear ALL stale owner overrides → run the
+   * rule CRUD plan → reattribute (re-infer + re-apply the CURRENT account rules,
+   * atomic + backed-up). A full refresh then re-renders every tab. Pre-validates
+   * account existence and the 200-rule cap so no mutation is left half-applied.
+   * Best-effort — any failure surfaces as a notification and the panel refreshes.
+   */
+  private applyClassification(assignmentsRaw: unknown): void {
+    const store = new Store();
+    try {
+      const assignments = sanitizeAssignments(assignmentsRaw);
+      if (assignments.length === 0) return;
+
+      const rules = store.listOwnerRules();
+      const plan = planApply(assignments, rules);
+
+      // Pre-validate so createOwnerRule can't throw mid-batch.
+      const known = new Set(store.listAccounts().map((a) => a.accountUuid));
+      for (const c of plan.toCreate) {
+        if (c.target.kind === "account" && !known.has(c.target.accountUuid)) {
+          throw new Error(`account ${c.target.accountUuid} not found`);
+        }
+      }
+      const finalCount = rules.length - plan.toDelete.length + plan.toCreate.length;
+      if (finalCount > 200) {
+        throw new Error(`would exceed the 200-rule limit (${finalCount})`);
+      }
+
+      store.clearAllOwnerOverrides();
+      for (const id of plan.toDelete) store.deleteOwnerRule(id);
+      for (const c of plan.toCreate) {
+        store.createOwnerRule(
+          { pathGlob: c.pathGlob, remoteGlob: c.remoteGlob, target: c.target },
+          () => Date.now(),
+        );
+      }
+      reattribute(store, { force: true, dbPath: paths.statsDb }, () => Date.now());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      void vscode.window.showErrorMessage(
+        t("extension:panel.errors.classifyFailed", { message }),
+      );
+    } finally {
+      store.close();
+      void this.refresh();
     }
   }
 
@@ -238,6 +347,48 @@ export class DashboardPanel {
     DashboardPanel.instance = undefined;
     for (const d of this.disposables) d.dispose();
   }
+}
+
+/**
+ * Validate the round-tripped assignments payload from the webview into a typed
+ * ClassifyAssignment[]. Malformed items are dropped. createOwnerRule re-validates
+ * globs, target format, and account existence downstream, so this only enforces
+ * the shape/types needed before that.
+ */
+function sanitizeAssignments(raw: unknown): ClassifyAssignment[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ClassifyAssignment[] = [];
+  for (const item of raw) {
+    if (item == null || typeof item !== "object") continue;
+    const rec = item as { suggestedMatcher?: unknown; target?: unknown };
+    const sm = rec.suggestedMatcher;
+    if (sm == null || typeof sm !== "object") continue;
+    const smRec = sm as { pathGlob?: unknown; remoteGlob?: unknown };
+    const pathGlob = typeof smRec.pathGlob === "string" ? smRec.pathGlob : undefined;
+    const remoteGlob = typeof smRec.remoteGlob === "string" ? smRec.remoteGlob : undefined;
+    if (pathGlob === undefined && remoteGlob === undefined) continue;
+    const target = sanitizeTarget(rec.target);
+    if (target === "invalid") continue;
+    const matcher: { pathGlob?: string; remoteGlob?: string } = {};
+    if (pathGlob !== undefined) matcher.pathGlob = pathGlob;
+    if (remoteGlob !== undefined) matcher.remoteGlob = remoteGlob;
+    out.push({ suggestedMatcher: matcher, target });
+  }
+  return out;
+}
+
+/** Parse a target payload: null | {kind:'split'} | {kind:'account',accountUuid}.
+ *  Returns the sentinel "invalid" for a malformed (non-null) target so the whole
+ *  assignment can be dropped rather than silently treated as an unassign. */
+function sanitizeTarget(raw: unknown): OwnerTarget | null | "invalid" {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== "object") return "invalid";
+  const rec = raw as { kind?: unknown; accountUuid?: unknown };
+  if (rec.kind === "split") return { kind: "split" };
+  if (rec.kind === "account" && typeof rec.accountUuid === "string") {
+    return { kind: "account", accountUuid: rec.accountUuid };
+  }
+  return "invalid";
 }
 
 

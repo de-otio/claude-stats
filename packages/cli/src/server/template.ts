@@ -463,6 +463,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     <button class="tab-btn" data-tab="plan">${t("dashboard:tabs.plan")}</button>
     ${data.contextAnalysis ? `<button class="tab-btn" data-tab="context">${t("dashboard:tabs.context")}</button>` : ""}
     ${data.modelEfficiency ? `<button class="tab-btn" data-tab="efficiency">${t("dashboard:tabs.efficiency")}</button>` : ""}
+    <button class="tab-btn" data-tab="classify">${t("dashboard:tabs.classify")}</button>
     <button class="tab-btn" data-tab="settings">${t("dashboard:tabs.settings")}</button>
   </div>
 
@@ -1242,6 +1243,25 @@ CO₂_grams = total_kWh × grid_intensity</div>
   ` : ""}
 
   <!-- ═══════════════ TAB: Settings ═══════════════ -->
+  <div class="tab-panel" id="tab-classify">
+    <div class="summary-bar" style="margin-bottom:1rem;">
+      <div class="summary-card" style="grid-column: 1 / -1; text-align: left; padding: 1rem;">
+        <h2 style="margin:0 0 0.35rem 0; font-size:1rem; color:#a0c4ff;">${t("dashboard:classify.title")}</h2>
+        <p style="font-size:0.75rem; color:#aaa; margin:0 0 0.75rem 0;">${t("dashboard:classify.intro")}</p>
+        <div id="classify-coverage" style="font-size:0.8rem; color:#ccc; margin-bottom:0.75rem;"></div>
+        <div id="classify-empty" style="display:none; font-size:0.8rem; color:#888;">${t("dashboard:classify.empty")}</div>
+        <div id="classify-vscode-only" style="display:none; font-size:0.8rem; color:#888;">${t("dashboard:classify.vscodeOnly")}</div>
+        <div id="classify-no-accounts" style="display:none; font-size:0.8rem; color:#888;">${t("dashboard:classify.noAccounts")}</div>
+        <div id="classify-list"></div>
+        <div style="display:flex; align-items:center; gap:0.75rem; margin-top:1rem;">
+          <button type="button" id="classify-apply" disabled style="padding:0.5rem 1.5rem; background:#4e79a7; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; opacity:0.5;">${t("dashboard:classify.apply")}</button>
+          <span id="classify-status" style="font-size:0.75rem; color:#59a14f;"></span>
+        </div>
+        <div style="font-size:0.65rem; color:#777; margin-top:0.75rem; line-height:1.5;">${t("dashboard:classify.splitHint")}</div>
+      </div>
+    </div>
+  </div>
+
   <div class="tab-panel" id="tab-settings">
     <div class="summary-bar" style="margin-bottom:1rem;">
       <div class="summary-card" style="grid-column: 1 / -1; text-align: left; padding: 1rem;">
@@ -1391,6 +1411,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
           case 'efficiency': initEfficiency(); break;
           case 'energy': initEnergy(); break;
           case 'spending': initSpending(); break;
+          case 'classify': initClassify(); break;
           case 'settings': initSettings(); break;
         }
       }
@@ -2128,15 +2149,36 @@ CO₂_grams = total_kWh × grid_intensity</div>
         }
       }
 
-      // Handle responses from VS Code extension
+      // Handle responses from VS Code extension (config + cluster I/O share the
+      // callbackId map — both resolve a pending request by its id).
       window.addEventListener('message', function (event) {
         var msg = event.data;
-        if (msg && msg.command === 'configResult' && msg.callbackId) {
+        if (msg && (msg.command === 'configResult' || msg.command === 'clustersResult') && msg.callbackId) {
           var cb = _configCallbacks[msg.callbackId];
           delete _configCallbacks[msg.callbackId];
           if (cb) cb(msg.error || null, msg.data);
         }
       });
+
+      // Cluster I/O for the Classify tab. getClustersAsync mirrors
+      // loadConfigAsync (request/response over the callbackId map);
+      // applyClassificationAsync is fire-and-forget — the host reattributes and
+      // triggers a full refresh, so there is no response to await. Both are
+      // VS Code-only: the read-only served dashboard has no write channel.
+      function getClustersAsync(callback) {
+        if (typeof window.__vscodeApi !== 'undefined') {
+          var id = ++_configCallbackId;
+          _configCallbacks[id] = callback;
+          window.__vscodeApi.postMessage({ command: 'getClusters', callbackId: id });
+        } else {
+          callback(new Error('unavailable'));
+        }
+      }
+      function applyClassificationAsync(assignments) {
+        if (typeof window.__vscodeApi !== 'undefined') {
+          window.__vscodeApi.postMessage({ command: 'applyClassification', assignments: assignments });
+        }
+      }
 
       function populateSettingsForm(cfg) {
         var threshDay = document.getElementById('cfg-threshold-day');
@@ -2455,6 +2497,177 @@ CO₂_grams = total_kWh × grid_intensity</div>
             })
           });
         }());
+      }
+
+      // ═══════════════ CLASSIFY (cost-ownership) ═══════════════
+      // VS Code webview only. Shows cost-ranked project clusters; the user
+      // assigns each to a subscription or split. Assignments batch into a
+      // pending map and apply in one message; the host reattributes + refreshes.
+      function initClassify() {
+        var listEl = document.getElementById('classify-list');
+        var coverageEl = document.getElementById('classify-coverage');
+        var emptyEl = document.getElementById('classify-empty');
+        var vscodeOnlyEl = document.getElementById('classify-vscode-only');
+        var noAcctEl = document.getElementById('classify-no-accounts');
+        var applyBtn = document.getElementById('classify-apply');
+        var statusEl = document.getElementById('classify-status');
+        if (!listEl) return;
+
+        // Classification needs the write channel; the served dashboard is
+        // read-only. Show a note and stop.
+        if (typeof window.__vscodeApi === 'undefined') {
+          if (vscodeOnlyEl) vscodeOnlyEl.style.display = 'block';
+          if (applyBtn) applyBtn.style.display = 'none';
+          return;
+        }
+
+        var LBL_UNASSIGNED = '${t("dashboard:classify.optionUnassigned")}';
+        var LBL_SPLIT = '${t("dashboard:classify.optionSplit")}';
+        var COVERAGE_TMPL = '${t("dashboard:classify.coverage")}';
+        var PENDING_TMPL = '${t("dashboard:classify.pending")}';
+        var SESSIONS_TMPL = '${t("dashboard:classify.sessions")}';
+        var PROJECTS_TMPL = '${t("dashboard:classify.projects")}';
+        var REMOTE_BADGE = '${t("dashboard:classify.remoteBadge")}';
+        var PATH_BADGE = '${t("dashboard:classify.pathBadge")}';
+        var APPLYING_MSG = '${t("dashboard:classify.applying")}';
+        var SPLIT_VALUE = '__split__';
+
+        var pending = {}; // clusterKey -> { suggestedMatcher, target }
+
+        function fmtMoney(n) { return '$' + (n || 0).toFixed(2); }
+        function targetValue(tt) {
+          if (!tt) return '';
+          if (tt.kind === 'split') return SPLIT_VALUE;
+          if (tt.kind === 'account') return tt.accountUuid;
+          return '';
+        }
+        function valueToTarget(v) {
+          if (!v) return null;
+          if (v === SPLIT_VALUE) return { kind: 'split' };
+          return { kind: 'account', accountUuid: v };
+        }
+        function updateApplyState() {
+          var count = Object.keys(pending).length;
+          if (applyBtn) {
+            applyBtn.disabled = count === 0;
+            applyBtn.style.opacity = count === 0 ? '0.5' : '1';
+          }
+          if (statusEl) {
+            statusEl.style.color = '#e0af68';
+            statusEl.textContent = count === 0 ? '' : PENDING_TMPL.replace('__COUNT__', String(count));
+          }
+        }
+
+        function render(data) {
+          var clusters = (data && data.clusters) || [];
+          var accounts = (data && data.accounts) || [];
+          listEl.textContent = '';
+          if (noAcctEl) noAcctEl.style.display = accounts.length === 0 ? 'block' : 'none';
+          if (!clusters.length) {
+            if (emptyEl) emptyEl.style.display = 'block';
+            if (coverageEl) coverageEl.textContent = '';
+            return;
+          }
+          if (emptyEl) emptyEl.style.display = 'none';
+
+          var total = (data && data.totalCost) || 0;
+          var classified = (data && data.classifiedCost) || 0;
+          var pct = total > 0 ? Math.round((classified / total) * 100) : 0;
+          if (coverageEl) {
+            coverageEl.style.color = '#ccc';
+            coverageEl.textContent = COVERAGE_TMPL
+              .replace('__CLASSIFIED__', classified.toFixed(2))
+              .replace('__TOTAL__', total.toFixed(2))
+              .replace('__PERCENT__', String(pct));
+          }
+
+          clusters.forEach(function (c) {
+            var row = document.createElement('div');
+            row.style.cssText = 'display:grid; grid-template-columns:1fr auto 12rem; gap:0.6rem; align-items:center; padding:0.5rem 0; border-top:1px solid #2a2a4a;';
+
+            var left = document.createElement('div');
+            left.style.cssText = 'min-width:0;';
+            var name = document.createElement('div');
+            name.style.cssText = 'font-size:0.8rem; color:#e8e8e8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+            name.textContent = c.label;
+            name.title = (c.projectPaths || []).join('\\n');
+            left.appendChild(name);
+            var sub = document.createElement('div');
+            sub.style.cssText = 'font-size:0.65rem; color:#999;';
+            var subParts = [SESSIONS_TMPL.replace('__COUNT__', String(c.sessionCount))];
+            if ((c.projectPaths || []).length > 1) {
+              subParts.push(PROJECTS_TMPL.replace('__COUNT__', String(c.projectPaths.length)));
+            }
+            subParts.push(c.kind === 'remote' ? REMOTE_BADGE : PATH_BADGE);
+            sub.textContent = subParts.join(' · ');
+            left.appendChild(sub);
+            row.appendChild(left);
+
+            var cost = document.createElement('div');
+            cost.style.cssText = 'font-size:0.8rem; color:#a0c4ff; text-align:right; font-variant-numeric:tabular-nums;';
+            cost.textContent = fmtMoney(c.estimatedCost);
+            row.appendChild(cost);
+
+            var sel = document.createElement('select');
+            sel.style.cssText = 'width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.72rem; box-sizing:border-box;';
+            var optNone = document.createElement('option');
+            optNone.value = ''; optNone.textContent = LBL_UNASSIGNED;
+            sel.appendChild(optNone);
+            accounts.forEach(function (a) {
+              var opt = document.createElement('option');
+              opt.value = a.accountUuid;
+              opt.textContent = a.email || a.planLabel || (a.accountUuid.slice(0, 8) + '…');
+              sel.appendChild(opt);
+            });
+            var optSplit = document.createElement('option');
+            optSplit.value = SPLIT_VALUE; optSplit.textContent = LBL_SPLIT;
+            sel.appendChild(optSplit);
+
+            var currentVal = targetValue(c.currentTarget);
+            // If the current owner is an account not in the dropdown (e.g. from a
+            // CLI rule for an account with no recorded sessions), add it so the
+            // select reflects the real value instead of silently resetting.
+            if (currentVal && currentVal !== SPLIT_VALUE && !accounts.some(function (a) { return a.accountUuid === currentVal; })) {
+              var optUnknown = document.createElement('option');
+              optUnknown.value = currentVal; optUnknown.textContent = currentVal.slice(0, 8) + '…';
+              sel.appendChild(optUnknown);
+            }
+            sel.value = currentVal;
+
+            sel.addEventListener('change', function () {
+              var origVal = targetValue(c.currentTarget);
+              if (sel.value === origVal) delete pending[c.key];
+              else pending[c.key] = { suggestedMatcher: c.suggestedMatcher, target: valueToTarget(sel.value) };
+              updateApplyState();
+            });
+            row.appendChild(sel);
+
+            listEl.appendChild(row);
+          });
+        }
+
+        if (applyBtn) {
+          applyBtn.addEventListener('click', function () {
+            var assignments = Object.keys(pending).map(function (k) { return pending[k]; });
+            if (!assignments.length) return;
+            applyBtn.disabled = true;
+            applyBtn.style.opacity = '0.5';
+            if (statusEl) { statusEl.style.color = '#888'; statusEl.textContent = APPLYING_MSG; }
+            // Fire-and-forget: the host reattributes then triggers a full
+            // refresh() that re-renders this tab with the new attribution.
+            applyClassificationAsync(assignments);
+          });
+        }
+
+        getClustersAsync(function (err, data) {
+          if (err) {
+            if (coverageEl) { coverageEl.style.color = '#e15759'; coverageEl.textContent = String(err.message || err); }
+            return;
+          }
+          pending = {};
+          render(data);
+          updateApplyState();
+        });
       }
 
       function initSettings() {

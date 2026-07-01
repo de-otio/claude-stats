@@ -245,7 +245,9 @@
     "title": "Claude Stats",
     "errors": {
       "failedToLoadConfig": "Konfiguration konnte nicht geladen werden",
-      "failedToSaveConfig": "Konfiguration konnte nicht gespeichert werden"
+      "failedToSaveConfig": "Konfiguration konnte nicht gespeichert werden",
+      "failedToLoadClusters": "Failed to load projects for classification.",
+      "classifyFailed": "Could not apply classification: {{message}}"
     }
   },
   "sync": {
