@@ -9,7 +9,8 @@
     "context": "Contexte",
     "efficiency": "Efficacité",
     "energy": "Énergie",
-    "settings": "Paramètres"
+    "settings": "Paramètres",
+    "classify": "Classify"
   },
   "toolbar": {
     "period": "Période :",
@@ -381,5 +382,23 @@
       "cache_hygiene": "Améliorer l'hygiène du cache pour réduire les tokens répétés",
       "stop_after_repairs": "Arrêter les sessions après les réparations terminées"
     }
+  },
+  "classify": {
+    "title": "Classify your projects",
+    "intro": "Assign each project to the subscription that should be billed for it. Projects are ranked by cost, so classifying the top few covers most of your spend.",
+    "vscodeOnly": "Project classification is available in the VS Code panel.",
+    "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
+    "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
+    "pending": "__COUNT__ pending",
+    "sessions": "__COUNT__ sessions",
+    "projects": "__COUNT__ projects",
+    "remoteBadge": "remote",
+    "pathBadge": "folder",
+    "optionUnassigned": "Unassigned",
+    "optionSplit": "Split across usage",
+    "splitHint": "Split keeps each session's cost with the account that actually ran it. Use it for projects shared across subscriptions (e.g. when one plan's limit is not enough).",
+    "apply": "Apply",
+    "applying": "Applying..."
   }
 }

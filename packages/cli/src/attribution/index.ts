@@ -28,3 +28,6 @@ export type { OwnerMatchInput } from "./ownership.js";
 
 export { clusterProjects } from "./clustering.js";
 export type { ClusterInput } from "./clustering.js";
+
+export { enrichClusters, planApply } from "./classify.js";
+export type { ClassifiedCluster, ClassifyAssignment, ApplyPlan } from "./classify.js";

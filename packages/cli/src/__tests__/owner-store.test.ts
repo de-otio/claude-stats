@@ -682,6 +682,77 @@ describe("clearOverridesForRule", () => {
   });
 });
 
+// ── clearAllOwnerOverrides ────────────────────────────────────────────────────
+
+describe("clearAllOwnerOverrides", () => {
+  it("clears every override row in one call, leaving otel/inferred rows intact", () => {
+    const dbPath = tmpDbPath();
+    const store = new Store(dbPath);
+    try {
+      for (const uuid of [ACCOUNT_A_UUID, ACCOUNT_B_UUID]) {
+        store.upsertAccount({
+          accountUuid: uuid,
+          organizationUuid: null,
+          emailHash: null,
+          emailLabel: "x@example.com",
+          organizationType: null,
+          rateLimitTier: null,
+          userRateLimitTier: null,
+          seatTier: null,
+          billingType: null,
+          subscriptionType: null,
+          firstObservedAt: T0,
+          lastObservedAt: T0,
+        });
+      }
+
+      seedSession(store, { session_id: "ov-a", first_timestamp: T0, project_path: "/home/user/work/a" });
+      seedSession(store, { session_id: "ov-b", first_timestamp: T0 + 1, project_path: "/home/user/work/b" });
+      seedSession(store, { session_id: "otel-c", first_timestamp: T0 + 2, project_path: "/home/user/work/c" });
+
+      store.applyOwnerOverride(
+        new Map([["ov-a", ACCOUNT_A_UUID], ["ov-b", ACCOUNT_B_UUID]]),
+        fixedClock(T0),
+      );
+      store.applyAttribution(
+        new Map([
+          ["otel-c", { accountUuid: ACCOUNT_A_UUID, organizationUuid: null, subscriptionType: null, source: "otel", confidence: "authoritative" }],
+        ]),
+        fixedClock(T0),
+      );
+
+      const cleared = store.clearAllOwnerOverrides();
+      expect(cleared).toBe(2);
+
+      const sessions = store.getSessions({ includeCI: true, includeDeleted: true });
+      for (const id of ["ov-a", "ov-b"]) {
+        const r = sessions.find((s) => s.session_id === id)!;
+        expect(r.account_uuid).toBeNull();
+        expect(r.account_source).toBeNull();
+        expect(r.account_confidence ?? null).toBeNull();
+      }
+      const otel = sessions.find((s) => s.session_id === "otel-c")!;
+      expect(otel.account_uuid).toBe(ACCOUNT_A_UUID);
+      expect(otel.account_source).toBe("otel");
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
+
+  it("returns 0 when there are no override rows", () => {
+    const dbPath = tmpDbPath();
+    const store = new Store(dbPath);
+    try {
+      seedSession(store, { session_id: "plain", first_timestamp: T0, project_path: "/home/user/proj" });
+      expect(store.clearAllOwnerOverrides()).toBe(0);
+    } finally {
+      store.close();
+      fs.rmSync(dbPath, { force: true });
+    }
+  });
+});
+
 // ── getCostBySession ──────────────────────────────────────────────────────────
 
 describe("getCostBySession", () => {
