@@ -62,11 +62,16 @@ every "present / absent / constant" claim was verified, not assumed.
    the `override` escape hatch: paint a date range (optionally project-scoped)
    onto an account. Used as the *seed/fallback* for doc 09, not the main plan.
 9. [Historical split without hand-labelling](09-historical-split-without-labelling.md)
-   — **the automatic solution.** A measured signal inventory (account is not in
-   transcripts; telemetry/backup/userID are dead) and a **seed-and-propagate**
-   method: project-affinity + the per-account, cross-surface 5-hour window
-   propagate a few seeds across ~960 sessions — including the 26% non-CLI ones no
-   per-session method can reach.
+   — signal inventory (account is not in transcripts; telemetry/backup/userID are
+   dead) and a **seed-and-propagate** method for the *actual-account* view:
+   project-affinity + the per-account, cross-surface 5-hour window propagate a few
+   seeds across ~960 sessions, including the 26% non-CLI ones.
+10. [Cost-ownership: guided project classification](10-cost-ownership-guided-classification.md)
+   — **the primary plan for cost attribution.** Cost belongs to the subscription
+   that *owns* a project (a per-user policy, not an inference, and independent of
+   which account was logged in). The tool auto-clusters projects and ranks them by
+   $ so the user classifies with a **handful of guided GUI picks**; ships
+   pattern-free (rules live in local config).
 
 ## TL;DR verdict
 
