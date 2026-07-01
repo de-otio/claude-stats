@@ -22,7 +22,30 @@
     "reattributeDryRunHeader": "Re-attribution (dry run) — no changes written:",
     "reattributeDoneHeader": "Re-attribution complete:",
     "backupWritten": "Backup written to {{path}}",
-    "reattributeSummary": "{{total}} sessions, {{reset}} reset, {{changed}} re-attributed. By source:"
+    "reattributeSummary": "{{total}} sessions, {{reset}} reset, {{changed}} re-attributed. By source:",
+    "own": {
+      "description": "Manage cost-ownership rules (assign a path or remote glob to an account).",
+      "accountOption": "Account UUID to assign cost to, or 'split' to keep measured attribution.",
+      "pathOption": "Glob pattern matching project paths (e.g. ~/repos/work/**).",
+      "remoteOption": "Glob pattern matching git remote owner (e.g. github.com/example-org/*).",
+      "dryRunOption": "Preview how many sessions the rule would match without creating it.",
+      "forceOption": "Create the rule even if it matches more than 90% of sessions.",
+      "listOption": "List all existing owner rules.",
+      "clearOption": "Remove the owner rule with the given id and revert its sessions.",
+      "created": "Owner rule {{id}} created. Re-attribution applied.",
+      "deleted": "Owner rule cleared; {{count}} session(s) reverted. Re-attribution applied.",
+      "refusedOverbroad": "Refusing: this rule would match {{pct}}% of all sessions (> 90%). Pass --force to override.",
+      "dryRunSummary": "Dry run: {{matched}} session(s) matched, estimated cost {{cost}}, {{displaced}} otel/telemetry session(s) would be displaced.",
+      "listHeader": "Owner rules:",
+      "noRules": "No owner rules defined. Use 'account own --account <uuid|split> --path <glob>' to add one."
+    },
+    "classify": {
+      "description": "Show project clusters ranked by estimated cost to help identify ownership.",
+      "header": "Project clusters by cost:",
+      "row": "  {{label}}  ({{projects}} project(s), {{sessions}} session(s), {{cost}})",
+      "unclassified": "Unclassified (no matching owner rule): {{cost}}",
+      "noData": "No sessions found."
+    }
   },
   "otel": {
     "description": "OpenTelemetry-based authoritative account attribution.",
