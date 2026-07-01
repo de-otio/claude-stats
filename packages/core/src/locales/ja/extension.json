@@ -261,7 +261,9 @@
     "title": "Claude Stats",
     "errors": {
       "failedToLoadConfig": "設定の読み込みに失敗しました",
-      "failedToSaveConfig": "設定の保存に失敗しました"
+      "failedToSaveConfig": "設定の保存に失敗しました",
+      "failedToLoadClusters": "Failed to load projects for classification.",
+      "classifyFailed": "Could not apply classification: {{message}}"
     }
   },
   "sync": {

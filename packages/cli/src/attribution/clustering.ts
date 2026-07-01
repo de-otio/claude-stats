@@ -59,7 +59,15 @@ export function clusterProjects(
       key = owner;
       kind = "remote";
       label = owner;
-      suggestedMatcher = { remoteGlob: owner + "/*" };
+      // The matcher is the EXACT owner string, not `owner + "/*"`. resolveOwner
+      // matches remoteGlob against ownerOf(repoUrl), which is always
+      // `host/firstSegment` with no repo segment — so `owner + "/*"` (which
+      // needs a segment after the owner) would match NOTHING, and a rule built
+      // from it would silently attribute nothing. The exact owner matches every
+      // repo under that owner (they all normalise to the same owner string) and
+      // ranks in the wildcard-free specificity tier. See the round-trip test in
+      // clustering.test.ts.
+      suggestedMatcher = { remoteGlob: owner };
     } else {
       // Use POSIX dirname of the project path.
       // path.posix.dirname handles both absolute and relative POSIX paths.

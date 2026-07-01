@@ -2462,6 +2462,33 @@ export class Store {
   }
 
   /**
+   * Clear ALL owner-derived override attribution in a single statement. Every
+   * account_source='override' row is reset to NULL (all overrides come from
+   * owner rules — applyOwnerOverride is the only writer of that source), which
+   * makes those rows eligible for re-inference again.
+   *
+   * This is the fast, set-based counterpart to clearOverridesForRule. The guided
+   * classifier's apply step recomputes the WHOLE owner-rule effect from the
+   * current rule set, so it must first drop any stale override — e.g. one left
+   * by a rule the user just switched to 'split' or removed — before re-inferring
+   * and re-applying the current rules (reattribute's reset deliberately
+   * PRESERVES override rows, so it cannot do this itself). Returns rows changed.
+   */
+  clearAllOwnerOverrides(): number {
+    const result = this.db
+      .prepare(`
+        UPDATE sessions SET
+          account_uuid       = NULL,
+          organization_uuid  = NULL,
+          account_source     = NULL,
+          account_confidence = NULL
+        WHERE account_source = 'override'
+      `)
+      .run();
+    return Number(result.changes);
+  }
+
+  /**
    * Compute estimated cost per session. Reuses getMessageTotalsBySession and
    * estimateCost. When sessionIds is provided, restricts to those sessions;
    * otherwise reads all sessions (by fetching all distinct session IDs from the

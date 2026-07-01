@@ -17,6 +17,8 @@
 import { describe, it, expect } from "vitest";
 import { clusterProjects } from "../attribution/clustering.js";
 import type { ClusterInput } from "../attribution/clustering.js";
+import { resolveOwner } from "../attribution/ownership.js";
+import type { OwnerRule } from "@claude-stats/core/types";
 import {
   PERSONAL_PATH_GLOB,
   WORK_PATH_GLOB,
@@ -92,7 +94,11 @@ describe("clusterProjects — grouping by remote owner", () => {
     expect(cluster.estimatedCost).toBeCloseTo(2.0);
   });
 
-  it("produces suggestedMatcher.remoteGlob = owner + '/*' for a remote cluster", () => {
+  it("produces suggestedMatcher.remoteGlob = the EXACT owner for a remote cluster", () => {
+    // The matcher must be the bare owner, NOT `owner + "/*"`: resolveOwner
+    // matches remoteGlob against ownerOf(repoUrl), which is always
+    // `host/firstSegment`, so an `owner + "/*"` glob would match nothing (see
+    // the round-trip test below). The exact owner matches every repo under it.
     const sessions: ClusterInput[] = [
       makeInput({
         sessionId: SID_1,
@@ -105,7 +111,7 @@ describe("clusterProjects — grouping by remote owner", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]!.suggestedMatcher).toEqual({
-      remoteGlob: PERSONAL_REMOTE_GLOB,
+      remoteGlob: PERSONAL_REMOTE_OWNER,
     });
     expect(result[0]!.suggestedMatcher.pathGlob).toBeUndefined();
   });
@@ -570,9 +576,9 @@ describe("clusterProjects — edge cases", () => {
   });
 
   it("correctly builds suggestedMatcher for a gitlab remote cluster", () => {
-    // WORK_REMOTE_GLOB = "gitlab.example.com/*"
-    // A session whose remote maps to "gitlab.example.com/example-group" should
-    // get a remoteGlob of "gitlab.example.com/example-group/*".
+    // A session whose remote maps to "gitlab.example.com/example-group" gets a
+    // remoteGlob of exactly that owner (nested-group top segment), NOT
+    // `.../example-group/*` — ownerOf never yields a segment past the group.
     const sessions: ClusterInput[] = [
       makeInput({
         sessionId: SID_1,
@@ -585,7 +591,7 @@ describe("clusterProjects — edge cases", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]!.suggestedMatcher).toEqual({
-      remoteGlob: "gitlab.example.com/example-group/*",
+      remoteGlob: "gitlab.example.com/example-group",
     });
   });
 
@@ -626,4 +632,53 @@ describe("clusterProjects — edge cases", () => {
     expect(result[3]!.key).toBe(PERSONAL_DIR);
     expect(result[3]!.estimatedCost).toBeCloseTo(1.0);
   });
+});
+
+// ── Round-trip: suggested matcher actually resolves back to the cluster ────────
+// Regression for the bug where remote clusters suggested `owner + "/*"`, which
+// resolveOwner (matching against ownerOf() = host/firstSegment) never matched —
+// so a rule built from the suggestion attributed NOTHING. Every suggested
+// matcher MUST resolve the sessions of the cluster it came from.
+
+describe("clusterProjects — suggested matcher round-trips through resolveOwner", () => {
+  const cases: Array<{ name: string; sessions: ClusterInput[] }> = [
+    {
+      name: "github remote",
+      sessions: [
+        makeInput({ sessionId: SID_1, projectPath: `${WORK_DIR}/repo-a`, repoUrl: `https://github.com/example-org/repo-a.git` }),
+        makeInput({ sessionId: SID_2, projectPath: `${PERSONAL_DIR}/repo-b`, repoUrl: `git@github.com:example-org/repo-b.git` }),
+      ],
+    },
+    {
+      name: "gitlab nested-group remote",
+      sessions: [
+        makeInput({ sessionId: SID_1, projectPath: `${WORK_DIR}/repo-p`, repoUrl: `git@gitlab.example.com:example-group/sub/repo-p.git` }),
+      ],
+    },
+    {
+      name: "path cluster (no remote)",
+      sessions: [
+        makeInput({ sessionId: SID_1, projectPath: `${WORK_DIR}/proj-a`, repoUrl: null }),
+        makeInput({ sessionId: SID_2, projectPath: `${WORK_DIR}/proj-b`, repoUrl: null }),
+      ],
+    },
+  ];
+
+  for (const { name, sessions } of cases) {
+    it(`${name}: a split rule from the suggestion matches every member session`, () => {
+      const [cluster] = clusterProjects(sessions, costMap([]));
+      expect(cluster).toBeDefined();
+      const rule: OwnerRule = {
+        id: 1,
+        pathGlob: cluster!.suggestedMatcher.pathGlob ?? null,
+        remoteGlob: cluster!.suggestedMatcher.remoteGlob ?? null,
+        target: { kind: "split" },
+        createdAt: 1,
+      };
+      for (const s of sessions) {
+        const target = resolveOwner({ projectPath: s.projectPath, repoUrl: s.repoUrl }, [rule]);
+        expect(target).toEqual({ kind: "split" });
+      }
+    });
+  }
 });
