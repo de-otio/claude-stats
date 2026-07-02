@@ -2,6 +2,35 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.12.2 — 2026-07-02
+
+### Fixed — Dashboard could fail to load entirely in some languages
+
+A translated string embedded in the dashboard's script was not escaped
+before being inserted into a JavaScript string literal. Any translation
+containing an apostrophe broke the whole script, silently disabling every
+chart and every interactive feature on the page. This is now fixed for all
+languages.
+
+### Changed — Subscription Fee by Project is now a pie chart
+
+Each currency's fee breakdown now renders as a pie chart, with unattributed
+("idle") subscription pools folded into a single slice, alongside the
+existing per-project dollar and percentage breakdown.
+
+### Added — Guidance for accounts missing an email or plan
+
+The Settings and Classify tabs now explain, inline, why an account might
+show without its email or plan, and how logging in as that account once
+resolves it. Settings also now notes that new accounts appear automatically
+once used with Claude Code — there's no need to add one manually.
+
+### Changed — Monthly fee pre-fills with the plan's default price
+
+Selecting a plan type in Settings now pre-fills the monthly fee with that
+plan's default price, converted to whichever currency is selected — still
+fully editable.
+
 ## 0.12.1 — 2026-07-01
 
 ### Fixed — Non-active accounts showed a truncated ID instead of an email
