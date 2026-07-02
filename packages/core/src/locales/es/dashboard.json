@@ -290,7 +290,9 @@
     "errorSaving": "Error al guardar.",
     "subscriptions": "Suscripciones",
     "subscriptionsHint": "Establece la cuota mensual que pagas por cada cuenta de Claude. Estas se distribuyen entre proyectos en la pestaña Proyectos.",
+    "subscriptionsAutoDetectHint": "Las cuentas nuevas aparecen aquí automáticamente en cuanto Claude Code registra una sesión para ellas — no es necesario añadirlas manualmente.",
     "noAccounts": "Aún no se han encontrado cuentas — ejecuta algunas sesiones y recopila de nuevo.",
+    "unlinkedAccountHint": "Aún no vinculada a un correo electrónico — inicia sesión con esta cuenta una vez, y luego vuelve a cambiar, para revelar aquí su correo y su plan.",
     "feePlaceholder": "Cuota",
     "labelPlaceholder": "Etiqueta (p. ej. Trabajo, Personal)"
   },
@@ -299,6 +301,7 @@
     "notConfigured": "Establece tus cuotas de suscripción en Configuración para atribuirlas a los proyectos.",
     "currencyHeader": "{{period}} este período · {{monthly}}/mes",
     "idle": "{{label}} — sin uso este período",
+    "idleSliceLabel": "Inactiva (sin uso)",
     "reconcile": "Atribuido {{attributed}}"
   },
   "pricing": {
@@ -389,6 +392,7 @@
     "vscodeOnly": "Project classification is available in the VS Code panel.",
     "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
     "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "unlinkedHint": "Las cuentas que se muestran con un ID entre paréntesis aún no se han visto como tu sesión activa de Claude Code, por lo que no se puede mostrar aquí su correo ni su plan. Inicia sesión con esa cuenta una vez, y luego vuelve a cambiar, para vincularla.",
     "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
     "pending": "__COUNT__ pending",
     "sessions": "__COUNT__ sessions",

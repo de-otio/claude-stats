@@ -290,7 +290,9 @@
     "errorSaving": "Erreur lors de l'enregistrement.",
     "subscriptions": "Abonnements",
     "subscriptionsHint": "Définissez les frais mensuels que vous payez pour chaque compte Claude. Ils sont distribués entre les projets dans l'onglet Projets.",
+    "subscriptionsAutoDetectHint": "Les nouveaux comptes apparaissent ici automatiquement dès que Claude Code enregistre une session pour eux — inutile d'en ajouter un manuellement.",
     "noAccounts": "Aucun compte trouvé pour le moment — exécutez quelques sessions et recollectez.",
+    "unlinkedAccountHint": "Pas encore lié à une adresse e-mail — connectez-vous une fois avec ce compte, puis reconnectez-vous à l'autre, pour afficher ici son e-mail et son forfait.",
     "feePlaceholder": "Frais",
     "labelPlaceholder": "Libellé (ex. Travail, Personnel)"
   },
@@ -299,6 +301,7 @@
     "notConfigured": "Définissez vos frais d'abonnement dans Paramètres pour les attribuer aux projets.",
     "currencyHeader": "{{period}} cette période · {{monthly}}/mois",
     "idle": "{{label}} — pas d'utilisation cette période",
+    "idleSliceLabel": "Inutilisé (aucune utilisation)",
     "reconcile": "Attribué {{attributed}}"
   },
   "pricing": {
@@ -389,6 +392,7 @@
     "vscodeOnly": "Project classification is available in the VS Code panel.",
     "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
     "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "unlinkedHint": "Les comptes affichés avec un ID entre parenthèses n'ont pas encore été vus comme votre connexion Claude Code active, donc leur e-mail et leur forfait ne peuvent pas être affichés ici. Connectez-vous une fois avec ce compte, puis reconnectez-vous à l'autre, pour le lier.",
     "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
     "pending": "__COUNT__ pending",
     "sessions": "__COUNT__ sessions",

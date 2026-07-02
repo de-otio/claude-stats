@@ -290,7 +290,9 @@
     "errorSaving": "保存エラー。",
     "subscriptions": "サブスクリプション",
     "subscriptionsHint": "各 Claude アカウントで支払う月額料金を設定します。これらはプロジェクトタブのプロジェクト全体に分配されます。",
+    "subscriptionsAutoDetectHint": "新しいアカウントは、Claude Codeがそのアカウントのセッションを記録した時点で自動的にここに表示されます。手動で追加する必要はありません。",
     "noAccounts": "アカウントがまだ見つかりません。セッションを実行して再度収集してください。",
+    "unlinkedAccountHint": "まだメールアドレスと連携されていません。一度このアカウントでログインしてから元に戻すと、ここにメールアドレスとプランが表示されます。",
     "feePlaceholder": "料金",
     "labelPlaceholder": "ラベル (例: 仕事、個人)"
   },
@@ -299,6 +301,7 @@
     "notConfigured": "設定でサブスクリプション料金を設定して、プロジェクトに配分します。",
     "currencyHeader": "{{period}} この期間 · {{monthly}}/月",
     "idle": "{{label}} — この期間は使用されていません",
+    "idleSliceLabel": "未使用（利用なし）",
     "reconcile": "配分 {{attributed}}"
   },
   "pricing": {
@@ -389,6 +392,7 @@
     "vscodeOnly": "Project classification is available in the VS Code panel.",
     "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
     "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "unlinkedHint": "括弧内にIDが表示されているアカウントは、まだアクティブなClaude Codeログインとして検出されていないため、メールアドレスとプランをここに表示できません。一度そのアカウントでログインしてから元に戻すと連携されます。",
     "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
     "pending": "__COUNT__ pending",
     "sessions": "__COUNT__ sessions",
