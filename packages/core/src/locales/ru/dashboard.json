@@ -290,7 +290,9 @@
     "errorSaving": "Ошибка при сохранении.",
     "subscriptions": "Подписки",
     "subscriptionsHint": "Установите ежемесячную плату за каждый аккаунт Claude. Они распределяются по проектам на вкладке Проекты.",
+    "subscriptionsAutoDetectHint": "Новые аккаунты появляются здесь автоматически, как только Claude Code зафиксирует для них сессию — добавлять их вручную не нужно.",
     "noAccounts": "Аккаунты ещё не найдены — запустите несколько сессий и пересоберите данные.",
+    "unlinkedAccountHint": "Ещё не привязан к email — войдите под этим аккаунтом один раз, затем переключитесь обратно, чтобы увидеть здесь его email и план.",
     "feePlaceholder": "Плата",
     "labelPlaceholder": "Метка (например Работа, Личное)"
   },
@@ -299,6 +301,7 @@
     "notConfigured": "Установите платы за подписку в Параметрах для отнесения их к проектам.",
     "currencyHeader": "{{period}} за этот период · {{monthly}}/мес",
     "idle": "{{label}} — нет использования за этот период",
+    "idleSliceLabel": "Простой (нет использования)",
     "reconcile": "Отнесено {{attributed}}"
   },
   "pricing": {
@@ -389,6 +392,7 @@
     "vscodeOnly": "Project classification is available in the VS Code panel.",
     "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
     "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "unlinkedHint": "Аккаунты, показанные с идентификатором в скобках, ещё не были замечены как ваш активный вход в Claude Code, поэтому их email и план нельзя показать здесь. Войдите под этим аккаунтом один раз, затем переключитесь обратно, чтобы привязать его.",
     "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
     "pending": "__COUNT__ pending",
     "sessions": "__COUNT__ sessions",

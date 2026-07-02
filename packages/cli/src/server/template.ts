@@ -41,6 +41,18 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
 
   const escapeHtml = (s: string) => s.replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+  // Escape a string for safe embedding inside a single-quoted JS string
+  // literal in the inline <script> block. Translations routinely contain
+  // apostrophes ("haven't", French "l'autre", Ukrainian "прив'язано") — left
+  // unescaped, one terminates the literal early and breaks the whole script,
+  // silently killing every chart on the page. Every `'${t(...)}'` call site
+  // must wrap the translation in this.
+  const jsStr = (s: string) => s
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/<\/script/gi, "<\\/script");
   const sevColor: Record<string, string> = { critical: "#e15759", warning: "#f28e2b", info: "#4e79a7", success: "#59a14f" };
   const sevIcon: Record<string, string> = { critical: "!", warning: "!", info: "i", success: "\u2713" };
   const recs = data.recommendations ?? [];
@@ -260,15 +272,16 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       </div>`;
   } else {
     const blocks = fee.byCurrency
-      .map((b) => {
+      .map((b, blockIdx) => {
         const rounded = roundShares(b.perProject.map((p) => p.amount));
-        const barRows = b.perProject
+        // Numeric detail lives in real DOM text (the pie's table-view twin) —
+        // never only in the canvas, which screen readers/copy-paste can't reach.
+        const listRows = b.perProject
           .map((p, i) => {
             const pct = Math.max(0, Math.min(100, p.percentOfTotal));
             return `
             <div style="display:flex;align-items:center;gap:0.5rem;padding:0.2rem 0;font-size:0.72rem;">
-              <span style="flex:0 0 38%;color:#e8e8e8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(p.projectPath)}">${escapeHtml(projShort(p.projectPath))}</span>
-              <span style="flex:1;background:#0f1830;border-radius:3px;overflow:hidden;height:0.85rem;"><span style="display:block;height:100%;width:${pct.toFixed(1)}%;background:#4e79a7;"></span></span>
+              <span style="flex:1;color:#e8e8e8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(p.projectPath)}">${escapeHtml(projShort(p.projectPath))}</span>
               <span style="flex:0 0 5rem;text-align:right;color:#fff;">${escapeHtml(fmtMoney(rounded[i] ?? 0, b.currency))}</span>
               <span style="flex:0 0 3rem;text-align:right;color:#888;">${Math.round(pct)}%</span>
             </div>`;
@@ -278,8 +291,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           .map(
             (it) => `
             <div style="display:flex;align-items:center;gap:0.5rem;padding:0.2rem 0;font-size:0.72rem;color:#888;border-top:1px dashed #2a3552;">
-              <span style="flex:0 0 38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(t("dashboard:fees.idle", { label: it.label }))}</span>
-              <span style="flex:1;"></span>
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(t("dashboard:fees.idle", { label: it.label }))}</span>
               <span style="flex:0 0 5rem;text-align:right;">${escapeHtml(fmtMoney(it.amount, b.currency))}</span>
               <span style="flex:0 0 3rem;"></span>
             </div>`
@@ -293,7 +305,10 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
                 monthly: fmtMoney(b.monthlyTotal, b.currency),
               })
             )}</div>
-            ${barRows}
+            <div style="max-width:15rem;margin:0 auto 0.5rem auto;">
+              <canvas id="chart-fees-${blockIdx}"></canvas>
+            </div>
+            ${listRows}
             ${idleRows}
             <div style="font-size:0.6rem;color:#666;margin-top:0.3rem;">${escapeHtml(
               t("dashboard:fees.reconcile", { attributed: fmtMoney(b.attributed, b.currency) })
@@ -1252,6 +1267,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
         <div id="classify-empty" style="display:none; font-size:0.8rem; color:#888;">${t("dashboard:classify.empty")}</div>
         <div id="classify-vscode-only" style="display:none; font-size:0.8rem; color:#888;">${t("dashboard:classify.vscodeOnly")}</div>
         <div id="classify-no-accounts" style="display:none; font-size:0.8rem; color:#888;">${t("dashboard:classify.noAccounts")}</div>
+        <div id="classify-unlinked-hint" style="display:none; font-size:0.65rem; color:#e0af68; margin-bottom:0.75rem; line-height:1.4;">${t("dashboard:classify.unlinkedHint")}</div>
         <div id="classify-list"></div>
         <div style="display:flex; align-items:center; gap:0.75rem; margin-top:1rem;">
           <button type="button" id="classify-apply" disabled style="padding:0.5rem 1.5rem; background:#4e79a7; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; opacity:0.5;">${t("dashboard:classify.apply")}</button>
@@ -1272,6 +1288,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
           <div>
             <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">${t("dashboard:settings.subscriptions")}</label>
             <div style="font-size:0.6rem; color:#999; margin-bottom:0.5rem;">${t("dashboard:settings.subscriptionsHint")}</div>
+            <div style="font-size:0.6rem; color:#777; margin-bottom:0.5rem;">${t("dashboard:settings.subscriptionsAutoDetectHint")}</div>
             <div id="account-fees-rows"></div>
             <div id="account-fees-empty" style="font-size:0.7rem; color:#888; display:none;">${t("dashboard:settings.noAccounts")}</div>
           </div>
@@ -1362,7 +1379,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
       var refreshSecs = parseInt(urlParam('refresh') || '0', 10);
       var autoBtn = document.getElementById('autorefresh-btn');
       if (refreshSecs > 0) {
-        if (autoBtn) autoBtn.textContent = '${t("dashboard:toolbar.autoOn", { seconds: "__SECS__" })}'.replace('__SECS__', refreshSecs);
+        if (autoBtn) autoBtn.textContent = '${jsStr(t("dashboard:toolbar.autoOn", { seconds: "__SECS__" }))}'.replace('__SECS__', refreshSecs);
         setTimeout(function () { location.reload(); }, refreshSecs * 1000);
       }
       window.toggleRefresh = function () {
@@ -1531,6 +1548,58 @@ CO₂_grams = total_kWh × grid_intensity</div>
 
       // ═══════════════ PROJECTS CHARTS ═══════════════
       function initProjects() {
+        // Subscription fee by project — one pie per currency block. Idle
+        // (unattributed) pools are folded into a single gray "Idle" slice so
+        // the pie still sums to the full period total, not just the
+        // attributed portion.
+        (function () {
+          var fee = d.feeAttribution;
+          if (!fee || !fee.configured) return;
+          function fmtCurrency(n, currency) {
+            try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency }).format(n); }
+            catch (e) { return currency + ' ' + n.toFixed(2); }
+          }
+          fee.byCurrency.forEach(function (block, blockIdx) {
+            var el = document.getElementById('chart-fees-' + blockIdx);
+            if (!el) return;
+            var ctx = el.getContext('2d');
+            var idleTotal = block.idle.reduce(function (s, it) { return s + it.amount; }, 0);
+            var hasIdle = idleTotal > 0;
+            var maxProjects = hasIdle ? COLORS.length - 1 : COLORS.length;
+            var top = block.perProject.slice(0, maxProjects);
+            var labels = top.map(function (p) {
+              var parts = p.projectPath.replace(/\\\\/g, '/').split('/').filter(Boolean);
+              return parts.length >= 2 ? parts.slice(-2).join('/') : (parts[parts.length - 1] || p.projectPath);
+            });
+            var values = top.map(function (p) { return p.amount; });
+            var colors = COLORS.slice(0, top.length);
+            if (hasIdle) {
+              labels.push('${jsStr(t("dashboard:fees.idleSliceLabel"))}');
+              values.push(idleTotal);
+              colors.push('#bab0ac');
+            }
+            var grand = block.periodTotal;
+            new Chart(ctx, {
+              type: 'doughnut',
+              data: { labels: labels, datasets: [{ data: values, backgroundColor: colors }] },
+              options: Object.assign({}, chartOpts, {
+                plugins: {
+                  legend: chartOpts.plugins.legend,
+                  tooltip: {
+                    callbacks: {
+                      label: function (context) {
+                        var val = context.parsed;
+                        var pct = grand > 0 ? ((val / grand) * 100).toFixed(1) : '0.0';
+                        return ' ' + fmtCurrency(val, block.currency) + ' (' + pct + '%)';
+                      }
+                    }
+                  }
+                }
+              })
+            });
+          });
+        }());
+
         // Top projects
         (function () {
           var ctx = document.getElementById('chart-project').getContext('2d');
@@ -2197,15 +2266,31 @@ CO₂_grams = total_kWh × grid_intensity</div>
       // localized server-side; the fee map mirrors core/pricing PLAN_FEES so
       // selecting a type auto-fills its default amount.
       var PLAN_OPTIONS = [
-        { value: '', label: '${t("dashboard:settings.notSetAutoDetect")}' },
-        { value: 'pro', label: '${t("dashboard:settings.planOptions.pro")}' },
-        { value: 'max_5x', label: '${t("dashboard:settings.planOptions.max_5x")}' },
-        { value: 'max_20x', label: '${t("dashboard:settings.planOptions.max_20x")}' },
-        { value: 'team_standard', label: '${t("dashboard:settings.planOptions.team_standard")}' },
-        { value: 'team_premium', label: '${t("dashboard:settings.planOptions.team_premium")}' },
-        { value: 'custom', label: '${t("dashboard:settings.planOptions.custom")}' }
+        { value: '', label: '${jsStr(t("dashboard:settings.notSetAutoDetect"))}' },
+        { value: 'pro', label: '${jsStr(t("dashboard:settings.planOptions.pro"))}' },
+        { value: 'max_5x', label: '${jsStr(t("dashboard:settings.planOptions.max_5x"))}' },
+        { value: 'max_20x', label: '${jsStr(t("dashboard:settings.planOptions.max_20x"))}' },
+        { value: 'team_standard', label: '${jsStr(t("dashboard:settings.planOptions.team_standard"))}' },
+        { value: 'team_premium', label: '${jsStr(t("dashboard:settings.planOptions.team_premium"))}' },
+        { value: 'custom', label: '${jsStr(t("dashboard:settings.planOptions.custom"))}' }
       ];
       var PLAN_FEE_DEFAULTS = { pro: 20, max_5x: 100, max_20x: 200, team_standard: 25, team_premium: 125 };
+
+      // Static USD-based FX rates for converting a plan's default fee into the
+      // account's selected currency. This dashboard makes no runtime network
+      // calls (fully local/offline tool), so these are approximate, point-in-
+      // time figures — refresh them occasionally rather than treating them as
+      // exact. Unlisted currencies fall back to a 1:1 rate.
+      var FX_RATES_FROM_USD = { USD: 1, EUR: 0.92, GBP: 0.79, CAD: 1.36, AUD: 1.52, JPY: 150, CHF: 0.88, SEK: 10.3 };
+
+      // Default fee for a plan type, converted to the given currency and
+      // rounded to match the amount input's step="1" granularity.
+      function planFeeDefaultInCurrency(planTypeValue, currencyCode) {
+        var usd = PLAN_FEE_DEFAULTS[planTypeValue];
+        if (usd == null) return null;
+        var rate = FX_RATES_FROM_USD[currencyCode] || 1;
+        return Math.round(usd * rate);
+      }
 
       // Best-effort map of a telemetry subscriptionType string to a plan-type
       // option value (normalises case/separators); '' when it doesn't match.
@@ -2247,6 +2332,13 @@ CO₂_grams = total_kWh × grid_intensity</div>
           name.title = a.accountUuid + ' · ' + (a.planLabel || a.subscriptionType || '') + ' · ' + a.sessionCount + ' sessions';
           row.appendChild(name);
 
+          if (!a.email) {
+            var unlinkedHint = document.createElement('div');
+            unlinkedHint.style.cssText = 'grid-column:1 / -1; font-size:0.62rem; color:#e0af68; line-height:1.3;';
+            unlinkedHint.textContent = '${jsStr(t("dashboard:settings.unlinkedAccountHint"))}';
+            row.appendChild(unlinkedHint);
+          }
+
           // Per-account plan type. Default: explicitly-saved type, else the
           // telemetry-detected subscription type, else "auto".
           var planType = document.createElement('select');
@@ -2261,29 +2353,42 @@ CO₂_grams = total_kWh × grid_intensity</div>
           });
           row.appendChild(planType);
 
+          // Resolved before the amount input so the initial pre-fill (below)
+          // converts into the account's already-selected currency.
+          var selectedCurrency = (fee.currency || 'USD').toUpperCase();
+
           var amount = document.createElement('input');
           amount.type = 'number'; amount.min = '0'; amount.step = '1';
           amount.className = 'acct-fee-amount';
           amount.style.cssText = 'width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;';
-          if (fee.monthlyFee != null) amount.value = fee.monthlyFee;
-          amount.placeholder = '${t("dashboard:settings.feePlaceholder")}';
+          if (fee.monthlyFee != null) {
+            amount.value = fee.monthlyFee;
+          } else {
+            // No saved fee yet, but a plan is already selected (saved type or
+            // telemetry-detected) — pre-fill its default, converted to the
+            // selected currency, so the field isn't blank on first render;
+            // still a plain editable number input.
+            var initialDefault = planFeeDefaultInCurrency(selectedType, selectedCurrency);
+            if (initialDefault != null) amount.value = initialDefault;
+          }
+          amount.placeholder = '${jsStr(t("dashboard:settings.feePlaceholder"))}';
           row.appendChild(amount);
 
-          // Selecting a known plan type fills its default fee (still editable).
+          // Selecting a known plan type fills its default fee, converted to
+          // whatever currency is currently selected (still editable).
           planType.addEventListener('change', function () {
-            var def = PLAN_FEE_DEFAULTS[planType.value];
+            var def = planFeeDefaultInCurrency(planType.value, currency.value);
             if (def != null) amount.value = def;
           });
 
           var currency = document.createElement('select');
           currency.className = 'acct-fee-currency';
           currency.style.cssText = 'width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;';
-          var selected = (fee.currency || 'USD').toUpperCase();
-          if (FEE_CURRENCIES.indexOf(selected) === -1) FEE_CURRENCIES.push(selected);
+          if (FEE_CURRENCIES.indexOf(selectedCurrency) === -1) FEE_CURRENCIES.push(selectedCurrency);
           FEE_CURRENCIES.forEach(function (code) {
             var opt = document.createElement('option');
             opt.value = code; opt.textContent = code;
-            if (code === selected) opt.selected = true;
+            if (code === selectedCurrency) opt.selected = true;
             currency.appendChild(opt);
           });
           row.appendChild(currency);
@@ -2292,7 +2397,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
           labelInput.type = 'text'; labelInput.maxLength = 100;
           labelInput.className = 'acct-fee-label';
           labelInput.style.cssText = 'grid-column:1 / -1; width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.7rem; box-sizing:border-box;';
-          labelInput.placeholder = '${t("dashboard:settings.labelPlaceholder")}';
+          labelInput.placeholder = '${jsStr(t("dashboard:settings.labelPlaceholder"))}';
           if (fee.label) labelInput.value = fee.label;
           row.appendChild(labelInput);
 
@@ -2509,6 +2614,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
         var emptyEl = document.getElementById('classify-empty');
         var vscodeOnlyEl = document.getElementById('classify-vscode-only');
         var noAcctEl = document.getElementById('classify-no-accounts');
+        var unlinkedHintEl = document.getElementById('classify-unlinked-hint');
         var applyBtn = document.getElementById('classify-apply');
         var statusEl = document.getElementById('classify-status');
         if (!listEl) return;
@@ -2521,15 +2627,16 @@ CO₂_grams = total_kWh × grid_intensity</div>
           return;
         }
 
-        var LBL_UNASSIGNED = '${t("dashboard:classify.optionUnassigned")}';
-        var LBL_SPLIT = '${t("dashboard:classify.optionSplit")}';
-        var COVERAGE_TMPL = '${t("dashboard:classify.coverage")}';
-        var PENDING_TMPL = '${t("dashboard:classify.pending")}';
-        var SESSIONS_TMPL = '${t("dashboard:classify.sessions")}';
-        var PROJECTS_TMPL = '${t("dashboard:classify.projects")}';
-        var REMOTE_BADGE = '${t("dashboard:classify.remoteBadge")}';
-        var PATH_BADGE = '${t("dashboard:classify.pathBadge")}';
-        var APPLYING_MSG = '${t("dashboard:classify.applying")}';
+        var LBL_UNASSIGNED = '${jsStr(t("dashboard:classify.optionUnassigned"))}';
+        var LBL_SPLIT = '${jsStr(t("dashboard:classify.optionSplit"))}';
+        var COVERAGE_TMPL = '${jsStr(t("dashboard:classify.coverage"))}';
+        var PENDING_TMPL = '${jsStr(t("dashboard:classify.pending"))}';
+        var SESSIONS_TMPL = '${jsStr(t("dashboard:classify.sessions"))}';
+        var PROJECTS_TMPL = '${jsStr(t("dashboard:classify.projects"))}';
+        var REMOTE_BADGE = '${jsStr(t("dashboard:classify.remoteBadge"))}';
+        var PATH_BADGE = '${jsStr(t("dashboard:classify.pathBadge"))}';
+        var APPLYING_MSG = '${jsStr(t("dashboard:classify.applying"))}';
+        var UNLINKED_HINT = '${jsStr(t("dashboard:classify.unlinkedHint"))}';
         var SPLIT_VALUE = '__split__';
 
         var pending = {}; // clusterKey -> { suggestedMatcher, target }
@@ -2563,6 +2670,10 @@ CO₂_grams = total_kWh × grid_intensity</div>
           var accounts = (data && data.accounts) || [];
           listEl.textContent = '';
           if (noAcctEl) noAcctEl.style.display = accounts.length === 0 ? 'block' : 'none';
+          if (unlinkedHintEl) {
+            var hasUnlinked = accounts.some(function (a) { return !a.email; });
+            unlinkedHintEl.style.display = hasUnlinked ? 'block' : 'none';
+          }
           if (!clusters.length) {
             if (emptyEl) emptyEl.style.display = 'block';
             if (coverageEl) coverageEl.textContent = '';
@@ -2616,7 +2727,12 @@ CO₂_grams = total_kWh × grid_intensity</div>
             accounts.forEach(function (a) {
               var opt = document.createElement('option');
               opt.value = a.accountUuid;
-              opt.textContent = a.email || a.planLabel || (a.accountUuid.slice(0, 8) + '…');
+              var label = a.email || a.planLabel || (a.accountUuid.slice(0, 8) + '…');
+              if (!a.email) {
+                label += ' (' + a.accountUuid.slice(0, 8) + '…)';
+                opt.title = UNLINKED_HINT;
+              }
+              opt.textContent = label;
               sel.appendChild(opt);
             });
             var optSplit = document.createElement('option');
@@ -2691,16 +2807,16 @@ CO₂_grams = total_kWh × grid_intensity</div>
           var statusEl = document.getElementById('settings-status');
           saveConfigAsync(config, function (err, result) {
             if (err) {
-              statusEl.textContent = '${t("dashboard:settings.networkError")}';
+              statusEl.textContent = '${jsStr(t("dashboard:settings.networkError"))}';
               statusEl.style.color = '#e15759';
               statusEl.style.opacity = '1';
               return;
             }
             if (result && result.ok) {
-              statusEl.textContent = '${t("dashboard:settings.savedReload")}';
+              statusEl.textContent = '${jsStr(t("dashboard:settings.savedReload"))}';
               statusEl.style.color = '#59a14f';
             } else {
-              statusEl.textContent = '${t("dashboard:settings.errorSaving")}';
+              statusEl.textContent = '${jsStr(t("dashboard:settings.errorSaving"))}';
               statusEl.style.color = '#e15759';
             }
             statusEl.style.opacity = '1';

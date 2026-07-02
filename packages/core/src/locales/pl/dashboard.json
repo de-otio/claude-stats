@@ -290,7 +290,9 @@
     "errorSaving": "Błąd podczas zapisywania.",
     "subscriptions": "Subskrypcje",
     "subscriptionsHint": "Ustaw miesięczną opłatę, którą płacisz za każde konto Claude. Zostały rozdzielone między projekty na karcie Projekty.",
+    "subscriptionsAutoDetectHint": "Nowe konta pojawiają się tutaj automatycznie, gdy tylko Claude Code zarejestruje dla nich sesję — nie trzeba dodawać ich ręcznie.",
     "noAccounts": "Nie znaleziono żadnych kont — uruchom kilka sesji i ponownie zbierz.",
+    "unlinkedAccountHint": "Jeszcze nie powiązano z adresem e-mail — zaloguj się raz na to konto, a następnie przełącz się z powrotem, aby wyświetlić tutaj jego adres e-mail i plan.",
     "feePlaceholder": "Opłata",
     "labelPlaceholder": "Etykieta (np. Praca, Osobiste)"
   },
@@ -299,6 +301,7 @@
     "notConfigured": "Ustaw opłaty subskrypcji w Ustawieniach, aby przypisać je do projektów.",
     "currencyHeader": "{{period}} ten okres · {{monthly}}/mies",
     "idle": "{{label}} — brak użycia ten okres",
+    "idleSliceLabel": "Nieużywane (brak użycia)",
     "reconcile": "Przypisane {{attributed}}"
   },
   "pricing": {
@@ -389,6 +392,7 @@
     "vscodeOnly": "Project classification is available in the VS Code panel.",
     "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
     "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "unlinkedHint": "Konta wyświetlane z identyfikatorem w nawiasie nie zostały jeszcze wykryte jako Twoje aktywne logowanie do Claude Code, więc nie można tu wyświetlić ich adresu e-mail ani planu. Zaloguj się raz na to konto, a następnie przełącz się z powrotem, aby je powiązać.",
     "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
     "pending": "__COUNT__ pending",
     "sessions": "__COUNT__ sessions",

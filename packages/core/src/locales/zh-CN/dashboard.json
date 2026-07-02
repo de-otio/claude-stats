@@ -290,7 +290,9 @@
     "errorSaving": "保存错误。",
     "subscriptions": "订阅",
     "subscriptionsHint": "设置您为每个 Claude 账户支付的月费。这些费用将在「项目」标签页中分配给各个项目。",
+    "subscriptionsAutoDetectHint": "一旦 Claude Code 为某个账户记录了会话，该账户就会自动出现在这里——无需手动添加。",
     "noAccounts": "尚未找到账户——请运行一些会话并重新收集。",
+    "unlinkedAccountHint": "尚未关联邮箱——请先登录此账户一次，然后再切换回来，即可在此显示其邮箱和套餐。",
     "feePlaceholder": "费用",
     "labelPlaceholder": "标签（例如 工作、个人）"
   },
@@ -299,6 +301,7 @@
     "notConfigured": "在「设置」中设置您的订阅费以将其分配给项目。",
     "currencyHeader": "{{period}} 本期间 · {{monthly}}/月",
     "idle": "{{label}} — 本期间无使用",
+    "idleSliceLabel": "闲置（无使用）",
     "reconcile": "已分配 {{attributed}}"
   },
   "pricing": {
@@ -389,6 +392,7 @@
     "vscodeOnly": "Project classification is available in the VS Code panel.",
     "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
     "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "unlinkedHint": "括号中显示了账户 ID 的账户尚未被检测为您当前登录的 Claude Code 账户，因此无法在此显示其邮箱和套餐。请先登录该账户一次，然后再切换回来，即可将其关联。",
     "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
     "pending": "__COUNT__ pending",
     "sessions": "__COUNT__ sessions",

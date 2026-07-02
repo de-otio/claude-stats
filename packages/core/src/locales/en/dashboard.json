@@ -1,5 +1,5 @@
 {
-  "pageTitle": "Claude Stats \u2014 {{period}} ({{date}})",
+  "pageTitle": "Claude Stats — {{period}} ({{date}})",
   "tabs": {
     "overview": "Overview",
     "models": "Models",
@@ -18,6 +18,7 @@
     "vscodeOnly": "Project classification is available in the VS Code panel.",
     "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
     "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "unlinkedHint": "Accounts shown with an ID in parentheses haven't been seen as your active Claude Code login yet, so their email and plan can't be shown here. Log in as that account once, then switch back, to link it.",
     "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
     "pending": "__COUNT__ pending",
     "sessions": "__COUNT__ sessions",
@@ -57,7 +58,7 @@
     "costPerPrompt": "Cost / Prompt",
     "tokPerMin": "Tok / Min",
     "truncatedOutputs": "Truncated Outputs",
-    "periodRange": "{{start}} \u2192 today",
+    "periodRange": "{{start}} → today",
     "allTime": "All time"
   },
   "charts": {
@@ -83,7 +84,7 @@
     "contextGrowthCurve": "Context Growth Curve",
     "cacheEfficiencyByLength": "Cache Efficiency by Conversation Length",
     "compactionEvents": "Compaction Events",
-    "longSessions": "Long Sessions \u2014 Context Management Opportunities",
+    "longSessions": "Long Sessions — Context Management Opportunities",
     "modelUsageByTier": "Model Usage by Complexity Tier",
     "opusScoreDist": "Opus Complexity Score Distribution",
     "topOveruse": "Top Overuse: Expensive Model on Simple Tasks"
@@ -308,7 +309,9 @@
     "errorSaving": "Error saving.",
     "subscriptions": "Subscriptions",
     "subscriptionsHint": "Set the monthly fee you pay for each Claude account. These are distributed across projects on the Projects tab.",
+    "subscriptionsAutoDetectHint": "New accounts appear here automatically once Claude Code records a session for them — there's no need to add one manually.",
     "noAccounts": "No accounts found yet — run some sessions and re-collect.",
+    "unlinkedAccountHint": "Not linked to an email yet — log in as this account once, then switch back, to reveal its email and plan here.",
     "feePlaceholder": "Fee",
     "labelPlaceholder": "Label (e.g. Work, Personal)"
   },
@@ -317,6 +320,7 @@
     "notConfigured": "Set your subscription fees in Settings to attribute them to projects.",
     "currencyHeader": "{{period}} this period · {{monthly}}/mo",
     "idle": "{{label}} — no usage this period",
+    "idleSliceLabel": "Idle (no usage)",
     "reconcile": "Attributed {{attributed}}"
   },
   "pricing": {
@@ -326,10 +330,10 @@
     "output": "Output",
     "cacheRead": "Cache Read",
     "cacheWrite": "Cache Write",
-    "source": "Source: Anthropic API pricing \u2014 last updated {{date}} (auto-refreshed weekly). Costs shown are equivalent API rates, not subscription charges."
+    "source": "Source: Anthropic API pricing — last updated {{date}} (auto-refreshed weekly). Costs shown are equivalent API rates, not subscription charges."
   },
   "footer": {
-    "generated": "Generated {{timestamp}} \u2022 Timezone: {{timezone}}"
+    "generated": "Generated {{timestamp}} • Timezone: {{timezone}}"
   },
   "costPerTask": {
     "summaryHint": "Full breakdown on the Spending tab",
