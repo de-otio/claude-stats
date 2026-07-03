@@ -265,5 +265,16 @@
     "cannotCombineHtml": "--html 不能与 --trend 或 --detail 组合使用",
     "cannotCombineTrendDetail": "--trend 和 --detail 不能组合使用",
     "invalidDateRange": "无效的日期范围：{{message}}"
+  },
+  "repair": {
+    "description": "修复常规采集无法追溯修正的派生数据。",
+    "projectPaths": {
+      "description": "根据每个 session 自身记录的工作目录重新计算 project_path（和 repo_url），修正因解码产生歧义的目录名。",
+      "dryRunOption": "预览更改，不写入也不创建备份。",
+      "dryRunHeader": "项目路径修复（试运行）— 未写入任何更改：",
+      "doneHeader": "项目路径修复完成：",
+      "backupWritten": "备份已写入 {{path}}",
+      "summary": "已检查 {{total}} 个 session，修正 {{changed}} 个，{{unfixable}} 个无法修复（源文件已不可用）。"
+    }
   }
 }

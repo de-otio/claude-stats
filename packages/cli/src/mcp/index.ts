@@ -121,7 +121,11 @@ export function createMcpServer(store: Store): McpServer {
       const range = periodRange({ period: effectivePeriod, since, until }, tz);
       if (range.since > 0) filters.since = range.since;
       filters.until = range.until;
-      const sessions = store.getSessions(filters).slice(0, limit).map((s) => ({
+      const sessionRows = store.getSessions(filters).slice(0, limit);
+      // Real per-message, per-model cost — not an approximation for a single
+      // guessed model, since a session can span several models.
+      const costBySession = store.getCostBySession(sessionRows.map((s) => s.session_id));
+      const sessions = sessionRows.map((s) => ({
         sessionId: s.session_id,
         project: s.project_path,
         firstTimestamp: s.first_timestamp ? new Date(s.first_timestamp).toISOString() : null,
@@ -130,10 +134,7 @@ export function createMcpServer(store: Store): McpServer {
         inputTokens: s.input_tokens,
         outputTokens: s.output_tokens,
         cacheReadTokens: s.cache_read_tokens,
-        estimatedCost: estimateCost(
-          "claude-sonnet-4-20250514", // approximate — sessions span models
-          s.input_tokens, s.output_tokens, s.cache_read_tokens, s.cache_creation_tokens,
-        ),
+        estimatedCost: { cost: costBySession.get(s.session_id) ?? 0, known: true },
         models: s.models,
         entrypoint: s.entrypoint,
       }));
@@ -370,6 +371,12 @@ export function createMcpServer(store: Store): McpServer {
 export async function startMcpServer(): Promise<void> {
   const { Store } = await import("../store/index.js");
   const { collect } = await import("../aggregator/index.js");
+  const { initPricingCache } = await import("../pricing-cache.js");
+
+  // Load the fetched pricing cache before serving any tool calls — otherwise
+  // this long-lived process runs its whole lifetime on DEFAULT_PRICING alone
+  // and never sees newer models the cache has picked up.
+  await initPricingCache();
 
   const store = new Store();
   await collect(store);

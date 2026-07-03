@@ -166,6 +166,65 @@ beforeAll(async () => {
     promptText: "Refactor the auth module to use JWT",
   }]);
 
+  // ── Sonnet-5 pricing-consistency fixture ─────────────────────────────────
+  // Regression fixture for the bug where list_sessions hardcoded
+  // "claude-sonnet-4-20250514" as a cost approximation, so any session using
+  // a model missing from that guess (like claude-sonnet-5) priced
+  // inconsistently between list_sessions and get_session_detail.
+  store.upsertSession({
+    sessionId: "sonnet5-session-001",
+    projectPath: "/tmp/test-project-sonnet5",
+    sourceFile: "/tmp/test-project-sonnet5/.claude/conversation.jsonl",
+    firstTimestamp: Date.now() - 3600_000,
+    lastTimestamp: Date.now(),
+    claudeVersion: "2.1.186",
+    entrypoint: "cli",
+    gitBranch: "main",
+    permissionMode: "default",
+    isInteractive: true,
+    promptCount: 1,
+    assistantMessageCount: 1,
+    inputTokens: 1_000_000,
+    outputTokens: 100_000,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+    webSearchRequests: 0,
+    webFetchRequests: 0,
+    toolUseCounts: [],
+    models: ["claude-sonnet-5"],
+    repoUrl: null,
+    accountUuid: null,
+    organizationUuid: null,
+    subscriptionType: null,
+    thinkingBlocks: 0,
+    parentSessionId: null,
+    isSubagent: false,
+    throttleEvents: 0,
+    sourceDeleted: false,
+    activeDurationMs: null,
+    medianResponseTimeMs: null,
+  });
+
+  store.upsertMessages([{
+    uuid: "msg-sonnet5-001",
+    sessionId: "sonnet5-session-001",
+    timestamp: Date.now() - 1800_000,
+    claudeVersion: "2.1.186",
+    model: "claude-sonnet-5",
+    stopReason: "end_turn",
+    inputTokens: 1_000_000,
+    outputTokens: 100_000,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+    tools: [],
+    thinkingBlocks: 0,
+    serviceTier: null,
+    inferenceGeo: null,
+    ephemeral5mCacheTokens: 0,
+    ephemeral1hCacheTokens: 0,
+    promptText: "test prompt",
+  }]);
+
   // Create MCP server and connect via in-memory transport
   const server = createMcpServer(store);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -297,6 +356,24 @@ describe("MCP Server", () => {
       const ids = sessions.map((s) => s["sessionId"]);
       expect(ids).toContain("recap-session-apr25");
       expect(ids).not.toContain("test-session-001");
+    });
+
+    it("prices a claude-sonnet-5 session as known and non-zero, matching get_session_detail", async () => {
+      const listResult = await client.callTool({ name: "list_sessions", arguments: { period: "all", limit: 100 } });
+      const listContent = listResult.content as Array<{ type: string; text: string }>;
+      const sessions = JSON.parse(listContent[0]!.text) as Array<Record<string, unknown>>;
+      const session = sessions.find((s) => s["sessionId"] === "sonnet5-session-001");
+      expect(session).toBeDefined();
+      const listCost = session!["estimatedCost"] as { cost: number; known: boolean };
+      expect(listCost.known).toBe(true);
+      expect(listCost.cost).toBeGreaterThan(0);
+
+      const detailResult = await client.callTool({ name: "get_session_detail", arguments: { sessionId: "sonnet5-session-001" } });
+      const detailContent = detailResult.content as Array<{ type: string; text: string }>;
+      const detail = JSON.parse(detailContent[0]!.text) as { messages: Array<{ estimatedCost: { cost: number; known: boolean } }> };
+      const detailCost = detail.messages.reduce((sum, m) => sum + m.estimatedCost.cost, 0);
+      expect(detail.messages.every((m) => m.estimatedCost.known)).toBe(true);
+      expect(listCost.cost).toBeCloseTo(detailCost);
     });
   });
 

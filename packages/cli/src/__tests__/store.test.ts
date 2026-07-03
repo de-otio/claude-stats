@@ -451,6 +451,13 @@ describe("Store — getStatus", () => {
     expect(status.sessionCount).toBe(1);
     expect(status.lastCollected).toBeGreaterThan(0);
   });
+
+  it("excludes source_deleted sessions from sessionCount, like sibling queries", () => {
+    store.upsertSession(makeSession({ sessionId: "sess-live" }));
+    store.upsertSession(makeSession({ sessionId: "sess-gone", sourceDeleted: true }));
+    const status = store.getStatus();
+    expect(status.sessionCount).toBe(1);
+  });
 });
 
 describe("Store — getStopReasonCounts", () => {

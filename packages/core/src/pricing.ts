@@ -13,10 +13,14 @@ export interface ModelPricing {
 // Default pricing table — used as fallback when auto-fetched cache is unavailable.
 // Verified against https://platform.claude.com/docs/en/about-claude/pricing
 const DEFAULT_PRICING: Record<string, ModelPricing> = {
+  "claude-opus-4-8":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25 },
   "claude-opus-4-6":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25 },
   "claude-opus-4-5":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25 },
   "claude-opus-4-1":   { inputPerMillion: 15,   outputPerMillion: 75, cacheReadPerMillion: 1.50, cacheWritePerMillion: 18.75 },
   "claude-opus-4":     { inputPerMillion: 15,   outputPerMillion: 75, cacheReadPerMillion: 1.50, cacheWritePerMillion: 18.75 },
+  // Introductory pricing through 2026-08-31; standard rate ($3/$15, matching
+  // Sonnet 4.6) takes effect 2026-09-01 — bump this row then.
+  "claude-sonnet-5":   { inputPerMillion: 2,    outputPerMillion: 10, cacheReadPerMillion: 0.20, cacheWritePerMillion: 2.50 },
   "claude-sonnet-4-6": { inputPerMillion: 3,    outputPerMillion: 15, cacheReadPerMillion: 0.30, cacheWritePerMillion: 3.75 },
   "claude-sonnet-4-5": { inputPerMillion: 3,    outputPerMillion: 15, cacheReadPerMillion: 0.30, cacheWritePerMillion: 3.75 },
   "claude-sonnet-4":   { inputPerMillion: 3,    outputPerMillion: 15, cacheReadPerMillion: 0.30, cacheWritePerMillion: 3.75 },
@@ -32,7 +36,7 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
 export let PRICING: Record<string, ModelPricing> = { ...DEFAULT_PRICING };
 
 /** ISO date string when the active pricing data was last verified / fetched. */
-export let PRICING_VERIFIED_DATE = "2026-03-10";
+export let PRICING_VERIFIED_DATE = "2026-07-03";
 
 /**
  * Replace the live pricing table with fetched data.

@@ -265,5 +265,16 @@
     "cannotCombineHtml": "--html kann nicht mit --trend oder --detail kombiniert werden",
     "cannotCombineTrendDetail": "--trend und --detail können nicht kombiniert werden",
     "invalidDateRange": "Ungültiger Zeitraum: {{message}}"
+  },
+  "repair": {
+    "description": "Repariert abgeleitete Daten, die die normale Erfassung nicht rückwirkend beheben kann.",
+    "projectPaths": {
+      "description": "Berechnet project_path (und repo_url) aus dem eigenen aufgezeichneten Arbeitsverzeichnis jeder Session neu und korrigiert Verzeichnisnamen, die mehrdeutig dekodiert wurden.",
+      "dryRunOption": "Zeigt eine Vorschau der Änderungen an, ohne sie zu schreiben oder ein Backup zu erstellen.",
+      "dryRunHeader": "Projektpfad-Reparatur (Probelauf) – keine Änderungen geschrieben:",
+      "doneHeader": "Projektpfad-Reparatur abgeschlossen:",
+      "backupWritten": "Backup geschrieben nach {{path}}",
+      "summary": "{{total}} Sessions geprüft, {{changed}} korrigiert, {{unfixable}} nicht behebbar (Quelldatei nicht mehr verfügbar)."
+    }
   }
 }

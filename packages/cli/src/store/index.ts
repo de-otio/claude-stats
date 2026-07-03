@@ -1068,6 +1068,28 @@ export class Store {
   }
 
   /**
+   * Apply corrected project_path/repo_url pairs to sessions (repair-project-
+   * paths backfill). project_path is intentionally excluded from
+   * upsertSession's ON CONFLICT clause — it's set once at first insert and
+   * never revisited by normal collection — so this is the only path that can
+   * fix a session already stored with a lossy decoded path. Returns the
+   * number of rows changed.
+   */
+  updateProjectPaths(
+    mapping: Map<string, { projectPath: string; repoUrl: string | null }>,
+  ): number {
+    const stmt = this.db.prepare(
+      "UPDATE sessions SET project_path = ?, repo_url = ? WHERE session_id = ?"
+    );
+    let changed = 0;
+    for (const [sessionId, info] of mapping) {
+      const result = stmt.run(info.projectPath, info.repoUrl, sessionId);
+      if (result.changes > 0) changed++;
+    }
+    return changed;
+  }
+
+  /**
    * Clear per-message straddle attribution (messages.account_uuid). Message-
    * level account_uuid is produced ONLY by the attribution engine's straddle
    * path — nothing else writes it — so a full re-attribution can safely clear it
@@ -2186,7 +2208,7 @@ export class Store {
     let dbSize = 0;
     try { dbSize = fs.statSync(paths.statsDb).size; } catch { /* ok */ }
 
-    const sessionCount = (this.db.prepare("SELECT COUNT(*) as c FROM sessions").get() as { c: number }).c;
+    const sessionCount = (this.db.prepare("SELECT COUNT(*) as c FROM sessions WHERE source_deleted = 0").get() as { c: number }).c;
     const messageCount = (this.db.prepare("SELECT COUNT(*) as c FROM messages").get() as { c: number }).c;
     const quarantineCount = (this.db.prepare("SELECT COUNT(*) as c FROM quarantine WHERE reprocessed = 0").get() as { c: number }).c;
     const lastRow = this.db.prepare("SELECT MAX(updated_at) as t FROM collection_state").get() as { t: number | null };

@@ -261,6 +261,17 @@
     "listening": "Listening on {{url}}",
     "portInUse": "Error: port {{port}} is already in use"
   },
+  "repair": {
+    "description": "Repair derived data that normal collection can't fix retroactively.",
+    "projectPaths": {
+      "description": "Recompute project_path (and repo_url) from each session's own recorded working directory, fixing directory names that decoded ambiguously.",
+      "dryRunOption": "Preview the changes without writing or creating a backup.",
+      "dryRunHeader": "Project-path repair (dry run) — no changes written:",
+      "doneHeader": "Project-path repair complete:",
+      "backupWritten": "Backup written to {{path}}",
+      "summary": "{{total}} sessions checked, {{changed}} corrected, {{unfixable}} unfixable (source file no longer available)."
+    }
+  },
   "errors": {
     "cannotCombineHtml": "Cannot combine --html with --trend or --detail",
     "cannotCombineTrendDetail": "Cannot combine --trend and --detail",

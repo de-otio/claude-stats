@@ -256,6 +256,18 @@ describe('aggregate', () => {
     expect(exactSum).toBeCloseTo(r.totalCostObservable, 10);
   });
 
+  it('byModel: omits an all-zero placeholder model (e.g. "<synthetic>") rather than surfacing a dead row', () => {
+    const records: TaskRecord[] = [
+      rec({ outcome: 'success', cost: 2 }),
+      // A message tagged with Claude Code's own placeholder model for
+      // compacted/summary content — zero cost, never a dominant model.
+      { ...rec({ outcome: 'success', cost: 2 }), costByModel: { 'claude-sonnet-4-6': 2, '<synthetic>': 0 } },
+    ];
+    const r = aggregate(records, 'month', 0, 0, true);
+    expect(r.byModel.find((m) => m.model === '<synthetic>')).toBeUndefined();
+    expect(r.byModel.find((m) => m.model === 'claude-sonnet-4-6')).toBeDefined();
+  });
+
   it('property (seeded): identity + exact-split invariants hold over random task sets', () => {
     // Deterministic mulberry32 RNG — reproducible, no fast-check dependency.
     let s = 0x9e3779b9;

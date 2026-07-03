@@ -104,6 +104,42 @@ describe("collect", () => {
     expect(sessions[0]!.input_tokens).toBe(100);
   });
 
+  it("resolves project_path and repo_url from the session's own cwd, not the lossy decoded directory name", async () => {
+    // Real project directory with a hyphenated leaf name and a .git/config —
+    // decodeProjectPath would corrupt any encoded name derived from a path
+    // like this (the hyphen in "my-project" is indistinguishable from an
+    // encoded '/'), so this proves the aggregator no longer depends on it.
+    const realProjectDir = path.join(tmpDir(), "my-project");
+    fs.mkdirSync(path.join(realProjectDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(realProjectDir, ".git", "config"),
+      '[remote "origin"]\n\turl = git@github.com:example/my-project.git\n'
+    );
+
+    // Encoded session directory deliberately does NOT decode to
+    // realProjectDir — simulating the lossy decode. If the aggregator still
+    // used this decoded path for the git-remote lookup, it would find
+    // nothing (the decoded path doesn't exist on disk) and repo_url would
+    // stay null.
+    const encodedDir = path.join(projectsDir, "-nonexistent-wrong-path");
+    fs.mkdirSync(encodedDir);
+    fs.writeFileSync(
+      path.join(encodedDir, "sess-repo-url.jsonl"),
+      [
+        makeUserLine("sess-repo-url"),
+        makeSessionLine({ sessionId: "sess-repo-url", cwd: realProjectDir }),
+      ].join("\n") + "\n"
+    );
+
+    await collect(store);
+
+    const sessions = store.getSessions({ includeCI: true, includeDeleted: true });
+    const session = sessions.find((s) => s.session_id === "sess-repo-url");
+    expect(session).toBeDefined();
+    expect(session!.project_path).toBe(realProjectDir);
+    expect(session!.repo_url).toBe("git@github.com:example/my-project.git");
+  });
+
   it("skips unchanged files on second run", async () => {
     const projDir = path.join(projectsDir, "-proj-skip");
     fs.mkdirSync(projDir);

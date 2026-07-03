@@ -158,12 +158,16 @@ export async function collect(
     result.parseErrors += parsed.errors.length;
 
     // Store everything in a single transaction for crash safety
-    // Resolve repo URL once per project path
-    if (parsed.session && !repoUrlCache.has(sf.projectPath)) {
-      repoUrlCache.set(sf.projectPath, getGitRemoteUrl(sf.projectPath));
-    }
+    // Resolve repo URL once per project path. Use the parser's corrected
+    // path (preferring the session's own `cwd`) — not the scanner's
+    // directory-decoded `sf.projectPath`, which is lossy for hyphenated
+    // directory names and would point getGitRemoteUrl at a nonexistent path.
     if (parsed.session) {
-      parsed.session.repoUrl = repoUrlCache.get(sf.projectPath) ?? null;
+      const resolvedProjectPath = parsed.session.projectPath;
+      if (!repoUrlCache.has(resolvedProjectPath)) {
+        repoUrlCache.set(resolvedProjectPath, getGitRemoteUrl(resolvedProjectPath));
+      }
+      parsed.session.repoUrl = repoUrlCache.get(resolvedProjectPath) ?? null;
 
       // Set subagent flag from scanner; resolve parentUuid → parentSessionId
       parsed.session.isSubagent = sf.isSubagent;
