@@ -2,6 +2,33 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.13.1 — 2026-07-03
+
+### Fixed — Project paths and costs could be silently wrong for hyphenated directory names
+
+Any project whose folder name contains a hyphen (e.g. `claude-stats`,
+`dot-atrium`) could have its sessions and cost split across a real project
+and one or more phantom sub-paths, and lose its git remote attribution
+entirely. Project paths are now read from each session's own recorded
+working directory instead of being guessed from the encoded folder name.
+A new `claude-stats repair project-paths` command (supports `--dry-run`)
+fixes already-collected sessions; it backs up the database before making
+any change.
+
+### Fixed — Claude Sonnet 5 and Opus 4.8 costs could be missing or inconsistent
+
+`list_sessions` and `get_session_detail` could disagree on a session's
+cost, and Sonnet 5 sessions could show as `$0 / unknown` depending on which
+MCP tool was called. Both now price consistently from the same per-message
+model data, and the MCP server now loads pricing correctly at startup.
+
+### Fixed — A few smaller MCP reporting-accuracy issues
+
+`get_status`'s session count no longer includes sessions whose source file
+has been deleted, matching every other reporting query. `get_cost_per_task`
+no longer surfaces an empty placeholder row for Claude Code's internal
+"synthetic" message marker.
+
 ## 0.13.0 — 2026-07-03
 
 ### Added — Custom date ranges everywhere, not just day/week/month/all
