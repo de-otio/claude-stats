@@ -226,6 +226,34 @@ describe("MCP Server", () => {
       const data = JSON.parse(content[0]!.text) as Record<string, unknown>;
       expect(data["period"]).toBe("week");
     });
+
+    it("accepts a custom since/until range and resolves it (not the period default)", async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const result = await client.callTool({
+        name: "get_stats",
+        arguments: { since: "2020-01-01", until: today },
+      });
+      const content = result.content as Array<{ type: string; text: string }>;
+      const data = JSON.parse(content[0]!.text) as Record<string, unknown>;
+      expect(data).toHaveProperty("sessions");
+      expect(data["period"]).toBe("custom");
+    });
+
+    it("rejects a mismatched since/until pair (only one of the two set)", async () => {
+      const result = await client.callTool({
+        name: "get_stats",
+        arguments: { since: "2020-01-01" },
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it("rejects since after until", async () => {
+      const result = await client.callTool({
+        name: "get_stats",
+        arguments: { since: "2026-01-10", until: "2026-01-01" },
+      });
+      expect(result.isError).toBe(true);
+    });
   });
 
   describe("list_sessions", () => {
@@ -254,6 +282,21 @@ describe("MCP Server", () => {
       const content = result.content as Array<{ type: string; text: string }>;
       const sessions = JSON.parse(content[0]!.text) as unknown[];
       expect(Array.isArray(sessions)).toBe(true);
+    });
+
+    // The pre-existing code path (via `periodStart`) never set an upper
+    // bound at all — a session outside a custom range's `until` would
+    // silently pass. This asserts the new `until` bound actually excludes it.
+    it("excludes sessions active after a custom range's until", async () => {
+      const result = await client.callTool({
+        name: "list_sessions",
+        arguments: { since: "2020-01-01", until: "2026-04-26", limit: 100 },
+      });
+      const content = result.content as Array<{ type: string; text: string }>;
+      const sessions = JSON.parse(content[0]!.text) as Array<Record<string, unknown>>;
+      const ids = sessions.map((s) => s["sessionId"]);
+      expect(ids).toContain("recap-session-apr25");
+      expect(ids).not.toContain("test-session-001");
     });
   });
 

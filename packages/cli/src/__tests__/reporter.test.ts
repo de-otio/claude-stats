@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { formatTokens, formatBytes, formatDuration, periodStart, printSummary, printStatus, formatEntrypoint, printSessionList, printSessionDetail, buildBuckets, printTrend, printSpendingReport, printCostPerTask } from "../reporter/index.js";
+import { formatTokens, formatBytes, formatDuration, periodStart, periodRange, printSummary, printStatus, formatEntrypoint, printSessionList, printSessionDetail, buildBuckets, printTrend, printSpendingReport, printCostPerTask } from "../reporter/index.js";
 import type { CostPerTaskReport, ModelCostPerTask } from "../cost-per-task/index.js";
 import { Store } from "../store/index.js";
 import os from "os";
@@ -117,6 +117,68 @@ describe("periodStart", () => {
     expect(month).toBeLessThanOrEqual(day);
     expect(week).toBeLessThanOrEqual(day);
     expect(day).toBeLessThanOrEqual(now);
+  });
+});
+
+// ── periodRange ──────────────────────────────────────────────────────────────
+
+describe("periodRange", () => {
+  it("passes through preset periods, with until ≈ Date.now()", () => {
+    const before = Date.now();
+    const { since, until } = periodRange({ period: "week" }, "UTC");
+    const after = Date.now();
+    expect(since).toBe(periodStart("week", "UTC"));
+    expect(until).toBeGreaterThanOrEqual(before);
+    expect(until).toBeLessThanOrEqual(after);
+  });
+
+  it("resolves a custom since/until pair (happy path)", () => {
+    const { since, until } = periodRange({ since: "2026-01-01", until: "2026-01-10" }, "UTC");
+    expect(since).toBe(Date.UTC(2026, 0, 1, 0, 0, 0));
+    // until is the start of the day AFTER "2026-01-10" (exclusive end),
+    // clamped to Date.now() — here it's in the past so no clamping applies.
+    expect(until).toBe(Date.UTC(2026, 0, 11, 0, 0, 0));
+  });
+
+  it("rejects since without until", () => {
+    expect(() => periodRange({ since: "2026-01-01" }, "UTC")).toThrow(RangeError);
+  });
+
+  it("rejects until without since", () => {
+    expect(() => periodRange({ until: "2026-01-10" }, "UTC")).toThrow(RangeError);
+  });
+
+  it("rejects since > until", () => {
+    expect(() => periodRange({ since: "2026-01-10", until: "2026-01-01" }, "UTC")).toThrow(RangeError);
+  });
+
+  it("accepts since === until as a single-day range", () => {
+    const { since, until } = periodRange({ since: "2026-01-05", until: "2026-01-05" }, "UTC");
+    expect(since).toBe(Date.UTC(2026, 0, 5, 0, 0, 0));
+    expect(until).toBe(Date.UTC(2026, 0, 6, 0, 0, 0));
+    expect(since).toBeLessThan(until);
+  });
+
+  it("resolves a custom range correctly in a positive-offset timezone near local midnight", () => {
+    // Asia/Kolkata is UTC+5:30 — local midnight on 2026-01-02 is
+    // 2026-01-01T18:30:00Z.
+    const tz = "Asia/Kolkata";
+    const { since, until } = periodRange({ since: "2026-01-02", until: "2026-01-02" }, tz);
+    expect(since).toBe(Date.UTC(2026, 0, 1, 18, 30, 0));
+    expect(until).toBe(Date.UTC(2026, 0, 2, 18, 30, 0));
+  });
+
+  it("rejects a malformed date that does not round-trip (2026-02-30)", () => {
+    expect(() => periodRange({ since: "2026-02-30", until: "2026-03-05" }, "UTC")).toThrow(RangeError);
+  });
+
+  it("clamps a future until to now rather than rejecting", () => {
+    const farFuture = "2999-01-10";
+    const before = Date.now();
+    const { until } = periodRange({ since: "2026-01-01", until: farFuture }, "UTC");
+    const after = Date.now();
+    expect(until).toBeGreaterThanOrEqual(before);
+    expect(until).toBeLessThanOrEqual(after);
   });
 });
 
@@ -879,6 +941,52 @@ describe("buildBuckets", () => {
     expect(buckets[0]!.label).toContain("Jan");
     expect(buckets[1]!.label).toContain("Feb");
     expect(buckets[2]!.label).toContain("Mar");
+  });
+
+  it("produces daily buckets for a 'day'-period trend", () => {
+    const start = Date.UTC(2026, 2, 2, 0, 0, 0);
+    const end = start + 24 * 60 * 60 * 1000;
+    const buckets = buildBuckets("day", "UTC", start, end);
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]!.startMs).toBe(start);
+    expect(buckets[0]!.endMs).toBe(end);
+  });
+
+  it("uses pickGranularity for a non-preset period: daily buckets at/around the 9-day threshold", () => {
+    const start = Date.UTC(2026, 0, 1, 0, 0, 0);
+
+    // Exactly 9 days → daily buckets
+    const end9 = start + 9 * 24 * 60 * 60 * 1000;
+    const buckets9 = buildBuckets("custom", "UTC", start, end9);
+    expect(buckets9).toHaveLength(9);
+    for (const b of buckets9) {
+      expect(b.endMs - b.startMs).toBe(24 * 60 * 60 * 1000);
+    }
+
+    // Just over 9 days → weekly buckets, not daily
+    const end10 = start + 10 * 24 * 60 * 60 * 1000;
+    const buckets10 = buildBuckets("custom", "UTC", start, end10);
+    for (const b of buckets10) {
+      expect(b.endMs - b.startMs).not.toBe(24 * 60 * 60 * 1000);
+    }
+  });
+
+  it("uses pickGranularity for a non-preset period: weekly buckets at/around the 62-day threshold", () => {
+    const start = Date.UTC(2026, 0, 1, 0, 0, 0);
+
+    // Exactly 62 days → weekly buckets (7-day spans, possibly truncated at the end)
+    const end62 = start + 62 * 24 * 60 * 60 * 1000;
+    const buckets62 = buildBuckets("custom", "UTC", start, end62);
+    for (const b of buckets62.slice(0, -1)) {
+      expect(b.endMs - b.startMs).toBe(7 * 24 * 60 * 60 * 1000);
+    }
+
+    // Just over 62 days → monthly buckets
+    const end63 = start + 63 * 24 * 60 * 60 * 1000;
+    const buckets63 = buildBuckets("custom", "UTC", start, end63);
+    for (const b of buckets63) {
+      expect(b.endMs - b.startMs).not.toBe(7 * 24 * 60 * 60 * 1000);
+    }
   });
 });
 

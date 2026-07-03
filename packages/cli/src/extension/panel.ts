@@ -33,6 +33,12 @@ export class DashboardPanel {
   // grows unboundedly (see doc/analysis/startup-performance/). "day" keeps the
   // first paint sub-300ms regardless of total history; users can widen on demand.
   private period: ReportOptions["period"] = "day";
+  // Custom date-range override. When both are set they take precedence over
+  // `period` (mirrors periodRange()'s precedence rule) — see the toolbar
+  // contract in plans/custom-date-range/plan.md: picking a date clears the
+  // preset's effect, and vice versa (enforced in handleMessage below).
+  private since: string | undefined;
+  private until: string | undefined;
   private accountUuid: string | undefined;
   private activeTab: string = "overview";
   private readonly chartJsUri: vscode.Uri;
@@ -73,7 +79,7 @@ export class DashboardPanel {
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
     this.panel.webview.onDidReceiveMessage(
-      (msg: { command: string; period?: string; accountUuid?: string; tab?: string; signature?: unknown; value?: string }) => this.handleMessage(msg),
+      (msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; signature?: unknown; value?: string }) => this.handleMessage(msg),
       null,
       this.disposables,
     );
@@ -108,6 +114,8 @@ export class DashboardPanel {
       // per-account split when accounts hold different plans.
       const dashOpts = {
         period: this.period,
+        since: this.since,
+        until: this.until,
         accountUuid: this.accountUuid,
         accountFees: cfg.accountFees,
       };
@@ -133,9 +141,20 @@ export class DashboardPanel {
     }
   }
 
-  private handleMessage(msg: { command: string; period?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean; assignments?: unknown }): void {
+  private handleMessage(msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean; assignments?: unknown }): void {
     if (msg.command === "changePeriod" && msg.period) {
       this.period = msg.period as ReportOptions["period"];
+      // Mutual exclusivity per the toolbar contract: a preset pick clears any
+      // custom range in effect.
+      this.since = undefined;
+      this.until = undefined;
+      void this.refresh();
+    } else if (msg.command === "changeDateRange" && msg.since && msg.until) {
+      // Mutual exclusivity per the toolbar contract: a custom range clears the
+      // active preset so the two never combine.
+      this.since = msg.since;
+      this.until = msg.until;
+      this.period = undefined;
       void this.refresh();
     } else if (msg.command === "setOutcome") {
       // Write-back labelling — VS Code webview ONLY. The read-only `serve` HTTP
@@ -459,6 +478,25 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
     });
   }
 
+  // Wire up custom date-range inputs (mirrors #period-select wiring above).
+  // Inline change handlers are stripped by the nonce CSP (step 3 below), so
+  // both inputs need their own addEventListener pair here. Only fire once
+  // both inputs have a value — matches the both-or-neither rule (a lone date
+  // pick doesn't yet form a valid range).
+  var sinceInput = document.getElementById('since-date-input');
+  var untilInput = document.getElementById('until-date-input');
+  if (sinceInput && untilInput) {
+    var onDateRangeChange = function() {
+      var sinceVal = sinceInput.value;
+      var untilVal = untilInput.value;
+      if (sinceVal && untilVal) {
+        vscode.postMessage({ command: 'changeDateRange', since: sinceVal, until: untilVal });
+      }
+    };
+    sinceInput.addEventListener('change', onDateRangeChange);
+    untilInput.addEventListener('change', onDateRangeChange);
+  }
+
   // Wire up account selector (only rendered when >= 2 accounts are present)
   var acctSel = document.getElementById('account-select');
   if (acctSel) {
@@ -482,6 +520,9 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
   // Override global functions in case they're called from chart init script
   window.changePeriod = function(val) {
     vscode.postMessage({ command: 'changePeriod', period: val });
+  };
+  window.changeDateRange = function(since, until) {
+    vscode.postMessage({ command: 'changeDateRange', since: since, until: until });
   };
   window.changeAccount = function(val) {
     vscode.postMessage({ command: 'changeAccount', accountUuid: val });

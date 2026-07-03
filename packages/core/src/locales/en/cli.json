@@ -65,6 +65,8 @@
     "reportRepo": "Filter to a specific git remote URL (e.g. https://github.com/org/repo)",
     "reportAccount": "Filter to a specific account UUID (use 'list' to see known accounts)",
     "reportPeriod": "Time period: day, week, month, or all (default: all)",
+    "sinceFlag": "Custom range start date (YYYY-MM-DD, inclusive). Must be paired with --until; overrides --period when both are set.",
+    "untilFlag": "Custom range end date (YYYY-MM-DD, inclusive). Must be paired with --since; overrides --period when both are set.",
     "reportTimezone": "Timezone for day/week/month bucketing (default: local)",
     "reportSource": "Filter by entrypoint (e.g. claude, claude-vscode)",
     "reportIncludeCi": "Include CI/automated sessions (excluded by default)",
@@ -261,6 +263,7 @@
   },
   "errors": {
     "cannotCombineHtml": "Cannot combine --html with --trend or --detail",
-    "cannotCombineTrendDetail": "Cannot combine --trend and --detail"
+    "cannotCombineTrendDetail": "Cannot combine --trend and --detail",
+    "invalidDateRange": "Invalid date range: {{message}}"
   }
 }

@@ -5,7 +5,7 @@
 import { Command } from "commander";
 import { collect } from "../aggregator/index.js";
 import { Store, validateTag } from "../store/index.js";
-import { printSummary, printStatus, printSearchResults, printSessionList, printSessionDetail, printTrend, printSpendingReport } from "../reporter/index.js";
+import { printSummary, printStatus, printSearchResults, printSessionList, printSessionDetail, printTrend, printSpendingReport, periodRange } from "../reporter/index.js";
 import { searchHistory } from "../history/index.js";
 import { loadConfig, saveConfig, createJudgeProviderFromConfig } from "../config.js";
 import { checkThresholds } from "../alerts.js";
@@ -126,6 +126,8 @@ export async function buildCli(): Promise<Command> {
       t("cli:commands.reportPeriod"),
       "all"
     )
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
     .option("--timezone <tz>", t("cli:commands.reportTimezone"))
     .option("--source <entrypoint>", t("cli:commands.reportSource"))
     .option("--include-ci", t("cli:commands.reportIncludeCi"))
@@ -141,6 +143,8 @@ export async function buildCli(): Promise<Command> {
         account?: string;
         source?: string;
         period?: string;
+        since?: string;
+        until?: string;
         timezone?: string;
         includeCi?: boolean;
         detail?: boolean;
@@ -168,6 +172,8 @@ export async function buildCli(): Promise<Command> {
             entrypoint: opts.source,
             tag: opts.tag,
             period: opts.period as "day" | "week" | "month" | "all" | undefined,
+            since: opts.since,
+            until: opts.until,
             timezone: opts.timezone,
             includeCI: opts.includeCi,
           };
@@ -199,6 +205,13 @@ export async function buildCli(): Promise<Command> {
           } else {
             printSummary(store, reportOpts);
           }
+        } catch (err) {
+          if (err instanceof RangeError) {
+            console.error(t("cli:errors.invalidDateRange", { message: err.message }));
+            process.exitCode = 1;
+            return;
+          }
+          throw err;
         } finally {
           store.close();
         }
@@ -209,6 +222,8 @@ export async function buildCli(): Promise<Command> {
     .command("spending")
     .description(t("cli:commands.spending"))
     .option("--period <period>", t("cli:commands.spendingPeriod"), "day")
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
     .option("--project <path>", t("cli:commands.reportProject"))
     .option("--model <name>", t("cli:commands.spendingModel"))
     .option("--top <n>", t("cli:commands.spendingTop"), "5")
@@ -218,6 +233,8 @@ export async function buildCli(): Promise<Command> {
     .option("--account <uuid>", t("cli:commands.reportAccount"))
     .action((opts: {
       period?: string;
+      since?: string;
+      until?: string;
       project?: string;
       model?: string;
       top?: string;
@@ -231,6 +248,8 @@ export async function buildCli(): Promise<Command> {
       try {
         printSpendingReport(store, {
           period: opts.period as "day" | "week" | "month" | "all" | undefined,
+          since: opts.since,
+          until: opts.until,
           projectPath: opts.project,
           model: opts.model,
           top: opts.top ? parseInt(opts.top, 10) : 5,
@@ -239,6 +258,13 @@ export async function buildCli(): Promise<Command> {
           timezone: opts.timezone,
           accountUuid: opts.account,
         });
+      } catch (err) {
+        if (err instanceof RangeError) {
+          console.error(t("cli:errors.invalidDateRange", { message: err.message }));
+          process.exitCode = 1;
+          return;
+        }
+        throw err;
       } finally {
         store.close();
       }
@@ -248,6 +274,8 @@ export async function buildCli(): Promise<Command> {
     .command("cost-per-task")
     .description(t("cli:commands.costPerTask"))
     .option("--period <period>", t("cli:commands.costPerTaskPeriod"), "month")
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
     .option("--project <path>", t("cli:commands.reportProject"))
     .option("--account <uuid>", t("cli:commands.reportAccount"))
     .option("--repo <url>", t("cli:commands.reportRepo"))
@@ -259,6 +287,8 @@ export async function buildCli(): Promise<Command> {
     .option("--llm-judge", t("cli:commands.costPerTaskLlmJudge"))
     .action(async (opts: {
       period?: string;
+      since?: string;
+      until?: string;
       project?: string;
       account?: string;
       repo?: string;
@@ -294,6 +324,8 @@ export async function buildCli(): Promise<Command> {
         }
         const common = {
           period: opts.period as "day" | "week" | "month" | "all" | undefined,
+          since: opts.since,
+          until: opts.until,
           projectPath: opts.project,
           accountUuid: opts.account,
           repoUrl: opts.repo,
@@ -315,6 +347,13 @@ export async function buildCli(): Promise<Command> {
           byModel: opts.byModel === true,
         });
         printCostPerTask(report, process.stdout, { json: opts.json });
+      } catch (err) {
+        if (err instanceof RangeError) {
+          console.error(t("cli:errors.invalidDateRange", { message: err.message }));
+          process.exitCode = 1;
+          return;
+        }
+        throw err;
       } finally {
         store.close();
       }
@@ -391,11 +430,24 @@ export async function buildCli(): Promise<Command> {
     .option("--format <fmt>", t("cli:commands.exportFormat"), "json")
     .option("--project <path>", t("cli:commands.exportProject"))
     .option("--period <period>", t("cli:commands.exportPeriod"), "all")
-    .action((opts: { format?: string; project?: string; period?: string }) => {
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
+    .option("--timezone <tz>", t("cli:commands.reportTimezone"))
+    .action((opts: { format?: string; project?: string; period?: string; since?: string; until?: string; timezone?: string }) => {
       const store = new Store();
       try {
+        const { since, until } = periodRange(
+          {
+            period: opts.period as "day" | "week" | "month" | "all" | undefined,
+            since: opts.since,
+            until: opts.until,
+          },
+          opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+        );
         const rows = store.getSessions({
           projectPath: opts.project,
+          since: since > 0 ? since : undefined,
+          until: since > 0 ? until : undefined,
         });
 
         if (opts.format === "csv") {
@@ -428,6 +480,13 @@ export async function buildCli(): Promise<Command> {
         } else {
           console.log(JSON.stringify(rows, null, 2));
         }
+      } catch (err) {
+        if (err instanceof RangeError) {
+          console.error(t("cli:errors.invalidDateRange", { message: err.message }));
+          process.exitCode = 1;
+          return;
+        }
+        throw err;
       } finally {
         store.close();
       }
@@ -652,13 +711,17 @@ export async function buildCli(): Promise<Command> {
     .command("dashboard")
     .description(t("cli:commands.dashboard"))
     .option("--period <period>", t("cli:commands.dashboardPeriod"), "all")
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
     .option("--project <path>", t("cli:commands.dashboardProject"))
     .option("--repo <url>", t("cli:commands.dashboardRepo"))
-    .action(async (opts: { period?: string; project?: string; repo?: string }) => {
+    .action(async (opts: { period?: string; since?: string; until?: string; project?: string; repo?: string }) => {
       const store = new Store();
       try {
         const dashOpts = {
           period: opts.period as "day" | "week" | "month" | "all" | undefined,
+          since: opts.since,
+          until: opts.until,
           projectPath: opts.project,
           repoUrl: opts.repo,
         };
@@ -666,6 +729,13 @@ export async function buildCli(): Promise<Command> {
         const { attachCostPerTask } = await import("../dashboard/index.js");
         await attachCostPerTask(store, data, dashOpts);
         console.log(JSON.stringify(data, null, 2));
+      } catch (err) {
+        if (err instanceof RangeError) {
+          console.error(t("cli:errors.invalidDateRange", { message: err.message }));
+          process.exitCode = 1;
+          return;
+        }
+        throw err;
       } finally {
         store.close();
       }

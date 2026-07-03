@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Store } from "../store/index.js";
 import { buildDashboard } from "../dashboard/index.js";
 import type { SessionRecord, MessageRecord } from "@claude-stats/core/types";
@@ -102,6 +102,73 @@ describe("getSessions activeSince — period-boundary overlap", () => {
     store.upsertSession(makeSession({ sessionId: "nolast", firstTimestamp: T0 + 3 * HOUR, lastTimestamp: null }));
     expect(store.getSessions({ activeSince: T0 + HOUR }).map((s) => s.session_id)).toContain("nolast");
     expect(store.getSessions({ activeSince: T0 + 5 * HOUR }).map((s) => s.session_id)).not.toContain("nolast");
+  });
+});
+
+describe("buildDashboard — custom since/until range", () => {
+  let store: Store;
+  let dbPath: string;
+  const T0 = 1_700_000_000_000; // 2023-11-14T22:13:20.000Z
+  const DAY = 24 * 60 * 60 * 1000;
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+  });
+  afterEach(() => {
+    store.close();
+    fs.rmSync(dbPath, { force: true });
+  });
+
+  function ymd(ms: number): string {
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+
+  it("passes both activeSince and until to getSessions, excluding a session active only after until", () => {
+    store.upsertSession(makeSession({
+      sessionId: "in-range",
+      firstTimestamp: T0 + DAY,
+      lastTimestamp: T0 + DAY + 3_600_000,
+    }));
+    // Active only well after the requested `until` boundary — this is the case
+    // that would silently pass today since there's no upper bound at all
+    // without this task's change.
+    store.upsertSession(makeSession({
+      sessionId: "after-until",
+      firstTimestamp: T0 + 5 * DAY,
+      lastTimestamp: T0 + 5 * DAY + 3_600_000,
+    }));
+
+    const getSessionsSpy = vi.spyOn(store, "getSessions");
+
+    const data = buildDashboard(store, {
+      since: ymd(T0),
+      until: ymd(T0 + 2 * DAY),
+      timezone: "UTC",
+    });
+
+    expect(getSessionsSpy).toHaveBeenCalledTimes(1);
+    const callArgs = getSessionsSpy.mock.calls[0]![0]!;
+    expect(callArgs.activeSince).toBeDefined();
+    expect(callArgs.until).toBeDefined();
+    expect(callArgs.until!).toBeGreaterThan(callArgs.activeSince!);
+
+    expect(data.summary.sessions).toBe(1);
+    expect(data.byConversationCost.map((c) => c.sessionId)).not.toContain("after-until");
+  });
+
+  it('sets summary period to "custom" when since/until are both present', () => {
+    const data = buildDashboard(store, {
+      since: ymd(T0),
+      until: ymd(T0 + 2 * DAY),
+      timezone: "UTC",
+    });
+    expect(data.period).toBe("custom");
+  });
+
+  it("does not set period to custom for a plain preset", () => {
+    const data = buildDashboard(store, { period: "week", timezone: "UTC" });
+    expect(data.period).toBe("week");
   });
 });
 

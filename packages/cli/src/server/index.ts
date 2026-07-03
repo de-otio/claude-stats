@@ -48,6 +48,8 @@ function parseOpts(url: URL): ReportOptions {
   const account = p.get("account");
   return {
     period: (p.get("period") ?? undefined) as ReportOptions["period"],
+    since: p.get("since") ?? undefined,
+    until: p.get("until") ?? undefined,
     projectPath: p.get("project") ?? undefined,
     repoUrl: p.get("repo") ?? undefined,
     accountUuid: account && account.length > 0 ? account : undefined,
@@ -314,7 +316,16 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         try {
-          sendJson(res, 500, { error: msg });
+          // periodRange (invoked from buildDashboard) throws RangeError for a
+          // malformed/invalid since/until pair (missing partner, unparsable
+          // calendar date, since after until). Surface that as a client error
+          // (400) rather than a 500 — the request, not the server, is at fault
+          // — and fail closed: no dashboard is rendered/returned for it.
+          if (err instanceof RangeError) {
+            sendJson(res, 400, { error: msg });
+          } else {
+            sendJson(res, 500, { error: msg });
+          }
         } catch {
           // Response already partially written; nothing more we can do
         }

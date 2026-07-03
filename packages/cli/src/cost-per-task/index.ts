@@ -24,6 +24,7 @@
 import type { Store } from '../store/index.js';
 import type { BuildDailyDigestDeps } from '../recap/index.js';
 import { buildDailyDigest, dayWindowInTz } from '../recap/index.js';
+import type { DateRangeOpts } from '../reporter/index.js';
 import { createWindowedGitProvider } from '../recap/git.js';
 import type { Confidence, ProjectGitActivity, DailyDigestItem } from '../recap/types.js';
 import {
@@ -340,13 +341,44 @@ function ymdFormatter(tz: string): Intl.DateTimeFormat {
 }
 
 /**
- * The list of YYYY-MM-DD date strings (in `tz`) to aggregate for a period.
- * Deterministic given `nowMs`; `'all'` is bounded by `earliestMs` so it never
- * enumerates from the epoch.
+ * The list of YYYY-MM-DD date strings (in `tz`) to aggregate for a period —
+ * either a preset (`opts.period`) or an explicit custom range (`opts.since`/
+ * `opts.until`, both inclusive, custom range takes precedence when both are
+ * present, mirroring {@link periodRange}'s precedence rule). Deterministic
+ * given `nowMs`; `'all'` and a custom range are both bounded by `earliestMs`
+ * so neither enumerates from the epoch / from before any data exists.
  */
-export function datesForPeriod(period: Period, tz: string, nowMs: number, earliestMs: number | null): string[] {
+export function datesForPeriod(
+  opts: DateRangeOpts,
+  tz: string,
+  nowMs: number,
+  earliestMs: number | null,
+): string[] {
   const fmt = ymdFormatter(tz);
   const today = fmt.format(nowMs);
+
+  if (opts.since && opts.until) {
+    let startMs = dayWindowInTz(opts.since, tz).startMs;
+    if (earliestMs !== null) startMs = Math.max(startMs, earliestMs);
+    const untilStartMs = dayWindowInTz(opts.until, tz).startMs;
+    // `endMs` is exclusive (midnight at the START of the day AFTER `until`);
+    // cap it at `nowMs` so a future `until` doesn't enumerate unobserved days.
+    const endMs = Math.min(dayWindowInTz(opts.until, tz).endMs, nowMs);
+
+    const out = new Set<string>();
+    // Step by day from startMs up to (but not including) endMs; the Set dedups
+    // any DST overlap.
+    for (let t = Math.min(startMs, endMs); t < endMs; t += DAY_MS) {
+      out.add(fmt.format(t));
+    }
+    // Guard the boundary day exactly like the preset branches below do for
+    // `today`: include `until`'s own day, or `today` when `until` was
+    // capped by `nowMs` (a future/in-progress `until`).
+    out.add(untilStartMs <= nowMs ? opts.until : today);
+    return [...out].sort();
+  }
+
+  const period = opts.period;
   if (period === 'day') return [today];
 
   let startMs: number;
@@ -362,7 +394,8 @@ export function datesForPeriod(period: Period, tz: string, nowMs: number, earlie
     }
     return [...out].sort();
   } else {
-    // 'all' — from the earliest session day (or today if the store is empty).
+    // 'all' (or an unset period) — from the earliest session day (or today
+    // if the store is empty).
     startMs = earliestMs ?? nowMs;
   }
 
@@ -422,6 +455,13 @@ function windowBoundsMs(dates: string[], tz: string, nowMs: number): { windowSta
 
 export interface CostPerTaskOptions {
   period?: Period;
+  /**
+   * Custom date range (both `YYYY-MM-DD`, inclusive), taking precedence over
+   * `period` when both are set — mirrors `periodRange`'s precedence rule in
+   * `../reporter/index.js`. Must be provided together.
+   */
+  since?: string;
+  until?: string;
   projectPath?: string;
   accountUuid?: string;
   repoUrl?: string;
@@ -490,8 +530,9 @@ export async function buildCostPerTaskReport(
   const corrections: CorrectionsClient | null =
     opts.correctionsClient === undefined ? openCorrections() : opts.correctionsClient;
 
-  const earliestMs = period === 'all' ? store.getEarliestSessionTimestamp() : null;
-  const dates = datesForPeriod(period, tz, nowMs, earliestMs);
+  const earliestMs =
+    period === 'all' || (opts.since && opts.until) ? store.getEarliestSessionTimestamp() : null;
+  const dates = datesForPeriod({ period, since: opts.since, until: opts.until }, tz, nowMs, earliestMs);
   const { windowStart, windowEnd } = windowBoundsMs(dates, tz, nowMs);
 
   // Phase-D budget: only when experimental signals are on AND a judge is given.
@@ -614,8 +655,9 @@ export async function buildCalibrationReport(
   const corrections: CorrectionsClient | null =
     opts.correctionsClient === undefined ? openCorrections() : opts.correctionsClient;
 
-  const earliestMs = period === 'all' ? store.getEarliestSessionTimestamp() : null;
-  const dates = datesForPeriod(period, tz, nowMs, earliestMs);
+  const earliestMs =
+    period === 'all' || (opts.since && opts.until) ? store.getEarliestSessionTimestamp() : null;
+  const dates = datesForPeriod({ period, since: opts.since, until: opts.until }, tz, nowMs, earliestMs);
 
   // Calibration measures the signals' agreement, so run the judge here whenever a
   // provider is given (independent of experimentalSignals — that's the point).

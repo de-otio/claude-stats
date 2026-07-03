@@ -4,7 +4,7 @@
  */
 import type { Store, SessionRow } from "../store/index.js";
 import type { ReportOptions } from "../reporter/index.js";
-import { periodStart } from "../reporter/index.js";
+import { periodRange } from "../reporter/index.js";
 import { estimateCost, lookupPlanFee } from "@claude-stats/core/pricing";
 import type { UsageWindow } from "@claude-stats/core/types";
 import { readClaudeAccount } from "../account.js";
@@ -22,6 +22,26 @@ import type { CostPerTaskReport, CostPerTaskOptions } from "../cost-per-task/ind
 import type { CalibrationReport } from "../cost-per-task/calibration.js";
 import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor, modelClass } from "@claude-stats/core/energy";
 import type { ModelClass } from "@claude-stats/core/energy";
+
+/**
+ * Format an epoch-ms instant as YYYY-MM-DD in the given IANA timezone.
+ *
+ * `new Date(ms).toISOString().slice(0, 10)` (the pattern this replaces at
+ * every `*Iso` field below) reads the **UTC** calendar date, which is wrong
+ * for any positive-offset timezone at local midnight — e.g. midnight
+ * 2026-06-01 in Europe/Berlin (UTC+2 in June) is 2026-05-31T22:00:00Z, so
+ * `.toISOString().slice(0,10)` reports "2026-05-31". Found while manually
+ * verifying the custom-date-range feature (doc/analysis/custom-date-range):
+ * a dashboard request for `since=2026-06-01` echoed back `sinceIso:
+ * "2026-05-31"`. `since`/`until` are always constructed as local-tz
+ * midnight (via `periodStart`/`periodRange`/`dayWindowInTz`), so they must
+ * be read back out in the same timezone, not UTC.
+ */
+function ymdInTz(ms: number, tz: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date(ms));
+}
 
 type WorkCategory = "exploring" | "editing" | "running" | "researching" | "planning";
 
@@ -77,6 +97,13 @@ export interface DashboardData {
   period: string;
   timezone: string;
   sinceIso: string | null;    // ISO date of period start, or null for "all time"
+  /**
+   * ISO date of period end (resolved `until`). Optional (not `string | null`)
+   * so pre-existing `DashboardData` test fixtures outside this task's file
+   * allowlist that predate this field keep compiling; `buildDashboard` always
+   * populates it.
+   */
+  untilIso?: string;
   summary: DashboardSummary;
   byDay: Array<{
     date: string;             // YYYY-MM-DD
@@ -389,7 +416,11 @@ export interface ContextAnalysis {
 
 export function buildDashboard(store: Store, opts: ReportOptions): DashboardData {
   const tz = opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const since = periodStart(opts.period, tz);
+  const { since, until } = periodRange(opts, tz);
+  // A custom since/until range has no preset name; downstream consumers (the
+  // returned `period` field, the "day"-only display gates below) need an
+  // unambiguous signal that this isn't one of the fixed presets.
+  const isCustomRange = Boolean(opts.since && opts.until);
 
   // Include sessions ACTIVE in the period (last activity at/after `since`), not
   // just those that STARTED in it. A session running across the period boundary
@@ -402,6 +433,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     accountUuid: opts.accountUuid,
     entrypoint: opts.entrypoint,
     activeSince: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
     includeCI: opts.includeCI ?? false,
   });
 
@@ -455,8 +487,9 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     dayEntry.cacheCreationTokens += row.cache_creation_tokens;
     dayMap.set(dateStr, dayEntry);
 
-    // byHour (only for "day" period)
-    if (opts.period === "day" && row.first_timestamp != null) {
+    // byHour (only for "day" period, or a custom range that collapses to a
+    // single day — gets the same richer hourly display a period=day request gets)
+    if ((opts.period === "day" || (until - since) <= 86_400_000) && row.first_timestamp != null) {
       const h = parseInt(hourFmt.format(new Date(row.first_timestamp)), 10) % 24;
       const hourEntry = hourMap.get(h) ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 };
       hourEntry.inputTokens += row.input_tokens;
@@ -493,6 +526,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
     since: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
   });
 
   let totalCost = 0;
@@ -517,11 +551,13 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   // ── Fill empty day buckets for the full period range so charts always show
   //    all days in the selected window, not just days that have sessions ────
   if (since > 0) {
-    const todayStr = dayFmt.format(new Date());
+    // Cap at `until`'s own day, not always "today" — a historical custom range
+    // (e.g. last month) shouldn't fill days between its end and now.
+    const untilStr = dayFmt.format(new Date(until));
     let cursor = new Date(since);
     for (let i = 0; i < 400; i++) { // safety cap
       const dateStr = dayFmt.format(cursor);
-      if (dateStr > todayStr) break;
+      if (dateStr > untilStr) break;
       if (!dayMap.has(dateStr)) {
         dayMap.set(dateStr, { sessions: 0, prompts: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 });
       }
@@ -577,8 +613,8 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     .sort(([, a], [, b]) => b - a)
     .map(([entrypoint, sessions]) => ({ entrypoint, sessions }));
 
-  // ── Hourly breakdown (day period only) ───────────────────────────────────
-  const byHour: DashboardData["byHour"] = opts.period === "day"
+  // ── Hourly breakdown (day period, or a custom range collapsed to a single day) ──
+  const byHour: DashboardData["byHour"] = (opts.period === "day" || (until - since) <= 86_400_000)
     ? Array.from({ length: 24 }, (_, h) => {
         const e = hourMap.get(h) ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 };
         return { hour: String(h).padStart(2, "0"), ...e };
@@ -616,7 +652,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   const planFee = explicitPlanFee > 0 ? explicitPlanFee : sumPerAccountFees();
   const planMultiplier = planFee > 0 ? Math.round((totalCost / planFee) * 10) / 10 : 0;
   const costPerPrompt = totalPrompts > 0 ? totalCost / totalPrompts : 0;
-  const daysInPeriod = since > 0 ? Math.max(1, (Date.now() - since) / (24 * 60 * 60 * 1000)) : 30;
+  const daysInPeriod = since > 0 ? Math.max(1, (until - since) / (24 * 60 * 60 * 1000)) : 30;
   const dailyValueRate = totalCost / daysInPeriod;
 
   // ── Velocity + active hours ──────────────────────────────────────────────
@@ -625,12 +661,15 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   // across sessions first (rather than summing per-session durations) so that
   // overlapping parallel sessions — common when agents spawn subagents — don't
   // get double-counted.
+  // `Store.getMessageTimestamps` has no `until` param (out of this task's file
+  // allowlist to add one) — bound the upper edge here instead. A no-op for
+  // presets, where `until` is already ~now.
   const mergedTimestamps = store.getMessageTimestamps({
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
     accountUuid: opts.accountUuid,
     since: since > 0 ? since : undefined,
-  });
+  }).filter(t => t <= until);
   const IDLE_GAP_MS = 30 * 60_000;
   let totalActiveDurationMs = 0;
   for (let i = 1; i < mergedTimestamps.length; i++) {
@@ -716,6 +755,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
     since: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
   });
 
   // ── Weekly aggregation + plan utilization ──────────────────────────────
@@ -915,6 +955,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
     since: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
   });
 
   // ── Spending breakdown ──────────────────────────────────────────────────
@@ -923,6 +964,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     repoUrl: opts.repoUrl,
     accountUuid: opts.accountUuid,
     since: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
   });
 
   // ── Energy dashboard ────────────────────────────────────────────────────
@@ -931,6 +973,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     repoUrl: opts.repoUrl,
     accountUuid: opts.accountUuid,
     since: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
     timezone: tz,
   });
 
@@ -998,9 +1041,15 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
 
   return {
     generated: new Date().toISOString(),
-    period: opts.period ?? "all",
+    period: isCustomRange ? "custom" : (opts.period ?? "all"),
     timezone: tz,
-    sinceIso: since > 0 ? new Date(since).toISOString().slice(0, 10) : null,
+    sinceIso: since > 0 ? ymdInTz(since, tz) : null,
+    // `until` is the exclusive upper boundary (midnight of the day *after*
+    // the requested/effective end — see periodRange()/dayWindowInTz), but
+    // untilIso is a user-facing display/echo field (e.g. the toolbar's
+    // #until-date-input value) — subtract 1ms so it reports the inclusive
+    // last calendar day, matching what a user actually requested.
+    untilIso: ymdInTz(until - 1, tz),
     summary: {
       sessions: rows.length,
       prompts: totalPrompts,
@@ -1055,6 +1104,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       const claudeAcct = readClaudeAccount();
       const list = store.listAccounts({
         since: since > 0 ? since : undefined,
+        until: isCustomRange ? until : undefined,
         includeCI: opts.includeCI ?? false,
       });
       return list.map(a => ({
@@ -1103,10 +1153,18 @@ export async function attachCostPerTask(
     // defaults to `all`): an all-time window iterates the git-enriched recap
     // pipeline per day across the whole history — a multi-second hang on a cold
     // cache. The plan's mitigation: month default, all opt-in via the CLI.
+    // An explicit custom since/until range is NOT capped this way — the user
+    // already bounded it with two real dates, unlike the implicit/unbounded
+    // "all" default, so no new hard cap is introduced for custom ranges.
+    const isCustomRange = Boolean(opts.since && opts.until);
     const dashPeriod = opts.period ?? "all";
-    const period = (dashPeriod === "all" ? "month" : dashPeriod) as CostPerTaskOptions["period"];
+    const period = isCustomRange
+      ? undefined
+      : (dashPeriod === "all" ? "month" : dashPeriod) as CostPerTaskOptions["period"];
     const report = await buildCostPerTaskReport(store, {
       period,
+      since: isCustomRange ? opts.since : undefined,
+      until: isCustomRange ? opts.until : undefined,
       projectPath: opts.projectPath,
       accountUuid: opts.accountUuid,
       repoUrl: opts.repoUrl,
@@ -1142,10 +1200,17 @@ export async function attachCalibration(
 ): Promise<DashboardData> {
   try {
     const { buildCalibrationReport } = await import("../cost-per-task/index.js");
+    // See attachCostPerTask's comment: same "all"→"month" perf cap, same
+    // custom-range opt-out of that cap.
+    const isCustomRange = Boolean(opts.since && opts.until);
     const dashPeriod = opts.period ?? "all";
-    const period = (dashPeriod === "all" ? "month" : dashPeriod) as CostPerTaskOptions["period"];
+    const period = isCustomRange
+      ? undefined
+      : (dashPeriod === "all" ? "month" : dashPeriod) as CostPerTaskOptions["period"];
     data.calibration = await buildCalibrationReport(store, {
       period,
+      since: isCustomRange ? opts.since : undefined,
+      until: isCustomRange ? opts.until : undefined,
       projectPath: opts.projectPath,
       accountUuid: opts.accountUuid,
       repoUrl: opts.repoUrl,
@@ -1379,7 +1444,7 @@ function buildSpendingSection(
   store: Store,
   rows: SessionRow[],
   sessionCostMap: Map<string, { cost: number; topModel: string; topModelTokens: number }>,
-  filters: { projectPath?: string; repoUrl?: string; accountUuid?: string; since?: number },
+  filters: { projectPath?: string; repoUrl?: string; accountUuid?: string; since?: number; until?: number },
 ): DashboardSpending | null {
   if (rows.length === 0) return null;
 
@@ -1388,6 +1453,7 @@ function buildSpendingSection(
     repoUrl: filters.repoUrl,
     accountUuid: filters.accountUuid,
     since: filters.since,
+    until: filters.until,
     limit: 20,
   });
 
@@ -1524,9 +1590,16 @@ function buildSpendingSection(
 
 function buildModelEfficiency(
   store: Store,
-  filters: { projectPath?: string; repoUrl?: string; since?: number },
+  filters: { projectPath?: string; repoUrl?: string; since?: number; until?: number },
 ): ModelEfficiencyData | null {
-  const msgRows = store.getMessagesForEfficiency(filters);
+  // `Store.getMessagesForEfficiency` has no `until` param (out of this task's
+  // file allowlist to add one) — bound the upper edge here instead. Keep
+  // null-timestamp rows (no basis to exclude them, matches how `since` never
+  // excluded them either).
+  let msgRows = store.getMessagesForEfficiency(filters);
+  if (filters.until !== undefined) {
+    msgRows = msgRows.filter(r => r.timestamp == null || r.timestamp <= filters.until!);
+  }
   if (msgRows.length === 0) return null;
 
   // Group messages into "turns": each turn starts with a prompt-bearing message
@@ -1728,11 +1801,16 @@ function buildContextAnalysis(
   store: Store,
   rows: SessionRow[],
   sessionCostMap: Map<string, { cost: number; topModel: string; topModelTokens: number }>,
-  filters: { projectPath?: string; repoUrl?: string; since?: number },
+  filters: { projectPath?: string; repoUrl?: string; since?: number; until?: number },
 ): ContextAnalysis | null {
   if (rows.length === 0) return null;
 
-  const contextMsgs = store.getMessagesForContext(filters);
+  // `Store.getMessagesForContext` has no `until` param (out of this task's
+  // file allowlist to add one) — bound the upper edge here instead.
+  let contextMsgs = store.getMessagesForContext(filters);
+  if (filters.until !== undefined) {
+    contextMsgs = contextMsgs.filter(m => m.timestamp == null || m.timestamp <= filters.until!);
+  }
   if (contextMsgs.length === 0) return null;
 
   // getMessagesForContext only filters by project/repo/period — it ignores the
@@ -1924,13 +2002,14 @@ function buildContextAnalysis(
  */
 export function buildEnergySection(
   store: Store,
-  filters: { projectPath?: string; repoUrl?: string; accountUuid?: string; since?: number; timezone: string },
+  filters: { projectPath?: string; repoUrl?: string; accountUuid?: string; since?: number; until?: number; timezone: string },
 ): DashboardEnergy | null {
   const agg = store.getEnergyAggregates({
     projectPath: filters.projectPath,
     repoUrl: filters.repoUrl,
     accountUuid: filters.accountUuid,
     since: filters.since,
+    until: filters.until,
   });
 
   if (agg.totalMessages === 0) return null;
@@ -1940,7 +2019,8 @@ export function buildEnergySection(
     // Legacy: min over non-null message timestamps, floored at Date.now().
     if (agg.minTimestamp != null && agg.minTimestamp < effectiveSince) effectiveSince = agg.minTimestamp;
   }
-  const daysInPeriod = Math.max(1, (Date.now() - effectiveSince) / (24 * 60 * 60 * 1000));
+  const effectiveUntil = filters.until ?? Date.now();
+  const daysInPeriod = Math.max(1, (effectiveUntil - effectiveSince) / (24 * 60 * 60 * 1000));
 
   // ── Region detection (must run first: sets gridIntensity used by all sums) ──
   // geoCount counts per non-null geo. Build it in first-seen (earliest-
@@ -2178,8 +2258,10 @@ export function buildEnergySection(
       hydroTurbineLiters: Math.round(aggregated.equivalents.hydroTurbineLiters * 100) / 100,
     },
     journeyAnchor: nearestJourneyAnchor(aggregated.equivalents.carKm),
-    periodStartIso: new Date(effectiveSince).toISOString().slice(0, 10),
-    periodEndIso: new Date().toISOString().slice(0, 10),
+    periodStartIso: ymdInTz(effectiveSince, filters.timezone),
+    // See the untilIso comment above: effectiveUntil is an exclusive
+    // boundary; -1ms reports the inclusive last day for display.
+    periodEndIso: ymdInTz(effectiveUntil - 1, filters.timezone),
     periodDays: Math.round(daysInPeriod),
     byDay,
     byModel,
