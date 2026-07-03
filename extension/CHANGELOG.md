@@ -2,6 +2,32 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.13.0 — 2026-07-03
+
+### Added — Custom date ranges everywhere, not just day/week/month/all
+
+Every surface — the CLI, the MCP tools, the web dashboard, and this
+extension — now accepts an arbitrary start/end date range alongside the
+existing presets. Pass `--since`/`--until` on the CLI, `since`/`until` to
+any MCP tool that takes a `period`, or pick two dates in the dashboard
+toolbar; a custom range takes precedence over a simultaneously-set preset,
+and every existing view (summary, trend, cost-per-task, energy/CO2)
+respects it.
+
+### Fixed — Wrong calendar day at month/year boundaries in local time
+
+A date-boundary calculation shared by daily recap, cost-per-task, and (now)
+custom date ranges could land on the wrong calendar day for the 1st or
+last day of a month in some timezones, and produced a negative-length
+window for December 31 and February 28. Corrected for every caller.
+
+### Improved — More UI strings translated across all 9 supported languages
+
+A batch of previously English-only strings (in the CLI, the dashboard,
+and this extension) now has real translations in German, Spanish, French,
+Japanese, Polish, Brazilian Portuguese, Russian, Ukrainian, and Simplified
+Chinese.
+
 ## 0.12.2 — 2026-07-02
 
 ### Fixed — Dashboard could fail to load entirely in some languages
