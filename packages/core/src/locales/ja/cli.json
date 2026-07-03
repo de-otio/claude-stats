@@ -265,5 +265,16 @@
     "cannotCombineHtml": "--html は --trend や --detail と組み合わせられません",
     "cannotCombineTrendDetail": "--trend と --detail は組み合わせられません",
     "invalidDateRange": "無効な日付範囲です: {{message}}"
+  },
+  "repair": {
+    "description": "通常の収集では遡って修正できない派生データを修復します。",
+    "projectPaths": {
+      "description": "各 session が記録した作業ディレクトリから project_path（および repo_url）を再計算し、あいまいにデコードされたディレクトリ名を修正します。",
+      "dryRunOption": "変更の書き込みやバックアップの作成をせずに、変更内容をプレビューします。",
+      "dryRunHeader": "プロジェクトパスの修復（dry run）— 変更は書き込まれません:",
+      "doneHeader": "プロジェクトパスの修復が完了しました:",
+      "backupWritten": "バックアップを {{path}} に書き込みました",
+      "summary": "{{total}} 件の session を確認し、{{changed}} 件を修正、{{unfixable}} 件は修正不可（ソースファイルが利用できません）。"
+    }
   }
 }

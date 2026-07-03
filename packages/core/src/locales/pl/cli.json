@@ -265,5 +265,16 @@
     "cannotCombineHtml": "Nie można łączyć --html z --trend ani --detail",
     "cannotCombineTrendDetail": "Nie można łączyć --trend i --detail",
     "invalidDateRange": "Nieprawidłowy zakres dat: {{message}}"
+  },
+  "repair": {
+    "description": "Napraw dane pochodne, których normalne zbieranie nie potrafi poprawić z mocą wsteczną.",
+    "projectPaths": {
+      "description": "Przelicz ponownie project_path (oraz repo_url) na podstawie katalogu roboczego zapisanego w każdej sesji, poprawiając nazwy katalogów, które zostały zdekodowane niejednoznacznie.",
+      "dryRunOption": "Wyświetl podgląd zmian bez zapisywania ani tworzenia kopii zapasowej.",
+      "dryRunHeader": "Naprawa ścieżek projektów (przebieg próbny) — nie zapisano żadnych zmian:",
+      "doneHeader": "Naprawa ścieżek projektów zakończona:",
+      "backupWritten": "Kopię zapasową zapisano w {{path}}",
+      "summary": "Sprawdzono sesji: {{total}}, poprawiono: {{changed}}, nie do naprawienia: {{unfixable}} (plik źródłowy już niedostępny)."
+    }
   }
 }

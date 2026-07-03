@@ -811,6 +811,13 @@ function aggregateByModel(observableRecords: readonly TaskRecord[]): ModelCostPe
 
   const rows: ModelCostPerTask[] = [];
   for (const [model, a] of byModel) {
+    // Some messages carry a placeholder model (e.g. Claude Code's own
+    // "<synthetic>" tag on compacted/summary content) that never has token
+    // usage or a dominant-model attribution — skip it rather than surface an
+    // all-zero row a caller can't act on.
+    if (a.tasksObservable === 0 && a.successCount === 0 && a.costObservable === 0 && a.costByModelExact === 0) {
+      continue;
+    }
     const enoughToRate = a.tasksObservable >= MIN_OBSERVABLE_FOR_MODEL_RATE;
     rows.push({
       model,
