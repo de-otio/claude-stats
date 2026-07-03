@@ -33,6 +33,8 @@
   },
   "toolbar": {
     "period": "Period:",
+    "since": "Since:",
+    "until": "Until:",
     "refresh": "Refresh",
     "autoOff": "Auto: off",
     "autoOn": "Auto: on ({{seconds}}s)",

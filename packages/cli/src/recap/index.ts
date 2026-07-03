@@ -152,15 +152,25 @@ export function dayWindowInTz(
 
 /**
  * Convert a local calendar date to epoch-ms for midnight (00:00:00) in the
- * given timezone.
+ * given timezone. `day` may overflow the target month (e.g. 32) — the
+ * overflow is resolved by `Date.UTC`'s own normalization, same as the JS
+ * `Date` constructor.
  *
- * The approach: create a UTC timestamp near midnight, then binary-search to
- * find the exact UTC ms such that formatting it in `tz` gives midnight.
- * In practice we use a simpler trick: construct an ISO string, parse as UTC,
- * measure the offset for that candidate, then adjust.
+ * Uses a noon-UTC reference point (safely mid-day for any timezone, so it
+ * can never straddle a date boundary) to derive the timezone's exact UTC
+ * offset on that calendar date via `Date.UTC` arithmetic, then applies that
+ * offset to true UTC midnight. This mirrors `tzMidnight()` in
+ * `../reporter/index.ts`, which uses the identical technique.
  *
- * We use the Intl.DateTimeFormat approach: format epoch 0 + candidate in tz,
- * compare year/month/day to the desired date, find the offset.
+ * The previous implementation approximated calendar-day differences as
+ * `(month diff) * 30 + (day diff)`, which is exact only when the local
+ * timezone-formatted date falls in the same month as the target date. Near
+ * month/year boundaries (the 1st or last day of any month) the formatted
+ * date legitimately falls in the adjacent month, and the 30-day
+ * approximation doesn't match real month lengths (28-31 days) — producing
+ * off-by-one-or-more-day errors, including negative-duration windows for
+ * Dec 31 and Feb 28. Confirmed via direct testing before this fix; see
+ * `recap.test.ts`'s `dayWindowInTz` describe block for the regression cases.
  */
 function localMidnightToEpochMs(
   year: number,
@@ -168,52 +178,19 @@ function localMidnightToEpochMs(
   day: number,
   tz: string,
 ): number {
-  // Candidate: treat the local date as if it were UTC midnight.
-  const candidate = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
-
-  // Use Intl.DateTimeFormat to find where the candidate falls in `tz`,
-  // then adjust by the difference.
-  const fmt = new Intl.DateTimeFormat('en-CA', {
+  const refUtc = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const localStr = refUtc.toLocaleString('en-US', {
     timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
     hour12: false,
   });
-
-  // We do two iterations to converge on the exact midnight
-  let result = candidate;
-  for (let i = 0; i < 2; i++) {
-    const parts = fmt.formatToParts(result);
-    const get = (type: string): number =>
-      parseInt(parts.find((p) => p.type === type)!.value, 10);
-
-    const localYear = get('year');
-    const localMonth = get('month');
-    const localDay = get('day');
-    const localHour = get('hour');
-    const localMinute = get('minute');
-    const localSecond = get('second');
-
-    // Offset from midnight in ms
-    const offsetFromMidnight =
-      ((localHour === 24 ? 0 : localHour) * 3600 +
-        localMinute * 60 +
-        localSecond) *
-        1000 +
-      // Account for day difference
-      ((localYear - year) * 365 +
-        (localMonth - month) * 30 +
-        (localDay - day)) *
-        86_400_000;
-
-    result = result - offsetFromMidnight;
-  }
-
-  return result;
+  const [datePart, timePart] = localStr.split(', ');
+  const [mo, da, yr] = datePart!.split('/').map(Number);
+  const [hr, mn, sc] = timePart!.split(':').map(Number);
+  const localAsUtc = Date.UTC(yr!, mo! - 1, da!, hr!, mn!, sc!);
+  const offsetMs = refUtc.getTime() - localAsUtc;
+  return Date.UTC(year, month - 1, day, 0, 0, 0) + offsetMs;
 }
 
 // ─── Code-point-aware truncation ─────────────────────────────────────────────

@@ -1675,6 +1675,31 @@ describe("Store — rollup read-path parity (Build 2 Phase 1, Stream B)", () => 
     expect(dispatched.totalMessages).toBe(0); // proves it did NOT read the rollup
   });
 
+  it("getEnergyAggregates({until}) uses the RAW seek path, not the rollup, and excludes messages at/after until", () => {
+    // Regression test for the custom-date-range feature: getEnergyAggregates
+    // previously had no `until` param at all, so a past custom range could
+    // silently include messages after the requested end. m1 (HOUR+1) and m2
+    // (HOUR+2) are strictly before HOUR+3; m3 (2*HOUR+1) and m4 (HOUR+3
+    // exactly, excluded by the strict `<`) must be dropped.
+    const until = HOUR + 3;
+    const dispatched = store.getEnergyAggregates({ until });
+    const raw = s().getEnergyAggregatesRaw({ until });
+    expect(dispatched).toEqual(raw);
+    const rollupTotal = s().getEnergyAggregatesFromRollup().totalMessages;
+    expect(dispatched.totalMessages).toBeGreaterThan(0);
+    expect(dispatched.totalMessages).toBeLessThan(rollupTotal);
+  });
+
+  it("getEnergyAggregates({since, until}) combines both bounds (RAW path)", () => {
+    const since = HOUR + 1;
+    const until = 2 * HOUR + 1; // excludes m3 (at exactly 2*HOUR+1, strict <)
+    const dispatched = store.getEnergyAggregates({ since, until });
+    const raw = s().getEnergyAggregatesRaw({ since, until });
+    expect(dispatched).toEqual(raw);
+    // Only m1 (HOUR+1) and m2 (HOUR+2) fall in [since, until).
+    expect(dispatched.totalMessages).toBe(2);
+  });
+
   it("getEnergyAggregates({projectPath}) uses the RAW path (session-scoped)", () => {
     const dispatched = store.getEnergyAggregates({ projectPath: "/Users/alice/a" });
     const raw = s().getEnergyAggregatesRaw({ projectPath: "/Users/alice/a" });

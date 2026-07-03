@@ -1783,14 +1783,19 @@ export class Store {
     repoUrl?: string;
     accountUuid?: string;
     since?: number;
+    until?: number;
   }): { where: string; params: unknown[] } {
     // Period filtered on MESSAGE timestamp; session-scoped filters in an
-    // always-emitted membership subquery (orphan-drop preserved). The since
-    // param is bound before the subquery params to match the `?` order.
+    // always-emitted membership subquery (orphan-drop preserved). The
+    // since/until params are bound before the subquery params to match the
+    // `?` order.
     const sessionConditions: string[] = [];
     const params: unknown[] = [];
-    const tsClause = filters.since !== undefined ? "AND m.timestamp >= ? " : "";
+    const tsClause =
+      (filters.since !== undefined ? "AND m.timestamp >= ? " : "") +
+      (filters.until !== undefined ? "AND m.timestamp < ? " : "");
     if (filters.since !== undefined) { params.push(filters.since); }
+    if (filters.until !== undefined) { params.push(filters.until); }
     if (filters.projectPath) { sessionConditions.push("s.project_path = ?"); params.push(filters.projectPath); }
     if (filters.repoUrl) { sessionConditions.push("s.repo_url = ?"); params.push(filters.repoUrl); }
     if (filters.accountUuid) { sessionConditions.push("s.account_uuid = ?"); params.push(filters.accountUuid); }
@@ -1821,9 +1826,11 @@ export class Store {
     repoUrl?: string;
     accountUuid?: string;
     since?: number;
+    until?: number;
   } = {}): EnergyAggregates {
     const fullyUnbounded =
       filters.since === undefined &&
+      filters.until === undefined &&
       !filters.projectPath &&
       !filters.repoUrl &&
       !filters.accountUuid;
@@ -1962,6 +1969,7 @@ export class Store {
     repoUrl?: string;
     accountUuid?: string;
     since?: number;
+    until?: number;
   } = {}): EnergyAggregates {
     const { where, params } = this.energyAggregateWhere(filters);
     const run = <T>(sql: string, ...extra: unknown[]): T[] => {

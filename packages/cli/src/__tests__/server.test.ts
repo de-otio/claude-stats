@@ -99,6 +99,57 @@ describe("GET /api/dashboard", () => {
     const res = await fetch(`${baseUrl}/api/dashboard`);
     expect(res.status).toBe(200);
   });
+
+  it("resolves to the custom range when ?since=&until= are provided", async () => {
+    const res = await fetch(`${baseUrl}/api/dashboard?since=2020-01-01&until=2020-01-15&timezone=UTC`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body["period"]).toBe("custom");
+    expect(body["sinceIso"]).toBe("2020-01-01");
+    // periodRange()'s `until` is an exclusive epoch boundary (midnight of
+    // the day *after* the requested `until` — see periodRange/dayWindowInTz),
+    // but `untilIso` is a user-facing display/echo field (e.g. the toolbar's
+    // #until-date-input value) and must report the inclusive last day the
+    // user actually requested, not the internal exclusive boundary.
+    expect(body["untilIso"]).toBe("2020-01-15");
+  });
+
+  it("prefers an explicit since/until pair over a simultaneous period param", async () => {
+    const res = await fetch(`${baseUrl}/api/dashboard?period=week&since=2020-01-01&until=2020-01-15&timezone=UTC`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body["period"]).toBe("custom");
+    expect(body["sinceIso"]).toBe("2020-01-01");
+    expect(body["untilIso"]).toBe("2020-01-15");
+  });
+
+  it("returns 400 for a malformed custom range (since without until)", async () => {
+    const res = await fetch(`${baseUrl}/api/dashboard?since=2020-01-01`);
+    expect(res.status).toBe(400);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body).toHaveProperty("error");
+  });
+
+  it("returns 400 for an invalid custom range (since after until)", async () => {
+    const res = await fetch(`${baseUrl}/api/dashboard?since=2020-02-01&until=2020-01-01`);
+    expect(res.status).toBe(400);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body).toHaveProperty("error");
+  });
+
+  it("echoes sinceIso/untilIso as the local calendar date in a positive-offset timezone, not the UTC date", async () => {
+    // Regression test: `since`/`until` are always local-tz midnight, so
+    // reading them back with new Date(ms).toISOString().slice(0,10) (UTC
+    // calendar date) instead of a tz-aware formatter reports the *previous*
+    // day for any positive-offset timezone at local midnight — e.g.
+    // 2026-06-01T00:00 in Europe/Berlin (UTC+2 in June) is
+    // 2026-05-31T22:00:00Z. Found via manual verification of this feature.
+    const res = await fetch(`${baseUrl}/api/dashboard?since=2026-06-01&until=2026-06-30&timezone=Europe%2FBerlin`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body["sinceIso"]).toBe("2026-06-01");
+    expect(body["untilIso"]).toBe("2026-06-30");
+  });
 });
 
 describe("GET /api/status", () => {

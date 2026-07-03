@@ -105,27 +105,58 @@ describe('dominantModel', () => {
 
 describe('datesForPeriod', () => {
   it('day → just today', () => {
-    expect(datesForPeriod('day', 'UTC', NOW_TS, null)).toEqual([DATE]);
+    expect(datesForPeriod({ period: 'day' }, 'UTC', NOW_TS, null)).toEqual([DATE]);
   });
   it('week → 7 consecutive days ending today', () => {
-    const days = datesForPeriod('week', 'UTC', NOW_TS, null);
+    const days = datesForPeriod({ period: 'week' }, 'UTC', NOW_TS, null);
     expect(days).toHaveLength(7);
     expect(days[days.length - 1]).toBe(DATE);
     expect(days[0]).toBe('2024-01-09');
   });
   it('month → only same-calendar-month days up to today', () => {
-    const days = datesForPeriod('month', 'UTC', NOW_TS, null);
+    const days = datesForPeriod({ period: 'month' }, 'UTC', NOW_TS, null);
     expect(days[0]).toBe('2024-01-01');
     expect(days[days.length - 1]).toBe(DATE);
     expect(days.every((d) => d.startsWith('2024-01-'))).toBe(true);
   });
   it('all → bounded by earliest session, never the epoch', () => {
     const earliest = BASE_TS - 2 * 86_400_000; // 2024-01-13
-    const days = datesForPeriod('all', 'UTC', NOW_TS, earliest);
+    const days = datesForPeriod({ period: 'all' }, 'UTC', NOW_TS, earliest);
     expect(days[0]).toBe('2024-01-13');
     expect(days[days.length - 1]).toBe(DATE);
     // With no earliest (empty store) it collapses to today.
-    expect(datesForPeriod('all', 'UTC', NOW_TS, null)).toEqual([DATE]);
+    expect(datesForPeriod({ period: 'all' }, 'UTC', NOW_TS, null)).toEqual([DATE]);
+  });
+
+  describe('custom since/until range', () => {
+    it('enumerates the inclusive day range, happy path', () => {
+      const days = datesForPeriod({ since: '2024-01-09', until: '2024-01-12' }, 'UTC', NOW_TS, null);
+      expect(days).toEqual(['2024-01-09', '2024-01-10', '2024-01-11', '2024-01-12']);
+    });
+    it('single-day range (since === until)', () => {
+      const days = datesForPeriod({ since: '2024-01-10', until: '2024-01-10' }, 'UTC', NOW_TS, null);
+      expect(days).toEqual(['2024-01-10']);
+    });
+    it('clamps a since predating earliestMs to earliestMs', () => {
+      const earliest = new Date('2024-01-11T00:00:00.000Z').getTime();
+      const days = datesForPeriod(
+        { since: '2024-01-05', until: '2024-01-12' },
+        'UTC',
+        NOW_TS,
+        earliest,
+      );
+      expect(days[0]).toBe('2024-01-11');
+      expect(days[days.length - 1]).toBe('2024-01-12');
+    });
+    it('takes precedence over period when both are set', () => {
+      const days = datesForPeriod(
+        { period: 'day', since: '2024-01-09', until: '2024-01-11' },
+        'UTC',
+        NOW_TS,
+        null,
+      );
+      expect(days).toEqual(['2024-01-09', '2024-01-10', '2024-01-11']);
+    });
   });
 });
 

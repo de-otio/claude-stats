@@ -581,6 +581,33 @@ describe("buildEnergySection — GROUP BY aggregation parity", () => {
     expect(buildEnergySection(store, { timezone: "UTC", since: Date.UTC(2099, 0, 1) })).toBeNull();
   });
 
+  it("returns null for an empty period (until before all messages)", () => {
+    const store = freshStore();
+    seedRichStore(store);
+    // Regression test for the custom-date-range feature: buildEnergySection
+    // (via Store.getEnergyAggregates) previously had no `until` bound at all,
+    // so a past custom range's energy totals could silently include messages
+    // after the requested end — this and the next test would have failed
+    // under the old (since-only) behavior.
+    expect(buildEnergySection(store, { timezone: "UTC", until: Date.UTC(2020, 0, 1) })).toBeNull();
+  });
+
+  it("excludes messages at/after `until` (day-2 messages dropped, day-1 kept)", () => {
+    const store = freshStore();
+    seedRichStore(store);
+    pinNow();
+    const all = buildEnergySection(store, { timezone: "UTC" });
+    // `until` = day-2 start (2026-06-21 00:00 UTC = seedRichStore's `base` +
+    // 24h). All of s3's messages land on day 2 (at/after base+D+6H); s1-m3 at
+    // base+25H is also on/after day 2 and excluded too.
+    const dayTwoStart = Date.UTC(2026, 5, 21, 0, 0, 0);
+    const bounded = buildEnergySection(store, { timezone: "UTC", until: dayTwoStart });
+    expect(all).not.toBeNull();
+    expect(bounded).not.toBeNull();
+    expect(bounded!.totalEnergyWh).toBeLessThan(all!.totalEnergyWh);
+    expect(bounded!.totalCO2Grams).toBeLessThan(all!.totalCO2Grams);
+  });
+
   it("returns null on a completely empty store", () => {
     const store = freshStore();
     expect(buildEnergySection(store, { timezone: "UTC" })).toBeNull();

@@ -43,9 +43,27 @@ export function wrapUntrusted(text: string | null | undefined): string | null {
   return `${UNTRUSTED_NOTE}\n<untrusted-stored-content>${safe}</untrusted-stored-content>`;
 }
 
-function periodToReportOpts(period?: string): ReportOptions {
+/**
+ * Shared zod shape for the `period` | `since`/`until` custom-range params,
+ * applied to every tool that accepts a time window. Each tool keeps its own
+ * `.default(...)` for `period` in its handler body (the default differs per
+ * tool), since `period` itself must be optional here to allow `since`/`until`
+ * to stand alone.
+ */
+const dateRangeShape = {
+  period: z.enum(["day", "week", "month", "all"]).optional()
+    .describe("Time period for aggregation"),
+  since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+    .describe("Start date YYYY-MM-DD, inclusive. Must be paired with `until`; overrides `period` when both are set."),
+  until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+    .describe("End date YYYY-MM-DD, inclusive. Must be paired with `since`; overrides `period` when both are set."),
+};
+
+function dateRangeToReportOpts(opts: { period?: string; since?: string; until?: string }): ReportOptions {
   return {
-    period: (period ?? "week") as ReportOptions["period"],
+    period: opts.period as ReportOptions["period"],
+    since: opts.since,
+    until: opts.until,
   };
 }
 
@@ -70,11 +88,11 @@ export function createMcpServer(store: Store): McpServer {
     "get_stats",
     "Get your Claude Code usage stats for a period — tokens, cost, sessions, velocity, cache efficiency, streaks",
     {
-      period: z.enum(["day", "week", "month", "all"]).default("week")
-        .describe("Time period for aggregation"),
+      ...dateRangeShape,
     },
-    async ({ period }) => {
-      const data = buildDashboard(store, periodToReportOpts(period));
+    async ({ period, since, until }) => {
+      const effectivePeriod = period ?? "week";
+      const data = buildDashboard(store, dateRangeToReportOpts({ period: effectivePeriod, since, until }));
       return formatResult({
         period: data.period,
         since: data.sinceIso,
@@ -88,20 +106,21 @@ export function createMcpServer(store: Store): McpServer {
     "list_sessions",
     "List recent Claude Code sessions with token counts and estimated cost",
     {
-      period: z.enum(["day", "week", "month", "all"]).default("week")
-        .describe("Time period to filter sessions"),
+      ...dateRangeShape,
       project: z.string().optional()
         .describe("Filter by project path"),
       limit: z.number().int().min(1).max(100).default(20)
         .describe("Maximum number of sessions to return"),
     },
-    async ({ period, project, limit }) => {
+    async ({ period, since, until, project, limit }) => {
+      const effectivePeriod = period ?? "week";
       const filters: Parameters<Store["getSessions"]>[0] = {};
       if (project) filters.projectPath = project;
-      if (period !== "all") {
-        const { periodStart } = await import("../reporter/index.js");
-        filters.since = periodStart(period, Intl.DateTimeFormat().resolvedOptions().timeZone);
-      }
+      const { periodRange } = await import("../reporter/index.js");
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const range = periodRange({ period: effectivePeriod, since, until }, tz);
+      if (range.since > 0) filters.since = range.since;
+      filters.until = range.until;
       const sessions = store.getSessions(filters).slice(0, limit).map((s) => ({
         sessionId: s.session_id,
         project: s.project_path,
@@ -174,11 +193,11 @@ export function createMcpServer(store: Store): McpServer {
     "list_projects",
     "List projects with usage breakdown — sessions, tokens, and cost per project",
     {
-      period: z.enum(["day", "week", "month", "all"]).default("week")
-        .describe("Time period for aggregation"),
+      ...dateRangeShape,
     },
-    async ({ period }) => {
-      const data = buildDashboard(store, periodToReportOpts(period));
+    async ({ period, since, until }) => {
+      const effectivePeriod = period ?? "week";
+      const data = buildDashboard(store, dateRangeToReportOpts({ period: effectivePeriod, since, until }));
       return formatResult(data.byProject);
     },
   );
@@ -318,8 +337,7 @@ export function createMcpServer(store: Store): McpServer {
       "the producer of the number separate from the judge of success. The " +
       "response is numbers and model names only — no stored prompt text.",
     {
-      period: z.enum(["day", "week", "month", "all"]).default("month")
-        .describe("Time period for aggregation"),
+      ...dateRangeShape,
       project: z.string().optional()
         .describe("Filter to a specific project path"),
       account: z.string().optional()
@@ -327,10 +345,13 @@ export function createMcpServer(store: Store): McpServer {
       byModel: z.boolean().default(true)
         .describe("Include the per-model breakdown (dominant-model assignment)"),
     },
-    async ({ period, project, account, byModel }) => {
+    async ({ period, since, until, project, account, byModel }) => {
+      const effectivePeriod = period ?? "month";
       const { buildCostPerTaskReport } = await import("../cost-per-task/index.js");
       const report = await buildCostPerTaskReport(store, {
-        period,
+        period: effectivePeriod,
+        since,
+        until,
         projectPath: project,
         accountUuid: account,
         byModel,

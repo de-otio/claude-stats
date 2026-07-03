@@ -239,6 +239,21 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     )
     .join("\n          ");
 
+  // Custom since/until date range toolbar inputs. `max` caps both pickers at
+  // "today" in the dashboard's configured timezone (matches the en-CA
+  // YYYY-MM-DD tz formatting convention used elsewhere in this codebase, e.g.
+  // reporter/index.ts's periodStart/isRoundTripYmd and dashboard/index.ts's
+  // day bucketing) so a user can't pick a future date client-side.
+  const todayInTz = new Intl.DateTimeFormat("en-CA", { timeZone: data.timezone }).format(new Date());
+  // sec: never echo the raw `since`/`until` query-param string into the
+  // input's `value` — only the server-derived, already-validated
+  // `sinceIso`/`untilIso` fields, and only when a custom range is actually
+  // active (data.period === "custom"). This both closes the reflected-HTML
+  // gap called out in the plan's hardening note and gives the toolbar its
+  // mutual-exclusivity default: a preset period leaves both inputs empty.
+  const sinceInputValue = data.period === "custom" && data.sinceIso ? escapeHtml(data.sinceIso) : "";
+  const untilInputValue = data.period === "custom" && data.untilIso ? escapeHtml(data.untilIso) : "";
+
   // ── Subscription fee by project (server-rendered; all user data escaped) ──
   const fmtMoney = (n: number, currency: string): string => {
     try {
@@ -452,6 +467,10 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     <select id="period-select" onchange="changePeriod(this.value)">
       ${periodOptions}
     </select>
+    <label for="since-date-input" style="margin-left:0.5rem;">${t("dashboard:toolbar.since")}</label>
+    <input type="date" id="since-date-input" max="${todayInTz}" value="${sinceInputValue}" onchange="changeDateRange(this.value, document.getElementById('until-date-input').value)" />
+    <label for="until-date-input" style="margin-left:0.5rem;">${t("dashboard:toolbar.until")}</label>
+    <input type="date" id="until-date-input" max="${todayInTz}" value="${untilInputValue}" onchange="changeDateRange(document.getElementById('since-date-input').value, this.value)" />
     ${data.availableAccounts.length > 1 ? `
     <label for="account-select" style="margin-left:0.5rem;">${t("dashboard:toolbar.account")}</label>
     <select id="account-select" onchange="changeAccount(this.value)">
@@ -1363,7 +1382,28 @@ CO₂_grams = total_kWh × grid_intensity</div>
       }
 
       // ── Period selector ──────────────────────────────────────────────────
-      window.changePeriod = function (val) { window.location.href = setUrlParam('period', val); };
+      // Mutual exclusivity: picking a preset clears any custom since/until
+      // range so the UI never carries all three params at once (period +
+      // since + until). Built off a single URL so the three edits (set
+      // period, drop since, drop until) land in one navigation, mirroring
+      // setUrlParam's null-deletes-the-param semantics.
+      window.changePeriod = function (val) {
+        var url = new URL(window.location.href);
+        url.searchParams.set('period', val);
+        url.searchParams.delete('since');
+        url.searchParams.delete('until');
+        window.location.href = url.toString();
+      };
+      // ── Custom date range ────────────────────────────────────────────────
+      // Mirror of changePeriod: picking a since/until pair clears the preset
+      // period param so the two controls stay mutually exclusive.
+      window.changeDateRange = function (since, until) {
+        var url = new URL(window.location.href);
+        if (since) url.searchParams.set('since', since); else url.searchParams.delete('since');
+        if (until) url.searchParams.set('until', until); else url.searchParams.delete('until');
+        url.searchParams.delete('period');
+        window.location.href = url.toString();
+      };
       // ── Account selector ─────────────────────────────────────────────────
       // Empty value means "all accounts combined"; drop the param so the URL
       // stays clean and the server treats it as the default.
