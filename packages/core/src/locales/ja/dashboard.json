@@ -1,5 +1,5 @@
 {
-  "pageTitle": "Claude Stats — {{period}} ({{date}})",
+  "pageTitle": "Claude Stats — {{period}}（{{date}}）",
   "tabs": {
     "overview": "概要",
     "models": "モデル",
@@ -10,10 +10,12 @@
     "efficiency": "効率",
     "energy": "エネルギー",
     "settings": "設定",
-    "classify": "Classify"
+    "classify": "分類"
   },
   "toolbar": {
     "period": "期間:",
+    "since": "開始日:",
+    "until": "終了日:",
     "refresh": "更新",
     "autoOff": "自動: オフ",
     "autoOn": "自動: オン ({{seconds}}秒)",
@@ -22,7 +24,7 @@
     "accountCurrent": "(現在)"
   },
   "summary": {
-    "emptyPeriodHint": "No sessions in this period yet — switch Period to Week or All to see your data.",
+    "emptyPeriodHint": "この期間にはまだセッションがありません — 期間を「週」または「すべて」に切り替えるとデータが表示されます。",
     "sessions": "セッション",
     "prompts": "プロンプト",
     "totalInput": "入力合計",
@@ -98,11 +100,11 @@
     "noPlan": "プランなし",
     "noPlanDetected": "プランが検出されませんでした",
     "planNames": {
-      "pro": "Pro ($20)",
-      "team_standard": "Team Std ($25)",
-      "max_5x": "Max 5x ($100)",
-      "team_premium": "Team Premium ($125)",
-      "max_20x": "Max 20x ($200)"
+      "pro": "Pro（$20）",
+      "team_standard": "Team Std（$25）",
+      "max_5x": "Max 5x（$100）",
+      "team_premium": "Team Premium（$125）",
+      "max_20x": "Max 20x（$200）"
     }
   },
   "context": {
@@ -320,7 +322,7 @@
     "summaryHint": "詳細は Spending タブを参照",
     "title": "成功タスクあたりのコスト",
     "headline": "成功タスクあたり",
-    "na": "n/a",
+    "na": "該当なし",
     "lowCoverage": "カバレッジが低い ({{coverage}}) — 成功率は少数の観測可能なタスクに基づいています",
     "decomp": "= {{mean}}/試行 ÷ {{rate}} 成功率",
     "coverageBadge": "{{observable}}/{{total}} 観測可能 ({{coverage}})",
@@ -333,7 +335,7 @@
     "perSuccess": "$/成功",
     "successRate": "成功",
     "observableCol": "観測",
-    "insufficient": "n/a",
+    "insufficient": "該当なし",
     "proxyNote": "結果は、タスクを明示的にラベル付けしない限り、Git アクティビティと信頼度から推定されます。成功率は観測可能なタスクのみで計算されます。",
     "period": {
       "day": "今日",
@@ -387,22 +389,22 @@
     }
   },
   "classify": {
-    "title": "Classify your projects",
-    "intro": "Assign each project to the subscription that should be billed for it. Projects are ranked by cost, so classifying the top few covers most of your spend.",
-    "vscodeOnly": "Project classification is available in the VS Code panel.",
-    "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
-    "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "title": "プロジェクトを分類",
+    "intro": "各プロジェクトを、その費用を請求すべきサブスクリプションに割り当てます。プロジェクトはコスト順に並んでいるため、上位のいくつかを分類するだけで支出の大部分をカバーできます。",
+    "vscodeOnly": "プロジェクトの分類は VS Code パネルで利用できます。",
+    "empty": "分類するプロジェクトはまだありません。いくつかのプロジェクトで Claude Code を使用すると、ここに表示されます。",
+    "noAccounts": "サブスクリプションはまだ検出されていません。Claude Code が各アカウントの使用状況を記録すると、ここに表示されます。",
     "unlinkedHint": "括弧内にIDが表示されているアカウントは、まだアクティブなClaude Codeログインとして検出されていないため、メールアドレスとプランをここに表示できません。一度そのアカウントでログインしてから元に戻すと連携されます。",
-    "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
-    "pending": "__COUNT__ pending",
-    "sessions": "__COUNT__ sessions",
-    "projects": "__COUNT__ projects",
-    "remoteBadge": "remote",
-    "pathBadge": "folder",
-    "optionUnassigned": "Unassigned",
-    "optionSplit": "Split across usage",
-    "splitHint": "Split keeps each session's cost with the account that actually ran it. Use it for projects shared across subscriptions (e.g. when one plan's limit is not enough).",
-    "apply": "Apply",
-    "applying": "Applying..."
+    "coverage": "$__TOTAL__ 件中 $__CLASSIFIED__ 件を分類（__PERCENT__%）",
+    "pending": "__COUNT__ 件保留中",
+    "sessions": "__COUNT__ 件のセッション",
+    "projects": "__COUNT__ 件のプロジェクト",
+    "remoteBadge": "リモート",
+    "pathBadge": "フォルダー",
+    "optionUnassigned": "未割り当て",
+    "optionSplit": "使用状況で分割",
+    "splitHint": "分割では、各セッションのコストを実際に実行したアカウントに割り当てたままにします。複数のサブスクリプションで共有するプロジェクト（例：1 つのプランの上限では足りない場合）に使用します。",
+    "apply": "適用",
+    "applying": "適用中..."
   }
 }

@@ -10,10 +10,12 @@
     "efficiency": "Efficacité",
     "energy": "Énergie",
     "settings": "Paramètres",
-    "classify": "Classify"
+    "classify": "Classer"
   },
   "toolbar": {
     "period": "Période :",
+    "since": "Depuis :",
+    "until": "Jusqu'au :",
     "refresh": "Actualiser",
     "autoOff": "Auto : désactivé",
     "autoOn": "Auto : activé ({{seconds}} s)",
@@ -22,7 +24,7 @@
     "accountCurrent": "(actuel)"
   },
   "summary": {
-    "emptyPeriodHint": "No sessions in this period yet — switch Period to Week or All to see your data.",
+    "emptyPeriodHint": "Aucune session sur cette période pour le moment — réglez la période sur Semaine ou Tout pour voir vos données.",
     "sessions": "Sessions",
     "prompts": "Prompts",
     "totalInput": "Entrée totale",
@@ -37,7 +39,7 @@
     "ofPlanFee": "sur ${{fee}}/mois",
     "activeHours": "Heures actives",
     "costPerPrompt": "Coût / Prompt",
-    "tokPerMin": "Tok / Min",
+    "tokPerMin": "Tok / min",
     "truncatedOutputs": "Sorties tronquées",
     "periodRange": "{{start}} → aujourd'hui",
     "allTime": "Toute la période"
@@ -98,11 +100,11 @@
     "noPlan": "Aucun forfait",
     "noPlanDetected": "Aucun forfait détecté",
     "planNames": {
-      "pro": "Pro ($20)",
-      "team_standard": "Team Std ($25)",
-      "max_5x": "Max 5x ($100)",
-      "team_premium": "Team Premium ($125)",
-      "max_20x": "Max 20x ($200)"
+      "pro": "Pro (20 $)",
+      "team_standard": "Team Std (25 $)",
+      "max_5x": "Max 5x (100 $)",
+      "team_premium": "Team Premium (125 $)",
+      "max_20x": "Max 20x (200 $)"
     }
   },
   "context": {
@@ -320,7 +322,7 @@
     "summaryHint": "Détail complet dans l'onglet Spending",
     "title": "Coût par tâche réussie",
     "headline": "par tâche réussie",
-    "na": "n/a",
+    "na": "n/d",
     "lowCoverage": "Couverture faible ({{coverage}}) — le taux repose sur un faible échantillon observable",
     "decomp": "= {{mean}}/tentative ÷ {{rate}} taux de réussite",
     "coverageBadge": "{{observable}}/{{total}} observables ({{coverage}})",
@@ -333,7 +335,7 @@
     "perSuccess": "$/réussite",
     "successRate": "Réussite",
     "observableCol": "Obs.",
-    "insufficient": "n/a",
+    "insufficient": "n/d",
     "proxyNote": "Le résultat est déduit de l'activité Git et de la confiance, sauf si vous avez étiqueté la tâche explicitement ; le taux est calculé uniquement sur les tâches observables.",
     "period": {
       "day": "aujourd'hui",
@@ -387,22 +389,22 @@
     }
   },
   "classify": {
-    "title": "Classify your projects",
-    "intro": "Assign each project to the subscription that should be billed for it. Projects are ranked by cost, so classifying the top few covers most of your spend.",
-    "vscodeOnly": "Project classification is available in the VS Code panel.",
-    "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
-    "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "title": "Classer vos projets",
+    "intro": "Attribuez chaque projet à l'abonnement qui doit en être facturé. Les projets sont classés par coût, donc classer les premiers couvre la majeure partie de vos dépenses.",
+    "vscodeOnly": "Le classement des projets est disponible dans le panneau VS Code.",
+    "empty": "Aucun projet à classer pour le moment. Une fois que vous aurez utilisé Claude Code dans quelques projets, ils apparaîtront ici.",
+    "noAccounts": "Aucun abonnement détecté pour le moment. Ils apparaissent ici une fois que Claude Code a enregistré l'utilisation de chaque compte.",
     "unlinkedHint": "Les comptes affichés avec un ID entre parenthèses n'ont pas encore été vus comme votre connexion Claude Code active, donc leur e-mail et leur forfait ne peuvent pas être affichés ici. Connectez-vous une fois avec ce compte, puis reconnectez-vous à l'autre, pour le lier.",
-    "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
-    "pending": "__COUNT__ pending",
+    "coverage": "$__CLASSIFIED__ sur $__TOTAL__ classés (__PERCENT__ %)",
+    "pending": "__COUNT__ en attente",
     "sessions": "__COUNT__ sessions",
-    "projects": "__COUNT__ projects",
-    "remoteBadge": "remote",
-    "pathBadge": "folder",
-    "optionUnassigned": "Unassigned",
-    "optionSplit": "Split across usage",
-    "splitHint": "Split keeps each session's cost with the account that actually ran it. Use it for projects shared across subscriptions (e.g. when one plan's limit is not enough).",
-    "apply": "Apply",
-    "applying": "Applying..."
+    "projects": "__COUNT__ projets",
+    "remoteBadge": "distant",
+    "pathBadge": "dossier",
+    "optionUnassigned": "Non attribué",
+    "optionSplit": "Réparti selon l'utilisation",
+    "splitHint": "La répartition attribue le coût de chaque session au compte qui l'a réellement exécutée. Utilisez-la pour les projets partagés entre abonnements (p. ex. lorsque la limite d'un forfait ne suffit pas).",
+    "apply": "Appliquer",
+    "applying": "Application..."
   }
 }

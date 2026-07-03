@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 /**
- * Auto-translate missing locale keys using Claude Opus.
+ * Auto-translate missing locale keys using the Claude Code CLI.
  *
  * Workflow:
  *   1. Read packages/core/src/locales/en/*.json as the source of truth.
  *   2. For every other locale directory, compute the diff: keys present in
- *      en that are missing from the target locale, or whose target value is
- *      byte-identical to the English value (i.e. an untranslated stub).
- *   3. Send each (locale × namespace) batch of missing keys to
- *      claude-opus-4-7 via the Anthropic API. One request per (locale,
- *      namespace) to keep prompts small and parallelizable.
+ *      en that are missing from the target locale (or, with --force, whose
+ *      target value is byte-identical to the English value — an
+ *      untranslated stub).
+ *   3. Send each (locale × namespace) batch of missing keys to `claude -p`
+ *      (headless/print mode) — one subprocess call per (locale, namespace)
+ *      to keep prompts small and each batch independently retriable. Output
+ *      is constrained with --json-schema so the CLI returns validated JSON
+ *      directly (no markdown-fence stripping needed on the happy path).
  *   4. Merge translations back, preserving existing keys that are already
  *      translated. Write the result.
  *
@@ -17,30 +20,50 @@
  *   node scripts/fill-locales.mjs                # All locales, all namespaces
  *   node scripts/fill-locales.mjs --locale=ja    # Only ja
  *   node scripts/fill-locales.mjs --locale=ja,fr # Multiple
- *   node scripts/fill-locales.mjs --dry-run      # Report work without calling API
- *   node scripts/fill-locales.mjs --verbose      # Log API requests/responses
+ *   node scripts/fill-locales.mjs --dry-run      # Report work without calling the CLI
+ *   node scripts/fill-locales.mjs --verbose      # Log CLI invocations/responses
  *   node scripts/fill-locales.mjs --force        # Also retranslate keys that equal en (stubs)
+ *   node scripts/fill-locales.mjs --model=opus   # Model alias (default: opus)
+ *   node scripts/fill-locales.mjs --max-budget-usd=1.00  # Per-batch spend cap (default: 1.00)
  *
  * Auth:
- *   ANTHROPIC_API_KEY must be set. Exits with code 3 if missing (so CI can
- *   distinguish "no key configured" from "translation actually failed").
+ *   Uses the `claude` CLI in non-interactive mode (`claude -p`), which
+ *   authenticates via whatever the local `claude` login state is — the
+ *   user's Claude subscription, not a separate ANTHROPIC_API_KEY. Requires
+ *   the `claude` binary on PATH (override with CLAUDE_BIN=/path/to/claude)
+ *   and an already-authenticated session (run `claude` once interactively
+ *   to log in if needed). Each translated batch is a normal, separately
+ *   billed subscription usage — same as any other Claude Code session, just
+ *   invoked headlessly. --max-budget-usd caps spend per batch as a safety
+ *   backstop (`claude -p`'s own flag, not something this script enforces
+ *   after the fact).
  *
  * Exit codes:
  *   0  success (or nothing to do)
  *   1  one or more locales failed to translate
  *   2  invalid invocation
- *   3  ANTHROPIC_API_KEY not set
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import Anthropic from "@anthropic-ai/sdk";
+import { spawn } from "node:child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOCALES_DIR = path.resolve(__dirname, "..", "packages", "core", "src", "locales");
 const REFERENCE_LOCALE = "en";
-const MODEL = "claude-opus-4-7";
-const MAX_TOKENS = 8192;
+const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
+const DEFAULT_MODEL = "opus"; // alias — resolves to the latest Opus, not a pinned model id
+const DEFAULT_MAX_BUDGET_USD = "1.00";
+const SUBPROCESS_TIMEOUT_MS = 300_000;
+// `claude -p --json-schema` runs an agentic structured-output loop (observed
+// num_turns > 1 even for trivial batches) whose cost scales with schema size
+// — a single 326-key namespace reliably timed out at 180s even with a
+// generous per-call timeout, while ~60-key batches consistently completed in
+// well under a minute. Splitting large namespaces into chunks keeps each
+// call's schema small and keeps per-chunk failures cheap to retry, rather
+// than losing an entire large namespace's translations to one slow/failed
+// call. Found via live end-to-end testing, not documented CLI behavior.
+const MAX_BATCH_KEYS = 60;
 
 // Human-readable names for each locale we support or plan to support.
 // Anything not listed here falls back to just the code.
@@ -63,18 +86,32 @@ const LOCALE_NAMES = {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const out = { locales: null, dryRun: false, verbose: false, force: false };
+  const out = {
+    locales: null,
+    dryRun: false,
+    verbose: false,
+    force: false,
+    model: DEFAULT_MODEL,
+    maxBudgetUsd: DEFAULT_MAX_BUDGET_USD,
+  };
   for (const arg of argv.slice(2)) {
     if (arg === "--dry-run") out.dryRun = true;
     else if (arg === "--verbose") out.verbose = true;
     else if (arg === "--force") out.force = true;
     else if (arg.startsWith("--locale=")) {
       out.locales = arg.slice("--locale=".length).split(",").map((s) => s.trim()).filter(Boolean);
+    } else if (arg.startsWith("--model=")) {
+      out.model = arg.slice("--model=".length);
+    } else if (arg.startsWith("--max-budget-usd=")) {
+      out.maxBudgetUsd = arg.slice("--max-budget-usd=".length);
     } else if (arg === "--help" || arg === "-h") {
       console.log(
         "Usage: fill-locales.mjs [--locale=xx[,yy]] [--dry-run] [--verbose] [--force]\n" +
-          "\nFills missing translation keys in every non-en locale using claude-opus-4-7.\n" +
-          "Requires ANTHROPIC_API_KEY environment variable.",
+          "                         [--model=opus] [--max-budget-usd=1.00]\n" +
+          "\nFills missing translation keys in every non-en locale using `claude -p`" +
+          " (the Claude Code CLI in headless mode).\n" +
+          "Requires the `claude` binary on PATH and an already-authenticated session" +
+          " (uses your Claude subscription, not ANTHROPIC_API_KEY).",
       );
       process.exit(0);
     } else {
@@ -161,6 +198,21 @@ function diffKeys(enFlat, targetFlat, { force }) {
   return missing;
 }
 
+/** Split a Map into an array of Maps, each with at most `size` entries. */
+function chunkMap(map, size) {
+  const chunks = [];
+  let current = new Map();
+  for (const [k, v] of map.entries()) {
+    current.set(k, v);
+    if (current.size >= size) {
+      chunks.push(current);
+      current = new Map();
+    }
+  }
+  if (current.size > 0) chunks.push(current);
+  return chunks;
+}
+
 // ── Translation prompt ──────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are a professional software localizer translating short UI strings for Claude Stats, a VS Code extension + CLI that visualizes Claude Code (an AI coding assistant CLI by Anthropic) usage statistics.
@@ -171,7 +223,7 @@ Non-negotiable rules:
 
 2. Preserve every $(codicon) token EXACTLY — these are VS Code icon references like $(graph), $(cloud), $(sync~spin). Never translate or modify.
 
-3. Preserve every backtick-quoted \`code\` fragment VERBATIM — file paths (~/.claude/projects/), commands (claude), config keys (mcpServers), and filenames are code identifiers.
+3. Preserve every backtick-quoted \`code\` fragment VERBATIM — file paths (~/.claude/projects/), commands (claude), config keys (mcpServers), CLI flags (--since, --until), and filenames are code identifiers.
 
 4. Preserve Markdown emphasis, line breaks (\\n), and bullet/numbered list prefixes.
 
@@ -196,7 +248,9 @@ ${JSON.stringify(Object.fromEntries(missingEntries), null, 2)}`;
 
 /**
  * Extract the first top-level JSON object from a possibly-messy model reply
- * (handles accidental code fences or leading/trailing prose).
+ * (handles accidental code fences or leading/trailing prose). Used as a
+ * fallback when --json-schema-constrained structured output isn't available
+ * (e.g. an older `claude` CLI without --json-schema support).
  */
 function extractJson(text) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -207,6 +261,24 @@ function extractJson(text) {
     throw new Error(`No JSON object in model reply:\n${text.slice(0, 400)}`);
   }
   return JSON.parse(candidate.slice(first, last + 1));
+}
+
+/**
+ * Build a JSON Schema for --json-schema from a batch of missing entries.
+ * String-valued keys get `{type: "string"}`; array-valued keys (step lists)
+ * get a looser `{type: "array"}` — we don't know each array's exact object
+ * shape here, so structural conformance (right length, right sub-keys) is
+ * still checked afterward by validateBatch(), same as before this only
+ * narrows the top-level type so the model can't return e.g. a number.
+ */
+function buildJsonSchema(missingEntries) {
+  const properties = {};
+  const required = [];
+  for (const [k, v] of missingEntries.entries()) {
+    properties[k] = Array.isArray(v) ? { type: "array" } : { type: "string" };
+    required.push(k);
+  }
+  return { type: "object", properties, required, additionalProperties: false };
 }
 
 /**
@@ -233,9 +305,122 @@ function validateBatch(request, response) {
   return errors;
 }
 
+// ── Model invocation (claude -p, headless CLI — uses the user's Claude
+// subscription via the CLI's own auth state, not a separate API key) ────────
+
+/**
+ * Run `claude` with the given args and return its stdout.
+ *
+ * Uses spawn() with stdin explicitly set to "ignore" (not the default
+ * "pipe"). `execFile`'s default stdio leaves the child's stdin as an open,
+ * unwritten, unclosed pipe — for large prompts `claude -p` was observed to
+ * wait ~3s ("no stdin data received"), then error out entirely rather than
+ * the "proceeding without it" its own warning claims, breaking any batch
+ * above a few dozen keys. Explicitly ignoring stdin (no pipe at all, same
+ * as redirecting from /dev/null) avoids that path completely. Found via
+ * live end-to-end testing of this script, not from documentation — the
+ * warning text alone reads as non-fatal, but the process reliably failed
+ * for wide batches (326 keys) and reliably succeeded for narrow ones (59
+ * keys) until this fix.
+ *
+ * Uses an argv array (never a shell string) so arbitrary characters in the
+ * source strings — backticks, quotes, etc., several of which this file's own
+ * SYSTEM_PROMPT explicitly calls out as content to preserve verbatim — are
+ * never interpreted as shell syntax.
+ */
+function runClaude(args, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(CLAUDE_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGKILL");
+      reject(new Error(`\`${CLAUDE_BIN} -p\` timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    child.stdout.on("data", (d) => stdoutChunks.push(d));
+    child.stderr.on("data", (d) => stderrChunks.push(d));
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error(`failed to spawn \`${CLAUDE_BIN}\` (is it on PATH?): ${err.message}`, { cause: err }));
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const stdout = Buffer.concat(stdoutChunks).toString("utf-8");
+      const stderr = Buffer.concat(stderrChunks).toString("utf-8");
+      if (code !== 0) {
+        const detail = stderr ? `: ${stderr.slice(0, 500)}` : "";
+        reject(new Error(`\`${CLAUDE_BIN} -p\` exited with code ${code} (is the CLI logged in?)${detail}`));
+        return;
+      }
+      resolve(stdout);
+    });
+  });
+}
+
+/**
+ * Translate one (locale, namespace) batch by shelling out to `claude -p`.
+ * Uses --json-schema to constrain output to valid JSON matching the batch's
+ * keys/types directly (structured_output in the response envelope), falling
+ * back to extractJson() on the free-text `result` field if structured_output
+ * is absent for any reason (e.g. an older CLI).
+ */
+async function translateBatch(localeName, localeCode, missingEntries, opts) {
+  const schema = buildJsonSchema(missingEntries);
+  const args = [
+    "--output-format", "json",
+    "--model", opts.model,
+    "--system-prompt", SYSTEM_PROMPT,
+    "--json-schema", JSON.stringify(schema),
+    "--tools", "",
+    "--strict-mcp-config",
+    "--max-budget-usd", opts.maxBudgetUsd,
+    "-p", userPrompt(localeName, localeCode, missingEntries),
+  ];
+
+  if (opts.verbose) {
+    console.log(`  [${localeCode}] invoking: ${CLAUDE_BIN} --model ${opts.model} -p <${missingEntries.size} keys>`);
+  }
+
+  const stdout = await runClaude(args, SUBPROCESS_TIMEOUT_MS);
+
+  let envelope;
+  try {
+    envelope = JSON.parse(stdout);
+  } catch (err) {
+    throw new Error(`\`${CLAUDE_BIN} -p --output-format json\` returned non-JSON output: ${stdout.slice(0, 400)}`, { cause: err });
+  }
+
+  if (envelope.is_error) {
+    throw new Error(`claude -p reported an error: ${envelope.result ?? envelope.subtype ?? "unknown"}`);
+  }
+
+  if (opts.verbose) {
+    console.log(`  [${localeCode}] cost: $${envelope.total_cost_usd ?? "?"}, stop_reason: ${envelope.stop_reason}`);
+  }
+
+  if (envelope.structured_output && typeof envelope.structured_output === "object") {
+    return envelope.structured_output;
+  }
+  // Fallback: parse the free-text result if the CLI didn't return
+  // structured_output for some reason (e.g. --json-schema unsupported).
+  if (typeof envelope.result === "string") {
+    return extractJson(envelope.result);
+  }
+  throw new Error(`claude -p returned neither structured_output nor a text result (stop_reason=${envelope.stop_reason})`);
+}
+
 // ── Main per-locale worker ──────────────────────────────────────────────────
 
-async function fillLocale(client, locale, opts) {
+async function fillLocale(locale, opts) {
   const localeName = LOCALE_NAMES[locale] ?? locale;
   const namespaces = listNamespaces(LOCALES_DIR);
   const summary = { locale, totalMissing: 0, filled: 0, namespaces: {} };
@@ -269,39 +454,35 @@ async function fillLocale(client, locale, opts) {
       continue;
     }
 
-    // Call Opus.
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userPrompt(localeName, locale, missing) }],
-    });
+    // Chunk large namespaces so no single `claude -p` call has to get a huge
+    // schema exactly right in one shot, and so a failure partway through a
+    // namespace doesn't lose already-translated chunks — each chunk is
+    // written to disk immediately, making a re-run resumable (diffKeys will
+    // no longer see already-written keys as missing).
+    const chunks = chunkMap(missing, MAX_BATCH_KEYS);
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      if (opts.verbose && chunks.length > 1) {
+        console.log(`  [${locale}/${ns}] chunk ${i + 1}/${chunks.length} (${chunk.size} keys)`);
+      }
 
-    const textBlock = response.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      throw new Error(`[${locale}/${ns}] model returned no text block`);
+      const translated = await translateBatch(localeName, locale, chunk, opts);
+
+      const errors = validateBatch(chunk, translated);
+      if (errors.length > 0) {
+        throw new Error(`[${locale}/${ns}] chunk ${i + 1}/${chunks.length} shape validation failed:\n  ${errors.join("\n  ")}`);
+      }
+
+      // Merge this chunk's translations into target, by path, and persist
+      // immediately (see chunking comment above).
+      for (const [keyPath, value] of Object.entries(translated)) {
+        setByPath(target, keyPath, value);
+      }
+      writeJson(targetPath, target);
+
+      summary.namespaces[ns].filled += Object.keys(translated).length;
+      summary.filled += Object.keys(translated).length;
     }
-
-    let translated;
-    try {
-      translated = extractJson(textBlock.text);
-    } catch (err) {
-      throw new Error(`[${locale}/${ns}] failed to parse model reply: ${err.message}`);
-    }
-
-    const errors = validateBatch(missing, translated);
-    if (errors.length > 0) {
-      throw new Error(`[${locale}/${ns}] shape validation failed:\n  ${errors.join("\n  ")}`);
-    }
-
-    // Merge translations into target, by path.
-    for (const [keyPath, value] of Object.entries(translated)) {
-      setByPath(target, keyPath, value);
-    }
-
-    writeJson(targetPath, target);
-    summary.namespaces[ns].filled = Object.keys(translated).length;
-    summary.filled += summary.namespaces[ns].filled;
 
     if (opts.verbose) {
       console.log(`  [${locale}/${ns}] wrote ${summary.namespaces[ns].filled} keys to ${path.relative(process.cwd(), targetPath)}`);
@@ -316,17 +497,6 @@ async function fillLocale(client, locale, opts) {
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const opts = parseArgs(process.argv);
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-
-  if (!opts.dryRun && !apiKey) {
-    console.error("ANTHROPIC_API_KEY is not set. Set it in your environment (or in CI secrets) and retry.");
-    console.error("Use --dry-run to preview without calling the API.");
-    process.exit(3);
-  }
-
-  const client = opts.dryRun
-    ? null
-    : new Anthropic({ apiKey });
 
   const locales = opts.locales ?? listLocales(LOCALES_DIR);
   if (locales.length === 0) {
@@ -342,14 +512,14 @@ if (isMain) {
   for (const locale of locales) {
     try {
       console.log(`\n→ ${locale} (${LOCALE_NAMES[locale] ?? locale})`);
-      const summary = await fillLocale(client, locale, opts);
+      const summary = await fillLocale(locale, opts);
       grandTotalMissing += summary.totalMissing;
       grandTotalFilled += summary.filled;
 
       if (summary.totalMissing === 0) {
         console.log(`  up-to-date (no missing keys)`);
       } else if (opts.dryRun) {
-        console.log(`  ${summary.totalMissing} keys would be filled (dry-run; no API calls made)`);
+        console.log(`  ${summary.totalMissing} keys would be filled (dry-run; no CLI calls made)`);
       } else {
         console.log(`  filled ${summary.filled}/${summary.totalMissing} keys`);
       }
@@ -367,4 +537,4 @@ if (isMain) {
 }
 
 // Exported for tests.
-export { diffKeys, flatten, setByPath, extractJson, validateBatch, fillLocale };
+export { diffKeys, flatten, setByPath, extractJson, validateBatch, buildJsonSchema, chunkMap, fillLocale };

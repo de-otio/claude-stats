@@ -10,10 +10,12 @@
     "efficiency": "Ефективність",
     "energy": "Енергія",
     "settings": "Налаштування",
-    "classify": "Classify"
+    "classify": "Класифікація"
   },
   "toolbar": {
     "period": "Період:",
+    "since": "Від:",
+    "until": "До:",
     "refresh": "Оновити",
     "autoOff": "Авто: вимкнено",
     "autoOn": "Авто: увімкнено ({{seconds}} с)",
@@ -22,7 +24,7 @@
     "accountCurrent": "(поточний)"
   },
   "summary": {
-    "emptyPeriodHint": "No sessions in this period yet — switch Period to Week or All to see your data.",
+    "emptyPeriodHint": "У цьому періоді ще немає сесій — змініть період на «Тиждень» або «Усе», щоб побачити свої дані.",
     "sessions": "Сесії",
     "prompts": "Промпти",
     "totalInput": "Усього на вхід",
@@ -320,7 +322,7 @@
     "summaryHint": "Повна розбивка на вкладці Spending",
     "title": "Вартість успішного завдання",
     "headline": "на успішне завдання",
-    "na": "n/a",
+    "na": "н/д",
     "lowCoverage": "Низьке охоплення ({{coverage}}) — частка ґрунтується на малій спостережуваній вибірці",
     "decomp": "= {{mean}}/спробу ÷ {{rate}} частка успіху",
     "coverageBadge": "{{observable}}/{{total}} спостережувані ({{coverage}})",
@@ -333,7 +335,7 @@
     "perSuccess": "$/успіх",
     "successRate": "Успіх",
     "observableCol": "Спост.",
-    "insufficient": "n/a",
+    "insufficient": "н/д",
     "proxyNote": "Результат виводиться з активності Git та впевненості, якщо ви явно не позначили завдання; частка обчислюється лише за спостережуваними завданнями.",
     "period": {
       "day": "сьогодні",
@@ -387,22 +389,22 @@
     }
   },
   "classify": {
-    "title": "Classify your projects",
-    "intro": "Assign each project to the subscription that should be billed for it. Projects are ranked by cost, so classifying the top few covers most of your spend.",
-    "vscodeOnly": "Project classification is available in the VS Code panel.",
-    "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
-    "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "title": "Класифікуйте свої проєкти",
+    "intro": "Призначте кожен проєкт підписці, за якою його слід оплачувати. Проєкти впорядковані за вартістю, тож класифікація кількох найдорожчих охоплює більшу частину ваших витрат.",
+    "vscodeOnly": "Класифікація проєктів доступна на панелі VS Code.",
+    "empty": "Поки немає проєктів для класифікації. Коли ви скористаєтеся Claude Code у кількох проєктах, вони з’являться тут.",
+    "noAccounts": "Підписок ще не виявлено. Вони з’являться тут, коли Claude Code зафіксує використання для кожного облікового запису.",
     "unlinkedHint": "Акаунти, що показані з ідентифікатором у дужках, ще не було розпізнано як ваш активний вхід у Claude Code, тому їхню електронну пошту та план тут показати не можна. Увійдіть під цим акаунтом один раз, а потім переключіться назад, щоб прив'язати його.",
-    "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
-    "pending": "__COUNT__ pending",
-    "sessions": "__COUNT__ sessions",
-    "projects": "__COUNT__ projects",
-    "remoteBadge": "remote",
-    "pathBadge": "folder",
-    "optionUnassigned": "Unassigned",
-    "optionSplit": "Split across usage",
-    "splitHint": "Split keeps each session's cost with the account that actually ran it. Use it for projects shared across subscriptions (e.g. when one plan's limit is not enough).",
-    "apply": "Apply",
-    "applying": "Applying..."
+    "coverage": "$__CLASSIFIED__ з $__TOTAL__ класифіковано (__PERCENT__%)",
+    "pending": "__COUNT__ в очікуванні",
+    "sessions": "__COUNT__ сесій",
+    "projects": "__COUNT__ проєктів",
+    "remoteBadge": "віддалений",
+    "pathBadge": "папка",
+    "optionUnassigned": "Не призначено",
+    "optionSplit": "Розподілити за використанням",
+    "splitHint": "Розподіл зберігає вартість кожної сесії за обліковим записом, що її фактично виконав. Використовуйте для проєктів, спільних для кількох підписок (наприклад, коли ліміту одного плану недостатньо).",
+    "apply": "Застосувати",
+    "applying": "Застосування..."
   }
 }

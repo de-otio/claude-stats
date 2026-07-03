@@ -36,7 +36,7 @@
       ]
     },
     "spending": {
-      "title": "Spending",
+      "title": "Витрати",
       "sections": [
         {
           "heading": "Що показує ця вкладка",
@@ -262,8 +262,8 @@
     "errors": {
       "failedToLoadConfig": "Не вдалося завантажити конфігурацію",
       "failedToSaveConfig": "Не вдалося зберегти конфігурацію",
-      "failedToLoadClusters": "Failed to load projects for classification.",
-      "classifyFailed": "Could not apply classification: {{message}}"
+      "failedToLoadClusters": "Не вдалося завантажити проєкти для класифікації.",
+      "classifyFailed": "Не вдалося застосувати класифікацію: {{message}}"
     }
   },
   "sync": {
@@ -312,8 +312,8 @@
     "later": "Пізніше"
   },
   "embeddings": {
-    "settingChanged": "Claude Stats: clustering setting updated. Restart Claude Code (or start a new conversation) for the change to take effect.",
-    "tampered": "Claude Stats: bundled embedding model failed integrity verification. Falling back to lexical clustering. This may indicate a tampered extension installation — try reinstalling from the Marketplace."
+    "settingChanged": "Claude Stats: параметр кластеризації оновлено. Перезапустіть Claude Code (або почніть нову розмову), щоб зміни набули чинності.",
+    "tampered": "Claude Stats: вбудована модель embedding не пройшла перевірку цілісності. Виконується повернення до лексичної кластеризації. Це може свідчити про підроблене встановлення розширення — спробуйте перевстановити з Marketplace."
   },
   "mcp": {
     "registered": "Сервер MCP Claude Stats зареєстровано в ~/.claude.json. Перезапустіть Claude Code, щоб це набрало чинності, щоб ваш агент міг напряму запитувати статистику використання.",

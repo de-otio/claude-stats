@@ -1,5 +1,5 @@
 {
-  "pageTitle": "Claude Stats — {{period}} ({{date}})",
+  "pageTitle": "Claude Stats — {{period}}（{{date}}）",
   "tabs": {
     "overview": "概览",
     "models": "模型",
@@ -10,10 +10,12 @@
     "efficiency": "效率",
     "energy": "能耗",
     "settings": "设置",
-    "classify": "Classify"
+    "classify": "分类"
   },
   "toolbar": {
     "period": "时间段:",
+    "since": "起始:",
+    "until": "截止:",
     "refresh": "刷新",
     "autoOff": "自动: 关闭",
     "autoOn": "自动: 开启 ({{seconds}} 秒)",
@@ -22,7 +24,7 @@
     "accountCurrent": "(当前)"
   },
   "summary": {
-    "emptyPeriodHint": "No sessions in this period yet — switch Period to Week or All to see your data.",
+    "emptyPeriodHint": "此时段内暂无 session — 将时段切换为“周”或“全部”即可查看你的数据。",
     "sessions": "会话",
     "prompts": "提示词",
     "totalInput": "总输入",
@@ -320,7 +322,7 @@
     "summaryHint": "完整明细见 Spending 标签页",
     "title": "每个成功任务的成本",
     "headline": "每个成功任务",
-    "na": "n/a",
+    "na": "不适用",
     "lowCoverage": "覆盖率较低（{{coverage}}）— 成功率基于较小的可观测样本",
     "decomp": "= {{mean}}/尝试 ÷ {{rate}} 成功率",
     "coverageBadge": "{{observable}}/{{total}} 可观测（{{coverage}}）",
@@ -333,7 +335,7 @@
     "perSuccess": "$/成功",
     "successRate": "成功",
     "observableCol": "观测",
-    "insufficient": "n/a",
+    "insufficient": "不适用",
     "proxyNote": "除非你明确标注任务，否则结果根据 Git 活动和置信度推断；成功率仅基于可观测任务计算。",
     "period": {
       "day": "今天",
@@ -387,22 +389,22 @@
     }
   },
   "classify": {
-    "title": "Classify your projects",
-    "intro": "Assign each project to the subscription that should be billed for it. Projects are ranked by cost, so classifying the top few covers most of your spend.",
-    "vscodeOnly": "Project classification is available in the VS Code panel.",
-    "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
-    "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "title": "对项目进行分类",
+    "intro": "将每个项目分配到应为其计费的订阅。项目按费用排序，因此对靠前的几个进行分类即可覆盖你的大部分支出。",
+    "vscodeOnly": "项目分类功能可在 VS Code 面板中使用。",
+    "empty": "暂无可分类的项目。当你在若干项目中使用 Claude Code 后，它们会显示在这里。",
+    "noAccounts": "尚未检测到订阅。当 Claude Code 记录了每个账户的使用情况后，它们会显示在这里。",
     "unlinkedHint": "括号中显示了账户 ID 的账户尚未被检测为您当前登录的 Claude Code 账户，因此无法在此显示其邮箱和套餐。请先登录该账户一次，然后再切换回来，即可将其关联。",
-    "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
-    "pending": "__COUNT__ pending",
-    "sessions": "__COUNT__ sessions",
-    "projects": "__COUNT__ projects",
-    "remoteBadge": "remote",
-    "pathBadge": "folder",
-    "optionUnassigned": "Unassigned",
-    "optionSplit": "Split across usage",
-    "splitHint": "Split keeps each session's cost with the account that actually ran it. Use it for projects shared across subscriptions (e.g. when one plan's limit is not enough).",
-    "apply": "Apply",
-    "applying": "Applying..."
+    "coverage": "已分类 $__CLASSIFIED__ / $__TOTAL__（__PERCENT__%）",
+    "pending": "__COUNT__ 个待处理",
+    "sessions": "__COUNT__ 个 session",
+    "projects": "__COUNT__ 个项目",
+    "remoteBadge": "远程",
+    "pathBadge": "文件夹",
+    "optionUnassigned": "未分配",
+    "optionSplit": "按使用情况拆分",
+    "splitHint": "拆分会将每个 session 的费用归到实际运行它的账户。适用于跨订阅共享的项目（例如当单个套餐的额度不够用时）。",
+    "apply": "应用",
+    "applying": "应用中…"
   }
 }

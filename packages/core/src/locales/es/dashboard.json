@@ -10,10 +10,12 @@
     "efficiency": "Eficiencia",
     "energy": "Energía",
     "settings": "Configuración",
-    "classify": "Classify"
+    "classify": "Clasificar"
   },
   "toolbar": {
     "period": "Periodo:",
+    "since": "Desde:",
+    "until": "Hasta:",
     "refresh": "Actualizar",
     "autoOff": "Auto: desactivado",
     "autoOn": "Auto: activado ({{seconds}} s)",
@@ -22,7 +24,7 @@
     "accountCurrent": "(actual)"
   },
   "summary": {
-    "emptyPeriodHint": "No sessions in this period yet — switch Period to Week or All to see your data.",
+    "emptyPeriodHint": "Aún no hay sesiones en este periodo. Cambia Periodo a Semana o Todo para ver tus datos.",
     "sessions": "Sesiones",
     "prompts": "Prompts",
     "totalInput": "Entrada total",
@@ -121,7 +123,7 @@
       "compacted": "¿Compactada?",
       "cost": "Coste",
       "yes": "Sí",
-      "no": "No"
+      "no": "N.º"
     }
   },
   "efficiency": {
@@ -320,7 +322,7 @@
     "summaryHint": "Desglose completo en la pestaña Spending",
     "title": "Coste por tarea exitosa",
     "headline": "por tarea exitosa",
-    "na": "n/a",
+    "na": "n/d",
     "lowCoverage": "Cobertura baja ({{coverage}}) — la tasa se basa en una muestra observable pequeña",
     "decomp": "= {{mean}}/intento ÷ {{rate}} tasa de éxito",
     "coverageBadge": "{{observable}}/{{total}} observables ({{coverage}})",
@@ -333,7 +335,7 @@
     "perSuccess": "$/éxito",
     "successRate": "Éxito",
     "observableCol": "Obs.",
-    "insufficient": "n/a",
+    "insufficient": "n/d",
     "proxyNote": "El resultado se infiere de la actividad de Git y la confianza, salvo que hayas etiquetado la tarea explícitamente; la tasa se calcula solo sobre las tareas observables.",
     "period": {
       "day": "hoy",
@@ -387,22 +389,22 @@
     }
   },
   "classify": {
-    "title": "Classify your projects",
-    "intro": "Assign each project to the subscription that should be billed for it. Projects are ranked by cost, so classifying the top few covers most of your spend.",
-    "vscodeOnly": "Project classification is available in the VS Code panel.",
-    "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
-    "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "title": "Clasifica tus proyectos",
+    "intro": "Asigna cada proyecto a la suscripción que debe facturarse por él. Los proyectos se ordenan por coste, así que clasificar los primeros cubre la mayor parte de tu gasto.",
+    "vscodeOnly": "La clasificación de proyectos está disponible en el panel de VS Code.",
+    "empty": "Aún no hay proyectos que clasificar. Una vez que hayas usado Claude Code en algunos proyectos, aparecerán aquí.",
+    "noAccounts": "Aún no se han detectado suscripciones. Aparecerán aquí una vez que Claude Code haya registrado el uso de cada cuenta.",
     "unlinkedHint": "Las cuentas que se muestran con un ID entre paréntesis aún no se han visto como tu sesión activa de Claude Code, por lo que no se puede mostrar aquí su correo ni su plan. Inicia sesión con esa cuenta una vez, y luego vuelve a cambiar, para vincularla.",
-    "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
-    "pending": "__COUNT__ pending",
-    "sessions": "__COUNT__ sessions",
-    "projects": "__COUNT__ projects",
-    "remoteBadge": "remote",
-    "pathBadge": "folder",
-    "optionUnassigned": "Unassigned",
-    "optionSplit": "Split across usage",
-    "splitHint": "Split keeps each session's cost with the account that actually ran it. Use it for projects shared across subscriptions (e.g. when one plan's limit is not enough).",
-    "apply": "Apply",
-    "applying": "Applying..."
+    "coverage": "$__CLASSIFIED__ de $__TOTAL__ clasificados (__PERCENT__%)",
+    "pending": "__COUNT__ pendientes",
+    "sessions": "__COUNT__ sesiones",
+    "projects": "__COUNT__ proyectos",
+    "remoteBadge": "remoto",
+    "pathBadge": "carpeta",
+    "optionUnassigned": "Sin asignar",
+    "optionSplit": "Dividir según el uso",
+    "splitHint": "Dividir mantiene el coste de cada sesión con la cuenta que realmente la ejecutó. Úsalo para proyectos compartidos entre suscripciones (p. ej., cuando el límite de un plan no es suficiente).",
+    "apply": "Aplicar",
+    "applying": "Aplicando..."
   }
 }

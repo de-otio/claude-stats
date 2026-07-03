@@ -2,7 +2,7 @@
   "login": {
     "subtitle": "Connectez-vous avec votre e-mail professionnel pour accéder à votre tableau de bord",
     "emailLabel": "Adresse e-mail",
-    "emailPlaceholder": "you@company.com",
+    "emailPlaceholder": "vous@entreprise.com",
     "sendButton": "Envoyer le lien magique",
     "sending": "Envoi...",
     "checkEmailHeading": "Vérifiez votre e-mail",
