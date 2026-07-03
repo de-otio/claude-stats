@@ -36,7 +36,7 @@
       ]
     },
     "spending": {
-      "title": "Spending",
+      "title": "Расходы",
       "sections": [
         {
           "heading": "Что показывает эта вкладка",
@@ -262,8 +262,8 @@
     "errors": {
       "failedToLoadConfig": "Не удалось загрузить конфигурацию",
       "failedToSaveConfig": "Не удалось сохранить конфигурацию",
-      "failedToLoadClusters": "Failed to load projects for classification.",
-      "classifyFailed": "Could not apply classification: {{message}}"
+      "failedToLoadClusters": "Не удалось загрузить проекты для классификации.",
+      "classifyFailed": "Не удалось применить классификацию: {{message}}"
     }
   },
   "sync": {
@@ -312,8 +312,8 @@
     "later": "Позже"
   },
   "embeddings": {
-    "settingChanged": "Claude Stats: clustering setting updated. Restart Claude Code (or start a new conversation) for the change to take effect.",
-    "tampered": "Claude Stats: bundled embedding model failed integrity verification. Falling back to lexical clustering. This may indicate a tampered extension installation — try reinstalling from the Marketplace."
+    "settingChanged": "Claude Stats: настройка кластеризации обновлена. Перезапустите Claude Code (или начните новый разговор), чтобы изменение вступило в силу.",
+    "tampered": "Claude Stats: встроенная модель эмбеддингов не прошла проверку целостности. Выполняется переход к лексической кластеризации. Это может указывать на изменённую установку расширения — попробуйте переустановить его из Marketplace."
   },
   "mcp": {
     "registered": "MCP-сервер Claude Stats зарегистрирован в ~/.claude.json. Перезапустите Claude Code, чтобы изменения вступили в силу, и ваш агент мог запрашивать статистику использования напрямую.",

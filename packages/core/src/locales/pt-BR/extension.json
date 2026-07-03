@@ -36,7 +36,7 @@
       ]
     },
     "spending": {
-      "title": "Spending",
+      "title": "Gastos",
       "sections": [
         {
           "heading": "O que esta aba mostra",
@@ -262,13 +262,13 @@
     "errors": {
       "failedToLoadConfig": "Falha ao carregar a configuração",
       "failedToSaveConfig": "Falha ao salvar a configuração",
-      "failedToLoadClusters": "Failed to load projects for classification.",
-      "classifyFailed": "Could not apply classification: {{message}}"
+      "failedToLoadClusters": "Falha ao carregar projetos para classificação.",
+      "classifyFailed": "Não foi possível aplicar a classificação: {{message}}"
     }
   },
   "sync": {
     "status": {
-      "connectedText": "$(cloud) Sync",
+      "connectedText": "$(cloud) Sincronizar",
       "connectedTooltip": "Claude Stats: sincronizado - clique para sincronizar agora",
       "disconnectedText": "$(cloud-upload) Sync desligada",
       "disconnectedTooltip": "Claude Stats: não conectado - clique para sincronizar",
@@ -284,7 +284,7 @@
       "enterBackendUrl": "Digite a URL do backend do Claude Stats",
       "backendUrlPlaceholder": "https://your-team-instance.example.com",
       "enterEmail": "Digite seu endereço de e-mail para autenticar",
-      "emailPlaceholder": "you@example.com",
+      "emailPlaceholder": "voce@example.com",
       "checkEmailOrBrowser": "Claude Stats: verifique seu e-mail ou navegador para concluir a autenticação. Código: {{code}}",
       "checkEmail": "Claude Stats: verifique seu e-mail para o link de login."
     },
@@ -312,8 +312,8 @@
     "later": "Mais tarde"
   },
   "embeddings": {
-    "settingChanged": "Claude Stats: clustering setting updated. Restart Claude Code (or start a new conversation) for the change to take effect.",
-    "tampered": "Claude Stats: bundled embedding model failed integrity verification. Falling back to lexical clustering. This may indicate a tampered extension installation — try reinstalling from the Marketplace."
+    "settingChanged": "Claude Stats: configuração de clustering atualizada. Reinicie o Claude Code (ou inicie uma nova conversa) para que a alteração entre em vigor.",
+    "tampered": "Claude Stats: o modelo de embedding integrado falhou na verificação de integridade. Revertendo para clustering léxico. Isso pode indicar uma instalação adulterada da extensão — tente reinstalar a partir do Marketplace."
   },
   "mcp": {
     "registered": "Servidor MCP do Claude Stats registrado em ~/.claude.json. Reinicie o Claude Code para que tenha efeito e seu agente possa consultar estatísticas de uso diretamente.",

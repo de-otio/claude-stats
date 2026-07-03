@@ -36,7 +36,7 @@
       ]
     },
     "spending": {
-      "title": "Spending",
+      "title": "Wydatki",
       "sections": [
         {
           "heading": "Co pokazuje ta karta",
@@ -262,13 +262,13 @@
     "errors": {
       "failedToLoadConfig": "Nie udało się załadować konfiguracji",
       "failedToSaveConfig": "Nie udało się zapisać konfiguracji",
-      "failedToLoadClusters": "Failed to load projects for classification.",
-      "classifyFailed": "Could not apply classification: {{message}}"
+      "failedToLoadClusters": "Nie udało się załadować projektów do klasyfikacji.",
+      "classifyFailed": "Nie można zastosować klasyfikacji: {{message}}"
     }
   },
   "sync": {
     "status": {
-      "connectedText": "$(cloud) Sync",
+      "connectedText": "$(cloud) Synchronizacja",
       "connectedTooltip": "Claude Stats: zsynchronizowane - kliknij, aby zsynchronizować teraz",
       "disconnectedText": "$(cloud-upload) Sync wyłączone",
       "disconnectedTooltip": "Claude Stats: nie połączono - kliknij, aby zsynchronizować",
@@ -312,8 +312,8 @@
     "later": "Później"
   },
   "embeddings": {
-    "settingChanged": "Claude Stats: clustering setting updated. Restart Claude Code (or start a new conversation) for the change to take effect.",
-    "tampered": "Claude Stats: bundled embedding model failed integrity verification. Falling back to lexical clustering. This may indicate a tampered extension installation — try reinstalling from the Marketplace."
+    "settingChanged": "Claude Stats: zaktualizowano ustawienie klastrowania. Uruchom ponownie Claude Code (lub rozpocznij nową konwersację), aby zmiana zaczęła obowiązywać.",
+    "tampered": "Claude Stats: wbudowany model embeddingów nie przeszedł weryfikacji integralności. Następuje powrót do klastrowania leksykalnego. Może to wskazywać na zmodyfikowaną instalację rozszerzenia — spróbuj zainstalować je ponownie z Marketplace."
   },
   "mcp": {
     "registered": "Serwer MCP Claude Stats zarejestrowany w ~/.claude.json. Zrestartuj Claude Code, aby zaczął działać, dzięki czemu Twój agent może bezpośrednio pobierać statystyki użycia.",

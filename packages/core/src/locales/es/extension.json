@@ -36,7 +36,7 @@
       ]
     },
     "spending": {
-      "title": "Spending",
+      "title": "Gasto",
       "sections": [
         {
           "heading": "Qué muestra esta pestaña",
@@ -262,13 +262,13 @@
     "errors": {
       "failedToLoadConfig": "No se pudo cargar la configuración",
       "failedToSaveConfig": "No se pudo guardar la configuración",
-      "failedToLoadClusters": "Failed to load projects for classification.",
-      "classifyFailed": "Could not apply classification: {{message}}"
+      "failedToLoadClusters": "No se pudieron cargar los proyectos para la clasificación.",
+      "classifyFailed": "No se pudo aplicar la clasificación: {{message}}"
     }
   },
   "sync": {
     "status": {
-      "connectedText": "$(cloud) Sync",
+      "connectedText": "$(cloud) Sincronizar",
       "connectedTooltip": "Claude Stats: sincronizado - haz clic para sincronizar ahora",
       "disconnectedText": "$(cloud-upload) Sync desactivada",
       "disconnectedTooltip": "Claude Stats: no conectado - haz clic para sincronizar",
@@ -282,9 +282,9 @@
       "authExpired": "Claude Stats: la autenticación ha caducado. Reconéctate, por favor.",
       "disconnectConfirm": "¿Desconectar de la sincronización de Claude Stats? Esto eliminará tus tokens de autenticación.",
       "enterBackendUrl": "Introduce la URL del backend de Claude Stats",
-      "backendUrlPlaceholder": "https://your-team-instance.example.com",
+      "backendUrlPlaceholder": "https://tu-instancia-de-equipo.example.com",
       "enterEmail": "Introduce tu dirección de correo electrónico para autenticarte",
-      "emailPlaceholder": "you@example.com",
+      "emailPlaceholder": "tu@example.com",
       "checkEmailOrBrowser": "Claude Stats: revisa tu correo o navegador para completar la autenticación. Código: {{code}}",
       "checkEmail": "Claude Stats: revisa tu correo para el enlace de inicio de sesión."
     },
@@ -312,8 +312,8 @@
     "later": "Más tarde"
   },
   "embeddings": {
-    "settingChanged": "Claude Stats: clustering setting updated. Restart Claude Code (or start a new conversation) for the change to take effect.",
-    "tampered": "Claude Stats: bundled embedding model failed integrity verification. Falling back to lexical clustering. This may indicate a tampered extension installation — try reinstalling from the Marketplace."
+    "settingChanged": "Claude Stats: se actualizó la configuración de agrupación. Reinicia Claude Code (o inicia una nueva conversación) para que el cambio surta efecto.",
+    "tampered": "Claude Stats: el modelo de embeddings integrado no superó la verificación de integridad. Se recurrirá a la agrupación léxica. Esto puede indicar una instalación de la extensión manipulada; prueba a reinstalarla desde el Marketplace."
   },
   "mcp": {
     "registered": "Servidor MCP de Claude Stats registrado en ~/.claude.json. Reinicia Claude Code para que tenga efecto y tu agente pueda consultar las estadísticas de uso directamente.",

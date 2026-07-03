@@ -10,10 +10,12 @@
     "efficiency": "Efektywność",
     "energy": "Energia",
     "settings": "Ustawienia",
-    "classify": "Classify"
+    "classify": "Klasyfikuj"
   },
   "toolbar": {
     "period": "Okres:",
+    "since": "Od:",
+    "until": "Do:",
     "refresh": "Odśwież",
     "autoOff": "Auto: wył.",
     "autoOn": "Auto: wł. ({{seconds}} s)",
@@ -22,7 +24,7 @@
     "accountCurrent": "(bieżące)"
   },
   "summary": {
-    "emptyPeriodHint": "No sessions in this period yet — switch Period to Week or All to see your data.",
+    "emptyPeriodHint": "Brak sesji w tym okresie — przełącz Okres na Tydzień lub Wszystko, aby zobaczyć dane.",
     "sessions": "Sesje",
     "prompts": "Prompty",
     "totalInput": "Wejście łącznie",
@@ -320,7 +322,7 @@
     "summaryHint": "Pełny podział w karcie Spending",
     "title": "Koszt na udane zadanie",
     "headline": "na udane zadanie",
-    "na": "n/a",
+    "na": "nd.",
     "lowCoverage": "Niskie pokrycie ({{coverage}}) — wskaźnik opiera się na małej obserwowalnej próbce",
     "decomp": "= {{mean}}/próbę ÷ {{rate}} wskaźnik sukcesu",
     "coverageBadge": "{{observable}}/{{total}} obserwowalne ({{coverage}})",
@@ -333,7 +335,7 @@
     "perSuccess": "$/sukces",
     "successRate": "Sukces",
     "observableCol": "Obs.",
-    "insufficient": "n/a",
+    "insufficient": "nd.",
     "proxyNote": "Wynik jest wnioskowany z aktywności Git i pewności, chyba że zadanie zostało jawnie oznaczone; wskaźnik liczony jest tylko dla zadań obserwowalnych.",
     "period": {
       "day": "dzisiaj",
@@ -387,22 +389,22 @@
     }
   },
   "classify": {
-    "title": "Classify your projects",
-    "intro": "Assign each project to the subscription that should be billed for it. Projects are ranked by cost, so classifying the top few covers most of your spend.",
-    "vscodeOnly": "Project classification is available in the VS Code panel.",
-    "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
-    "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "title": "Sklasyfikuj swoje projekty",
+    "intro": "Przypisz każdy projekt do subskrypcji, która ma być za niego rozliczana. Projekty są uszeregowane według kosztu, więc sklasyfikowanie kilku najważniejszych obejmuje większość wydatków.",
+    "vscodeOnly": "Klasyfikacja projektów jest dostępna w panelu VS Code.",
+    "empty": "Brak projektów do sklasyfikowania. Gdy użyjesz Claude Code w kilku projektach, pojawią się one tutaj.",
+    "noAccounts": "Nie wykryto jeszcze subskrypcji. Pojawią się tutaj, gdy Claude Code zarejestruje użycie dla każdego konta.",
     "unlinkedHint": "Konta wyświetlane z identyfikatorem w nawiasie nie zostały jeszcze wykryte jako Twoje aktywne logowanie do Claude Code, więc nie można tu wyświetlić ich adresu e-mail ani planu. Zaloguj się raz na to konto, a następnie przełącz się z powrotem, aby je powiązać.",
-    "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
-    "pending": "__COUNT__ pending",
-    "sessions": "__COUNT__ sessions",
-    "projects": "__COUNT__ projects",
-    "remoteBadge": "remote",
+    "coverage": "$__CLASSIFIED__ z $__TOTAL__ sklasyfikowano (__PERCENT__%)",
+    "pending": "__COUNT__ oczekujących",
+    "sessions": "__COUNT__ sesji",
+    "projects": "__COUNT__ projektów",
+    "remoteBadge": "zdalny",
     "pathBadge": "folder",
-    "optionUnassigned": "Unassigned",
-    "optionSplit": "Split across usage",
-    "splitHint": "Split keeps each session's cost with the account that actually ran it. Use it for projects shared across subscriptions (e.g. when one plan's limit is not enough).",
-    "apply": "Apply",
-    "applying": "Applying..."
+    "optionUnassigned": "Nieprzypisane",
+    "optionSplit": "Podziel według użycia",
+    "splitHint": "Podział przypisuje koszt każdej sesji do konta, które ją faktycznie uruchomiło. Użyj go dla projektów współdzielonych między subskrypcjami (np. gdy limit jednego planu nie wystarcza).",
+    "apply": "Zastosuj",
+    "applying": "Stosowanie..."
   }
 }

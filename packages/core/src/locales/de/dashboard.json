@@ -10,10 +10,12 @@
     "efficiency": "Effizienz",
     "energy": "Energie",
     "settings": "Einstellungen",
-    "classify": "Classify"
+    "classify": "Klassifizieren"
   },
   "toolbar": {
     "period": "Zeitraum:",
+    "since": "Von:",
+    "until": "Bis:",
     "refresh": "Aktualisieren",
     "autoOff": "Auto: aus",
     "autoOn": "Auto: an ({{seconds}}s)",
@@ -22,7 +24,7 @@
     "accountCurrent": "(aktuell)"
   },
   "summary": {
-    "emptyPeriodHint": "No sessions in this period yet — switch Period to Week or All to see your data.",
+    "emptyPeriodHint": "Noch keine Sessions in diesem Zeitraum — stellen Sie den Zeitraum auf „Woche“ oder „Alle“, um Ihre Daten zu sehen.",
     "sessions": "Sessions",
     "prompts": "Prompts",
     "totalInput": "Eingabe gesamt",
@@ -107,7 +109,7 @@
   },
   "context": {
     "avgPromptsPerSession": "Ø Prompts/Session",
-    "medianPrompts": "Median Prompts",
+    "medianPrompts": "Median-Prompts",
     "compactionRate": "Kompaktierungsrate",
     "avgPeakInputTokens": "Ø Spitzen-Eingabe-Token",
     "needCompaction": "Kompaktierung nötig",
@@ -187,8 +189,8 @@
       "periodHeader": "Ihr Zeitraum ({{start}} → {{end}}):",
       "col": {
         "class": "Klasse",
-        "inputRate": "Input Wh/1K",
-        "outputRate": "Output Wh/1K",
+        "inputRate": "Eingabe Wh/1K",
+        "outputRate": "Ausgabe Wh/1K",
         "msgs": "Msg",
         "output": "Output-Tok",
         "input": "Input-Tok",
@@ -320,7 +322,7 @@
     "summaryHint": "Vollständige Aufschlüsselung im Spending-Tab",
     "title": "Kosten pro erfolgreicher Aufgabe",
     "headline": "pro erfolgreicher Aufgabe",
-    "na": "n/a",
+    "na": "–",
     "lowCoverage": "Geringe Abdeckung ({{coverage}}) — Rate beruht auf kleinem beobachtbaren Anteil",
     "decomp": "= {{mean}}/Versuch ÷ {{rate}} Erfolgsrate",
     "coverageBadge": "{{observable}}/{{total}} beobachtbar ({{coverage}})",
@@ -333,7 +335,7 @@
     "perSuccess": "$/Erfolg",
     "successRate": "Erfolg",
     "observableCol": "Beob.",
-    "insufficient": "n/a",
+    "insufficient": "–",
     "proxyNote": "Das Ergebnis wird aus Git-Aktivität und Konfidenz abgeleitet, sofern du die Aufgabe nicht ausdrücklich gekennzeichnet hast; die Rate wird nur über beobachtbare Aufgaben berechnet.",
     "period": {
       "day": "heute",
@@ -387,22 +389,22 @@
     }
   },
   "classify": {
-    "title": "Classify your projects",
-    "intro": "Assign each project to the subscription that should be billed for it. Projects are ranked by cost, so classifying the top few covers most of your spend.",
-    "vscodeOnly": "Project classification is available in the VS Code panel.",
-    "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
-    "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "title": "Projekte klassifizieren",
+    "intro": "Weisen Sie jedes Projekt dem Abonnement zu, über das es abgerechnet werden soll. Projekte sind nach Kosten sortiert, sodass das Klassifizieren der obersten den Großteil Ihrer Ausgaben abdeckt.",
+    "vscodeOnly": "Die Projektklassifizierung ist im VS Code-Panel verfügbar.",
+    "empty": "Noch keine Projekte zum Klassifizieren. Sobald Sie Claude Code in einigen Projekten verwendet haben, erscheinen sie hier.",
+    "noAccounts": "Noch keine Abonnements erkannt. Sie erscheinen hier, sobald Claude Code die Nutzung für jedes Konto aufgezeichnet hat.",
     "unlinkedHint": "Konten, die mit einer ID in Klammern angezeigt werden, wurden noch nicht als Ihr aktiver Claude-Code-Login erkannt, daher können E-Mail-Adresse und Abo hier nicht angezeigt werden. Melden Sie sich einmal mit diesem Konto an und wechseln Sie danach zurück, um es zu verknüpfen.",
-    "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
-    "pending": "__COUNT__ pending",
-    "sessions": "__COUNT__ sessions",
-    "projects": "__COUNT__ projects",
+    "coverage": "$__CLASSIFIED__ von $__TOTAL__ klassifiziert (__PERCENT__%)",
+    "pending": "__COUNT__ ausstehend",
+    "sessions": "__COUNT__ Sessions",
+    "projects": "__COUNT__ Projekte",
     "remoteBadge": "remote",
-    "pathBadge": "folder",
-    "optionUnassigned": "Unassigned",
-    "optionSplit": "Split across usage",
-    "splitHint": "Split keeps each session's cost with the account that actually ran it. Use it for projects shared across subscriptions (e.g. when one plan's limit is not enough).",
-    "apply": "Apply",
-    "applying": "Applying..."
+    "pathBadge": "Ordner",
+    "optionUnassigned": "Nicht zugewiesen",
+    "optionSplit": "Nach Nutzung aufteilen",
+    "splitHint": "Beim Aufteilen bleiben die Kosten jeder Session bei dem Konto, das sie tatsächlich ausgeführt hat. Verwenden Sie es für Projekte, die über mehrere Abonnements hinweg geteilt werden (z. B. wenn das Limit eines Plans nicht ausreicht).",
+    "apply": "Anwenden",
+    "applying": "Wird angewendet…"
   }
 }

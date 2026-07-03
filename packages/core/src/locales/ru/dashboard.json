@@ -10,10 +10,12 @@
     "efficiency": "Эффективность",
     "energy": "Энергия",
     "settings": "Параметры",
-    "classify": "Classify"
+    "classify": "Классификация"
   },
   "toolbar": {
     "period": "Период:",
+    "since": "С:",
+    "until": "По:",
     "refresh": "Обновить",
     "autoOff": "Авто: выкл",
     "autoOn": "Авто: вкл ({{seconds}}с)",
@@ -22,7 +24,7 @@
     "accountCurrent": "(текущий)"
   },
   "summary": {
-    "emptyPeriodHint": "No sessions in this period yet — switch Period to Week or All to see your data.",
+    "emptyPeriodHint": "Пока нет сессий за этот период — переключите период на «Неделя» или «Всё», чтобы увидеть данные.",
     "sessions": "Сессии",
     "prompts": "Запросы",
     "totalInput": "Всего на вход",
@@ -320,7 +322,7 @@
     "summaryHint": "Полная разбивка на вкладке Spending",
     "title": "Стоимость успешной задачи",
     "headline": "на успешную задачу",
-    "na": "n/a",
+    "na": "н/д",
     "lowCoverage": "Низкий охват ({{coverage}}) — доля основана на небольшой наблюдаемой выборке",
     "decomp": "= {{mean}}/попытку ÷ {{rate}} доля успеха",
     "coverageBadge": "{{observable}}/{{total}} наблюдаемые ({{coverage}})",
@@ -333,7 +335,7 @@
     "perSuccess": "$/успех",
     "successRate": "Успех",
     "observableCol": "Набл.",
-    "insufficient": "n/a",
+    "insufficient": "н/д",
     "proxyNote": "Результат выводится из активности Git и уверенности, если вы явно не пометили задачу; доля рассчитывается только по наблюдаемым задачам.",
     "period": {
       "day": "сегодня",
@@ -387,22 +389,22 @@
     }
   },
   "classify": {
-    "title": "Classify your projects",
-    "intro": "Assign each project to the subscription that should be billed for it. Projects are ranked by cost, so classifying the top few covers most of your spend.",
-    "vscodeOnly": "Project classification is available in the VS Code panel.",
-    "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
-    "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "title": "Классификация проектов",
+    "intro": "Назначьте каждому проекту подписку, на которую его следует списывать. Проекты отсортированы по стоимости, поэтому классификация нескольких верхних покрывает большую часть расходов.",
+    "vscodeOnly": "Классификация проектов доступна на панели VS Code.",
+    "empty": "Пока нет проектов для классификации. Как только вы поработаете с Claude Code в нескольких проектах, они появятся здесь.",
+    "noAccounts": "Подписки пока не обнаружены. Они появятся здесь, как только Claude Code зафиксирует использование для каждой учётной записи.",
     "unlinkedHint": "Аккаунты, показанные с идентификатором в скобках, ещё не были замечены как ваш активный вход в Claude Code, поэтому их email и план нельзя показать здесь. Войдите под этим аккаунтом один раз, затем переключитесь обратно, чтобы привязать его.",
-    "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
-    "pending": "__COUNT__ pending",
-    "sessions": "__COUNT__ sessions",
-    "projects": "__COUNT__ projects",
-    "remoteBadge": "remote",
-    "pathBadge": "folder",
-    "optionUnassigned": "Unassigned",
-    "optionSplit": "Split across usage",
-    "splitHint": "Split keeps each session's cost with the account that actually ran it. Use it for projects shared across subscriptions (e.g. when one plan's limit is not enough).",
-    "apply": "Apply",
-    "applying": "Applying..."
+    "coverage": "$__CLASSIFIED__ из $__TOTAL__ классифицировано (__PERCENT__%)",
+    "pending": "__COUNT__ в ожидании",
+    "sessions": "__COUNT__ сессий",
+    "projects": "__COUNT__ проектов",
+    "remoteBadge": "удалённый",
+    "pathBadge": "папка",
+    "optionUnassigned": "Не назначено",
+    "optionSplit": "Разделить по использованию",
+    "splitHint": "Разделение сохраняет стоимость каждой сессии за учётной записью, которая её фактически выполнила. Используйте для проектов, общих для нескольких подписок (например, когда лимита одного плана недостаточно).",
+    "apply": "Применить",
+    "applying": "Применение..."
   }
 }

@@ -36,7 +36,7 @@
       ]
     },
     "spending": {
-      "title": "Spending",
+      "title": "Dépenses",
       "sections": [
         {
           "heading": "Ce que montre cet onglet",
@@ -262,8 +262,8 @@
     "errors": {
       "failedToLoadConfig": "Échec du chargement de la configuration",
       "failedToSaveConfig": "Échec de l'enregistrement de la configuration",
-      "failedToLoadClusters": "Failed to load projects for classification.",
-      "classifyFailed": "Could not apply classification: {{message}}"
+      "failedToLoadClusters": "Échec du chargement des projets pour la classification.",
+      "classifyFailed": "Impossible d'appliquer la classification : {{message}}"
     }
   },
   "sync": {
@@ -284,7 +284,7 @@
       "enterBackendUrl": "Saisissez l'URL du backend Claude Stats",
       "backendUrlPlaceholder": "https://your-team-instance.example.com",
       "enterEmail": "Saisissez votre adresse e-mail pour vous authentifier",
-      "emailPlaceholder": "you@example.com",
+      "emailPlaceholder": "vous@example.com",
       "checkEmailOrBrowser": "Claude Stats : vérifiez votre e-mail ou navigateur pour terminer l'authentification. Code : {{code}}",
       "checkEmail": "Claude Stats : vérifiez votre e-mail pour un lien de connexion."
     },
@@ -312,8 +312,8 @@
     "later": "Plus tard"
   },
   "embeddings": {
-    "settingChanged": "Claude Stats: clustering setting updated. Restart Claude Code (or start a new conversation) for the change to take effect.",
-    "tampered": "Claude Stats: bundled embedding model failed integrity verification. Falling back to lexical clustering. This may indicate a tampered extension installation — try reinstalling from the Marketplace."
+    "settingChanged": "Claude Stats : paramètre de clustering mis à jour. Redémarrez Claude Code (ou démarrez une nouvelle conversation) pour que le changement prenne effet.",
+    "tampered": "Claude Stats : la vérification d'intégrité du modèle d'embedding intégré a échoué. Retour au clustering lexical. Cela peut indiquer une installation d'extension altérée — essayez de réinstaller depuis la Marketplace."
   },
   "mcp": {
     "registered": "Serveur MCP Claude Stats enregistré dans ~/.claude.json. Redémarrez Claude Code pour qu'il prenne effet, afin que votre agent puisse interroger directement les statistiques d'utilisation.",

@@ -36,7 +36,7 @@
       ]
     },
     "spending": {
-      "title": "Spending",
+      "title": "支出",
       "sections": [
         {
           "heading": "このタブの内容",
@@ -262,8 +262,8 @@
     "errors": {
       "failedToLoadConfig": "設定の読み込みに失敗しました",
       "failedToSaveConfig": "設定の保存に失敗しました",
-      "failedToLoadClusters": "Failed to load projects for classification.",
-      "classifyFailed": "Could not apply classification: {{message}}"
+      "failedToLoadClusters": "分類用のプロジェクトの読み込みに失敗しました。",
+      "classifyFailed": "分類を適用できませんでした: {{message}}"
     }
   },
   "sync": {
@@ -312,8 +312,8 @@
     "later": "後で"
   },
   "embeddings": {
-    "settingChanged": "Claude Stats: clustering setting updated. Restart Claude Code (or start a new conversation) for the change to take effect.",
-    "tampered": "Claude Stats: bundled embedding model failed integrity verification. Falling back to lexical clustering. This may indicate a tampered extension installation — try reinstalling from the Marketplace."
+    "settingChanged": "Claude Stats: クラスタリング設定を更新しました。変更を反映するには、Claude Code を再起動してください（または新しい会話を開始してください）。",
+    "tampered": "Claude Stats: バンドルされた埋め込みモデルの整合性検証に失敗しました。語彙ベースのクラスタリングにフォールバックします。拡張機能のインストールが改ざんされている可能性があります。マーケットプレースから再インストールしてみてください。"
   },
   "mcp": {
     "registered": "Claude Stats MCP サーバーを ~/.claude.json に登録しました。エージェントが使用統計を直接クエリできるよう、Claude Code を再起動してください。",

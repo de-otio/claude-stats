@@ -36,7 +36,7 @@
       ]
     },
     "spending": {
-      "title": "Spending",
+      "title": "支出",
       "sections": [
         {
           "heading": "此标签页显示什么",
@@ -262,8 +262,8 @@
     "errors": {
       "failedToLoadConfig": "加载配置失败",
       "failedToSaveConfig": "保存配置失败",
-      "failedToLoadClusters": "Failed to load projects for classification.",
-      "classifyFailed": "Could not apply classification: {{message}}"
+      "failedToLoadClusters": "无法加载用于分类的项目。",
+      "classifyFailed": "无法应用分类：{{message}}"
     }
   },
   "sync": {
@@ -304,7 +304,7 @@
   },
   "errors": {
     "sqliteRequired": "Claude Stats 需要支持 node:sqlite 的 Node.js 22.5+。{{message}}",
-    "generic": "Claude Stats: {{message}}"
+    "generic": "Claude Stats：{{message}}"
   },
   "upgrade": {
     "message": "Claude Stats 已从 {{previous}} 更新到 {{current}}。请重新加载窗口，以便已打开的仪表板重新连接到新扩展 — 否则刷新按钮和时间段选择器将静默停止工作，直到您重新加载。",
@@ -312,8 +312,8 @@
     "later": "稍后"
   },
   "embeddings": {
-    "settingChanged": "Claude Stats: clustering setting updated. Restart Claude Code (or start a new conversation) for the change to take effect.",
-    "tampered": "Claude Stats: bundled embedding model failed integrity verification. Falling back to lexical clustering. This may indicate a tampered extension installation — try reinstalling from the Marketplace."
+    "settingChanged": "Claude Stats：聚类设置已更新。请重启 Claude Code（或开始新的对话）以使更改生效。",
+    "tampered": "Claude Stats：捆绑的嵌入模型未通过完整性验证。将回退到词法聚类。这可能表示扩展安装已被篡改——请尝试从 Marketplace 重新安装。"
   },
   "mcp": {
     "registered": "Claude Stats MCP 服务器已注册到 ~/.claude.json。请重启 Claude Code 以生效，这样您的代理即可直接查询使用统计。",
