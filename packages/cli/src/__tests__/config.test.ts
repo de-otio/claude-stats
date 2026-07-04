@@ -223,6 +223,16 @@ describe("mergeConfig", () => {
     const merged = mergeConfig({}, { accountFees: { __proto__: { monthlyFee: 1 }, [UUID]: { monthlyFee: -1 } } });
     expect(Object.keys(merged.accountFees ?? {})).toHaveLength(0);
   });
+
+  it("floors autoRefreshSeconds to the 60s minimum", () => {
+    expect(mergeConfig({}, { autoRefreshSeconds: 5 }).autoRefreshSeconds).toBe(60);
+    expect(mergeConfig({}, { autoRefreshSeconds: 90 }).autoRefreshSeconds).toBe(90);
+  });
+
+  it("ignores a non-numeric autoRefreshSeconds", () => {
+    const merged = mergeConfig({}, { autoRefreshSeconds: "fast" } as unknown);
+    expect(merged.autoRefreshSeconds).toBeUndefined();
+  });
 });
 
 describe("resolveAccountFee", () => {

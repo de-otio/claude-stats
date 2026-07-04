@@ -2,7 +2,6 @@
   "pageTitle": "Claude Stats — {{period}} ({{date}})",
   "tabs": {
     "overview": "Übersicht",
-    "models": "Modelle",
     "projects": "Projekte",
     "sessions": "Sessions",
     "plan": "Abo",
@@ -50,8 +49,6 @@
     "tokenBreakdown": "Token-Verteilung",
     "cacheUsage": "Cache-Nutzung",
     "cumulativeApiValue": "Kumulativer API-Wert vs. Abogebühr",
-    "tokensByModel": "Token nach Modell",
-    "stopReasons": "Abbruchgründe",
     "topProjects": "Top-Projekte",
     "tokensByProject": "Token-Anteil nach Projekt",
     "energyByProject": "Energieverbrauch nach Projekt",
@@ -296,7 +293,9 @@
     "noAccounts": "Noch keine Konten gefunden — führen Sie einige Sitzungen durch und erfassen Sie erneut.",
     "unlinkedAccountHint": "Noch nicht mit einer E-Mail-Adresse verknüpft — melden Sie sich einmal mit diesem Konto an und wechseln Sie danach zurück, um E-Mail-Adresse und Abo hier anzuzeigen.",
     "feePlaceholder": "Gebühr",
-    "labelPlaceholder": "Label (z. B. Arbeit, Persönlich)"
+    "labelPlaceholder": "Label (z. B. Arbeit, Persönlich)",
+    "autoRefreshInterval": "Intervall für automatische Aktualisierung (Sekunden)",
+    "autoRefreshHint": "Mindestens 60 Sekunden. Gilt, wenn die automatische Aktualisierung in der Symbolleiste aktiviert ist."
   },
   "fees": {
     "title": "Abogebühr nach Projekt",

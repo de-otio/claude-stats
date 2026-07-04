@@ -149,13 +149,11 @@ describe("renderDashboard", () => {
     expect(parsed.byModel).toHaveLength(2);
   });
 
-  it("contains all 6 canvas IDs", () => {
+  it("contains all 4 canvas IDs", () => {
     const html = renderDashboard(mockData, t);
     expect(html).toContain('id="chart-daily"');
-    expect(html).toContain('id="chart-model"');
     expect(html).toContain('id="chart-project"');
     expect(html).toContain('id="chart-entrypoint"');
-    expect(html).toContain('id="chart-stops"');
     expect(html).toContain('id="chart-cache"');
   });
 
@@ -682,6 +680,8 @@ describe("renderDashboard", () => {
     expect(html).toContain('id="cfg-threshold-day"');
     expect(html).toContain('id="settings-form"');
     expect(html).toContain('/api/config');
+    expect(html).toContain('id="cfg-auto-refresh"');
+    expect(html).toContain('min="60"');
   });
 
   it("settings config I/O uses webview postMessage bridge when __vscodeApi is present", () => {

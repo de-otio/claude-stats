@@ -491,7 +491,6 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     <button class="tab-btn active" data-tab="overview">${t("dashboard:tabs.overview")}</button>
     ${data.energy ? `<button class="tab-btn" data-tab="energy">${t("dashboard:tabs.energy")}</button>` : ""}
     ${data.spending ? `<button class="tab-btn" data-tab="spending">Spending</button>` : ""}
-    <button class="tab-btn" data-tab="models">${t("dashboard:tabs.models")}</button>
     <button class="tab-btn" data-tab="projects">${t("dashboard:tabs.projects")}</button>
     <button class="tab-btn" data-tab="sessions">${t("dashboard:tabs.sessions")}</button>
     <button class="tab-btn" data-tab="plan">${t("dashboard:tabs.plan")}</button>
@@ -602,20 +601,6 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h2>${t("dashboard:charts.cumulativeApiValue")}</h2>
         <canvas id="chart-cumulative"></canvas>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════ TAB: Models ═══════════════ -->
-  <div class="tab-panel" id="tab-models">
-    <div class="charts-grid">
-      <div class="chart-card">
-        <h2>${t("dashboard:charts.tokensByModel")}</h2>
-        <canvas id="chart-model"></canvas>
-      </div>
-      <div class="chart-card">
-        <h2>${t("dashboard:charts.stopReasons")}</h2>
-        <canvas id="chart-stops"></canvas>
       </div>
     </div>
   </div>
@@ -1330,6 +1315,12 @@ CO₂_grams = total_kWh × grid_intensity</div>
             </div>
           </div>
 
+          <div style="border-top:1px solid #2a2a4a; padding-top:1rem; margin-top:0.5rem;">
+            <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">${t("dashboard:settings.autoRefreshInterval")}</label>
+            <input id="cfg-auto-refresh" type="number" min="60" step="1" placeholder="120" style="width:100%; max-width:150px; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;">
+            <div style="font-size:0.6rem; color:#999; margin-top:0.3rem;">${t("dashboard:settings.autoRefreshHint")}</div>
+          </div>
+
           <div style="display:flex; align-items:center; gap:0.75rem; margin-top:0.5rem;">
             <button type="submit" style="padding:0.5rem 1.5rem; background:#4e79a7; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem;">${t("dashboard:settings.save")}</button>
             <span id="settings-status" style="font-size:0.75rem; color:#59a14f; opacity:0;"></span>
@@ -1416,14 +1407,20 @@ CO₂_grams = total_kWh × grid_intensity</div>
       window.doRefresh = function () { location.reload(); };
 
       // ── Auto-refresh toggle ───────────────────────────────────────────────
+      // Floor enforced here (against a hand-edited ?refresh= URL) and in
+      // mergeConfig server-side (against a hand-edited config file) — never
+      // more often than once a minute.
+      var MIN_AUTO_REFRESH_SECS = 60;
+      var configuredAutoRefreshSecs = 120;
       var refreshSecs = parseInt(urlParam('refresh') || '0', 10);
+      if (refreshSecs > 0 && refreshSecs < MIN_AUTO_REFRESH_SECS) refreshSecs = MIN_AUTO_REFRESH_SECS;
       var autoBtn = document.getElementById('autorefresh-btn');
       if (refreshSecs > 0) {
         if (autoBtn) autoBtn.textContent = '${jsStr(t("dashboard:toolbar.autoOn", { seconds: "__SECS__" }))}'.replace('__SECS__', refreshSecs);
         setTimeout(function () { location.reload(); }, refreshSecs * 1000);
       }
       window.toggleRefresh = function () {
-        window.location.href = refreshSecs > 0 ? setUrlParam('refresh', null) : setUrlParam('refresh', '120');
+        window.location.href = refreshSecs > 0 ? setUrlParam('refresh', null) : setUrlParam('refresh', String(configuredAutoRefreshSecs));
       };
 
       // ── Tab navigation ────────────────────────────────────────────────────
@@ -1460,7 +1457,6 @@ CO₂_grams = total_kWh × grid_intensity</div>
       function initTab(tabId) {
         switch (tabId) {
           case 'overview': initOverview(); break;
-          case 'models': initModels(); break;
           case 'projects': initProjects(); break;
           case 'sessions': initSessions(); break;
           case 'plan': initPlan(); break;
@@ -1547,41 +1543,6 @@ CO₂_grams = total_kWh × grid_intensity</div>
           new Chart(ctx, {
             type: 'line', data: { labels: labels, datasets: datasets },
             options: Object.assign({}, chartOpts, { scales: { y: { title: { display: true, text: 'USD ($)', color: '#888' }, ticks: { callback: function(v) { return '$' + v.toFixed(2); } } } } })
-          });
-        }());
-      }
-
-      // ═══════════════ MODELS CHARTS ═══════════════
-      function initModels() {
-        // Tokens by model
-        (function () {
-          var ctx = document.getElementById('chart-model').getContext('2d');
-          var labels = d.byModel.map(function (r) { return r.model; });
-          new Chart(ctx, {
-            type: 'bar',
-            data: {
-              labels: labels,
-              datasets: [
-                { label: 'Output', data: d.byModel.map(function (r) { return r.outputTokens; }), backgroundColor: '#f28e2b' },
-                { label: 'Input', data: d.byModel.map(function (r) { return r.inputTokens; }), backgroundColor: '#4e79a7' }
-              ]
-            },
-            options: Object.assign({}, chartOpts, {
-              scales: { x: { stacked: true }, y: { stacked: true, title: { display: true, text: 'Tokens', color: '#888' }, ticks: { callback: function(v) { return fmtTokens(v); } } } }
-            })
-          });
-        }());
-
-        // Stop reasons
-        (function () {
-          var ctx = document.getElementById('chart-stops').getContext('2d');
-          new Chart(ctx, {
-            type: 'bar',
-            data: {
-              labels: d.stopReasons.map(function (r) { return r.reason; }),
-              datasets: [{ label: 'Count', data: d.stopReasons.map(function (r) { return r.count; }), backgroundColor: '#59a14f' }]
-            },
-            options: chartOpts
           });
         }());
       }
@@ -2299,6 +2260,10 @@ CO₂_grams = total_kWh × grid_intensity</div>
           if (cfg.costThresholds.week != null) threshWeek.value = cfg.costThresholds.week;
           if (cfg.costThresholds.month != null) threshMonth.value = cfg.costThresholds.month;
         }
+        if (cfg.autoRefreshSeconds != null) {
+          document.getElementById('cfg-auto-refresh').value = cfg.autoRefreshSeconds;
+          configuredAutoRefreshSecs = Math.max(MIN_AUTO_REFRESH_SECS, cfg.autoRefreshSeconds);
+        }
         renderAccountFees(cfg);
       }
 
@@ -2836,12 +2801,14 @@ CO₂_grams = total_kWh × grid_intensity</div>
           var threshDay = document.getElementById('cfg-threshold-day').value;
           var threshWeek = document.getElementById('cfg-threshold-week').value;
           var threshMonth = document.getElementById('cfg-threshold-month').value;
+          var autoRefreshVal = document.getElementById('cfg-auto-refresh').value;
 
           var config = {};
           config.costThresholds = {};
           if (threshDay) config.costThresholds.day = parseFloat(threshDay);
           if (threshWeek) config.costThresholds.week = parseFloat(threshWeek);
           if (threshMonth) config.costThresholds.month = parseFloat(threshMonth);
+          if (autoRefreshVal) config.autoRefreshSeconds = Math.max(MIN_AUTO_REFRESH_SECS, parseInt(autoRefreshVal, 10) || MIN_AUTO_REFRESH_SECS);
           config.accountFees = collectAccountFees();
 
           var statusEl = document.getElementById('settings-status');
