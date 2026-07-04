@@ -90,6 +90,11 @@
     "ceilingExceeded": "超出团队 150 席位上限 — 此席位数需要企业计划。",
     "openQuestionsHeader": "开放性问题 — 需要您自行决定；此工具不会：",
     "complianceHeader": "合规触发器",
+    "openQuestions": {
+      "compliance": "合规触发因素：贵组织是否在相关义务下处理受监管数据或客户数据，从而使 SSO/SCIM、审计日志或自定义保留期不再只是锦上添花？这可能迫使采用 Enterprise，而与席位数无关——这是法律/IT 的判断，而非数据问题。",
+      "spendLimit": "支出上限理念（仅限 Enterprise）：将每用户/每组织的上限设置为接近 'typical' 基准（成本可预测，高强度用户偶尔受限），或设为 'power' 基准的 2–3 倍（最大化使用，将上限作为对泄露密钥等非人为故障的保险）。两种做法都合理；请审慎选择。",
+      "timing": "时机触发因素：鉴于 sales-assisted 的 Enterprise 有数周的前置时间，请决定在承诺席位数达到多少时启动 Enterprise 洽谈——尽早启动可将硬性上限变成无关紧要的事件。"
+    },
     "staleNote": "{{warning}}",
     "errors": {
       "headcount-invalid": "员工数必须是至少 1 的整数。",

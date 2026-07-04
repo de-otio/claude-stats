@@ -90,6 +90,11 @@
     "ceilingExceeded": "Teto de 150 assentos da Equipe excedido — Empresa necessária nesta contagem de assentos.",
     "openQuestionsHeader": "Questões abertas — decide-as deliberadamente; esta ferramenta não o fará:",
     "complianceHeader": "Gatilho de conformidade",
+    "openQuestions": {
+      "compliance": "Gatilho de conformidade: sua organização lida com dados regulados ou de clientes sob obrigações que tornam SSO/SCIM, logs de auditoria ou retenção personalizada não meramente cosméticos? Isso pode exigir Enterprise independentemente do número de seats — uma decisão jurídica/de TI, não uma questão de dados.",
+      "spendLimit": "Filosofia de limite de gastos (somente Enterprise): dimensione os limites por usuário/organização próximos ao benchmark 'typical' (custo previsível, usuários avançados ocasionalmente limitados) OU em 2–3× o benchmark 'power' (maximizando o uso, com o limite como seguro contra falhas não humanas, como uma chave vazada). Ambos são legítimos; escolha deliberadamente.",
+      "timing": "Gatilho de tempo: dado o prazo de várias semanas de um Enterprise sales-assisted, decida a partir de qual número de seats comprometidos iniciar a conversa com Enterprise — começar cedo transforma um teto rígido em um não-evento."
+    },
     "staleNote": "{{warning}}",
     "errors": {
       "headcount-invalid": "A contagem de pessoal deve ser um número inteiro de pelo menos 1.",

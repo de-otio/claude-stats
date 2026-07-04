@@ -105,7 +105,7 @@ export function formatPlanAdvisorReport(
   if (compliance) {
     lines.push("");
     lines.push(t("cli:planAdvisor.complianceHeader"));
-    lines.push(`  ${table.openQuestions[0] ?? ""}`);
+    lines.push(`  ${t("cli:planAdvisor.openQuestions.compliance")}`);
   }
 
   lines.push("");
@@ -146,8 +146,10 @@ export function formatPlanAdvisorReport(
 
   lines.push("");
   lines.push(t("cli:planAdvisor.openQuestionsHeader"));
-  for (const q of table.openQuestions) {
-    lines.push(`  - ${q}`);
+  // Render the localized open questions for human output; the core
+  // SEAT_SIZING_OPEN_QUESTIONS array stays English for the MCP/agent path.
+  for (const id of ["compliance", "spendLimit", "timing"] as const) {
+    lines.push(`  - ${t(`cli:planAdvisor.openQuestions.${id}`)}`);
   }
 
   lines.push("");

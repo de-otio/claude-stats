@@ -90,6 +90,11 @@
     "ceilingExceeded": "Team-150-Seat-Obergrenze überschritten — Enterprise erforderlich bei dieser Seat-Anzahl.",
     "openQuestionsHeader": "Offene Fragen — treffen Sie diese bewusst; dieses Tool wird es nicht:",
     "complianceHeader": "Compliance-Auslöser",
+    "openQuestions": {
+      "compliance": "Compliance-Auslöser: Verarbeitet Ihre Organisation regulierte oder Kundendaten unter Auflagen, die SSO/SCIM, Audit-Logs oder eine angepasste Datenaufbewahrung nicht nur kosmetisch machen? Das kann Enterprise unabhängig von der Seat-Anzahl erzwingen — eine rechtliche/IT-Ermessensfrage, keine Datenfrage.",
+      "spendLimit": "Ausgabenlimit-Philosophie (nur Enterprise): Limits pro Nutzer/Organisation eng am 'typical'-Benchmark bemessen (kostenkalkulierbar, Power-User werden gelegentlich gedrosselt) ODER auf das 2–3-Fache des 'power'-Benchmarks (nutzungsmaximierend, Limit als Absicherung gegen nicht-menschliche Fehlerfälle wie einen geleakten Schlüssel). Beides ist legitim; wählen Sie bewusst.",
+      "timing": "Timing-Auslöser: Entscheiden Sie angesichts der mehrwöchigen Vorlaufzeit für ein sales-assisted Enterprise, ab welcher zugesagten Seat-Anzahl das Enterprise-Gespräch beginnen soll — ein früher Start verwandelt eine harte Obergrenze in ein Nicht-Ereignis."
+    },
     "staleNote": "{{warning}}",
     "errors": {
       "headcount-invalid": "Kopfzahl muss eine ganze Zahl von mindestens 1 sein.",
