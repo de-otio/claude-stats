@@ -704,10 +704,20 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       ${pu.recommendedPlan ? `
       <div class="summary-card" style="border-color:#b07aa1;">
         <div class="label">${t("dashboard:plan.suggestedPlan")}</div>
-        <div class="value" style="font-size:0.95rem;color:#b07aa1;">${t(`dashboard:plan.planNames.${pu.recommendedPlan!}`, { defaultValue: pu.recommendedPlan })}</div>
+        <div class="value" style="font-size:0.95rem;color:#b07aa1;">${t(`dashboard:plan.planNames.${pu.recommendedPlan!}`, { defaultValue: escapeHtml(pu.recommendedPlan) })}</div>
         <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${t("dashboard:plan.basedOnAvg", { value: pu.avgWeeklyCost.toFixed(2) })}</div>
       </div>
       ` : ''}
+      ${pu.usageIntensityTier ? (() => {
+        const intensityColor = pu.usageIntensityTier!.tier === 'light' ? '#59a14f' : pu.usageIntensityTier!.tier === 'typical' ? '#b07aa1' : '#f28e2b';
+        const intensityLabel = t(`dashboard:plan.usageIntensity.${pu.usageIntensityTier!.tier}`, { defaultValue: escapeHtml(pu.usageIntensityTier!.tier) });
+        return `
+      <div class="summary-card" style="border-color:${intensityColor};">
+        <div class="label">${t("dashboard:plan.usageIntensity.title")}</div>
+        <div class="value" style="font-size:0.95rem;color:${intensityColor};">${intensityLabel}</div>
+        <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${t("dashboard:plan.usageIntensity.benchmark", { benchmark: pu.usageIntensityTier!.benchmarkUsd.toFixed(0) })}</div>
+      </div>`;
+      })() : ''}
       <div class="summary-card">
         <div class="label">${t("dashboard:plan.avgWeeklyValue")}</div>
         <div class="value">$${pu.avgWeeklyCost.toFixed(2)}</div>

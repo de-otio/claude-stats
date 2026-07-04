@@ -11,6 +11,17 @@
     "rateLimitTier": "Rate-limit tier",
     "seatTier": "Seat tier",
     "billingType": "Billing type",
+    "suggestedPlan": "Suggested plan",
+    "planVerdict": "Plan verdict",
+    "usageIntensity": "Usage intensity",
+    "verdictGoodValue": "good value",
+    "verdictUnderusing": "underusing",
+    "verdictNoPlan": "no plan",
+    "intensityLight": "light",
+    "intensityTypical": "typical",
+    "intensityPower": "power",
+    "usageIntensityBenchmark": "≈ ${{benchmark}}/mo Claude Code benchmark",
+    "planAdvisorHint": "Run 'claude-stats plan-advisor' to size seats for a company rollout.",
     "extraUsage": "Extra usage",
     "enabled": "enabled",
     "disabled": "disabled",
@@ -45,6 +56,48 @@
       "row": "  {{label}}  ({{projects}} project(s), {{sessions}} session(s), {{cost}})",
       "unclassified": "Unclassified (no matching owner rule): {{cost}}",
       "noData": "No sessions found."
+    }
+  },
+  "planAdvisor": {
+    "description": "Size Team vs Enterprise seats for a company-wide Claude rollout from a headcount and a technical fraction.",
+    "headcountFlag": "Total company headcount (whole number, at least 1).",
+    "technicalFractionFlag": "Share of headcount that would get a Claude Code seat, as a fraction 0–1 or a percentage like 50.",
+    "tierMixFlag": "Optional measured light,typical,power intensity split (e.g. 0.5,0.4,0.1); defaults to Anthropic's benchmark mix.",
+    "complianceFlag": "Surface the compliance trigger prominently. Does not change the numbers or pick a plan.",
+    "title": "Seat sizing for a company rollout",
+    "inputSummary": "Headcount {{headcount}} · technical fraction {{fraction}}% · technical population {{population}}",
+    "tierMixLine": "Tier mix ({{source}}): light {{light}}% · typical {{typical}}% · power {{power}}%",
+    "tierMixSourceBenchmark": "Anthropic benchmark",
+    "tierMixSourceMeasured": "measured",
+    "seatRanges": "Team seat range 5–150 · Enterprise minimums 20 self-serve / 50 sales-assisted (no published maximum).",
+    "col": {
+      "adoption": "Adoption",
+      "seats": "Seats",
+      "fitsTeam": "Fits Team?",
+      "procurement": "Procurement",
+      "teamCost": "Team $/mo",
+      "enterpriseCost": "Enterprise $/mo"
+    },
+    "enterpriseCostHint": "Enterprise = seat fee + metered usage benchmark; there is no bundled allowance.",
+    "estimateNote": "Every dollar figure is an estimate resting on the tier-mix assumption and the negotiated Enterprise seat floor — not a quote.",
+    "yes": "yes",
+    "no": "no",
+    "motion": {
+      "team-self-serve": "Team self-serve",
+      "enterprise-self-serve": "Enterprise self-serve",
+      "enterprise-sales-assisted": "Enterprise sales-assisted"
+    },
+    "ceilingExceeded": "Team 150-seat ceiling exceeded — Enterprise required at this seat count.",
+    "openQuestionsHeader": "Open questions — decide these deliberately; this tool will not:",
+    "complianceHeader": "Compliance trigger",
+    "staleNote": "{{warning}}",
+    "errors": {
+      "headcount-invalid": "Headcount must be a whole number of at least 1.",
+      "fraction-invalid": "Technical fraction must be between 0 and 1 (or 0–100%).",
+      "tiermix-invalid": "Each tier-mix value must be between 0 and 1.",
+      "tiermix-sum": "Tier-mix values must sum to 1 (e.g. 0.5,0.4,0.1).",
+      "adoption-fraction-invalid": "Adoption fractions must be between 0 and 1.",
+      "too-many-scenarios": "At most 20 adoption scenarios are allowed."
     }
   },
   "otel": {

@@ -81,6 +81,19 @@ claude mcp add -s user claude-stats -- "$(which node)" --experimental-sqlite \
 | `get_status`         | Database health, session count, last collection time                           |
 | `search_history`     | Search prompt history by keyword                                               |
 | `get_cost_per_task`  | Cost per successful task — outcome-cost overall and per model (read-only)       |
+| `get_account_info`   | Current login's seat tier, billing type, and known accounts on this machine     |
+| `get_plan_mechanics_reference` | Dated snapshot of Team/Enterprise seat ranges, pricing, and usage-intensity benchmarks, with a staleness warning |
+| `size_seats`         | Seat-sizing scenario table for a company rollout from headcount + technical fraction (never picks a plan) |
+
+### License advisor skill
+
+`skills/license-advisor/SKILL.md` is a repo-level Claude Code skill that walks
+a stakeholder through picking a Team vs Enterprise plan and seat count using
+the tools above — grounded in measured usage where it exists, falling back to
+benchmarks otherwise, and surfacing the compliance and spend-limit tradeoffs
+as choices rather than resolving them silently. See
+[doc/user-doc/commands.md](doc/user-doc/commands.md) for the matching
+`account` and `plan-advisor` CLI commands.
 
 ### Example queries
 

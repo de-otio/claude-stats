@@ -11,6 +11,17 @@
     "rateLimitTier": "Nível de limite de taxa",
     "seatTier": "Nível de assento",
     "billingType": "Tipo de cobrança",
+    "suggestedPlan": "Plano sugerido",
+    "planVerdict": "Veredicto do plano",
+    "usageIntensity": "Intensidade de uso",
+    "verdictGoodValue": "bom valor",
+    "verdictUnderusing": "subutilizando",
+    "verdictNoPlan": "sem plano",
+    "intensityLight": "light",
+    "intensityTypical": "typical",
+    "intensityPower": "power",
+    "usageIntensityBenchmark": "≈ ${{benchmark}}/mês benchmark Claude Code",
+    "planAdvisorHint": "Execute 'claude-stats plan-advisor' para dimensionar assentos para um lançamento em toda a empresa.",
     "extraUsage": "Uso extra",
     "enabled": "habilitado",
     "disabled": "desabilitado",
@@ -45,6 +56,48 @@
       "row": "  {{label}}  ({{projects}} projeto(s), {{sessions}} sessão(ões), {{cost}})",
       "unclassified": "Não classificado (nenhuma regra de propriedade correspondente): {{cost}}",
       "noData": "Nenhuma sessão encontrada."
+    }
+  },
+  "planAdvisor": {
+    "description": "Dimensione assentos de Equipe vs. Empresa para um lançamento de Claude em toda a empresa com base na contagem de pessoal e fração técnica.",
+    "headcountFlag": "Contagem total de pessoal da empresa (número inteiro, pelo menos 1).",
+    "technicalFractionFlag": "Parte da contagem de pessoal que receberia um assento Claude Code, como uma fração 0–1 ou um percentual como 50.",
+    "tierMixFlag": "Divisão opcional medida de intensidade light,typical,power (ex. 0.5,0.4,0.1); padrão para a mistura de benchmark da Anthropic.",
+    "complianceFlag": "Destaque o gatilho de conformidade com destaque. Não muda os números ou escolhe um plano.",
+    "title": "Dimensionamento de assentos para lançamento em toda a empresa",
+    "inputSummary": "Contagem de pessoal {{headcount}} · fração técnica {{fraction}}% · população técnica {{population}}",
+    "tierMixLine": "Mistura de camadas ({{source}}): light {{light}}% · typical {{typical}}% · power {{power}}%",
+    "tierMixSourceBenchmark": "benchmark Anthropic",
+    "tierMixSourceMeasured": "medido",
+    "seatRanges": "Intervalo de assentos da Equipe 5–150 · Mínimos da Empresa 20 autosserviço / 50 assistido por vendas (sem máximo publicado).",
+    "col": {
+      "adoption": "Adoção",
+      "seats": "Assentos",
+      "fitsTeam": "Cabe na Equipe?",
+      "procurement": "Aquisição",
+      "teamCost": "Custo da Equipe $/mês",
+      "enterpriseCost": "Custo da Empresa $/mês"
+    },
+    "enterpriseCostHint": "Empresa = taxa de assento + benchmark de uso medido; não há provisão agrupada.",
+    "estimateNote": "Cada valor em dólares é uma estimativa baseada na suposição de mistura de camadas e no piso de assento da Empresa negociado — não é uma cotação.",
+    "yes": "sim",
+    "no": "não",
+    "motion": {
+      "team-self-serve": "Equipe autosserviço",
+      "enterprise-self-serve": "Empresa autosserviço",
+      "enterprise-sales-assisted": "Empresa assistida por vendas"
+    },
+    "ceilingExceeded": "Teto de 150 assentos da Equipe excedido — Empresa necessária nesta contagem de assentos.",
+    "openQuestionsHeader": "Questões abertas — decide-as deliberadamente; esta ferramenta não o fará:",
+    "complianceHeader": "Gatilho de conformidade",
+    "staleNote": "{{warning}}",
+    "errors": {
+      "headcount-invalid": "A contagem de pessoal deve ser um número inteiro de pelo menos 1.",
+      "fraction-invalid": "A fração técnica deve estar entre 0 e 1 (ou 0–100%).",
+      "tiermix-invalid": "Cada valor de mistura de camadas deve estar entre 0 e 1.",
+      "tiermix-sum": "Os valores de mistura de camadas devem somar 1 (ex. 0.5,0.4,0.1).",
+      "adoption-fraction-invalid": "As frações de adoção devem estar entre 0 e 1.",
+      "too-many-scenarios": "No máximo 20 cenários de adoção são permitidos."
     }
   },
   "otel": {

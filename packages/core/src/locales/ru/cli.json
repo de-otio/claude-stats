@@ -11,6 +11,17 @@
     "rateLimitTier": "Уровень ограничения запросов",
     "seatTier": "Уровень места",
     "billingType": "Тип оплаты",
+    "suggestedPlan": "Рекомендуемый план",
+    "planVerdict": "Вердикт плана",
+    "usageIntensity": "Интенсивность использования",
+    "verdictGoodValue": "хорошее соотношение цены и качества",
+    "verdictUnderusing": "недоиспользование",
+    "verdictNoPlan": "нет плана",
+    "intensityLight": "light",
+    "intensityTypical": "typical",
+    "intensityPower": "power",
+    "usageIntensityBenchmark": "≈ ${{benchmark}}/мес. контрольное значение Claude Code",
+    "planAdvisorHint": "Выполните 'claude-stats plan-advisor' для расчета количества мест в масштабе всей компании.",
     "extraUsage": "Дополнительное использование",
     "enabled": "включено",
     "disabled": "отключено",
@@ -45,6 +56,48 @@
       "row": "  {{label}}  ({{projects}} проект(ов), {{sessions}} сессий, {{cost}})",
       "unclassified": "Без классификации (нет подходящего правила владения): {{cost}}",
       "noData": "Сессии не найдены."
+    }
+  },
+  "planAdvisor": {
+    "description": "Рассчитайте количество мест для Team vs. Enterprise при развертывании Claude в масштабе всей компании на основе численности и доли технических сотрудников.",
+    "headcountFlag": "Общая численность компании (целое число, не менее 1).",
+    "technicalFractionFlag": "Доля численности, которая получит место Claude Code, как дробь 0–1 или процент, например 50.",
+    "tierMixFlag": "Необязательное измеренное распределение интенсивности light,typical,power (например, 0.5,0.4,0.1); по умолчанию используется контрольное распределение Anthropic.",
+    "complianceFlag": "Выделить триггер соответствия нормам. Не изменяет цифры и не выбирает план.",
+    "title": "Расчет количества мест для развертывания в масштабе компании",
+    "inputSummary": "Численность {{headcount}} · доля технических {{fraction}}% · техническая популяция {{population}}",
+    "tierMixLine": "Распределение уровней ({{source}}): light {{light}}% · typical {{typical}}% · power {{power}}%",
+    "tierMixSourceBenchmark": "контрольное значение Anthropic",
+    "tierMixSourceMeasured": "измеренное",
+    "seatRanges": "Диапазон мест Team 5–150 · минимумы Enterprise 20 самообслуживание / 50 с поддержкой продаж (нет опубликованного максимума).",
+    "col": {
+      "adoption": "Внедрение",
+      "seats": "Места",
+      "fitsTeam": "Подходит для Team?",
+      "procurement": "Закупка",
+      "teamCost": "Стоимость Team $/мес.",
+      "enterpriseCost": "Стоимость Enterprise $/мес."
+    },
+    "enterpriseCostHint": "Enterprise = плата за место + контрольное значение измеренного использования; нет пакетного выделения.",
+    "estimateNote": "Каждая сумма в долларах — это оценка, основанная на предположении о распределении уровней и согласованном минимуме мест Enterprise — не расценка.",
+    "yes": "да",
+    "no": "нет",
+    "motion": {
+      "team-self-serve": "Team самообслуживание",
+      "enterprise-self-serve": "Enterprise самообслуживание",
+      "enterprise-sales-assisted": "Enterprise с поддержкой продаж"
+    },
+    "ceilingExceeded": "Превышен лимит 150 мест Team — Enterprise требуется при таком количестве мест.",
+    "openQuestionsHeader": "Открытые вопросы — решите их осознанно; этот инструмент не будет:",
+    "complianceHeader": "Триггер соответствия нормам",
+    "staleNote": "{{warning}}",
+    "errors": {
+      "headcount-invalid": "Численность должна быть целым числом не менее 1.",
+      "fraction-invalid": "Доля технических должна быть между 0 и 1 (или 0–100%).",
+      "tiermix-invalid": "Каждое значение распределения уровней должно быть между 0 и 1.",
+      "tiermix-sum": "Значения распределения уровней должны в сумме равняться 1 (например, 0.5,0.4,0.1).",
+      "adoption-fraction-invalid": "Доли внедрения должны быть между 0 и 1.",
+      "too-many-scenarios": "Допускается не более 20 сценариев внедрения."
     }
   },
   "otel": {

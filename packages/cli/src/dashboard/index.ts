@@ -5,8 +5,9 @@
 import type { Store, SessionRow } from "../store/index.js";
 import type { ReportOptions } from "../reporter/index.js";
 import { periodRange } from "../reporter/index.js";
-import { estimateCost, lookupPlanFee } from "@claude-stats/core/pricing";
+import { estimateCost, lookupPlanFee, PLAN_FEES } from "@claude-stats/core/pricing";
 import type { UsageWindow } from "@claude-stats/core/types";
+import { classifyUsageIntensity } from "@claude-stats/core/planMechanics";
 import { readClaudeAccount } from "../account.js";
 import { resolveAccountFee, type Config } from "../config.js";
 import { buildFeeAttribution, type FeeAttribution } from "./fee-attribution.js";
@@ -191,8 +192,22 @@ export interface DashboardData {
     truncatedOutputWindowPercent: number;
     totalWindows: number;
     // Recommendation
-    recommendedPlan: string | null;  // "pro", "max_5x", "max_20x", "team_standard", "team_premium", or null
+    recommendedPlan: string | null;  // "pro", "max_5x", "max_20x", "team_standard", "team_premium", "enterprise", or null
     currentPlanVerdict: string;      // "good-value" | "underusing" | "no-plan"
+    /**
+     * Usage-intensity classification of `monthlyEquiv` against Anthropic's
+     * per-user Claude Code benchmarks (from `classifyUsageIntensity` in
+     * @claude-stats/core/planMechanics). Optional so full-literal
+     * planUtilization fixtures typecheck without it; when present it is
+     * populated whenever planUtilization is non-null (byWeek.length > 0) and
+     * is `null` only when planUtilization itself is null. Computation is B1's;
+     * this is the declared contract only.
+     */
+    usageIntensityTier?: {
+      tier: "light" | "typical" | "power";
+      benchmarkUsd: number;
+      source: "anthropic-benchmark";
+    } | null;
     // Per-account breakdown (always populated when planUtilization is present)
     byAccount: Array<{
       accountId: string;             // truncated UUID for display
@@ -413,6 +428,26 @@ export interface ContextAnalysis {
   }>;
 }
 
+
+/**
+ * Plan-fee ladder used to derive the `recommendedPlan` thresholds, in
+ * ascending price order. Deliberately an explicit list rather than
+ * `Object.entries(PLAN_FEES)` — the latter includes the `team` alias
+ * (duplicate of `team_standard`'s fee, in insertion order, not price order)
+ * and would corrupt the derived midpoints.
+ */
+const PLAN_FEE_LADDER = ["pro", "team_standard", "max_5x", "team_premium", "max_20x"] as const;
+
+/**
+ * Recommendation thresholds: the midpoint between each adjacent pair of fees
+ * on the ladder. Derived from `PLAN_FEES` (core/pricing.ts) instead of
+ * hand-coded, so the two never drift apart (analysis 03's drift lesson).
+ * With pro 20 / team_standard 25 / max_5x 100 / team_premium 125 / max_20x 200:
+ *   22.5 / 62.5 / 112.5 / 162.5 — matches the previously hand-coded constants.
+ */
+export const PLAN_LADDER_THRESHOLDS: readonly number[] = PLAN_FEE_LADDER.slice(1).map(
+  (plan, i) => (PLAN_FEES[PLAN_FEE_LADDER[i]!]! + PLAN_FEES[plan]!) / 2,
+);
 
 export function buildDashboard(store: Store, opts: ReportOptions): DashboardData {
   const tz = opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -874,16 +909,24 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     const truncatedOutputWindowPercent = byWindow.length > 0
       ? Math.round((truncatedCount / byWindow.length) * 1000) / 10 : 0;
 
-    // Plan recommendation based on weekly API-equivalent cost
+    // Plan recommendation based on weekly API-equivalent cost. Ladder thresholds
+    // are derived at module scope from PLAN_FEES (see PLAN_LADDER_THRESHOLDS).
     const monthlyEquiv = avgWeeklyCost * 4.33;
     let recommendedPlan: string | null = null;
     let currentPlanVerdict = "no-plan";
 
-    if (monthlyEquiv < 22.5) recommendedPlan = "pro";
-    else if (monthlyEquiv < 62.5) recommendedPlan = "team_standard";
-    else if (monthlyEquiv < 112.5) recommendedPlan = "max_5x";
-    else if (monthlyEquiv < 162.5) recommendedPlan = "team_premium";
-    else recommendedPlan = "max_20x";
+    if (monthlyEquiv < PLAN_LADDER_THRESHOLDS[0]!) recommendedPlan = "pro";
+    else if (monthlyEquiv < PLAN_LADDER_THRESHOLDS[1]!) recommendedPlan = "team_standard";
+    else if (monthlyEquiv < PLAN_LADDER_THRESHOLDS[2]!) recommendedPlan = "max_5x";
+    else if (monthlyEquiv < PLAN_LADDER_THRESHOLDS[3]!) recommendedPlan = "team_premium";
+    else if (monthlyEquiv <= PLAN_FEES.max_20x!) recommendedPlan = "max_20x";
+    else recommendedPlan = "enterprise";
+
+    // Usage-intensity classification: populated whenever planUtilization is
+    // non-null (this branch only runs when byWeek.length > 0); null only when
+    // planUtilization itself is null (the `else` branch below the containing
+    // `if`). B4 (template) renders the intensity card only when this is set.
+    const usageIntensityTier = classifyUsageIntensity(monthlyEquiv);
 
     if (effectivePlanFee > 0) {
       const utilRate = totalCost / effectivePlanFee;
@@ -946,6 +989,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       totalWindows: byWindow.length,
       recommendedPlan,
       currentPlanVerdict,
+      usageIntensityTier,
       byAccount,
     };
   }
@@ -1004,7 +1048,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
         subTypeByAccount.set(acct, row.subscription_type ?? subTypeByAccount.get(acct) ?? null);
       }
       const cost = sessionCostMap.get(row.session_id)?.cost ?? 0;
-      const mapKey = acct + " " + row.project_path;
+      const mapKey = acct + "\u0000" + row.project_path;
       const existing = costByAccountProject.get(mapKey);
       if (existing) existing.cost += cost;
       else costByAccountProject.set(mapKey, { accountUuid: acct, projectPath: row.project_path, cost });
@@ -1232,6 +1276,10 @@ const PLAN_LABELS: Record<string, string> = {
   max_5x: "Max 5x ($100/mo)",
   team_premium: "Team Premium ($125/mo)",
   max_20x: "Max 20x ($200/mo)",
+  // No `$<digits>` token: buildRecommendations regex-parses `/\$(\d+)/` out of
+  // this label to compute a suggested downgrade fee, and Enterprise is a
+  // metered plan with no single seat fee to suggest.
+  enterprise: "Enterprise (metered)",
 };
 
 function buildRecommendations(input: {
@@ -1274,7 +1322,8 @@ function buildRecommendations(input: {
       planUtilization.weeklyPlanBudget > 0 &&
       planUtilization.totalWeeks >= 4 &&
       planUtilization.avgWeeklyCost < planUtilization.weeklyPlanBudget * 0.5 &&
-      planUtilization.recommendedPlan
+      planUtilization.recommendedPlan &&
+      planUtilization.recommendedPlan !== "enterprise"
     ) {
       const monthlyFee = Math.round(planUtilization.weeklyPlanBudget * 4.33);
       const monthlyUse = (planUtilization.avgWeeklyCost * 4.33).toFixed(0);

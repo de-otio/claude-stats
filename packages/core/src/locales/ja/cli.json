@@ -11,6 +11,17 @@
     "rateLimitTier": "レート制限ティア",
     "seatTier": "シートティア",
     "billingType": "課金タイプ",
+    "suggestedPlan": "提案されたプラン",
+    "planVerdict": "プラン判定",
+    "usageIntensity": "使用強度",
+    "verdictGoodValue": "良い価値",
+    "verdictUnderusing": "過小利用",
+    "verdictNoPlan": "プランなし",
+    "intensityLight": "light",
+    "intensityTypical": "typical",
+    "intensityPower": "power",
+    "usageIntensityBenchmark": "≈ ${{benchmark}}/月 Claude Code ベンチマーク",
+    "planAdvisorHint": "'claude-stats plan-advisor' を実行して、企業全体のロールアウトのシート数を調整します。",
     "extraUsage": "追加使用量",
     "enabled": "有効",
     "disabled": "無効",
@@ -45,6 +56,48 @@
       "row": "  {{label}}  ({{projects}} プロジェクト、{{sessions}} セッション、{{cost}})",
       "unclassified": "未分類 (一致する所有者ルールなし): {{cost}}",
       "noData": "セッションが見つかりませんでした。"
+    }
+  },
+  "planAdvisor": {
+    "description": "人員数と技術者の割合に基づいて、企業全体の Claude ロールアウトのためにチーム vs エンタープライズシート数を調整します。",
+    "headcountFlag": "企業全体の人員数 (整数、最低 1)。",
+    "technicalFractionFlag": "Claude Code シートを取得する人員の割合（0～1 の分数、または 50 のようなパーセンテージ）。",
+    "tierMixFlag": "オプションの計測された light,typical,power 強度分割 (例: 0.5,0.4,0.1); Anthropic のベンチマークミックスがデフォルトです。",
+    "complianceFlag": "コンプライアンストリガーを目立たせます。数値を変更したり、プランを選択したりすることはありません。",
+    "title": "企業全体のロールアウトのシート数調整",
+    "inputSummary": "人員数 {{headcount}} · 技術者割合 {{fraction}}% · 技術者人口 {{population}}",
+    "tierMixLine": "ティアミックス ({{source}}): light {{light}}% · typical {{typical}}% · power {{power}}%",
+    "tierMixSourceBenchmark": "Anthropic ベンチマーク",
+    "tierMixSourceMeasured": "計測済み",
+    "seatRanges": "チームシート範囲 5～150 · エンタープライズ最小値 20 セルフサービス / 50 営業支援 (公開最大値なし)。",
+    "col": {
+      "adoption": "導入",
+      "seats": "シート",
+      "fitsTeam": "チームに合致？",
+      "procurement": "調達",
+      "teamCost": "チーム $/月",
+      "enterpriseCost": "エンタープライズ $/月"
+    },
+    "enterpriseCostHint": "エンタープライズ = シート料金 + 計測された使用ベンチマーク; バンドル割り当てはありません。",
+    "estimateNote": "すべてのドル数字は、ティアミックス仮定と交渉されたエンタープライズシート最小値に基づく推定です — 見積もりではありません。",
+    "yes": "はい",
+    "no": "いいえ",
+    "motion": {
+      "team-self-serve": "チームセルフサービス",
+      "enterprise-self-serve": "エンタープライズセルフサービス",
+      "enterprise-sales-assisted": "エンタープライズ営業支援"
+    },
+    "ceilingExceeded": "チーム150シートの上限を超過 — このシート数ではエンタープライズが必要です。",
+    "openQuestionsHeader": "未解決の質問 — これらは意識的に決定してください; このツールは決定しません:",
+    "complianceHeader": "コンプライアンストリガー",
+    "staleNote": "{{warning}}",
+    "errors": {
+      "headcount-invalid": "人員数は最低 1 の整数である必要があります。",
+      "fraction-invalid": "技術者割合は 0～1 の間である必要があります (または 0～100%)。",
+      "tiermix-invalid": "各ティアミックス値は 0～1 の間である必要があります。",
+      "tiermix-sum": "ティアミックス値は 1 の合計である必要があります (例: 0.5,0.4,0.1)。",
+      "adoption-fraction-invalid": "導入分数は 0～1 の間である必要があります。",
+      "too-many-scenarios": "最大 20 の導入シナリオが許可されています。"
     }
   },
   "otel": {

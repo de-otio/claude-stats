@@ -11,6 +11,17 @@
     "rateLimitTier": "Nivel de límite de tasa",
     "seatTier": "Nivel de puesto",
     "billingType": "Tipo de facturación",
+    "suggestedPlan": "Plan sugerido",
+    "planVerdict": "Veredicto del plan",
+    "usageIntensity": "Intensidad de uso",
+    "verdictGoodValue": "buena relación precio-rendimiento",
+    "verdictUnderusing": "infrautilizando",
+    "verdictNoPlan": "sin plan",
+    "intensityLight": "light",
+    "intensityTypical": "typical",
+    "intensityPower": "power",
+    "usageIntensityBenchmark": "≈ ${{benchmark}}/mes de referencia Claude Code",
+    "planAdvisorHint": "Ejecuta 'claude-stats plan-advisor' para dimensionar puestos para un despliegue empresarial.",
     "extraUsage": "Uso adicional",
     "enabled": "habilitado",
     "disabled": "deshabilitado",
@@ -45,6 +56,48 @@
       "row": "  {{label}}  ({{projects}} proyecto(s), {{sessions}} sesión(es), {{cost}})",
       "unclassified": "Sin clasificar (ninguna regla de propiedad coincidente): {{cost}}",
       "noData": "No se encontraron sesiones."
+    }
+  },
+  "planAdvisor": {
+    "description": "Dimensiona puestos de Equipo vs. Empresa para un despliegue de Claude en toda la empresa basado en el tamaño y la fracción técnica.",
+    "headcountFlag": "Tamaño total de la empresa (número entero, al menos 1).",
+    "technicalFractionFlag": "Proporción del tamaño que tendría un puesto de Claude Code, como fracción 0–1 o porcentaje como 50.",
+    "tierMixFlag": "División opcional medida de intensidad light,typical,power (p. ej. 0.5,0.4,0.1); por defecto el mix de referencia de Anthropic.",
+    "complianceFlag": "Destaca el disparador de cumplimiento prominentemente. No cambia los números ni elige un plan.",
+    "title": "Dimensionamiento de puestos para un despliegue empresarial",
+    "inputSummary": "Tamaño {{headcount}} · fracción técnica {{fraction}}% · población técnica {{population}}",
+    "tierMixLine": "Mix de niveles ({{source}}): light {{light}}% · typical {{typical}}% · power {{power}}%",
+    "tierMixSourceBenchmark": "referencia Anthropic",
+    "tierMixSourceMeasured": "medido",
+    "seatRanges": "Rango de puestos de Equipo 5–150 · Mínimos Empresa 20 auto-servicio / 50 asistida por ventas (sin máximo publicado).",
+    "col": {
+      "adoption": "Adopción",
+      "seats": "Puestos",
+      "fitsTeam": "¿Se ajusta a Equipo?",
+      "procurement": "Adquisición",
+      "teamCost": "Coste Equipo $/mes",
+      "enterpriseCost": "Coste Empresa $/mes"
+    },
+    "enterpriseCostHint": "Empresa = cuota de puesto + referencia de uso medido; no hay provisión agrupada.",
+    "estimateNote": "Cada cifra en dólares es una estimación basada en la suposición del mix de niveles y el piso de puesto Empresa negociado — no una oferta.",
+    "yes": "sí",
+    "no": "no",
+    "motion": {
+      "team-self-serve": "Equipo auto-servicio",
+      "enterprise-self-serve": "Empresa auto-servicio",
+      "enterprise-sales-assisted": "Empresa asistida por ventas"
+    },
+    "ceilingExceeded": "Se superó el techo de 150 puestos de Equipo — Empresa requerida en este número de puestos.",
+    "openQuestionsHeader": "Preguntas abiertas — decide estas deliberadamente; esta herramienta no lo hará:",
+    "complianceHeader": "Disparador de cumplimiento",
+    "staleNote": "{{warning}}",
+    "errors": {
+      "headcount-invalid": "El tamaño debe ser un número entero de al menos 1.",
+      "fraction-invalid": "La fracción técnica debe estar entre 0 y 1 (o 0–100%).",
+      "tiermix-invalid": "Cada valor de mix de niveles debe estar entre 0 y 1.",
+      "tiermix-sum": "Los valores de mix de niveles deben sumar 1 (p. ej. 0.5,0.4,0.1).",
+      "adoption-fraction-invalid": "Las fracciones de adopción deben estar entre 0 y 1.",
+      "too-many-scenarios": "Se permite un máximo de 20 escenarios de adopción."
     }
   },
   "otel": {

@@ -559,6 +559,66 @@ describe("renderDashboard", () => {
     expect(html).toContain("Max 5x ($100/mo)");
   });
 
+  it("renders Usage Intensity card when usageIntensityTier is set", () => {
+    const withIntensity: DashboardData = {
+      ...mockData,
+      summary: { ...mockData.summary, planFee: 100, planMultiplier: 2.5 },
+      byWeek: [
+        { week: "2026-01-13", sessions: 10, prompts: 50, estimatedCost: 25.0, activeHoursEstimate: 5.0, windowCount: 3, windowsWithTruncatedOutput: 0 },
+      ],
+      planUtilization: {
+        weeklyPlanBudget: 23.09,
+        avgWeeklyCost: 25.0,
+        peakWeeklyCost: 25.0,
+        weeksBelowPlan: 0,
+        weeksAbovePlan: 1,
+        totalWeeks: 1,
+        avgWindowCost: 8.33,
+        medianWindowCost: 8.33,
+        windowsPerWeek: 3.0,
+        truncatedOutputWindowPercent: 0,
+        totalWindows: 3,
+        recommendedPlan: "max_5x",
+        currentPlanVerdict: "good-value",
+        byAccount: [],
+        usageIntensityTier: { tier: "typical", benchmarkUsd: 62.5, source: "anthropic-benchmark" },
+      },
+    };
+    const html = renderDashboard(withIntensity, t);
+    expect(html).toContain("Usage Intensity");
+    expect(html).toContain("Typical");
+    expect(html).toContain("63/mo");
+  });
+
+  it("omits Usage Intensity card when usageIntensityTier is null", () => {
+    const withoutIntensity: DashboardData = {
+      ...mockData,
+      summary: { ...mockData.summary, planFee: 100, planMultiplier: 2.5 },
+      byWeek: [
+        { week: "2026-01-13", sessions: 10, prompts: 50, estimatedCost: 25.0, activeHoursEstimate: 5.0, windowCount: 3, windowsWithTruncatedOutput: 0 },
+      ],
+      planUtilization: {
+        weeklyPlanBudget: 23.09,
+        avgWeeklyCost: 25.0,
+        peakWeeklyCost: 25.0,
+        weeksBelowPlan: 0,
+        weeksAbovePlan: 1,
+        totalWeeks: 1,
+        avgWindowCost: 8.33,
+        medianWindowCost: 8.33,
+        windowsPerWeek: 3.0,
+        truncatedOutputWindowPercent: 0,
+        totalWindows: 3,
+        recommendedPlan: "max_5x",
+        currentPlanVerdict: "good-value",
+        byAccount: [],
+        usageIntensityTier: null,
+      },
+    };
+    const html = renderDashboard(withoutIntensity, t);
+    expect(html).not.toContain("Usage Intensity");
+  });
+
   it("renders Window Limit Usage chart when byWindow is non-empty", () => {
     const withWindows: DashboardData = {
       ...mockData,

@@ -101,7 +101,16 @@
       "team_standard": "Team Std ($25)",
       "max_5x": "Max 5x ($100)",
       "team_premium": "Team Premium ($125)",
-      "max_20x": "Max 20x ($200)"
+      "max_20x": "Max 20x ($200)",
+      "enterprise": "Przedsiębiorstwo (zmierzone)"
+    },
+    "usageIntensity": {
+      "title": "Intensywność użycia",
+      "light": "Light",
+      "typical": "Typical",
+      "power": "Power",
+      "benchmark": "≈ ${{benchmark}}/mies. punkt odniesienia Claude Code",
+      "hint": "Twój miesięczny koszt równoważny vs. punkty odniesienia planowania na użytkownika Anthropic."
     }
   },
   "context": {

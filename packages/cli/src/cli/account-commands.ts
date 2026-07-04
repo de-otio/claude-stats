@@ -20,6 +20,7 @@ import type { Command } from "commander";
 import { Store } from "../store/index.js";
 import { readClaudeAccount } from "../account.js";
 import { reattribute, resolveOwner, clusterProjects } from "../attribution/index.js";
+import { buildDashboard } from "../dashboard/index.js";
 import { t } from "../i18n.js";
 import type { OwnerTarget } from "@claude-stats/core/types";
 
@@ -106,6 +107,8 @@ function printCurrentAccount(): void {
 
   const store = new Store();
   try {
+    printPlanAdvice(store);
+
     const known = store.listAccountsFull();
     if (known.length === 0) {
       console.log(t("cli:account.noKnownAccounts"));
@@ -121,6 +124,46 @@ function printCurrentAccount(): void {
   } finally {
     store.close();
   }
+}
+
+/**
+ * Print the plan-fit summary (suggested plan, verdict, usage intensity)
+ * computed by `buildDashboard`. Skips silently when the store has no month
+ * of usage yet — `planUtilization` is `null` in that case (see
+ * `dashboard/index.ts`'s null-condition contract).
+ */
+function printPlanAdvice(store: Store): void {
+  const pu = buildDashboard(store, { period: "month" }).planUtilization;
+  if (!pu) return;
+
+  console.log("");
+  const planName = t(`dashboard:plan.planNames.${pu.recommendedPlan}`, {
+    defaultValue: pu.recommendedPlan ?? "—",
+  });
+  console.log(`  ${t("cli:account.suggestedPlan")}: ${planName}`);
+
+  const verdictKey =
+    pu.currentPlanVerdict === "good-value"
+      ? "cli:account.verdictGoodValue"
+      : pu.currentPlanVerdict === "underusing"
+        ? "cli:account.verdictUnderusing"
+        : "cli:account.verdictNoPlan";
+  console.log(`  ${t("cli:account.planVerdict")}: ${t(verdictKey)}`);
+
+  if (pu.usageIntensityTier) {
+    const intensityKey =
+      pu.usageIntensityTier.tier === "light"
+        ? "cli:account.intensityLight"
+        : pu.usageIntensityTier.tier === "typical"
+          ? "cli:account.intensityTypical"
+          : "cli:account.intensityPower";
+    const benchmark = t("cli:account.usageIntensityBenchmark", {
+      benchmark: pu.usageIntensityTier.benchmarkUsd,
+    });
+    console.log(`  ${t("cli:account.usageIntensity")}: ${t(intensityKey)} (${benchmark})`);
+  }
+
+  console.log(`  ${t("cli:account.planAdvisorHint")}`);
 }
 
 /** Run (or dry-run) re-attribution and print the summary. */

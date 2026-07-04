@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Store } from "../store/index.js";
-import { buildDashboard } from "../dashboard/index.js";
+import { buildDashboard, PLAN_LADDER_THRESHOLDS } from "../dashboard/index.js";
 import type { SessionRecord, MessageRecord } from "@claude-stats/core/types";
 import os from "os";
 import path from "path";
@@ -650,6 +650,107 @@ describe("buildDashboard — with sessions", () => {
     const data = buildDashboard(store, { timezone: "UTC", planFee: 200 });
     expect(data.planUtilization).not.toBeNull();
     expect(data.planUtilization!.weeklyPlanBudget).toBeCloseTo(200 / 4.33, 1);
+  });
+
+  it("PLAN_LADDER_THRESHOLDS midpoints match the previously hand-coded constants", () => {
+    // Derived from PLAN_FEES (pro 20, team_standard 25, max_5x 100,
+    // team_premium 125, max_20x 200) via the explicit price-ordered ladder —
+    // NOT Object.entries(PLAN_FEES), which would include the `team: 25` alias
+    // out of price order and corrupt these midpoints (plan §"planUtilization
+    // extensions").
+    expect(PLAN_LADDER_THRESHOLDS).toEqual([22.5, 62.5, 112.5, 162.5]);
+  });
+
+  it("planUtilization recommends max_20x just under the $200 ceiling", () => {
+    store.upsertSession(makeSession({
+      sessionId: "s1",
+      firstTimestamp: 1_700_000_000_000,
+      lastTimestamp: 1_700_000_300_000,
+    }));
+    // outputTokens tuned so the single week's rounded cost is $46.18/week
+    // (claude-sonnet-4 @ $15/M output) → monthlyEquiv = 46.18 * 4.33 = 199.9594,
+    // just below PLAN_FEES.max_20x ($200).
+    store.upsertMessages([
+      makeMessage({ uuid: "m1", sessionId: "s1", model: "claude-sonnet-4", inputTokens: 0, outputTokens: 3_078_667 }),
+    ]);
+
+    const data = buildDashboard(store, { timezone: "UTC" });
+    expect(data.planUtilization).not.toBeNull();
+    expect(data.planUtilization!.avgWeeklyCost * 4.33).toBeLessThan(200);
+    expect(data.planUtilization!.recommendedPlan).toBe("max_20x");
+    expect(data.planUtilization!.usageIntensityTier).not.toBeNull();
+  });
+
+  it("planUtilization recommends enterprise just over the $200 ceiling", () => {
+    store.upsertSession(makeSession({
+      sessionId: "s1",
+      firstTimestamp: 1_700_000_000_000,
+      lastTimestamp: 1_700_000_300_000,
+    }));
+    // outputTokens tuned so the single week's rounded cost is $46.19/week →
+    // monthlyEquiv = 46.19 * 4.33 = 200.0027, just above PLAN_FEES.max_20x
+    // ($200): the range 162.5-200 stays max_20x, only strictly-above tips to
+    // enterprise (plan acceptance criterion 5).
+    store.upsertMessages([
+      makeMessage({ uuid: "m1", sessionId: "s1", model: "claude-sonnet-4", inputTokens: 0, outputTokens: 3_079_333 }),
+    ]);
+
+    const data = buildDashboard(store, { timezone: "UTC" });
+    expect(data.planUtilization).not.toBeNull();
+    expect(data.planUtilization!.avgWeeklyCost * 4.33).toBeGreaterThan(200);
+    expect(data.planUtilization!.recommendedPlan).toBe("enterprise");
+    expect(data.planUtilization!.usageIntensityTier).not.toBeNull();
+    expect(data.planUtilization!.usageIntensityTier!.tier).toBe("typical");
+    expect(data.planUtilization!.usageIntensityTier!.source).toBe("anthropic-benchmark");
+  });
+
+  it("planUtilization.usageIntensityTier is null only when planUtilization itself is null", () => {
+    const empty = buildDashboard(store, { timezone: "UTC" });
+    expect(empty.planUtilization).toBeNull();
+
+    store.upsertSession(makeSession({
+      sessionId: "s1",
+      firstTimestamp: 1_700_000_000_000,
+      lastTimestamp: 1_700_000_300_000,
+    }));
+    store.upsertMessages([
+      makeMessage({ uuid: "m1", sessionId: "s1", model: "claude-haiku-4", inputTokens: 1_000, outputTokens: 100 }),
+    ]);
+    const populated = buildDashboard(store, { timezone: "UTC" });
+    expect(populated.planUtilization).not.toBeNull();
+    expect(populated.planUtilization!.usageIntensityTier).not.toBeNull();
+  });
+
+  it("does not recommend downgrading to Enterprise when underusing but over the $200 ceiling", () => {
+    // Four distinct ISO weeks (Mondays, UTC), one session each, each costing
+    // ~$50/week (monthlyEquiv ≈ $216.5 → recommendedPlan "enterprise").
+    // A large explicit planFee ($1000) keeps currentPlanVerdict "underusing"
+    // (totalCost well below the fee) while still exceeding the $200 ceiling —
+    // exactly the combination that must NOT produce a bogus "downgrade to
+    // Enterprise" recommendation (PLAN_LABELS.enterprise has no `$<digits>`
+    // token, and recommendedPlan === "enterprise" is explicitly excluded from
+    // the plan-underusing branch).
+    const week0 = 1_699_833_600_000; // Monday 2023-11-13T00:00:00Z
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    for (let i = 0; i < 4; i++) {
+      const sessionId = `wk-${i}`;
+      store.upsertSession(makeSession({
+        sessionId,
+        firstTimestamp: week0 + i * weekMs,
+        lastTimestamp: week0 + i * weekMs + 300_000,
+      }));
+      store.upsertMessages([
+        makeMessage({ uuid: `wk-${i}-m1`, sessionId, model: "claude-sonnet-4", inputTokens: 0, outputTokens: 3_333_333 }),
+      ]);
+    }
+
+    const data = buildDashboard(store, { timezone: "UTC", planFee: 1000 });
+    expect(data.planUtilization).not.toBeNull();
+    expect(data.planUtilization!.totalWeeks).toBeGreaterThanOrEqual(4);
+    expect(data.planUtilization!.currentPlanVerdict).toBe("underusing");
+    expect(data.planUtilization!.recommendedPlan).toBe("enterprise");
+    const downgrade = data.recommendations.find(r => r.id === "plan-underusing");
+    expect(downgrade).toBeUndefined();
   });
 
   it("truncatedOutputWindowPercent reflects share of windows that contained a truncation", () => {

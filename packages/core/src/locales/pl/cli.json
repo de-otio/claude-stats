@@ -11,6 +11,17 @@
     "rateLimitTier": "Poziom limitu żądań",
     "seatTier": "Poziom miejsca",
     "billingType": "Typ rozliczeń",
+    "suggestedPlan": "Sugerowany plan",
+    "planVerdict": "Ocena planu",
+    "usageIntensity": "Intensywność użycia",
+    "verdictGoodValue": "dobra cena",
+    "verdictUnderusing": "niedostateczne użycie",
+    "verdictNoPlan": "bez planu",
+    "intensityLight": "light",
+    "intensityTypical": "typical",
+    "intensityPower": "power",
+    "usageIntensityBenchmark": "≈ ${{benchmark}}/mies. punkt odniesienia Claude Code",
+    "planAdvisorHint": "Uruchom 'claude-stats plan-advisor', aby określić liczbę miejsc do wdrożenia w całej firmie.",
     "extraUsage": "Dodatkowe użycie",
     "enabled": "włączone",
     "disabled": "wyłączone",
@@ -45,6 +56,48 @@
       "row": "  {{label}}  ({{projects}} projektów, {{sessions}} sesji, {{cost}})",
       "unclassified": "Niesklasyfikowane (brak pasującej reguły własności): {{cost}}",
       "noData": "Nie znaleziono sesji."
+    }
+  },
+  "planAdvisor": {
+    "description": "Określ liczbę miejsc w zespołach vs. w przedsiębiorstwie dla wdrożenia Claude w całej firmie na podstawie liczby pracowników i udziału pracowników technicznych.",
+    "headcountFlag": "Całkowita liczba pracowników w firmie (liczba całkowita, co najmniej 1).",
+    "technicalFractionFlag": "Udział pracowników, którzy otrzymają miejsce Claude Code, jako ułamek 0–1 lub procent jak 50.",
+    "tierMixFlag": "Opcjonalnie zmierzony podział intensywności light,typical,power (np. 0.5,0.4,0.1); domyślnie punkt odniesienia Anthropic.",
+    "complianceFlag": "Wyróżnij wyzwalacz zgodności. Nie zmienia liczb ani nie wybiera planu.",
+    "title": "Określanie liczby miejsc na wdrożenie w całej firmie",
+    "inputSummary": "Liczba pracowników {{headcount}} · udział pracowników technicznych {{fraction}}% · populacja techniczna {{population}}",
+    "tierMixLine": "Podział poziomów ({{source}}): light {{light}}% · typical {{typical}}% · power {{power}}%",
+    "tierMixSourceBenchmark": "punkt odniesienia Anthropic",
+    "tierMixSourceMeasured": "zmierzony",
+    "seatRanges": "Zakres miejsc zespołu 5–150 · minimalne wymagania przedsiębiorstwa 20 samoobsługi / 50 wspierane przez sprzedaż (brak opublikowanego maksimum).",
+    "col": {
+      "adoption": "Adopcja",
+      "seats": "Miejsca",
+      "fitsTeam": "Pasuje do zespołu?",
+      "procurement": "Zamówienie",
+      "teamCost": "Koszt zespołu $/mies.",
+      "enterpriseCost": "Koszt przedsiębiorstwa $/mies."
+    },
+    "enterpriseCostHint": "Przedsiębiorstwo = opłata za miejsce + punkt odniesienia użytkowania zmierzonego; brak łącznego przydziału.",
+    "estimateNote": "Każda kwota w dolarach to oszacowanie oparte na założeniu podziału poziomów i wynegocjowanej dolnej granicy miejsc w przedsiębiorstwie — nie cytat.",
+    "yes": "tak",
+    "no": "nie",
+    "motion": {
+      "team-self-serve": "Zespół samoobsługi",
+      "enterprise-self-serve": "Przedsiębiorstwo samoobsługi",
+      "enterprise-sales-assisted": "Przedsiębiorstwo wspierane przez sprzedaż"
+    },
+    "ceilingExceeded": "Przekroczony limit 150 miejsc zespołu — przedsiębiorstwo jest wymagane przy tej liczbie miejsc.",
+    "openQuestionsHeader": "Otwarte pytania — podejmij te decyzje świadomie; to narzędzie nie będzie:",
+    "complianceHeader": "Wyzwalacz zgodności",
+    "staleNote": "{{warning}}",
+    "errors": {
+      "headcount-invalid": "Liczba pracowników musi być liczbą całkowitą co najmniej 1.",
+      "fraction-invalid": "Udział pracowników technicznych musi wynosić między 0 i 1 (lub 0–100%).",
+      "tiermix-invalid": "Każda wartość podziału poziomów musi wynosić między 0 i 1.",
+      "tiermix-sum": "Wartości podziału poziomów muszą sumować się do 1 (np. 0.5,0.4,0.1).",
+      "adoption-fraction-invalid": "Ułamki adopcji muszą wynosić między 0 i 1.",
+      "too-many-scenarios": "Dozwolone jest maksymalnie 20 scenariuszy adopcji."
     }
   },
   "otel": {

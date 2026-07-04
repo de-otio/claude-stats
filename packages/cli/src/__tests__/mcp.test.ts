@@ -240,17 +240,20 @@ afterAll(() => {
 
 describe("MCP Server", () => {
   describe("tools/list", () => {
-    it("returns all 8 tools", async () => {
+    it("returns all 11 tools", async () => {
       const result = await client.listTools();
       const names = result.tools.map((t) => t.name).sort();
       expect(names).toEqual([
+        "get_account_info",
         "get_cost_per_task",
+        "get_plan_mechanics_reference",
         "get_session_detail",
         "get_stats",
         "get_status",
         "list_projects",
         "list_sessions",
         "search_history",
+        "size_seats",
         "summarize_day",
       ]);
     });
