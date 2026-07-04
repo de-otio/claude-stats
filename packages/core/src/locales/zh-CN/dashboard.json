@@ -101,7 +101,16 @@
       "team_standard": "Team Std ($25)",
       "max_5x": "Max 5x ($100)",
       "team_premium": "Team Premium ($125)",
-      "max_20x": "Max 20x ($200)"
+      "max_20x": "Max 20x ($200)",
+      "enterprise": "企业版（计量）"
+    },
+    "usageIntensity": {
+      "title": "使用强度",
+      "light": "Light",
+      "typical": "Typical",
+      "power": "Power",
+      "benchmark": "≈ ${{benchmark}}/月 Claude Code 基准",
+      "hint": "您的月度等效费用与 Anthropic 的人均计划基准进行对比。"
     }
   },
   "context": {

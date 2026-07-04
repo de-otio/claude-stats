@@ -11,6 +11,17 @@
     "rateLimitTier": "Рівень обмеження швидкості",
     "seatTier": "Рівень місця",
     "billingType": "Тип оплати",
+    "suggestedPlan": "Рекомендований план",
+    "planVerdict": "Висновок щодо плану",
+    "usageIntensity": "Інтенсивність використання",
+    "verdictGoodValue": "добра вартість",
+    "verdictUnderusing": "недовикористання",
+    "verdictNoPlan": "без плану",
+    "intensityLight": "light",
+    "intensityTypical": "typical",
+    "intensityPower": "power",
+    "usageIntensityBenchmark": "≈ ${{benchmark}}/мис. бенчмарк Claude Code",
+    "planAdvisorHint": "Запустіть 'claude-stats plan-advisor', щоб визначити кількість місць для впровадження в масштабі всієї компанії.",
     "extraUsage": "Додаткове використання",
     "enabled": "увімкнено",
     "disabled": "вимкнено",
@@ -45,6 +56,48 @@
       "row": "  {{label}}  ({{projects}} проєктів, {{sessions}} сесій, {{cost}})",
       "unclassified": "Некласифіковано (немає відповідного правила власності): {{cost}}",
       "noData": "Сесій не знайдено."
+    }
+  },
+  "planAdvisor": {
+    "description": "Визначте кількість місць Team vs. Enterprise для впровадження Claude в масштабі всієї компанії на основі чисельності та долі технічних працівників.",
+    "headcountFlag": "Загальна чисельність компанії (ціле число, щонайменше 1).",
+    "technicalFractionFlag": "Частка чисельності, яка отримає місце Claude Code, як дріб 0–1 або відсоток як 50.",
+    "tierMixFlag": "Необов'язковий виміряний розподіл інтенсивності light,typical,power (наприклад, 0.5,0.4,0.1); за замовчуванням використовується бенчмарк Anthropic.",
+    "complianceFlag": "Виділити тригер відповідності. Не змінює цифри й не обирає план.",
+    "title": "Визначення кількості місць для впровадження в масштабі компанії",
+    "inputSummary": "Чисельність {{headcount}} · частка технічних {{fraction}}% · технічна популяція {{population}}",
+    "tierMixLine": "Розподіл рівнів ({{source}}): light {{light}}% · typical {{typical}}% · power {{power}}%",
+    "tierMixSourceBenchmark": "бенчмарк Anthropic",
+    "tierMixSourceMeasured": "виміряний",
+    "seatRanges": "Діапазон місць Team 5–150 · мінімуми Enterprise 20 самообслуговування / 50 з підтримкою продажів (немає опублікованого максимуму).",
+    "col": {
+      "adoption": "Впровадження",
+      "seats": "Місця",
+      "fitsTeam": "Підходить для Team?",
+      "procurement": "Закупівля",
+      "teamCost": "Вартість Team $/мис.",
+      "enterpriseCost": "Вартість Enterprise $/мис."
+    },
+    "enterpriseCostHint": "Enterprise = плата за місце + бенчмарк виміряного використання; немає розподіленого виділення.",
+    "estimateNote": "Кожна сума в доларах — це оцінка, заснована на припущенні про розподіл рівнів та узгодженому мінімумі місць Enterprise — не пропозиція.",
+    "yes": "так",
+    "no": "ні",
+    "motion": {
+      "team-self-serve": "Team самообслуговування",
+      "enterprise-self-serve": "Enterprise самообслуговування",
+      "enterprise-sales-assisted": "Enterprise з підтримкою продажів"
+    },
+    "ceilingExceeded": "Перевищена ліміт 150 місць Team — Enterprise необхідна при такій кількості місць.",
+    "openQuestionsHeader": "Відкриті питання — приймайте ці рішення свідомо; цей інструмент не буде:",
+    "complianceHeader": "Тригер відповідності",
+    "staleNote": "{{warning}}",
+    "errors": {
+      "headcount-invalid": "Чисельність повинна бути цілим числом не менш 1.",
+      "fraction-invalid": "Частка технічних повинна бути між 0 і 1 (або 0–100%).",
+      "tiermix-invalid": "Кожне значення розподілу рівнів повинно бути між 0 і 1.",
+      "tiermix-sum": "Значення розподілу рівнів повинні в сумі дорівнювати 1 (наприклад, 0.5,0.4,0.1).",
+      "adoption-fraction-invalid": "Частки впровадження повинні бути між 0 і 1.",
+      "too-many-scenarios": "Допускаються щонайбільше 20 сценаріїв впровадження."
     }
   },
   "otel": {

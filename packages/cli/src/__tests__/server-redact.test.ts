@@ -139,6 +139,7 @@ describe("redactDashboardForHttp", () => {
         totalWindows: 8,
         recommendedPlan: null,
         currentPlanVerdict: "good-value",
+        usageIntensityTier: null,
         byAccount: [
           {
             accountId: ACCOUNT_A_UUID.slice(0, 8),
@@ -184,6 +185,7 @@ describe("redactDashboardForHttp", () => {
         totalWindows: 8,
         recommendedPlan: null,
         currentPlanVerdict: "good-value",
+        usageIntensityTier: null,
         byAccount: [
           {
             accountId: ACCOUNT_A_UUID.slice(0, 8),

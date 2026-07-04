@@ -11,6 +11,17 @@
     "rateLimitTier": "速率限制层级",
     "seatTier": "席位层级",
     "billingType": "计费类型",
+    "suggestedPlan": "建议的计划",
+    "planVerdict": "计划评估",
+    "usageIntensity": "使用强度",
+    "verdictGoodValue": "划算",
+    "verdictUnderusing": "未充分利用",
+    "verdictNoPlan": "无计划",
+    "intensityLight": "light",
+    "intensityTypical": "typical",
+    "intensityPower": "power",
+    "usageIntensityBenchmark": "≈ ${{benchmark}}/月 Claude Code 基准",
+    "planAdvisorHint": "运行 'claude-stats plan-advisor' 为公司范围的推出调整席位数量。",
     "extraUsage": "额外用量",
     "enabled": "已启用",
     "disabled": "已禁用",
@@ -45,6 +56,48 @@
       "row": "  {{label}}  ({{projects}} 个项目, {{sessions}} 个 session, {{cost}})",
       "unclassified": "未分类（无匹配的所有者规则）：{{cost}}",
       "noData": "未找到任何 session。"
+    }
+  },
+  "planAdvisor": {
+    "description": "基于员工总数和技术员工占比，为公司范围的 Claude 推出调整团队 vs. 企业席位数量。",
+    "headcountFlag": "公司员工总数（整数，至少 1）。",
+    "technicalFractionFlag": "将获得 Claude Code 席位的员工占比，表示为分数 0–1 或百分比如 50。",
+    "tierMixFlag": "可选的实测 light,typical,power 强度分布（如 0.5,0.4,0.1）；默认为 Anthropic 的基准混合。",
+    "complianceFlag": "突出显示合规触发器。不改变数字或选择计划。",
+    "title": "公司范围推出的席位数量调整",
+    "inputSummary": "员工数 {{headcount}} · 技术占比 {{fraction}}% · 技术员工数 {{population}}",
+    "tierMixLine": "层级混合（{{source}}）：light {{light}}% · typical {{typical}}% · power {{power}}%",
+    "tierMixSourceBenchmark": "Anthropic 基准",
+    "tierMixSourceMeasured": "实测",
+    "seatRanges": "团队席位范围 5–150 · 企业最少要求 20 自助 / 50 销售协助（无发布的最大值）。",
+    "col": {
+      "adoption": "采用",
+      "seats": "席位",
+      "fitsTeam": "适合团队？",
+      "procurement": "采购",
+      "teamCost": "团队成本 $/月",
+      "enterpriseCost": "企业成本 $/月"
+    },
+    "enterpriseCostHint": "企业 = 席位费 + 实测使用基准；无捆绑分配。",
+    "estimateNote": "每个美元数字都是基于层级混合假设和协商的企业席位下限的估计值 — 不是报价。",
+    "yes": "是",
+    "no": "否",
+    "motion": {
+      "team-self-serve": "团队自助",
+      "enterprise-self-serve": "企业自助",
+      "enterprise-sales-assisted": "企业销售协助"
+    },
+    "ceilingExceeded": "超出团队 150 席位上限 — 此席位数需要企业计划。",
+    "openQuestionsHeader": "开放性问题 — 需要您自行决定；此工具不会：",
+    "complianceHeader": "合规触发器",
+    "staleNote": "{{warning}}",
+    "errors": {
+      "headcount-invalid": "员工数必须是至少 1 的整数。",
+      "fraction-invalid": "技术占比必须在 0 到 1 之间（或 0–100%）。",
+      "tiermix-invalid": "每个层级混合值必须在 0 到 1 之间。",
+      "tiermix-sum": "层级混合值必须总计为 1（如 0.5,0.4,0.1）。",
+      "adoption-fraction-invalid": "采用分数必须在 0 到 1 之间。",
+      "too-many-scenarios": "最多允许 20 个采用方案。"
     }
   },
   "otel": {

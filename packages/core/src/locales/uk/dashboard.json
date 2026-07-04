@@ -101,7 +101,16 @@
       "team_standard": "Team Std ($25)",
       "max_5x": "Max 5x ($100)",
       "team_premium": "Team Premium ($125)",
-      "max_20x": "Max 20x ($200)"
+      "max_20x": "Max 20x ($200)",
+      "enterprise": "Enterprise (виміряне)"
+    },
+    "usageIntensity": {
+      "title": "Інтенсивність використання",
+      "light": "Light",
+      "typical": "Typical",
+      "power": "Power",
+      "benchmark": "≈ ${{benchmark}}/мис. бенчмарк Claude Code",
+      "hint": "Ваша еквівалентна місячна вартість порівняно з бенчмарками планування на користувача від Anthropic."
     }
   },
   "context": {

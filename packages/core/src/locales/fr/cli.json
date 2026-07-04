@@ -11,6 +11,17 @@
     "rateLimitTier": "Niveau de limite de débit",
     "seatTier": "Niveau de siège",
     "billingType": "Type de facturation",
+    "suggestedPlan": "Plan suggéré",
+    "planVerdict": "Verdict du plan",
+    "usageIntensity": "Intensité d'utilisation",
+    "verdictGoodValue": "bon rapport qualité-prix",
+    "verdictUnderusing": "sous-utilisé",
+    "verdictNoPlan": "pas de plan",
+    "intensityLight": "light",
+    "intensityTypical": "typical",
+    "intensityPower": "power",
+    "usageIntensityBenchmark": "≈ ${{benchmark}}/mo référence Claude Code",
+    "planAdvisorHint": "Exécutez 'claude-stats plan-advisor' pour dimensionner les sièges pour un déploiement au niveau de l'entreprise.",
     "extraUsage": "Utilisation supplémentaire",
     "enabled": "activé",
     "disabled": "désactivé",
@@ -45,6 +56,48 @@
       "row": "  {{label}}  ({{projects}} projet(s), {{sessions}} session(s), {{cost}})",
       "unclassified": "Non classé (aucune règle de propriété correspondante) : {{cost}}",
       "noData": "Aucune session trouvée."
+    }
+  },
+  "planAdvisor": {
+    "description": "Dimensionner les sièges Équipe vs. Entreprise pour un déploiement de Claude au niveau de l'entreprise à partir d'un nombre d'employés et d'une fraction technique.",
+    "headcountFlag": "Nombre total d'employés de l'entreprise (nombre entier, au moins 1).",
+    "technicalFractionFlag": "Part du nombre d'employés qui obtiendrait un siège Claude Code, sous forme de fraction 0–1 ou de pourcentage comme 50.",
+    "tierMixFlag": "Répartition optionnelle mesurée de l'intensité light,typical,power (p. ex. 0.5,0.4,0.1) ; utilise par défaut le mélange de référence d'Anthropic.",
+    "complianceFlag": "Mets en évidence le déclencheur de conformité de manière visible. Ne change pas les chiffres ni ne choisit un plan.",
+    "title": "Dimensionnement des sièges pour un déploiement au niveau de l'entreprise",
+    "inputSummary": "Nombre d'employés {{headcount}} · fraction technique {{fraction}}% · population technique {{population}}",
+    "tierMixLine": "Mélange des niveaux ({{source}}) : light {{light}}% · typical {{typical}}% · power {{power}}%",
+    "tierMixSourceBenchmark": "référence Anthropic",
+    "tierMixSourceMeasured": "mesuré",
+    "seatRanges": "Plage de sièges Équipe 5–150 · Minimums Entreprise 20 libre-service / 50 assisté par les ventes (pas de maximum publié).",
+    "col": {
+      "adoption": "Adoption",
+      "seats": "Sièges",
+      "fitsTeam": "Convient à Équipe ?",
+      "procurement": "Procuration",
+      "teamCost": "Coût Équipe $/mo",
+      "enterpriseCost": "Coût Entreprise $/mo"
+    },
+    "enterpriseCostHint": "Entreprise = frais de siège + référence d'utilisation mesurée ; aucune allocation groupée.",
+    "estimateNote": "Chaque chiffre en dollars est une estimation basée sur l'hypothèse du mélange de niveaux et du plancher de siège Entreprise négocié — pas un devis.",
+    "yes": "oui",
+    "no": "non",
+    "motion": {
+      "team-self-serve": "Équipe libre-service",
+      "enterprise-self-serve": "Entreprise libre-service",
+      "enterprise-sales-assisted": "Entreprise assistée par les ventes"
+    },
+    "ceilingExceeded": "Plafond de 150 sièges Équipe dépassé — Entreprise requise à ce nombre de sièges.",
+    "openQuestionsHeader": "Questions ouvertes — décidez-les délibérément ; cet outil ne le fera pas :",
+    "complianceHeader": "Déclencheur de conformité",
+    "staleNote": "{{warning}}",
+    "errors": {
+      "headcount-invalid": "Le nombre d'employés doit être un nombre entier d'au moins 1.",
+      "fraction-invalid": "La fraction technique doit être comprise entre 0 et 1 (ou 0–100%).",
+      "tiermix-invalid": "Chaque valeur de mélange de niveaux doit être comprise entre 0 et 1.",
+      "tiermix-sum": "Les valeurs de mélange de niveaux doivent totaliser 1 (p. ex. 0.5,0.4,0.1).",
+      "adoption-fraction-invalid": "Les fractions d'adoption doivent être comprises entre 0 et 1.",
+      "too-many-scenarios": "Un maximum de 20 scénarios d'adoption sont autorisés."
     }
   },
   "otel": {

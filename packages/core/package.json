@@ -18,6 +18,10 @@
       "types": "./dist/pricing.d.ts",
       "default": "./dist/pricing.js"
     },
+    "./planMechanics": {
+      "types": "./dist/planMechanics.d.ts",
+      "default": "./dist/planMechanics.js"
+    },
     "./paths": {
       "types": "./dist/paths.d.ts",
       "default": "./dist/paths.js"

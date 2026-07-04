@@ -11,6 +11,17 @@
     "rateLimitTier": "Rate-Limit-Stufe",
     "seatTier": "Seat-Stufe",
     "billingType": "Abrechnungstyp",
+    "suggestedPlan": "Empfohlener Plan",
+    "planVerdict": "Plan-Bewertung",
+    "usageIntensity": "Nutzungsintensität",
+    "verdictGoodValue": "gutes Preis-Leistungs-Verhältnis",
+    "verdictUnderusing": "unternutzend",
+    "verdictNoPlan": "kein Plan",
+    "intensityLight": "light",
+    "intensityTypical": "typical",
+    "intensityPower": "power",
+    "usageIntensityBenchmark": "≈ ${{benchmark}}/Mo. Claude Code-Benchmark",
+    "planAdvisorHint": "Führen Sie 'claude-stats plan-advisor' aus, um Seats für einen Unternehmensrollout zu dimensionieren.",
     "extraUsage": "Zusätzliche Nutzung",
     "enabled": "aktiviert",
     "disabled": "deaktiviert",
@@ -45,6 +56,48 @@
       "row": "  {{label}}  ({{projects}} Projekt(e), {{sessions}} Session(s), {{cost}})",
       "unclassified": "Nicht klassifiziert (keine passende Owner-Regel): {{cost}}",
       "noData": "Keine Sessions gefunden."
+    }
+  },
+  "planAdvisor": {
+    "description": "Dimensioniert Team- vs. Enterprise-Seats für einen unternehmensweiten Claude-Rollout ausgehend von Kopfzahl und technischem Anteil.",
+    "headcountFlag": "Gesamte Unternehmensgröße (ganze Zahl, mindestens 1).",
+    "technicalFractionFlag": "Anteil der Kopfzahl, die einen Claude Code-Seat erhält, als Bruch 0–1 oder Prozentsatz wie 50.",
+    "tierMixFlag": "Optionale gemessene light,typical,power Intensitätsverteilung (z. B. 0.5,0.4,0.1); verwendet standardmäßig Anthropic-Benchmark-Mix.",
+    "complianceFlag": "Hebt den Compliance-Auslöser prominent hervor. Ändert nicht die Zahlen oder wählt einen Plan aus.",
+    "title": "Seat-Dimensionierung für einen Unternehmensrollout",
+    "inputSummary": "Kopfzahl {{headcount}} · technischer Anteil {{fraction}}% · technische Population {{population}}",
+    "tierMixLine": "Tier-Mix ({{source}}): light {{light}}% · typical {{typical}}% · power {{power}}%",
+    "tierMixSourceBenchmark": "Anthropic-Benchmark",
+    "tierMixSourceMeasured": "gemessen",
+    "seatRanges": "Team-Seat-Bereich 5–150 · Enterprise-Mindestzahlen 20 Self-Service / 50 Sales-Assisted (kein veröffentlichtes Maximum).",
+    "col": {
+      "adoption": "Adoption",
+      "seats": "Seats",
+      "fitsTeam": "Passt zu Team?",
+      "procurement": "Beschaffung",
+      "teamCost": "Team $/Mo.",
+      "enterpriseCost": "Enterprise $/Mo."
+    },
+    "enterpriseCostHint": "Enterprise = Seat-Gebühr + gemessener Nutzungs-Benchmark; es gibt kein gebündeltes Kontingent.",
+    "estimateNote": "Jede Dollarfigur ist eine Schätzung, die auf der Tier-Mix-Annahme und der verhandelten Enterprise-Seat-Untergrenze basiert — keine Offerte.",
+    "yes": "ja",
+    "no": "nein",
+    "motion": {
+      "team-self-serve": "Team Self-Service",
+      "enterprise-self-serve": "Enterprise Self-Service",
+      "enterprise-sales-assisted": "Enterprise Sales-Assisted"
+    },
+    "ceilingExceeded": "Team-150-Seat-Obergrenze überschritten — Enterprise erforderlich bei dieser Seat-Anzahl.",
+    "openQuestionsHeader": "Offene Fragen — treffen Sie diese bewusst; dieses Tool wird es nicht:",
+    "complianceHeader": "Compliance-Auslöser",
+    "staleNote": "{{warning}}",
+    "errors": {
+      "headcount-invalid": "Kopfzahl muss eine ganze Zahl von mindestens 1 sein.",
+      "fraction-invalid": "Technischer Anteil muss zwischen 0 und 1 liegen (oder 0–100%).",
+      "tiermix-invalid": "Jeder Tier-Mix-Wert muss zwischen 0 und 1 liegen.",
+      "tiermix-sum": "Tier-Mix-Werte müssen sich zu 1 addieren (z. B. 0.5,0.4,0.1).",
+      "adoption-fraction-invalid": "Adoptionsanteile müssen zwischen 0 und 1 liegen.",
+      "too-many-scenarios": "Maximal 20 Adoptionsszenarien sind erlaubt."
     }
   },
   "otel": {

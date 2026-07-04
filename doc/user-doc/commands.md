@@ -124,6 +124,93 @@ Last collected  : 3/8/2026, 9:15:04 AM
 
 ---
 
+## `account`
+
+Show the current logged-in Claude account, its suggested plan, and the accounts known to claude-stats. Also manages cost-ownership rules and account re-attribution.
+
+```
+claude-stats account [subcommand] [options]
+```
+
+| Subcommand | Description |
+|---|---|
+| _(none)_ | Print the current account plus the known-accounts table |
+| `reattribute [--dry-run] [--force]` | Recompute account attribution across all stored sessions |
+| `own [options]` | Manage cost-ownership rules (assign a path or remote glob to an account) |
+| `classify` | Show project clusters ranked by estimated cost, to help identify ownership |
+
+**`account` (no subcommand)** prints, when a Claude login is present: account UUID, organization type, rate-limit tier, seat tier, billing type, extra-usage status, plus (when local usage data exists) a suggested plan, a verdict on the current plan (good value / underusing / no plan), and a usage-intensity tier (light / typical / power) benchmarked against Anthropic's per-seat usage tiers. It never recommends a company-wide seat count — see `plan-advisor` for that.
+
+| Option (`account reattribute`) | Description |
+|---|---|
+| `--dry-run` | Preview the changes without writing or creating a backup |
+| `--force` | Proceed even if re-attribution would clear existing attributions |
+
+| Option (`account own`) | Description |
+|---|---|
+| `--account <uuid\|split>` | Account UUID to assign cost to, or `split` to keep measured attribution |
+| `--path <glob>` | Glob pattern matching project paths (e.g. `~/repos/work/**`) |
+| `--remote <glob>` | Glob pattern matching git remote owner (e.g. `github.com/example-org/*`) |
+| `--dry-run` | Preview how many sessions the rule would match, without creating it |
+| `--force` | Create the rule even if it matches more than 90% of sessions |
+| `--list` | List all existing owner rules |
+| `--clear <id>` | Remove the owner rule with the given id and revert its sessions |
+
+**Examples:**
+
+```sh
+# Show the current account and suggested plan
+claude-stats account
+
+# Recompute attribution across the whole store (dry run first)
+claude-stats account reattribute --dry-run
+claude-stats account reattribute
+
+# Assign a path glob to a specific account
+claude-stats account own --account <uuid> --path "~/repos/work/**"
+
+# List and clear ownership rules
+claude-stats account own --list
+claude-stats account own --clear 3
+
+# Show project clusters ranked by cost
+claude-stats account classify
+```
+
+---
+
+## `plan-advisor`
+
+Size Team vs Enterprise seats for a company-wide Claude rollout from a headcount and a technical-role fraction. Prints a scenario table across adoption levels — seat counts, whether each fits Team's seat range, procurement motion, and a cost projection per plan — with the source data's staleness warning. Never picks a plan for you.
+
+```
+claude-stats plan-advisor --headcount <n> --technical-fraction <pct> [options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--headcount <n>` | _(required)_ | Total company headcount (whole number, at least 1) |
+| `--technical-fraction <pct>` | _(required)_ | Share of headcount that would get a Claude Code seat, as a fraction 0–1 or a percentage like `50` |
+| `--tier-mix <light,typical,power>` | Anthropic's benchmark mix | Optional measured light/typical/power intensity split (e.g. `0.5,0.4,0.1`); must sum to 1 |
+| `--compliance` | _(off)_ | Surface the compliance trigger prominently in the output. Does not change the numbers or pick a plan |
+
+The scenario table is computed for adoption fractions 25% / 50% / 75% / 100% of the technical population. Every dollar figure is an estimate resting on the tier-mix assumption and the negotiated Enterprise seat floor — not a quote; re-verify current pricing at claude.com/pricing before purchasing. Two questions are always left open for the user to decide, never resolved by this command: whether their compliance posture requires Enterprise independent of seat count, and which spend-limit philosophy (pooled vs per-user) they prefer. See the `license-advisor` skill (`skills/license-advisor/SKILL.md`) for an agent-guided walkthrough of the same tradeoffs.
+
+**Examples:**
+
+```sh
+# Size seats for a 400-person company, half technical roles
+claude-stats plan-advisor --headcount 400 --technical-fraction 0.5
+
+# With a measured usage-intensity split instead of the default benchmark mix
+claude-stats plan-advisor --headcount 400 --technical-fraction 0.5 --tier-mix 0.6,0.3,0.1
+
+# Surface the compliance trigger prominently
+claude-stats plan-advisor --headcount 200 --technical-fraction 0.25 --compliance
+```
+
+---
+
 ## `export`
 
 Export raw session data to JSON or CSV for use in other tools.

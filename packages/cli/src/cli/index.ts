@@ -24,6 +24,7 @@ import { initCliI18n, t } from "../i18n.js";
 import { registerAccountCommands } from "./account-commands.js";
 import { registerOtelCommands } from "./otel-commands.js";
 import { registerRepairCommands } from "./repair-commands.js";
+import { registerPlanAdvisorCommands } from "./plan-advisor-commands.js";
 import {
   loadSyncConfig,
   saveSyncConfig,
@@ -1159,6 +1160,7 @@ export async function buildCli(): Promise<Command> {
   registerAccountCommands(program);
   registerOtelCommands(program);
   registerRepairCommands(program);
+  registerPlanAdvisorCommands(program);
 
   return program;
 }
