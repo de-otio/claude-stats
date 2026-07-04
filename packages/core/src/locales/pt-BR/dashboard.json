@@ -2,7 +2,6 @@
   "pageTitle": "Claude Stats — {{period}} ({{date}})",
   "tabs": {
     "overview": "Visão geral",
-    "models": "Modelos",
     "projects": "Projetos",
     "sessions": "Sessões",
     "plan": "Plano",
@@ -50,8 +49,6 @@
     "tokenBreakdown": "Distribuição de tokens",
     "cacheUsage": "Uso do cache",
     "cumulativeApiValue": "Valor API acumulado vs mensalidade do plano",
-    "tokensByModel": "Tokens por modelo",
-    "stopReasons": "Razões de parada",
     "topProjects": "Principais projetos",
     "tokensByProject": "Participação de tokens por projeto",
     "energyByProject": "Consumo de energia por projeto",
@@ -296,7 +293,9 @@
     "noAccounts": "Nenhuma conta encontrada — execute algumas sessões e recolete.",
     "unlinkedAccountHint": "Ainda não vinculada a um e-mail — faça login nesta conta uma vez e depois volte para a outra, para revelar aqui o e-mail e o plano.",
     "feePlaceholder": "Taxa",
-    "labelPlaceholder": "Rótulo (ex: Trabalho, Pessoal)"
+    "labelPlaceholder": "Rótulo (ex: Trabalho, Pessoal)",
+    "autoRefreshInterval": "Intervalo de atualização automática (segundos)",
+    "autoRefreshHint": "Mínimo de 60 segundos. Aplica-se quando a atualização automática está ativada na barra de ferramentas."
   },
   "fees": {
     "title": "Taxa de Assinatura por Projeto",

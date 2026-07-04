@@ -2,7 +2,6 @@
   "pageTitle": "Claude Stats — {{period}}（{{date}}）",
   "tabs": {
     "overview": "概要",
-    "models": "モデル",
     "projects": "プロジェクト",
     "sessions": "セッション",
     "plan": "プラン",
@@ -50,8 +49,6 @@
     "tokenBreakdown": "トークン内訳",
     "cacheUsage": "キャッシュ使用量",
     "cumulativeApiValue": "累積 API 価値 vs プラン料金",
-    "tokensByModel": "モデル別トークン",
-    "stopReasons": "停止理由",
     "topProjects": "トッププロジェクト",
     "tokensByProject": "プロジェクト別トークンシェア",
     "energyByProject": "プロジェクト別エネルギー使用量",
@@ -296,7 +293,9 @@
     "noAccounts": "アカウントがまだ見つかりません。セッションを実行して再度収集してください。",
     "unlinkedAccountHint": "まだメールアドレスと連携されていません。一度このアカウントでログインしてから元に戻すと、ここにメールアドレスとプランが表示されます。",
     "feePlaceholder": "料金",
-    "labelPlaceholder": "ラベル (例: 仕事、個人)"
+    "labelPlaceholder": "ラベル (例: 仕事、個人)",
+    "autoRefreshInterval": "自動更新の間隔（秒）",
+    "autoRefreshHint": "最小60秒。ツールバーから自動更新をオンにしたときに適用されます。"
   },
   "fees": {
     "title": "プロジェクト別サブスクリプション料金",

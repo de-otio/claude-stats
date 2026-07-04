@@ -2,7 +2,6 @@
   "pageTitle": "Claude Stats — {{period}} ({{date}})",
   "tabs": {
     "overview": "Vue d'ensemble",
-    "models": "Modèles",
     "projects": "Projets",
     "sessions": "Sessions",
     "plan": "Forfait",
@@ -50,8 +49,6 @@
     "tokenBreakdown": "Répartition des tokens",
     "cacheUsage": "Utilisation du cache",
     "cumulativeApiValue": "Valeur API cumulée vs frais du forfait",
-    "tokensByModel": "Tokens par modèle",
-    "stopReasons": "Raisons d'arrêt",
     "topProjects": "Projets principaux",
     "tokensByProject": "Part de tokens par projet",
     "energyByProject": "Consommation d'énergie par projet",
@@ -296,7 +293,9 @@
     "noAccounts": "Aucun compte trouvé pour le moment — exécutez quelques sessions et recollectez.",
     "unlinkedAccountHint": "Pas encore lié à une adresse e-mail — connectez-vous une fois avec ce compte, puis reconnectez-vous à l'autre, pour afficher ici son e-mail et son forfait.",
     "feePlaceholder": "Frais",
-    "labelPlaceholder": "Libellé (ex. Travail, Personnel)"
+    "labelPlaceholder": "Libellé (ex. Travail, Personnel)",
+    "autoRefreshInterval": "Intervalle d'actualisation automatique (secondes)",
+    "autoRefreshHint": "Minimum 60 secondes. S'applique lorsque l'actualisation automatique est activée depuis la barre d'outils."
   },
   "fees": {
     "title": "Frais d'abonnement par projet",

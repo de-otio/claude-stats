@@ -2,7 +2,6 @@
   "pageTitle": "Claude Stats — {{period}} ({{date}})",
   "tabs": {
     "overview": "Przegląd",
-    "models": "Modele",
     "projects": "Projekty",
     "sessions": "Sesje",
     "plan": "Plan",
@@ -50,8 +49,6 @@
     "tokenBreakdown": "Podział tokenów",
     "cacheUsage": "Użycie cache",
     "cumulativeApiValue": "Skumulowana wartość API vs opłata planu",
-    "tokensByModel": "Tokeny według modelu",
-    "stopReasons": "Powody zatrzymania",
     "topProjects": "Główne projekty",
     "tokensByProject": "Udział tokenów według projektu",
     "energyByProject": "Zużycie energii według projektu",
@@ -296,7 +293,9 @@
     "noAccounts": "Nie znaleziono żadnych kont — uruchom kilka sesji i ponownie zbierz.",
     "unlinkedAccountHint": "Jeszcze nie powiązano z adresem e-mail — zaloguj się raz na to konto, a następnie przełącz się z powrotem, aby wyświetlić tutaj jego adres e-mail i plan.",
     "feePlaceholder": "Opłata",
-    "labelPlaceholder": "Etykieta (np. Praca, Osobiste)"
+    "labelPlaceholder": "Etykieta (np. Praca, Osobiste)",
+    "autoRefreshInterval": "Interwał automatycznego odświeżania (sekundy)",
+    "autoRefreshHint": "Minimum 60 sekund. Obowiązuje po włączeniu automatycznego odświeżania na pasku narzędzi."
   },
   "fees": {
     "title": "Opłata subskrypcji według projektu",

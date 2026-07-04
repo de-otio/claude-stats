@@ -49,7 +49,15 @@ export interface Config {
    * doc/analysis/project-fee-attribution/.
    */
   accountFees?: Record<string, AccountFee>;
+  /**
+   * Auto-refresh interval for the served dashboard, in seconds. Floored to
+   * `MIN_AUTO_REFRESH_SECONDS` on every write (see `mergeConfig`).
+   */
+  autoRefreshSeconds?: number;
 }
+
+/** Auto-refresh can't be set faster than once a minute. */
+export const MIN_AUTO_REFRESH_SECONDS = 60;
 
 /** A user-recorded subscription for one Claude account. */
 export interface AccountFee {
@@ -85,6 +93,7 @@ const ALLOWED_CONFIG_KEYS: ReadonlyArray<keyof Config> = [
   "experimentalSignals",
   "llmJudge",
   "accountFees",
+  "autoRefreshSeconds",
 ];
 
 /** Account-fee bounds — defensive caps so a bad/hostile write can't corrupt or DoS. */
@@ -157,6 +166,9 @@ export function mergeConfig(current: Config, incoming: unknown): Config {
       merged.llmJudge = { ...current.llmJudge, ...inc.llmJudge };
     } else if (key === "experimentalSignals") {
       merged.experimentalSignals = inc.experimentalSignals;
+    } else if (key === "autoRefreshSeconds") {
+      const n = Number(inc.autoRefreshSeconds);
+      if (Number.isFinite(n)) merged.autoRefreshSeconds = Math.max(MIN_AUTO_REFRESH_SECONDS, Math.round(n));
     }
   }
   return merged;
