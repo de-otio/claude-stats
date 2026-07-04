@@ -2,6 +2,31 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.15.0 — 2026-07-04
+
+### Added — License advisor: plan recommendations grounded in real usage
+
+The dashboard and MCP tools can now answer "which Claude plan should we buy?"
+— Team vs. Enterprise, seat-tier mix, how many seats — from measured usage
+instead of guesswork.
+
+- **Enterprise-aware plan classification.** The dashboard's Plan tab gains a
+  usage-intensity card (light / typical / power, against Anthropic's published
+  benchmarks), and the recommended-plan logic now recognizes usage beyond the
+  top consumer tier as Enterprise-scale rather than silently capping out.
+- **New MCP tools.** `get_account_info` (current seat/billing/org fields —
+  never a raw email), `get_plan_mechanics_reference` (a dated, sourced snapshot
+  of how Claude plans are sold, with a staleness warning and a nudge to verify
+  live pricing), and `size_seats` (pure seat-and-cost scenario projection that
+  surfaces the decision, never makes it). `get_stats` now also returns the
+  plan-advice block it already computed.
+- **New `plan-advisor` CLI command.** `claude-stats plan-advisor --headcount N
+  --technical-fraction P` prints a seat-sizing scenario table with cost
+  projections, Team-ceiling checks, and the compliance / spend-limit / timing
+  questions a buyer must decide — localized across all supported languages.
+- A `license-advisor` skill ties these together into a guided, sourced
+  recommendation workflow.
+
 ## 0.14.0 — 2026-07-04
 
 ### Removed — The "Models" tab
