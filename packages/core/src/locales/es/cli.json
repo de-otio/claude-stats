@@ -90,6 +90,11 @@
     "ceilingExceeded": "Se superó el techo de 150 puestos de Equipo — Empresa requerida en este número de puestos.",
     "openQuestionsHeader": "Preguntas abiertas — decide estas deliberadamente; esta herramienta no lo hará:",
     "complianceHeader": "Disparador de cumplimiento",
+    "openQuestions": {
+      "compliance": "Desencadenante de cumplimiento: ¿su organización maneja datos regulados o de clientes bajo obligaciones que hagan que SSO/SCIM, los registros de auditoría o la retención personalizada no sean meramente cosméticos? Esto puede obligar a Enterprise independientemente del número de seats — una decisión legal/de TI, no una cuestión de datos.",
+      "spendLimit": "Filosofía de límite de gasto (solo Enterprise): ajustar los límites por usuario/organización cerca del benchmark 'typical' (coste predecible, los usuarios avanzados se limitan ocasionalmente) O a 2–3× el benchmark 'power' (maximizando el uso, con el límite como seguro frente a fallos no humanos como una clave filtrada). Ambas opciones son legítimas; elija deliberadamente.",
+      "timing": "Desencadenante de tiempo: dado el plazo de varias semanas de un Enterprise sales-assisted, decida a partir de qué número de seats comprometidos iniciar la conversación con Enterprise — empezar pronto convierte un techo rígido en un no-evento."
+    },
     "staleNote": "{{warning}}",
     "errors": {
       "headcount-invalid": "El tamaño debe ser un número entero de al menos 1.",

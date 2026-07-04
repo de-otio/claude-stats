@@ -90,6 +90,11 @@
     "ceilingExceeded": "Team 150-seat ceiling exceeded — Enterprise required at this seat count.",
     "openQuestionsHeader": "Open questions — decide these deliberately; this tool will not:",
     "complianceHeader": "Compliance trigger",
+    "openQuestions": {
+      "compliance": "Compliance trigger: does your org handle regulated or customer data under obligations that make SSO/SCIM, audit logs, or custom retention non-cosmetic? This can force Enterprise regardless of seat count — a legal/IT judgment call, not a data question.",
+      "spendLimit": "Spend-limit philosophy (Enterprise only): size per-user/org limits tight to the 'typical' benchmark (cost-predictable, power users occasionally throttled) OR at 2–3× the 'power' benchmark (usage-maximizing, limit as insurance against non-human failure modes like a leaked key). Both are legitimate; pick deliberately.",
+      "timing": "Timing trigger: given the multi-week sales-assisted Enterprise lead time, decide the committed-seat count at which to start the Enterprise conversation — starting early converts a hard ceiling into a non-event."
+    },
     "staleNote": "{{warning}}",
     "errors": {
       "headcount-invalid": "Headcount must be a whole number of at least 1.",

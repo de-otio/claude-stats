@@ -90,6 +90,11 @@
     "ceilingExceeded": "Plafond de 150 sièges Équipe dépassé — Entreprise requise à ce nombre de sièges.",
     "openQuestionsHeader": "Questions ouvertes — décidez-les délibérément ; cet outil ne le fera pas :",
     "complianceHeader": "Déclencheur de conformité",
+    "openQuestions": {
+      "compliance": "Déclencheur de conformité : votre organisation traite-t-elle des données réglementées ou des données clients soumises à des obligations qui rendent le SSO/SCIM, les journaux d'audit ou la rétention personnalisée non cosmétiques ? Cela peut imposer Enterprise indépendamment du nombre de seats — un jugement juridique/informatique, pas une question de données.",
+      "spendLimit": "Philosophie de limite de dépenses (Enterprise uniquement) : ajuster les limites par utilisateur/organisation au plus près du benchmark 'typical' (coût prévisible, les utilisateurs intensifs sont parfois limités) OU à 2–3× le benchmark 'power' (maximisant l'usage, la limite servant d'assurance contre les défaillances non humaines comme une clé divulguée). Les deux sont légitimes ; choisissez délibérément.",
+      "timing": "Déclencheur de calendrier : compte tenu du délai de plusieurs semaines d'un Enterprise sales-assisted, décidez à partir de quel nombre de seats engagés démarrer la conversation Enterprise — commencer tôt transforme un plafond rigide en non-événement."
+    },
     "staleNote": "{{warning}}",
     "errors": {
       "headcount-invalid": "Le nombre d'employés doit être un nombre entier d'au moins 1.",
