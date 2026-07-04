@@ -2,6 +2,23 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.14.0 — 2026-07-04
+
+### Removed — The "Models" tab
+
+The dashboard's "Models" tab (tokens-by-model and stop-reasons charts) has
+been removed — it wasn't earning its place. The same per-model breakdown is
+still available through the `dashboard` command's JSON output and the MCP
+tools, and the tab can come back if it turns out to be missed.
+
+### Changed — Auto-refresh interval is now configurable, with a 60-second floor
+
+0.12.1 bumped the dashboard's fixed auto-refresh interval from 30 seconds to
+2 minutes, with no way to change it. It's now a Settings tab field, and every
+path that sets it — the Settings form and a hand-edited `?refresh=` URL
+parameter alike — is floored to 60 seconds, so the dashboard can no longer be
+made to refresh more than once a minute.
+
 ## 0.13.1 — 2026-07-03
 
 ### Fixed — Project paths and costs could be silently wrong for hyphenated directory names
