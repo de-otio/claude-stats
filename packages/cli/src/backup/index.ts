@@ -31,3 +31,13 @@ export type { SwitchModeOptions, SwitchModeResult } from "./mode-switch.js";
 
 export { compact, assertOwningDevice } from "./compaction.js";
 export type { CompactOptions, CompactResult } from "./compaction.js";
+
+export {
+  IDENTITY_KEYSTORE_KEY,
+  generateDeviceId,
+  generateDeviceIdentityMaterial,
+  loadOrCreateDeviceIdentity,
+  destroyDeviceIdentity,
+  bootstrapBackupCrypto,
+} from "./identity.js";
+export type { DeviceIdentityMaterial } from "./identity.js";

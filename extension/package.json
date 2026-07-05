@@ -62,6 +62,16 @@
         "command": "claude-stats.openDashboard",
         "title": "Open Dashboard",
         "category": "Claude Stats"
+      },
+      {
+        "command": "claude-stats.setupBackup",
+        "title": "Set Up Backup & Sync…",
+        "category": "Claude Stats"
+      },
+      {
+        "command": "claude-stats.deleteAllStoredData",
+        "title": "Delete All Stored Data…",
+        "category": "Claude Stats"
       }
     ],
     "configuration": {

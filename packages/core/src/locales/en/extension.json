@@ -497,5 +497,41 @@
     "syncFailed": "Sync failed: {{error}}",
     "newDeviceDetected": "New device added to your sync group. Review it in settings.",
     "encryptionModeChanged": "Encryption mode changed. Archives are now {{mode}}."
+  },
+  "onboarding": {
+    "nudgeMessage": "Back up your Claude stats so you never lose them?",
+    "nudgeAction": "Set up backup",
+    "nudgeDismiss": "Not now",
+    "detectingProgress": "Looking for a cloud folder you already use (Dropbox, iCloud, Google Drive, OneDrive)...",
+    "detectedPrompt": "Back up to your {{provider}}?",
+    "detectedYes": "Yes",
+    "chooseLocation": "Choose a folder…",
+    "chooseLocationTitle": "Choose where to store your encrypted backup",
+    "noneDetected": "We didn't find a cloud folder you already use. Choose one, or pick any folder — a network drive or mounted remote works too.",
+    "encryptionForkPrompt": "Encrypt it so only your devices can read it?",
+    "encryptChoiceEncrypted": "Encrypt — recommended",
+    "encryptChoiceEncryptedDetail": "Only your devices can read it. You'll save one recovery key.",
+    "encryptChoicePlaintext": "Plaintext — simplest",
+    "encryptChoicePlaintextDetail": "No key to manage. Your cloud provider can read your stats.",
+    "recoveryKeyIntro": "This key is the only way to recover your encrypted backup. If you lose it and all your devices, the backup is gone — we can't get it back.",
+    "recoveryKeySavedButton": "I've saved it → Continue",
+    "setupComplete": "Done. Backup and sync are now ambient — you won't need to think about this again.",
+    "trustNote": "This is your personal backup — only your devices can read it. It is separate from any team/organization dashboard, which only ever sees aggregated stats, never your prompts or transcripts.",
+    "secondDeviceFoundMessage": "Found your backup — enter your recovery key to sync this device.",
+    "secondDeviceEnterKeyAction": "Enter recovery key",
+    "secondDeviceKeyPrompt": "Paste your recovery key",
+    "secondDeviceKeyPlaceholder": "ABCD-EFGH-IJKL-MNOP-…",
+    "secondDeviceWrongKey": "Enter your recovery key to unlock this backup.",
+    "secondDeviceEnrolled": "This device is now enrolled. Backup and sync are ambient — no further action needed."
+  },
+  "dataRemoval": {
+    "scopeTitle": "Choose what to delete",
+    "scopeThisMachine": "This machine only",
+    "scopeThisMachineDetail": "Deletes the local transcript archive and export bundle cache on this device.",
+    "scopeAlsoCloud": "Also delete the cloud copy",
+    "scopeAlsoCloudDetail": "Also deletes this device's shards from your configured backup location.",
+    "otherDevicesNote": "Other devices you've enrolled still hold their own copies until they, too, run \"Delete all stored data\" with the cloud scope. That's how a distributed backup works — no single device can erase what another device independently wrote.",
+    "confirmTitle": "Permanently delete all stored data?",
+    "orgPlaneNote": "Your team's aggregated stats are owned by your organization and can't be deleted from here — contact your team admin."
   }
 }

@@ -1174,10 +1174,19 @@ export async function buildCli(): Promise<Command> {
     )
     .option("--yes", "Actually perform the deletion (omit for a dry-run preview only)")
     .option("--include-db", "Also delete the stats database (and its -wal/-shm sidecars)")
-    .option("--also-cloud", "Also remove local cloud-sync configuration and clear auth tokens")
-    .action(async (opts: { yes?: boolean; includeDb?: boolean; alsoCloud?: boolean }) => {
+    .option("--also-cloud", "Also remove local cloud-sync configuration and clear auth tokens (org/team plane)")
+    .option(
+      "--backup-cloud",
+      "Also delete THIS DEVICE's copy in your personal backup location (Dropbox/iCloud/Drive/OneDrive/" +
+        "local folder). Other enrolled devices keep their own copies until they too run this.",
+    )
+    .action(async (opts: { yes?: boolean; includeDb?: boolean; alsoCloud?: boolean; backupCloud?: boolean }) => {
       const targets = [paths.archiveDir, paths.bundleDir];
       if (opts.includeDb) targets.push(paths.statsDb);
+
+      const { describePurgeScope } = await import("../ux/purge-scope.js");
+      const backupTarget = loadConfig().backup?.target;
+      const cloudScope = describePurgeScope("also-cloud");
 
       if (!opts.yes) {
         console.log("Dry run — nothing was deleted. Pass --yes to actually purge.\n");
@@ -1188,7 +1197,15 @@ export async function buildCli(): Promise<Command> {
         }
         console.log("Would unregister the claude-stats MCP server from ~/.claude.json.");
         if (opts.alsoCloud) {
-          console.log("Would remove local cloud-sync configuration and clear auth tokens.");
+          console.log("Would remove local cloud-sync configuration and clear auth tokens (org/team plane).");
+        }
+        if (opts.backupCloud) {
+          if (backupTarget) {
+            console.log(`  - This device's shards in your backup location (${backupTarget})`);
+            console.log(`  Note: ${cloudScope.otherDevicesNote}`);
+          } else {
+            console.log("  (--backup-cloud requested, but backup/sync isn't configured on this device — nothing to delete there.)");
+          }
         }
         return;
       }
@@ -1212,7 +1229,25 @@ export async function buildCli(): Promise<Command> {
       if (opts.alsoCloud) {
         clearTokens();
         removeSyncConfig();
-        console.log("Removed local cloud-sync configuration and cleared auth tokens.");
+        console.log("Removed local cloud-sync configuration and cleared auth tokens (org/team plane).");
+      }
+
+      if (opts.backupCloud) {
+        if (!backupTarget) {
+          console.log("Backup/sync isn't configured on this device — nothing to delete from the cloud copy.");
+        } else {
+          // This device's identity/DEK bootstrap (recovery-key unwrap for a
+          // headless CLI run) isn't wired into this command yet — the deletion
+          // mechanics themselves (`purgeDeviceCloudCopy`) are implemented and
+          // tested in ux/purge-scope.ts, ready to be called once that identity
+          // assembly lands. Until then, be explicit rather than silently no-op.
+          console.log(
+            "Cloud backup-copy deletion for this device isn't wired into the CLI yet " +
+              "(needs this device's enrolled backup identity). Local data has still been purged; " +
+              "delete this device's subfolder from your backup location manually if needed.",
+          );
+        }
+        console.log(cloudScope.otherDevicesNote);
       }
 
       if (!result.ok) {
