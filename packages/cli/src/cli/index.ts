@@ -25,6 +25,7 @@ import { registerAccountCommands } from "./account-commands.js";
 import { registerOtelCommands } from "./otel-commands.js";
 import { registerRepairCommands } from "./repair-commands.js";
 import { registerPlanAdvisorCommands } from "./plan-advisor-commands.js";
+import { registerSyncCommands } from "./sync-commands.js";
 import {
   loadSyncConfig,
   saveSyncConfig,
@@ -43,6 +44,7 @@ import {
   type SyncConfig,
   type PersistedSyncConfig,
 } from "../sync/index.js";
+import { paths } from "@claude-stats/core/paths";
 
 export async function buildCli(): Promise<Command> {
   // Pre-parse --locale from argv before commander processes it
@@ -1160,6 +1162,65 @@ export async function buildCli(): Promise<Command> {
   registerOtelCommands(program);
   registerRepairCommands(program);
   registerPlanAdvisorCommands(program);
+  // Aggregate-only cloud sync: setup / sync / disconnect.
+  registerSyncCommands(program);
+
+  program
+    .command("purge")
+    .description(
+      "Permanently delete all locally stored claude-stats data (transcript archive " +
+        "and export bundles; the stats DB and cloud-sync config are opt-in via flags). " +
+        "Without --yes this is a dry run: it prints what would be deleted and exits.",
+    )
+    .option("--yes", "Actually perform the deletion (omit for a dry-run preview only)")
+    .option("--include-db", "Also delete the stats database (and its -wal/-shm sidecars)")
+    .option("--also-cloud", "Also remove local cloud-sync configuration and clear auth tokens")
+    .action(async (opts: { yes?: boolean; includeDb?: boolean; alsoCloud?: boolean }) => {
+      const targets = [paths.archiveDir, paths.bundleDir];
+      if (opts.includeDb) targets.push(paths.statsDb);
+
+      if (!opts.yes) {
+        console.log("Dry run — nothing was deleted. Pass --yes to actually purge.\n");
+        console.log("Would delete:");
+        for (const target of targets) console.log(`  - ${target}`);
+        if (!opts.includeDb) {
+          console.log(`  (stats DB at ${paths.statsDb} would be KEPT — pass --include-db to delete it)`);
+        }
+        console.log("Would unregister the claude-stats MCP server from ~/.claude.json.");
+        if (opts.alsoCloud) {
+          console.log("Would remove local cloud-sync configuration and clear auth tokens.");
+        }
+        return;
+      }
+
+      const { purgeAllData } = await import("../archive/index.js");
+      const result = purgeAllData({ deleteDb: opts.includeDb === true });
+
+      for (const outcome of result.outcomes) {
+        if (outcome.error) {
+          console.error(`Failed to delete ${outcome.target}: ${outcome.error}`);
+        } else if (outcome.existed) {
+          console.log(`Deleted ${outcome.target}`);
+        }
+      }
+      console.log(
+        result.unregistered
+          ? "Unregistered the claude-stats MCP server from ~/.claude.json."
+          : "MCP server was not registered (or unregister failed) — no change needed there.",
+      );
+
+      if (opts.alsoCloud) {
+        clearTokens();
+        removeSyncConfig();
+        console.log("Removed local cloud-sync configuration and cleared auth tokens.");
+      }
+
+      if (!result.ok) {
+        process.exitCode = 1;
+        return;
+      }
+      console.log("\nPurge complete.");
+    });
 
   return program;
 }
