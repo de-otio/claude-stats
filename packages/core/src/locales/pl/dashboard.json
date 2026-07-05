@@ -312,7 +312,10 @@
     "currencyHeader": "{{period}} ten okres · {{monthly}}/mies",
     "idle": "{{label}} — brak użycia ten okres",
     "idleSliceLabel": "Nieużywane (brak użycia)",
-    "reconcile": "Przypisane {{attributed}}"
+    "reconcile": "Przypisane {{attributed}}",
+    "bySubscriptionTitle": "Podział opłaty według subskrypcji",
+    "bySubscriptionDesc": "Miesięczna opłata każdej subskrypcji rozdzielona na projekty, w których była używana w tym okresie.",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "Cennik tokenów (za 1M tokenów)",

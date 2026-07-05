@@ -30,7 +30,7 @@ const MAX_LEN = 2000;
  * Kept intentionally short — this is display polish, not a security filter.
  */
 const KNOWN_TAG_BLOCKS =
-  /<(?:system-reminder|local-command-caveat|ide_opened_file|ide_selection|ide_diagnostics|command-name|command-message|command-args|local-command-stdout|available-deferred-tools)>[\s\S]*?<\/(?:system-reminder|local-command-caveat|ide_opened_file|ide_selection|ide_diagnostics|command-name|command-message|command-args|local-command-stdout|available-deferred-tools)>/g;
+  /<(?:system-reminder|local-command-caveat|ide_opened_file|ide_selection|ide_diagnostics|command-name|command-message|command-args|local-command-stdout|available-deferred-tools|task-notification)>[\s\S]*?<\/(?:system-reminder|local-command-caveat|ide_opened_file|ide_selection|ide_diagnostics|command-name|command-message|command-args|local-command-stdout|available-deferred-tools|task-notification)>/g;
 
 /** Self-closing form of the same tags (e.g. `<ide_opened_file ... />`). */
 const KNOWN_SELF_CLOSING =
@@ -68,4 +68,34 @@ export function sanitizePromptText(input: string | null | undefined): string | n
   // 4. Length cap AFTER sanitization — attacker cannot survive by splitting
   //    their close-tag past the cap, because we already escaped all `<`/`>`.
   return trimmed.length > MAX_LEN ? trimmed.slice(0, MAX_LEN) : trimmed;
+}
+
+/**
+ * Inverse of the `&`/`<`/`>` escaping applied by {@link sanitizePromptText},
+ * for **human display only**.
+ *
+ * Prompt text is persisted escaped — that escaping is the security boundary for
+ * agent-facing channels (the MCP caller, downstream agents). But some display
+ * surfaces render text verbatim and never decode entities, so the escaped form
+ * leaks through as literal `&lt;` / `&gt;`:
+ *   - a Chart.js **canvas** label (`fillText` draws the raw string), and
+ *   - an HTML sink that **re-escapes** an already-escaped string (double-escape).
+ * Decoding here at the display boundary makes `&lt;task-notification&gt;` read
+ * as `<task-notification>`.
+ *
+ * Safe by construction: the caller renders the result onto a canvas (no HTML
+ * parsing) or back through an HTML-escaping sink, so decoding never reintroduces
+ * an injection vector. **Never** hand the decoded string to a downstream agent
+ * or an un-escaped HTML sink.
+ *
+ * Decodes in the reverse order of the escaper (entities first, `&amp;` last) so
+ * a literal `&lt;` — stored as `&amp;lt;` — round-trips back to `&lt;` rather
+ * than collapsing to `<`.
+ */
+export function decodeHtmlEntities(input: string | null | undefined): string {
+  if (input == null) return "";
+  return input
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }

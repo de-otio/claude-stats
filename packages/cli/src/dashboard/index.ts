@@ -23,6 +23,19 @@ import type { CostPerTaskReport, CostPerTaskOptions } from "../cost-per-task/ind
 import type { CalibrationReport } from "../cost-per-task/calibration.js";
 import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor, modelClass } from "@claude-stats/core/energy";
 import type { ModelClass } from "@claude-stats/core/energy";
+import { decodeHtmlEntities } from "@claude-stats/core/sanitize";
+
+/**
+ * Human-readable, entity-decoded, length-capped preview of a stored prompt.
+ * `prompt_text` is persisted HTML-escaped (see {@link sanitizePromptText}); the
+ * dashboard renders previews on a Chart.js canvas and in HTML cells, neither of
+ * which decode entities, so decode here at the display boundary.
+ */
+function promptPreviewOf(text: string | null | undefined): string {
+  const decoded = decodeHtmlEntities(text);
+  if (!decoded) return "(no prompt text)";
+  return decoded.length > 120 ? decoded.slice(0, 120) + "..." : decoded;
+}
 
 /**
  * Format an epoch-ms instant as YYYY-MM-DD in the given IANA timezone.
@@ -944,6 +957,13 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       accountMap.delete("(unknown)");
       accountMap.set(claudeAcct.accountUuid, unknown);
     }
+    // Email labels persisted the last time each account was current, so the
+    // per-account breakdown shows a readable address for accounts OTHER than the
+    // currently-logged-in one instead of a truncated UUID (mirrors the fallback
+    // in buildAccountsForConfig).
+    const emailLabelByUuid = new Map(
+      store.listAccountsFull().map((a) => [a.accountUuid, a.emailLabel ?? null] as const),
+    );
     const byAccount: DashboardData["planUtilization"] extends { byAccount: infer T } | null ? T : never =
       Array.from(accountMap.entries())
         .sort(([, a], [, b]) => b.cost - a.cost)
@@ -963,7 +983,9 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
             const share = effectivePlanFee * (acct.sessions / rows.length);
             verdict = acct.cost >= share ? "good-value" : "underusing";
           }
-          const email = claudeAcct?.accountUuid === acctKey ? claudeAcct.emailAddress : null;
+          const email = claudeAcct?.accountUuid === acctKey
+            ? claudeAcct.emailAddress
+            : (emailLabelByUuid.get(acctKey) ?? null);
           return {
             accountId: acctKey === "(unknown)" ? "(unknown)" : acctKey.slice(0, 8) + "...",
             emailAddress: email,
@@ -1151,9 +1173,14 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
         until: isCustomRange ? until : undefined,
         includeCI: opts.includeCI ?? false,
       });
+      const emailLabelByUuid = new Map(
+        store.listAccountsFull().map((a) => [a.accountUuid, a.emailLabel ?? null] as const),
+      );
       return list.map(a => ({
         accountUuid: a.accountUuid,
-        emailAddress: claudeAcct?.accountUuid === a.accountUuid ? claudeAcct.emailAddress : null,
+        emailAddress: claudeAcct?.accountUuid === a.accountUuid
+          ? claudeAcct.emailAddress
+          : (emailLabelByUuid.get(a.accountUuid) ?? null),
         subscriptionType: a.subscriptionType,
         sessionCount: a.sessionCount,
         isCurrent: claudeAcct?.accountUuid === a.accountUuid,
@@ -1571,7 +1598,7 @@ function buildSpendingSection(
       model: a.message.model ?? "unknown",
       totalTokens: a.totalTokens,
       estimatedCost: Math.round(cost * 100) / 100,
-      promptPreview: a.message.prompt_text?.slice(0, 120) ?? "",
+      promptPreview: decodeHtmlEntities(a.message.prompt_text).slice(0, 120),
       timesAvg: Math.round(a.timesAvg * 10) / 10,
       flags,
     };
@@ -1759,9 +1786,7 @@ function buildModelEfficiency(
         if (savings > 0.001) {
           overuseList.push({
             sessionId: turn.sessionId,
-            promptPreview: turn.promptText
-              ? turn.promptText.slice(0, 120) + (turn.promptText.length > 120 ? "..." : "")
-              : "(no prompt text)",
+            promptPreview: promptPreviewOf(turn.promptText),
             model: turn.model,
             tier,
             cost: Math.round(actualCost * 10000) / 10000,
@@ -1779,9 +1804,7 @@ function buildModelEfficiency(
         if (savings > 0.001) {
           overuseList.push({
             sessionId: turn.sessionId,
-            promptPreview: turn.promptText
-              ? turn.promptText.slice(0, 120) + (turn.promptText.length > 120 ? "..." : "")
-              : "(no prompt text)",
+            promptPreview: promptPreviewOf(turn.promptText),
             model: turn.model,
             tier,
             cost: Math.round(actualCost * 10000) / 10000,

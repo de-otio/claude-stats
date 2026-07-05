@@ -312,7 +312,10 @@
     "currencyHeader": "{{period}} この期間 · {{monthly}}/月",
     "idle": "{{label}} — この期間は使用されていません",
     "idleSliceLabel": "未使用（利用なし）",
-    "reconcile": "配分 {{attributed}}"
+    "reconcile": "配分 {{attributed}}",
+    "bySubscriptionTitle": "サブスクリプション別の料金内訳",
+    "bySubscriptionDesc": "各サブスクリプションの月額料金を、この期間に使用したプロジェクトごとに按分します。",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "トークン料金（100 万トークンあたり）",

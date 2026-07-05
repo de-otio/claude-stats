@@ -49,6 +49,36 @@ export interface CurrencyFeeBlock {
   perProject: ProjectFeeSlice[];
 }
 
+/** One project's slice within a SINGLE account's own fee pool. */
+export interface AccountProjectSlice {
+  projectPath: string;
+  /** Pro-rated fee attributed to this project from this account's pool. */
+  amount: number;
+  /** Share of THIS account's pro-rated pool (0–100), so slices sum to 100. */
+  percentOfPool: number;
+}
+
+/**
+ * One subscription (account) with its own fee pool distributed across the
+ * projects it used — the data behind the per-subscription charts. Unlike
+ * `CurrencyFeeBlock` (which sums every account sharing a currency), each block
+ * here is a single account, so its `perProject` percentages answer "what share
+ * of THIS subscription's fee goes to each project?".
+ */
+export interface AccountFeeBlock {
+  accountUuid: string;
+  /** Configured label (may be empty); the renderer prefers a resolved email. */
+  label: string;
+  currency: string;
+  /** Pro-rated pool for this account (monthlyFee × prorate). */
+  pool: number;
+  monthlyFee: number;
+  /** True when the account had no in-period usage (its pool is idle). */
+  idle: boolean;
+  /** Per-project slices of THIS account's pool, sorted by amount desc. */
+  perProject: AccountProjectSlice[];
+}
+
 export interface FeeAttribution {
   /** True when at least one account resolved a fee (independent of attribution). */
   configured: boolean;
@@ -56,6 +86,11 @@ export interface FeeAttribution {
   prorate: number;
   /** One block per currency, sorted by currency code. */
   byCurrency: CurrencyFeeBlock[];
+  /**
+   * One block per configured account (subscription), sorted by currency then
+   * pool descending. Powers the per-subscription "fee share by project" charts.
+   */
+  perAccount: AccountFeeBlock[];
 }
 
 export interface FeeAttributionInput {
@@ -95,6 +130,7 @@ export function buildFeeAttribution(input: FeeAttributionInput): FeeAttribution 
 
   // 2. For each account with a resolved fee, distribute its pro-rated pool.
   const blocks = new Map<string, BlockAcc>();
+  const perAccount: AccountFeeBlock[] = [];
   let configured = false;
   // Deterministic account ordering: fee keys first (sorted), then any cost-only
   // accounts (which have null fees and contribute nothing, but keep order stable).
@@ -118,18 +154,34 @@ export function buildFeeAttribution(input: FeeAttributionInput): FeeAttribution 
     block.periodTotal += pool;
     block.monthlyTotal += fee.monthlyFee;
 
+    const label = fee.label || shortId(acct);
     const total = costA.get(acct) ?? 0;
     if (total <= 0) {
       // Configured pool, no in-period usage → idle. Never redistributed.
-      block.idle.push({ label: fee.label || shortId(acct), amount: pool });
+      block.idle.push({ label, amount: pool });
+      perAccount.push({
+        accountUuid: acct, label, currency: fee.currency,
+        pool, monthlyFee: fee.monthlyFee, idle: true, perProject: [],
+      });
       continue;
     }
     const projMap = costAP.get(acct)!;
+    const acctSlices: AccountProjectSlice[] = [];
     for (const [projectPath, c] of projMap) {
       const slice = pool * (c / total);
       block.projectAmounts.set(projectPath, (block.projectAmounts.get(projectPath) ?? 0) + slice);
       block.attributed += slice;
+      acctSlices.push({
+        projectPath,
+        amount: slice,
+        percentOfPool: pool > 0 ? (slice / pool) * 100 : 0,
+      });
     }
+    acctSlices.sort((x, y) => y.amount - x.amount || x.projectPath.localeCompare(y.projectPath));
+    perAccount.push({
+      accountUuid: acct, label, currency: fee.currency,
+      pool, monthlyFee: fee.monthlyFee, idle: false, perProject: acctSlices,
+    });
   }
 
   // 3. Finalise — sort blocks by currency, projects by amount desc.
@@ -154,7 +206,14 @@ export function buildFeeAttribution(input: FeeAttributionInput): FeeAttribution 
       };
     });
 
-  return { configured, prorate, byCurrency };
+  perAccount.sort(
+    (a, b) =>
+      a.currency.localeCompare(b.currency) ||
+      b.pool - a.pool ||
+      a.accountUuid.localeCompare(b.accountUuid),
+  );
+
+  return { configured, prorate, byCurrency, perAccount };
 }
 
 /** Short, display-safe account id for an idle pool with no user label. */

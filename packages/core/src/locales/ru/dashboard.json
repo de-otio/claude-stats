@@ -312,7 +312,10 @@
     "currencyHeader": "{{period}} за этот период · {{monthly}}/мес",
     "idle": "{{label}} — нет использования за этот период",
     "idleSliceLabel": "Простой (нет использования)",
-    "reconcile": "Отнесено {{attributed}}"
+    "reconcile": "Отнесено {{attributed}}",
+    "bySubscriptionTitle": "Распределение платы по подписке",
+    "bySubscriptionDesc": "Ежемесячная плата за каждую подписку, распределённая по проектам, в которых она использовалась за период.",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "Стоимость токенов (за 1М токенов)",

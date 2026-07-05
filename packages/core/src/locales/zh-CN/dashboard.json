@@ -312,7 +312,10 @@
     "currencyHeader": "{{period}} 本期间 · {{monthly}}/月",
     "idle": "{{label}} — 本期间无使用",
     "idleSliceLabel": "闲置（无使用）",
-    "reconcile": "已分配 {{attributed}}"
+    "reconcile": "已分配 {{attributed}}",
+    "bySubscriptionTitle": "按订阅划分的费用占比",
+    "bySubscriptionDesc": "将每个订阅的月费按本期使用的各项目进行分摊。",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "Token 定价（每 100 万 Token）",
