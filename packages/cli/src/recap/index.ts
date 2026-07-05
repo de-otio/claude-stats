@@ -108,6 +108,15 @@ export interface BuildDailyDigestDeps {
    * as fresh (mtime = nowMs).  When absent, the production path is used.
    */
   getCacheMtimeMs?: (hash: string) => number | null;
+  /**
+   * Per-report memo of `getLastCommitSha` results, keyed by project path. A
+   * repo's HEAD does not change within a single multi-day report build, so the
+   * caller (buildCostPerTaskReport / buildCalibrationReport) passes ONE map for
+   * all per-day buildDailyDigest calls — collapsing N_days × N_projects git
+   * subprocesses into one per distinct project. A fresh map per report picks up
+   * new commits. When absent, getLastCommitSha is called directly (every day).
+   */
+  commitShaCache?: Map<string, string | null>;
 }
 
 // ─── Day-boundary helpers ─────────────────────────────────────────────────────
@@ -119,7 +128,7 @@ export interface BuildDailyDigestDeps {
  * We build the boundary timestamps by constructing a Date from the formatted
  * parts so we never read TZ from the environment.
  */
-function dayWindowInTz(
+export function dayWindowInTz(
   dateYmd: string,
   tz: string,
 ): { startMs: number; endMs: number } {
@@ -143,15 +152,25 @@ function dayWindowInTz(
 
 /**
  * Convert a local calendar date to epoch-ms for midnight (00:00:00) in the
- * given timezone.
+ * given timezone. `day` may overflow the target month (e.g. 32) — the
+ * overflow is resolved by `Date.UTC`'s own normalization, same as the JS
+ * `Date` constructor.
  *
- * The approach: create a UTC timestamp near midnight, then binary-search to
- * find the exact UTC ms such that formatting it in `tz` gives midnight.
- * In practice we use a simpler trick: construct an ISO string, parse as UTC,
- * measure the offset for that candidate, then adjust.
+ * Uses a noon-UTC reference point (safely mid-day for any timezone, so it
+ * can never straddle a date boundary) to derive the timezone's exact UTC
+ * offset on that calendar date via `Date.UTC` arithmetic, then applies that
+ * offset to true UTC midnight. This mirrors `tzMidnight()` in
+ * `../reporter/index.ts`, which uses the identical technique.
  *
- * We use the Intl.DateTimeFormat approach: format epoch 0 + candidate in tz,
- * compare year/month/day to the desired date, find the offset.
+ * The previous implementation approximated calendar-day differences as
+ * `(month diff) * 30 + (day diff)`, which is exact only when the local
+ * timezone-formatted date falls in the same month as the target date. Near
+ * month/year boundaries (the 1st or last day of any month) the formatted
+ * date legitimately falls in the adjacent month, and the 30-day
+ * approximation doesn't match real month lengths (28-31 days) — producing
+ * off-by-one-or-more-day errors, including negative-duration windows for
+ * Dec 31 and Feb 28. Confirmed via direct testing before this fix; see
+ * `recap.test.ts`'s `dayWindowInTz` describe block for the regression cases.
  */
 function localMidnightToEpochMs(
   year: number,
@@ -159,52 +178,19 @@ function localMidnightToEpochMs(
   day: number,
   tz: string,
 ): number {
-  // Candidate: treat the local date as if it were UTC midnight.
-  const candidate = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
-
-  // Use Intl.DateTimeFormat to find where the candidate falls in `tz`,
-  // then adjust by the difference.
-  const fmt = new Intl.DateTimeFormat('en-CA', {
+  const refUtc = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const localStr = refUtc.toLocaleString('en-US', {
     timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
     hour12: false,
   });
-
-  // We do two iterations to converge on the exact midnight
-  let result = candidate;
-  for (let i = 0; i < 2; i++) {
-    const parts = fmt.formatToParts(result);
-    const get = (type: string): number =>
-      parseInt(parts.find((p) => p.type === type)!.value, 10);
-
-    const localYear = get('year');
-    const localMonth = get('month');
-    const localDay = get('day');
-    const localHour = get('hour');
-    const localMinute = get('minute');
-    const localSecond = get('second');
-
-    // Offset from midnight in ms
-    const offsetFromMidnight =
-      ((localHour === 24 ? 0 : localHour) * 3600 +
-        localMinute * 60 +
-        localSecond) *
-        1000 +
-      // Account for day difference
-      ((localYear - year) * 365 +
-        (localMonth - month) * 30 +
-        (localDay - day)) *
-        86_400_000;
-
-    result = result - offsetFromMidnight;
-  }
-
-  return result;
+  const [datePart, timePart] = localStr.split(', ');
+  const [mo, da, yr] = datePart!.split('/').map(Number);
+  const [hr, mn, sc] = timePart!.split(':').map(Number);
+  const localAsUtc = Date.UTC(yr!, mo! - 1, da!, hr!, mn!, sc!);
+  const offsetMs = refUtc.getTime() - localAsUtc;
+  return Date.UTC(year, month - 1, day, 0, 0, 0) + offsetMs;
 }
 
 // ─── Code-point-aware truncation ─────────────────────────────────────────────
@@ -390,6 +376,17 @@ function diffInputs(prev: SnapshotHashInputs, next: SnapshotHashInputs): InputDi
  * @returns      A complete DailyDigest. Never throws — errors in git
  *               enrichment, cache I/O, or cost estimation degrade gracefully.
  */
+/**
+ * Ensure a digest item read from the on-disk cache carries fields that were
+ * added after it was written. Legacy entries lack `costByModel` (added with the
+ * cost-attribution fix); normalise it to `{}` so consumers can rely on the
+ * field. Mirrors the `clusteringMethod` normalisation done on cache read.
+ */
+function normalizeCachedItem(item: DailyDigestItem): DailyDigestItem {
+  if (item.costByModel != null) return item;
+  return { ...item, costByModel: {} };
+}
+
 export async function buildDailyDigest(
   store: Store,
   opts?: DailyDigestOptions,
@@ -419,11 +416,19 @@ export async function buildDailyDigest(
 
   // ── Step 2: Fetch sessions in the window ─────────────────────────────────
 
+  // Subagent sessions (is_subagent=1) are excluded from the task set: their
+  // work is part of the human-initiated parent task, and their cost is folded
+  // into the parent in buildDigestItem. Including them would double-count cost
+  // and inflate the task count.
   const sessions = store.getSessions({
     since: startMs,
     until: endMs,
-    includeCI: false,
+    projectPath: opts?.projectPath,
+    accountUuid: opts?.accountUuid,
+    repoUrl: opts?.repoUrl,
+    includeCI: opts?.includeCI ?? false,
     includeDeleted: false,
+    includeSubagents: false,
   });
 
   // Build sorted unique project paths
@@ -444,40 +449,53 @@ export async function buildDailyDigest(
   // session-level diffing by the incremental patcher (v3.06).
   const perSessionLastMessageUuid: Record<string, string | null> = {};
 
+  // Compute the hash inputs (global + per-session last message uuid) via a
+  // single SQL MAX(uuid) GROUP BY over the in-window messages — NOT by fetching
+  // every message row. The full rows (sessionMessages) are only needed on a
+  // cache MISS for segmentation, so they are fetched later (see below). This
+  // keeps cache-hit days off the O(messages) path. Output-preserving: MAX(uuid)
+  // is the same lexical max the prior per-message loop computed.
   for (const session of sessions) {
-    const msgs = store.getSessionMessages(session.session_id);
-    sessionMessages.set(session.session_id, msgs);
-    let sessionMax: string | null = null;
-    for (const msg of msgs) {
-      if (
-        msg.timestamp !== null &&
-        msg.timestamp >= startMs &&
-        msg.timestamp < endMs
-      ) {
-        if (maxMessageUuid === null || msg.uuid > maxMessageUuid) {
-          maxMessageUuid = msg.uuid;
-        }
-        if (sessionMax === null || msg.uuid > sessionMax) {
-          sessionMax = msg.uuid;
-        }
-      }
+    perSessionLastMessageUuid[session.session_id] = null;
+  }
+  for (const row of store.getMaxMessageUuidsInWindow(
+    sessions.map((s) => s.session_id),
+    startMs,
+    endMs,
+  )) {
+    perSessionLastMessageUuid[row.session_id] = row.max_uuid;
+    if (maxMessageUuid === null || row.max_uuid > maxMessageUuid) {
+      maxMessageUuid = row.max_uuid;
     }
-    perSessionLastMessageUuid[session.session_id] = sessionMax;
   }
 
-  // Per-project last commit SHA
+  // Per-project last commit SHA, memoised per-report via deps.commitShaCache
+  // (HEAD is stable within one multi-day report — see deps doc).
+  const commitShaCache = deps?.commitShaCache;
   const getLastCommit = (projectPath: string): string | null => {
+    if (commitShaCache?.has(projectPath)) return commitShaCache.get(projectPath)!;
+    let sha: string | null;
     try {
-      return getLastCommitSha(projectPath);
+      sha = getLastCommitSha(projectPath);
     } catch {
-      return null;
+      sha = null;
     }
+    commitShaCache?.set(projectPath, sha);
+    return sha;
   };
 
   const perProjectLastCommit: Record<string, string | null> = {};
   for (const p of sortedProjectPaths) {
     perProjectLastCommit[p] = getLastCommit(p);
   }
+
+  // Build the filter object only when at least one filter is active so that
+  // the common "no filter" case round-trips identically (back-compat).
+  const hasFilter =
+    opts?.projectPath !== undefined ||
+    opts?.accountUuid !== undefined ||
+    opts?.repoUrl !== undefined ||
+    opts?.includeCI !== undefined;
 
   const newInputs: SnapshotHashInputs = {
     date,
@@ -486,6 +504,16 @@ export async function buildDailyDigest(
     maxMessageUuid,
     perProjectLastCommit,
     perSessionLastMessageUuid,
+    ...(hasFilter
+      ? {
+          filter: {
+            projectPath: opts?.projectPath,
+            accountUuid: opts?.accountUuid,
+            repoUrl: opts?.repoUrl,
+            includeCI: opts?.includeCI,
+          },
+        }
+      : {}),
   };
 
   const snapshotHash = computeSnapshotHash(newInputs);
@@ -499,9 +527,21 @@ export async function buildDailyDigest(
     // Normalise clusteringMethod for digests cached before the field existed.
     // The type asserts presence, but on-disk cache entries written by older
     // versions may not have the key — fall back to 'jaccard' (the only path
-    // that ran pre-this-change).
+    // that ran pre-this-change). Likewise normalise each item's costByModel.
     const method = cached.clusteringMethod ?? 'jaccard';
-    return { ...cached, clusteringMethod: method, cached: true };
+    return {
+      ...cached,
+      items: cached.items.map(normalizeCachedItem),
+      clusteringMethod: method,
+      cached: true,
+    };
+  }
+
+  // Cache MISS from here on. NOW fetch the full message rows (deferred from the
+  // hash computation above) — the patcher (Step 4c) and segmentation (Step 5)
+  // need them, but cache-hit days returned above without paying this fetch.
+  for (const session of sessions) {
+    sessionMessages.set(session.session_id, store.getSessionMessages(session.session_id));
   }
 
   // ── Step 4b: Short-circuit for empty days (negative caching, v3.07) ────────
@@ -562,7 +602,7 @@ export async function buildDailyDigest(
       const diff = diffInputs(prevEntry.inputs, newInputs);
 
       // Count how many of the previous clusters are "touched" (need rebuild).
-      const prevItems = prevEntry.digest.items;
+      const prevItems = prevEntry.digest.items.map(normalizeCachedItem);
       const touchedProjects = new Set([
         ...diff.changedCommitProjects,
         ...diff.addedProjects,
@@ -970,21 +1010,50 @@ function buildDigestItem(
     }
   }
 
-  // estimatedCost: sum per-message cost for contributing sessions
+  // estimatedCost: sum per-message cost over exactly the messages in this
+  // task's segments (NOT every message in a contributing session — that
+  // double-counts when a session spans multiple clusters), plus folded-in
+  // subagent cost. Bucketed by model in the same pass.
   let estimatedCost = 0;
+  const costByModel: Record<string, number> = {};
+  const addCost = (
+    rows: ReadonlyArray<{
+      model: string | null;
+      input_tokens: number;
+      output_tokens: number;
+      cache_read_tokens: number;
+      cache_creation_tokens: number;
+    }>,
+  ): void => {
+    for (const row of rows) {
+      if (row.model === null) continue;
+      const { cost } = estimateCost(
+        row.model,
+        row.input_tokens,
+        row.output_tokens,
+        row.cache_read_tokens,
+        row.cache_creation_tokens,
+      );
+      estimatedCost += cost;
+      costByModel[row.model] = (costByModel[row.model] ?? 0) + cost;
+    }
+  };
+
+  // 1. This task's own messages — exactly the UUIDs in its segments.
+  const ownUuids: string[] = [];
+  for (const seg of segments) {
+    for (const uuid of seg.messageUuids) ownUuids.push(uuid);
+  }
+  addCost(store.getMessageCostInputsByUuids(ownUuids));
+
+  // 2. Subagent cost: messages of child sessions linked to any contributing
+  //    session, folded into this (parent) task and counted exactly once.
+  const seenChildren = new Set<string>();
   for (const sessionId of sessionIds) {
-    const msgs = store.getSessionMessages(sessionId);
-    for (const msg of msgs) {
-      if (msg.model !== null) {
-        const { cost } = estimateCost(
-          msg.model,
-          msg.input_tokens,
-          msg.output_tokens,
-          msg.cache_read_tokens,
-          msg.cache_creation_tokens,
-        );
-        estimatedCost += cost;
-      }
+    for (const child of store.getChildSessions(sessionId)) {
+      if (seenChildren.has(child.session_id)) continue;
+      seenChildren.add(child.session_id);
+      addCost(store.getSessionMessages(child.session_id));
     }
   }
 
@@ -1055,6 +1124,7 @@ function buildDigestItem(
     characterVerb: finalVerb,
     duration: { wallMs, activeMs },
     estimatedCost,
+    costByModel: Object.freeze(costByModel),
     toolHistogram: Object.freeze(toolHistogram),
     filePathsTouched,
     git,

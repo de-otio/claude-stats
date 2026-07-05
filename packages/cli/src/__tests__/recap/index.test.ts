@@ -11,7 +11,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import { Store } from '../../store/index.js';
 import type { SessionRecord, MessageRecord } from '@claude-stats/core/types';
-import { buildDailyDigest, computeConfidence, STALE_THRESHOLD_MS } from '../../recap/index.js';
+import { buildDailyDigest, computeConfidence, STALE_THRESHOLD_MS, dayWindowInTz } from '../../recap/index.js';
 import type { BuildDailyDigestDeps } from '../../recap/index.js';
 import type { DailyDigest, ProjectGitActivity, CachedEntry } from '../../recap/types.js';
 import type { CacheClient, SnapshotHashInputs } from '../../recap/cache.js';
@@ -2120,5 +2120,53 @@ describe('v3.06 patcher — performance benchmark (informational, not gated)', (
 
     s.close();
     fs.unlinkSync(dbPath);
+  });
+});
+
+describe('dayWindowInTz — month/year boundary regression', () => {
+  // Regression coverage for a bug found while implementing custom date-range
+  // filtering (doc/analysis/custom-date-range): the previous implementation
+  // approximated calendar-day differences as (month diff)*30 + (day diff),
+  // which is exact only when the tz-formatted local date falls in the same
+  // month as the target date. Near month/year boundaries this produced
+  // off-by-one-or-more-day errors, including startMs > endMs (negative
+  // window) for Dec 31 and Feb 28 in a UTC-8 zone. dayWindowInTz previously
+  // had zero direct test coverage, which is how this went unnoticed.
+  const TZ = 'America/Los_Angeles'; // UTC-8 (standard time), no DST in effect for these dates
+
+  it('always returns a 24h window regardless of month/year boundary', () => {
+    const dates = [
+      '2026-01-15', // ordinary mid-month day (control case)
+      '2026-01-31', // last day of a 31-day month
+      '2026-02-01', // first day of a month (previous bug: rolled back a day)
+      '2026-02-28', // last day of Feb in a non-leap year
+      '2028-02-29', // last day of Feb in a leap year
+      '2026-12-31', // year boundary (previous bug: startMs > endMs)
+    ];
+    for (const d of dates) {
+      const { startMs, endMs } = dayWindowInTz(d, TZ);
+      expect(endMs - startMs).toBe(24 * 60 * 60 * 1000);
+      expect(endMs).toBeGreaterThan(startMs);
+    }
+  });
+
+  it('produces contiguous, non-overlapping windows across a month boundary', () => {
+    const jan31 = dayWindowInTz('2026-01-31', TZ);
+    const feb1 = dayWindowInTz('2026-02-01', TZ);
+    expect(jan31.endMs).toBe(feb1.startMs);
+  });
+
+  it('produces contiguous windows across a year boundary', () => {
+    const dec31 = dayWindowInTz('2026-12-31', TZ);
+    const jan1 = dayWindowInTz('2027-01-01', TZ);
+    expect(dec31.endMs).toBe(jan1.startMs);
+  });
+
+  it('resolves to the correct UTC instant for a known offset', () => {
+    // 2026-01-31 00:00 America/Los_Angeles (UTC-8, standard time) is
+    // 2026-01-31T08:00:00.000Z; the window end is midnight the next day.
+    const { startMs, endMs } = dayWindowInTz('2026-01-31', TZ);
+    expect(new Date(startMs).toISOString()).toBe('2026-01-31T08:00:00.000Z');
+    expect(new Date(endMs).toISOString()).toBe('2026-02-01T08:00:00.000Z');
   });
 });

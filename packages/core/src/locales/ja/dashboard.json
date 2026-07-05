@@ -1,18 +1,20 @@
 {
-  "pageTitle": "Claude Stats — {{period}} ({{date}})",
+  "pageTitle": "Claude Stats — {{period}}（{{date}}）",
   "tabs": {
     "overview": "概要",
-    "models": "モデル",
     "projects": "プロジェクト",
     "sessions": "セッション",
     "plan": "プラン",
     "context": "コンテキスト",
     "efficiency": "効率",
     "energy": "エネルギー",
-    "settings": "設定"
+    "settings": "設定",
+    "classify": "分類"
   },
   "toolbar": {
     "period": "期間:",
+    "since": "開始日:",
+    "until": "終了日:",
     "refresh": "更新",
     "autoOff": "自動: オフ",
     "autoOn": "自動: オン ({{seconds}}秒)",
@@ -21,6 +23,7 @@
     "accountCurrent": "(現在)"
   },
   "summary": {
+    "emptyPeriodHint": "この期間にはまだセッションがありません — 期間を「週」または「すべて」に切り替えるとデータが表示されます。",
     "sessions": "セッション",
     "prompts": "プロンプト",
     "totalInput": "入力合計",
@@ -46,8 +49,6 @@
     "tokenBreakdown": "トークン内訳",
     "cacheUsage": "キャッシュ使用量",
     "cumulativeApiValue": "累積 API 価値 vs プラン料金",
-    "tokensByModel": "モデル別トークン",
-    "stopReasons": "停止理由",
     "topProjects": "トッププロジェクト",
     "tokensByProject": "プロジェクト別トークンシェア",
     "energyByProject": "プロジェクト別エネルギー使用量",
@@ -96,11 +97,20 @@
     "noPlan": "プランなし",
     "noPlanDetected": "プランが検出されませんでした",
     "planNames": {
-      "pro": "Pro ($20)",
-      "team_standard": "Team Std ($25)",
-      "max_5x": "Max 5x ($100)",
-      "team_premium": "Team Premium ($125)",
-      "max_20x": "Max 20x ($200)"
+      "pro": "Pro（$20）",
+      "team_standard": "Team Std（$25）",
+      "max_5x": "Max 5x（$100）",
+      "team_premium": "Team Premium（$125）",
+      "max_20x": "Max 20x（$200）",
+      "enterprise": "エンタープライズ（計測済み）"
+    },
+    "usageIntensity": {
+      "title": "使用強度",
+      "light": "Light",
+      "typical": "Typical",
+      "power": "Power",
+      "benchmark": "≈ ${{benchmark}}/月 Claude Code ベンチマーク",
+      "hint": "Anthropic のユーザーあたりの計画ベンチマークと比較した、月間相当費用。"
     }
   },
   "context": {
@@ -285,7 +295,27 @@
     "save": "保存",
     "savedReload": "保存しました！更新されたダッシュボードを表示するには再読み込みしてください。",
     "networkError": "ネットワークエラー。",
-    "errorSaving": "保存エラー。"
+    "errorSaving": "保存エラー。",
+    "subscriptions": "サブスクリプション",
+    "subscriptionsHint": "各 Claude アカウントで支払う月額料金を設定します。これらはプロジェクトタブのプロジェクト全体に分配されます。",
+    "subscriptionsAutoDetectHint": "新しいアカウントは、Claude Codeがそのアカウントのセッションを記録した時点で自動的にここに表示されます。手動で追加する必要はありません。",
+    "noAccounts": "アカウントがまだ見つかりません。セッションを実行して再度収集してください。",
+    "unlinkedAccountHint": "まだメールアドレスと連携されていません。一度このアカウントでログインしてから元に戻すと、ここにメールアドレスとプランが表示されます。",
+    "feePlaceholder": "料金",
+    "labelPlaceholder": "ラベル (例: 仕事、個人)",
+    "autoRefreshInterval": "自動更新の間隔（秒）",
+    "autoRefreshHint": "最小60秒。ツールバーから自動更新をオンにしたときに適用されます。"
+  },
+  "fees": {
+    "title": "プロジェクト別サブスクリプション料金",
+    "notConfigured": "設定でサブスクリプション料金を設定して、プロジェクトに配分します。",
+    "currencyHeader": "{{period}} この期間 · {{monthly}}/月",
+    "idle": "{{label}} — この期間は使用されていません",
+    "idleSliceLabel": "未使用（利用なし）",
+    "reconcile": "配分 {{attributed}}",
+    "bySubscriptionTitle": "サブスクリプション別の料金内訳",
+    "bySubscriptionDesc": "各サブスクリプションの月額料金を、この期間に使用したプロジェクトごとに按分します。",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "トークン料金（100 万トークンあたり）",
@@ -298,5 +328,94 @@
   },
   "footer": {
     "generated": "生成 {{timestamp}} • タイムゾーン: {{timezone}}"
+  },
+  "costPerTask": {
+    "summaryHint": "詳細は Spending タブを参照",
+    "title": "成功タスクあたりのコスト",
+    "headline": "成功タスクあたり",
+    "na": "該当なし",
+    "lowCoverage": "カバレッジが低い ({{coverage}}) — 成功率は少数の観測可能なタスクに基づいています",
+    "decomp": "= {{mean}}/試行 ÷ {{rate}} 成功率",
+    "coverageBadge": "{{observable}}/{{total}} 観測可能 ({{coverage}})",
+    "labelledBadge": "{{labelled}}/{{observable}} ラベル付き",
+    "success": "成功",
+    "failed": "失敗",
+    "inFlight": "進行中",
+    "unobservable": "観測不可",
+    "model": "モデル",
+    "perSuccess": "$/成功",
+    "successRate": "成功",
+    "observableCol": "観測",
+    "insufficient": "該当なし",
+    "proxyNote": "結果は、タスクを明示的にラベル付けしない限り、Git アクティビティと信頼度から推定されます。成功率は観測可能なタスクのみで計算されます。",
+    "period": {
+      "day": "今日",
+      "week": "過去7日間",
+      "month": "今月",
+      "all": "全期間"
+    },
+    "labelTasksHeading": "タスクの結果にラベルを付ける",
+    "labelledTag": "ラベル付き",
+    "outcomeShort": {
+      "success": "成功",
+      "failed": "失敗",
+      "in_flight": "進行中",
+      "unobservable": "観測不可"
+    },
+    "mark": {
+      "success": "成功としてマーク",
+      "partial": "部分的としてマーク",
+      "fail": "失敗としてマーク",
+      "clear": "ラベルをクリア"
+    }
+  },
+  "calibration": {
+    "title": "ラベルとの精度",
+    "noLabels": "上のタスクの結果（✓ / ~ / ✗）をラベル付けして較正します。いくつかラベル付けされるまで、成功率は評価ではなく推定です。",
+    "colProxy": "推定",
+    "colSignals": "+ シグナル",
+    "failedPrecision": "失敗の適合率",
+    "accuracy": "正解率",
+    "brier": "Brier（低いほど良い）",
+    "ready": "✓ シグナルが失敗適合率のしきい値（{{floor}}）を超えました — 有効化しても安全です。",
+    "notReady": "⚠ 失敗適合率のしきい値（{{floor}}）未満です — 信頼する前にもっとラベル付けしてください。",
+    "labelled": "この期間にラベル付けされたタスク: {{n}} 件",
+    "toggle": "ライブのレートに実験的な精度シグナルを使用する",
+    "enabledNote": "有効 — 上のレートは精度シグナルを取り込んでいます。",
+    "disabledNote": "無効 — 上のレートは推定のみです。",
+    "na": "なし"
+  },
+  "costEfficiency": {
+    "title": "コスト効率フロンティア",
+    "realised": "実現コスト",
+    "frontier": "フロンティアコスト",
+    "recoverable": "回収可能な無駄",
+    "basisNote": "完了プロキシに基づく（サバイバルではなく）",
+    "insufficient": "フロンティアを計算するにはモデルの多様性が不足しています。より安価で実績のある代替モデルを持つアーキタイプがありません。",
+    "leverKind": {
+      "route_by_archetype": "アーキタイプ別にタスクをフロンティアモデルへルーティング",
+      "default_effort_down": "デフォルトの労力レベルを下げる",
+      "cache_hygiene": "キャッシュ衛生を改善して繰り返しトークンを削減",
+      "stop_after_repairs": "修復完了後にセッションを停止"
+    }
+  },
+  "classify": {
+    "title": "プロジェクトを分類",
+    "intro": "各プロジェクトを、その費用を請求すべきサブスクリプションに割り当てます。プロジェクトはコスト順に並んでいるため、上位のいくつかを分類するだけで支出の大部分をカバーできます。",
+    "vscodeOnly": "プロジェクトの分類は VS Code パネルで利用できます。",
+    "empty": "分類するプロジェクトはまだありません。いくつかのプロジェクトで Claude Code を使用すると、ここに表示されます。",
+    "noAccounts": "サブスクリプションはまだ検出されていません。Claude Code が各アカウントの使用状況を記録すると、ここに表示されます。",
+    "unlinkedHint": "括弧内にIDが表示されているアカウントは、まだアクティブなClaude Codeログインとして検出されていないため、メールアドレスとプランをここに表示できません。一度そのアカウントでログインしてから元に戻すと連携されます。",
+    "coverage": "$__TOTAL__ 件中 $__CLASSIFIED__ 件を分類（__PERCENT__%）",
+    "pending": "__COUNT__ 件保留中",
+    "sessions": "__COUNT__ 件のセッション",
+    "projects": "__COUNT__ 件のプロジェクト",
+    "remoteBadge": "リモート",
+    "pathBadge": "フォルダー",
+    "optionUnassigned": "未割り当て",
+    "optionSplit": "使用状況で分割",
+    "splitHint": "分割では、各セッションのコストを実際に実行したアカウントに割り当てたままにします。複数のサブスクリプションで共有するプロジェクト（例：1 つのプランの上限では足りない場合）に使用します。",
+    "apply": "適用",
+    "applying": "適用中..."
   }
 }

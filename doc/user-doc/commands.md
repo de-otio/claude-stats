@@ -124,6 +124,93 @@ Last collected  : 3/8/2026, 9:15:04 AM
 
 ---
 
+## `account`
+
+Show the current logged-in Claude account, its suggested plan, and the accounts known to claude-stats. Also manages cost-ownership rules and account re-attribution.
+
+```
+claude-stats account [subcommand] [options]
+```
+
+| Subcommand | Description |
+|---|---|
+| _(none)_ | Print the current account plus the known-accounts table |
+| `reattribute [--dry-run] [--force]` | Recompute account attribution across all stored sessions |
+| `own [options]` | Manage cost-ownership rules (assign a path or remote glob to an account) |
+| `classify` | Show project clusters ranked by estimated cost, to help identify ownership |
+
+**`account` (no subcommand)** prints, when a Claude login is present: account UUID, organization type, rate-limit tier, seat tier, billing type, extra-usage status, plus (when local usage data exists) a suggested plan, a verdict on the current plan (good value / underusing / no plan), and a usage-intensity tier (light / typical / power) benchmarked against Anthropic's per-seat usage tiers. It never recommends a company-wide seat count — see `plan-advisor` for that.
+
+| Option (`account reattribute`) | Description |
+|---|---|
+| `--dry-run` | Preview the changes without writing or creating a backup |
+| `--force` | Proceed even if re-attribution would clear existing attributions |
+
+| Option (`account own`) | Description |
+|---|---|
+| `--account <uuid\|split>` | Account UUID to assign cost to, or `split` to keep measured attribution |
+| `--path <glob>` | Glob pattern matching project paths (e.g. `~/repos/work/**`) |
+| `--remote <glob>` | Glob pattern matching git remote owner (e.g. `github.com/example-org/*`) |
+| `--dry-run` | Preview how many sessions the rule would match, without creating it |
+| `--force` | Create the rule even if it matches more than 90% of sessions |
+| `--list` | List all existing owner rules |
+| `--clear <id>` | Remove the owner rule with the given id and revert its sessions |
+
+**Examples:**
+
+```sh
+# Show the current account and suggested plan
+claude-stats account
+
+# Recompute attribution across the whole store (dry run first)
+claude-stats account reattribute --dry-run
+claude-stats account reattribute
+
+# Assign a path glob to a specific account
+claude-stats account own --account <uuid> --path "~/repos/work/**"
+
+# List and clear ownership rules
+claude-stats account own --list
+claude-stats account own --clear 3
+
+# Show project clusters ranked by cost
+claude-stats account classify
+```
+
+---
+
+## `plan-advisor`
+
+Size Team vs Enterprise seats for a company-wide Claude rollout from a headcount and a technical-role fraction. Prints a scenario table across adoption levels — seat counts, whether each fits Team's seat range, procurement motion, and a cost projection per plan — with the source data's staleness warning. Never picks a plan for you.
+
+```
+claude-stats plan-advisor --headcount <n> --technical-fraction <pct> [options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--headcount <n>` | _(required)_ | Total company headcount (whole number, at least 1) |
+| `--technical-fraction <pct>` | _(required)_ | Share of headcount that would get a Claude Code seat, as a fraction 0–1 or a percentage like `50` |
+| `--tier-mix <light,typical,power>` | Anthropic's benchmark mix | Optional measured light/typical/power intensity split (e.g. `0.5,0.4,0.1`); must sum to 1 |
+| `--compliance` | _(off)_ | Surface the compliance trigger prominently in the output. Does not change the numbers or pick a plan |
+
+The scenario table is computed for adoption fractions 25% / 50% / 75% / 100% of the technical population. Every dollar figure is an estimate resting on the tier-mix assumption and the negotiated Enterprise seat floor — not a quote; re-verify current pricing at claude.com/pricing before purchasing. Two questions are always left open for the user to decide, never resolved by this command: whether their compliance posture requires Enterprise independent of seat count, and which spend-limit philosophy (pooled vs per-user) they prefer. See the `license-advisor` skill (`skills/license-advisor/SKILL.md`) for an agent-guided walkthrough of the same tradeoffs.
+
+**Examples:**
+
+```sh
+# Size seats for a 400-person company, half technical roles
+claude-stats plan-advisor --headcount 400 --technical-fraction 0.5
+
+# With a measured usage-intensity split instead of the default benchmark mix
+claude-stats plan-advisor --headcount 400 --technical-fraction 0.5 --tier-mix 0.6,0.3,0.1
+
+# Surface the compliance trigger prominently
+claude-stats plan-advisor --headcount 200 --technical-fraction 0.25 --compliance
+```
+
+---
+
 ## `export`
 
 Export raw session data to JSON or CSV for use in other tools.
@@ -381,6 +468,76 @@ claude-stats spending --period week --json | jq '.topSessions'
 
 ---
 
+## `cost-per-task`
+
+Show **cost per successful task** — equivalent-API dollars spent per *shipped / confirmed* task, overall and per model. This is an outcome-cost metric: it divides cost over observable attempts by the number that succeeded, rather than stopping at tokens.
+
+```
+claude-stats cost-per-task [options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--period <period>` | `month` | `day`, `week`, `month`, or `all` |
+| `--project <path>` | _(all projects)_ | Filter to one project |
+| `--account <uuid>` | _(all accounts)_ | Filter to a specific Anthropic account UUID |
+| `--repo <url>` | _(all repos)_ | Filter to a specific git remote URL |
+| `--include-ci` | _(off)_ | Include CI/automated sessions |
+| `--by-model` | _(off)_ | Show the per-model breakdown table |
+| `--timezone <tz>` | System timezone | IANA timezone for period boundaries |
+| `--json` | _(off)_ | Output the full report as JSON |
+
+**What it shows:**
+
+- **Headline** — cost per successful task, with its decomposition: `mean cost per attempt ÷ success rate`.
+- **Coverage & labelling** — a task is one of four states (`success` / `failed` / `in-flight` / `unobservable`). The success rate is computed over the **observable** subset (success ∪ failed) only; `coverage` and the labelled share are reported beside it. If coverage is low, the report leads with mean cost per attempt and warns.
+- **Per-model table** (`--by-model`) — cost-per-success and success rate by dominant model (suppressed below a minimum number of observable tasks).
+
+Outcome is proxied from git activity and recap confidence unless you label a task explicitly with `task-outcome`. A note: `--period all` on a cold cache is slow (per-day git enrichment) — run `recap precompute` first to warm it.
+
+**Examples:**
+
+```sh
+# This month's cost per successful task
+claude-stats cost-per-task
+
+# Last 7 days, with the per-model breakdown
+claude-stats cost-per-task --period week --by-model
+
+# As JSON
+claude-stats cost-per-task --json
+```
+
+---
+
+## `task-outcome`
+
+Label a task's outcome so the cost-per-task metric rests on ground truth instead of a proxy. Explicit labels override the git/confidence proxy.
+
+```
+claude-stats task-outcome <item> <success|partial|fail>
+claude-stats task-outcome <item> --clear
+```
+
+`<item>` is an id prefix or prompt substring from **today's** recap (the same selector style as `recap correct hide`/`rename`). Use `--clear` to remove an existing label.
+
+Labelling is a human action — the read-only MCP server cannot set labels, which keeps the producer of the number (the model) separate from the judge of success (you). The same control is also available per-task in the VS Code dashboard webview.
+
+**Examples:**
+
+```sh
+# Mark a task as successfully shipped
+claude-stats task-outcome a1b2c3 success
+
+# Mark by prompt substring
+claude-stats task-outcome "refactor auth" partial
+
+# Remove a label
+claude-stats task-outcome a1b2c3 --clear
+```
+
+---
+
 ## `mcp`
 
 Start a local MCP server over stdio for AI agent access to your usage stats.
@@ -401,6 +558,8 @@ No options. The server is intended to be launched by a Claude Code client (not r
 | `list_projects` | Per-project usage breakdown |
 | `get_status` | Database health, session count, last collection time |
 | `search_history` | Search prompt history by keyword |
+| `summarize_day` | Clustered digest of what you accomplished on a given day |
+| `get_cost_per_task` | Cost per successful task — outcome-cost overall and per model (read-only) |
 
 **Client configuration** — register via `claude mcp add`:
 
@@ -419,6 +578,7 @@ The VS Code extension auto-registers this in `~/.claude.json` on first activatio
 - "How many tokens have I used this week?"
 - "What were my most expensive sessions today?"
 - "Which projects am I spending the most on?"
+- "What's my cost per successful task, by model?"
 
 ---
 
@@ -467,6 +627,39 @@ Use 'status' for database metrics.
 
 ---
 
+## `purge`
+
+Delete claude-stats data from this machine and unregister the MCP server. **Dry
+run by default** — without `--yes` it only prints what *would* be deleted and
+exits without changing anything.
+
+```
+claude-stats purge [--yes] [--include-db] [--backup-cloud]
+```
+
+| Option | Description |
+|---|---|
+| _(none)_ | Dry run: preview what would be deleted; deletes nothing |
+| `--yes` | Actually delete claude-stats data (archive/bundle files); also unregisters the MCP server from `~/.claude.json` |
+| `--include-db` | Also delete the SQLite database `~/.claude-stats/stats.db` (otherwise the DB is kept) |
+| `--backup-cloud` | Also describe/target the encrypted cloud backup copy for this device (other devices keep their own copies) |
+
+```sh
+# Preview only (safe)
+claude-stats purge
+
+# Delete local data but keep the database
+claude-stats purge --yes
+
+# Delete everything including the database
+claude-stats purge --yes --include-db
+```
+
+See [backup-and-sync.md](backup-and-sync.md#removing-your-data) for the cloud
+scope and the VS Code **Delete All Stored Data…** equivalent.
+
+---
+
 ## VS Code Extension
 
 The optional VS Code extension embeds the dashboard directly inside the editor. It provides:
@@ -474,6 +667,7 @@ The optional VS Code extension embeds the dashboard directly inside the editor. 
 - **Automatic collection** — watches `~/.claude/projects/` for file changes and runs incremental collection automatically. No need to run `claude-stats collect` manually.
 - **Dashboard panel** — the same interactive Chart.js dashboard as `serve`, displayed in a VS Code webview tab (opened via the Command Palette: **Claude Stats: Open Dashboard**). Updates automatically after each collection.
 - **Status bar item** — shows today's token count and estimated cost in the bottom bar; click to open the dashboard. Updates automatically after each collection.
+- **Optional backup & sync** — **Claude Stats: Set Up Backup & Sync…** turns on optional, end-to-end-encrypted backup and cross-device sync via a cloud folder you already use; **Claude Stats: Delete All Stored Data…** removes it. See [backup-and-sync.md](backup-and-sync.md).
 
 ### Installation
 

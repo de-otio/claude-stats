@@ -5,9 +5,9 @@
 import { Command } from "commander";
 import { collect } from "../aggregator/index.js";
 import { Store, validateTag } from "../store/index.js";
-import { printSummary, printStatus, printSearchResults, printSessionList, printSessionDetail, printTrend, printSpendingReport } from "../reporter/index.js";
+import { printSummary, printStatus, printSearchResults, printSessionList, printSessionDetail, printTrend, printSpendingReport, periodRange } from "../reporter/index.js";
 import { searchHistory } from "../history/index.js";
-import { loadConfig, saveConfig } from "../config.js";
+import { loadConfig, saveConfig, createJudgeProviderFromConfig } from "../config.js";
 import { checkThresholds } from "../alerts.js";
 import { formatCost } from "@claude-stats/core/pricing";
 import { buildDashboard } from "../dashboard/index.js";
@@ -21,6 +21,11 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as readline from "node:readline";
 import { initCliI18n, t } from "../i18n.js";
+import { registerAccountCommands } from "./account-commands.js";
+import { registerOtelCommands } from "./otel-commands.js";
+import { registerRepairCommands } from "./repair-commands.js";
+import { registerPlanAdvisorCommands } from "./plan-advisor-commands.js";
+import { registerSyncCommands } from "./sync-commands.js";
 import {
   loadSyncConfig,
   saveSyncConfig,
@@ -28,7 +33,6 @@ import {
   savePersistedConfig,
   removeSyncConfig,
   discoverConfig,
-  syncSessions,
   getSyncStatus,
   deriveAccountId,
   generateUserSalt,
@@ -40,6 +44,7 @@ import {
   type SyncConfig,
   type PersistedSyncConfig,
 } from "../sync/index.js";
+import { paths } from "@claude-stats/core/paths";
 
 export async function buildCli(): Promise<Command> {
   // Pre-parse --locale from argv before commander processes it
@@ -124,6 +129,8 @@ export async function buildCli(): Promise<Command> {
       t("cli:commands.reportPeriod"),
       "all"
     )
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
     .option("--timezone <tz>", t("cli:commands.reportTimezone"))
     .option("--source <entrypoint>", t("cli:commands.reportSource"))
     .option("--include-ci", t("cli:commands.reportIncludeCi"))
@@ -133,12 +140,14 @@ export async function buildCli(): Promise<Command> {
     .option("--session <id>", t("cli:commands.reportSession"))
     .option("--html [outfile]", t("cli:commands.reportHtml"))
     .action(
-      (opts: {
+      async (opts: {
         project?: string;
         repo?: string;
         account?: string;
         source?: string;
         period?: string;
+        since?: string;
+        until?: string;
         timezone?: string;
         includeCi?: boolean;
         detail?: boolean;
@@ -166,12 +175,18 @@ export async function buildCli(): Promise<Command> {
             entrypoint: opts.source,
             tag: opts.tag,
             period: opts.period as "day" | "week" | "month" | "all" | undefined,
+            since: opts.since,
+            until: opts.until,
             timezone: opts.timezone,
             includeCI: opts.includeCi,
           };
           if (opts.html) {
             const data = buildDashboard(store, reportOpts);
-            const html = renderDashboard(data);
+            const { attachCostPerTask } = await import("../dashboard/index.js");
+            await attachCostPerTask(store, data, reportOpts);
+            // Pass the CLI translator so the exported HTML is localized; without
+            // it every label (not just this card) renders as a raw i18n key.
+            const html = renderDashboard(data, t);
             const today = new Date().toISOString().slice(0, 10);
             const outfile = typeof opts.html === "string" && opts.html.length > 0
               ? opts.html
@@ -193,6 +208,13 @@ export async function buildCli(): Promise<Command> {
           } else {
             printSummary(store, reportOpts);
           }
+        } catch (err) {
+          if (err instanceof RangeError) {
+            console.error(t("cli:errors.invalidDateRange", { message: err.message }));
+            process.exitCode = 1;
+            return;
+          }
+          throw err;
         } finally {
           store.close();
         }
@@ -203,6 +225,8 @@ export async function buildCli(): Promise<Command> {
     .command("spending")
     .description(t("cli:commands.spending"))
     .option("--period <period>", t("cli:commands.spendingPeriod"), "day")
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
     .option("--project <path>", t("cli:commands.reportProject"))
     .option("--model <name>", t("cli:commands.spendingModel"))
     .option("--top <n>", t("cli:commands.spendingTop"), "5")
@@ -212,6 +236,8 @@ export async function buildCli(): Promise<Command> {
     .option("--account <uuid>", t("cli:commands.reportAccount"))
     .action((opts: {
       period?: string;
+      since?: string;
+      until?: string;
       project?: string;
       model?: string;
       top?: string;
@@ -225,6 +251,8 @@ export async function buildCli(): Promise<Command> {
       try {
         printSpendingReport(store, {
           period: opts.period as "day" | "week" | "month" | "all" | undefined,
+          since: opts.since,
+          until: opts.until,
           projectPath: opts.project,
           model: opts.model,
           top: opts.top ? parseInt(opts.top, 10) : 5,
@@ -233,6 +261,155 @@ export async function buildCli(): Promise<Command> {
           timezone: opts.timezone,
           accountUuid: opts.account,
         });
+      } catch (err) {
+        if (err instanceof RangeError) {
+          console.error(t("cli:errors.invalidDateRange", { message: err.message }));
+          process.exitCode = 1;
+          return;
+        }
+        throw err;
+      } finally {
+        store.close();
+      }
+    });
+
+  program
+    .command("cost-per-task")
+    .description(t("cli:commands.costPerTask"))
+    .option("--period <period>", t("cli:commands.costPerTaskPeriod"), "month")
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
+    .option("--project <path>", t("cli:commands.reportProject"))
+    .option("--account <uuid>", t("cli:commands.reportAccount"))
+    .option("--repo <url>", t("cli:commands.reportRepo"))
+    .option("--include-ci", t("cli:commands.reportIncludeCi"))
+    .option("--by-model", t("cli:commands.costPerTaskByModel"))
+    .option("--timezone <tz>", t("cli:commands.reportTimezone"))
+    .option("--json", t("cli:commands.spendingJson"))
+    .option("--calibrate", t("cli:commands.costPerTaskCalibrate"))
+    .option("--llm-judge", t("cli:commands.costPerTaskLlmJudge"))
+    .action(async (opts: {
+      period?: string;
+      since?: string;
+      until?: string;
+      project?: string;
+      account?: string;
+      repo?: string;
+      includeCi?: boolean;
+      byModel?: boolean;
+      timezone?: string;
+      json?: boolean;
+      calibrate?: boolean;
+      llmJudge?: boolean;
+    }) => {
+      loadCachedPricing();
+      const { buildCostPerTaskReport, buildCalibrationReport } = await import("../cost-per-task/index.js");
+      const { printCostPerTask } = await import("../reporter/index.js");
+      const { createEmbeddingProvider } = await import("../recap/embeddings.js");
+      const config = loadConfig();
+      // Phase D: --llm-judge (or config.llmJudge.enabled) builds the provider from
+      // config; null when endpoint/model are missing (graceful no-op + a warning).
+      const wantJudge = opts.llmJudge === true || config.llmJudge?.enabled === true;
+      const judgeProvider = wantJudge
+        ? createJudgeProviderFromConfig({ ...config, llmJudge: { ...config.llmJudge, enabled: true } })
+        : null;
+      if (wantJudge && !judgeProvider) {
+        process.stderr.write(t("cli:commands.costPerTaskLlmJudgeUnconfigured") + "\n");
+      }
+      const store = new Store();
+      await collect(store);
+      try {
+        let embeddingProvider = null;
+        try {
+          embeddingProvider = await createEmbeddingProvider({ mode: "auto" });
+        } catch {
+          embeddingProvider = null;
+        }
+        const common = {
+          period: opts.period as "day" | "week" | "month" | "all" | undefined,
+          since: opts.since,
+          until: opts.until,
+          projectPath: opts.project,
+          accountUuid: opts.account,
+          repoUrl: opts.repo,
+          includeCI: opts.includeCi,
+          tz: opts.timezone,
+          digestDeps: { embeddingProvider },
+          judgeProvider,
+          experimentalSignals: config.experimentalSignals === true,
+        };
+        if (opts.calibrate) {
+          // Diagnostic: agreement of the proxy/combiner with the user's labels.
+          // JSON-only so there is no localized prose to translate; pipe to jq.
+          const calibration = await buildCalibrationReport(store, common);
+          process.stdout.write(JSON.stringify(calibration, null, 2) + "\n");
+          return;
+        }
+        const report = await buildCostPerTaskReport(store, {
+          ...common,
+          byModel: opts.byModel === true,
+        });
+        printCostPerTask(report, process.stdout, { json: opts.json });
+      } catch (err) {
+        if (err instanceof RangeError) {
+          console.error(t("cli:errors.invalidDateRange", { message: err.message }));
+          process.exitCode = 1;
+          return;
+        }
+        throw err;
+      } finally {
+        store.close();
+      }
+    });
+
+  program
+    .command("task-outcome <item> [value]")
+    .description(
+      "Label a task's outcome (success|partial|fail) so the cost-per-task " +
+        "metric rests on ground truth instead of a proxy. <item> is an id " +
+        "prefix or prompt substring from today's recap; use --clear to remove.",
+    )
+    .option("--clear", "Remove any outcome label for the matched task")
+    .action(async (itemSelector: string, value: string | undefined, opts: { clear?: boolean }) => {
+      const { buildDailyDigest } = await import("../recap/index.js");
+      const { openCorrections, computeSignature } = await import("../recap/corrections.js");
+      const valid = new Set(["success", "partial", "fail"]);
+      if (!opts.clear) {
+        if (!value || !valid.has(value)) {
+          process.stderr.write(
+            `Provide an outcome: success | partial | fail (or --clear). Got "${value ?? ""}".\n`,
+          );
+          process.exit(1);
+        }
+      }
+      const store = new Store();
+      await collect(store);
+      try {
+        const digest = await buildDailyDigest(store, {});
+        const item = await resolveItem(digest, itemSelector);
+        if (!item) {
+          process.stderr.write(`No item matching "${itemSelector}" in today's digest.\n`);
+          process.exit(1);
+        }
+        const sig = computeSignature(item);
+        const client = openCorrections();
+        try {
+          if (opts.clear) {
+            // Remove every stored outcome action for this signature.
+            const outcomes = client.forSignature(sig).filter((a) => a.kind === "outcome");
+            for (const a of outcomes) client.remove(sig, a);
+            console.log(
+              outcomes.length > 0
+                ? `Cleared outcome label for "${item.id}".`
+                : `No outcome label set for "${item.id}".`,
+            );
+          } else {
+            client.add(sig, { kind: "outcome", value: value as "success" | "partial" | "fail" });
+            console.log(`Outcome recorded: "${item.id}" → ${value}.`);
+          }
+        } finally {
+          client.close();
+        }
       } finally {
         store.close();
       }
@@ -256,11 +433,24 @@ export async function buildCli(): Promise<Command> {
     .option("--format <fmt>", t("cli:commands.exportFormat"), "json")
     .option("--project <path>", t("cli:commands.exportProject"))
     .option("--period <period>", t("cli:commands.exportPeriod"), "all")
-    .action((opts: { format?: string; project?: string; period?: string }) => {
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
+    .option("--timezone <tz>", t("cli:commands.reportTimezone"))
+    .action((opts: { format?: string; project?: string; period?: string; since?: string; until?: string; timezone?: string }) => {
       const store = new Store();
       try {
+        const { since, until } = periodRange(
+          {
+            period: opts.period as "day" | "week" | "month" | "all" | undefined,
+            since: opts.since,
+            until: opts.until,
+          },
+          opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+        );
         const rows = store.getSessions({
           projectPath: opts.project,
+          since: since > 0 ? since : undefined,
+          until: since > 0 ? until : undefined,
         });
 
         if (opts.format === "csv") {
@@ -293,6 +483,13 @@ export async function buildCli(): Promise<Command> {
         } else {
           console.log(JSON.stringify(rows, null, 2));
         }
+      } catch (err) {
+        if (err instanceof RangeError) {
+          console.error(t("cli:errors.invalidDateRange", { message: err.message }));
+          process.exitCode = 1;
+          return;
+        }
+        throw err;
       } finally {
         store.close();
       }
@@ -517,17 +714,31 @@ export async function buildCli(): Promise<Command> {
     .command("dashboard")
     .description(t("cli:commands.dashboard"))
     .option("--period <period>", t("cli:commands.dashboardPeriod"), "all")
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
     .option("--project <path>", t("cli:commands.dashboardProject"))
     .option("--repo <url>", t("cli:commands.dashboardRepo"))
-    .action((opts: { period?: string; project?: string; repo?: string }) => {
+    .action(async (opts: { period?: string; since?: string; until?: string; project?: string; repo?: string }) => {
       const store = new Store();
       try {
-        const data = buildDashboard(store, {
+        const dashOpts = {
           period: opts.period as "day" | "week" | "month" | "all" | undefined,
+          since: opts.since,
+          until: opts.until,
           projectPath: opts.project,
           repoUrl: opts.repo,
-        });
+        };
+        const data = buildDashboard(store, dashOpts);
+        const { attachCostPerTask } = await import("../dashboard/index.js");
+        await attachCostPerTask(store, data, dashOpts);
         console.log(JSON.stringify(data, null, 2));
+      } catch (err) {
+        if (err instanceof RangeError) {
+          console.error(t("cli:errors.invalidDateRange", { message: err.message }));
+          process.exitCode = 1;
+          return;
+        }
+        throw err;
       } finally {
         store.close();
       }
@@ -769,7 +980,9 @@ export async function buildCli(): Promise<Command> {
                 ? `merge with ${action.otherSignature.projectPath}`
                 : action.kind === "split"
                   ? `split segment ${action.segmentId}`
-                  : "hide";
+                  : action.kind === "outcome"
+                    ? `outcome → ${action.value}`
+                    : "hide";
           console.log(
             `[${id}] ${sig.projectPath} | \`${sig.promptPrefix}\` | ${actionStr}`,
           );
@@ -942,6 +1155,106 @@ export async function buildCli(): Promise<Command> {
       } finally {
         store.close();
       }
+    });
+
+  // Account-attribution command groups (bodies filled in Phase 2).
+  registerAccountCommands(program);
+  registerOtelCommands(program);
+  registerRepairCommands(program);
+  registerPlanAdvisorCommands(program);
+  // Aggregate-only cloud sync: setup / sync / disconnect.
+  registerSyncCommands(program);
+
+  program
+    .command("purge")
+    .description(
+      "Permanently delete all locally stored claude-stats data (transcript archive " +
+        "and export bundles; the stats DB and cloud-sync config are opt-in via flags). " +
+        "Without --yes this is a dry run: it prints what would be deleted and exits.",
+    )
+    .option("--yes", "Actually perform the deletion (omit for a dry-run preview only)")
+    .option("--include-db", "Also delete the stats database (and its -wal/-shm sidecars)")
+    .option("--also-cloud", "Also remove local cloud-sync configuration and clear auth tokens (org/team plane)")
+    .option(
+      "--backup-cloud",
+      "Also delete THIS DEVICE's copy in your personal backup location (Dropbox/iCloud/Drive/OneDrive/" +
+        "local folder). Other enrolled devices keep their own copies until they too run this.",
+    )
+    .action(async (opts: { yes?: boolean; includeDb?: boolean; alsoCloud?: boolean; backupCloud?: boolean }) => {
+      const targets = [paths.archiveDir, paths.bundleDir];
+      if (opts.includeDb) targets.push(paths.statsDb);
+
+      const { describePurgeScope } = await import("../ux/purge-scope.js");
+      const backupTarget = loadConfig().backup?.target;
+      const cloudScope = describePurgeScope("also-cloud");
+
+      if (!opts.yes) {
+        console.log("Dry run — nothing was deleted. Pass --yes to actually purge.\n");
+        console.log("Would delete:");
+        for (const target of targets) console.log(`  - ${target}`);
+        if (!opts.includeDb) {
+          console.log(`  (stats DB at ${paths.statsDb} would be KEPT — pass --include-db to delete it)`);
+        }
+        console.log("Would unregister the claude-stats MCP server from ~/.claude.json.");
+        if (opts.alsoCloud) {
+          console.log("Would remove local cloud-sync configuration and clear auth tokens (org/team plane).");
+        }
+        if (opts.backupCloud) {
+          if (backupTarget) {
+            console.log(`  - This device's shards in your backup location (${backupTarget})`);
+            console.log(`  Note: ${cloudScope.otherDevicesNote}`);
+          } else {
+            console.log("  (--backup-cloud requested, but backup/sync isn't configured on this device — nothing to delete there.)");
+          }
+        }
+        return;
+      }
+
+      const { purgeAllData } = await import("../archive/index.js");
+      const result = purgeAllData({ deleteDb: opts.includeDb === true });
+
+      for (const outcome of result.outcomes) {
+        if (outcome.error) {
+          console.error(`Failed to delete ${outcome.target}: ${outcome.error}`);
+        } else if (outcome.existed) {
+          console.log(`Deleted ${outcome.target}`);
+        }
+      }
+      console.log(
+        result.unregistered
+          ? "Unregistered the claude-stats MCP server from ~/.claude.json."
+          : "MCP server was not registered (or unregister failed) — no change needed there.",
+      );
+
+      if (opts.alsoCloud) {
+        clearTokens();
+        removeSyncConfig();
+        console.log("Removed local cloud-sync configuration and cleared auth tokens (org/team plane).");
+      }
+
+      if (opts.backupCloud) {
+        if (!backupTarget) {
+          console.log("Backup/sync isn't configured on this device — nothing to delete from the cloud copy.");
+        } else {
+          // This device's identity/DEK bootstrap (recovery-key unwrap for a
+          // headless CLI run) isn't wired into this command yet — the deletion
+          // mechanics themselves (`purgeDeviceCloudCopy`) are implemented and
+          // tested in ux/purge-scope.ts, ready to be called once that identity
+          // assembly lands. Until then, be explicit rather than silently no-op.
+          console.log(
+            "Cloud backup-copy deletion for this device isn't wired into the CLI yet " +
+              "(needs this device's enrolled backup identity). Local data has still been purged; " +
+              "delete this device's subfolder from your backup location manually if needed.",
+          );
+        }
+        console.log(cloudScope.otherDevicesNote);
+      }
+
+      if (!result.ok) {
+        process.exitCode = 1;
+        return;
+      }
+      console.log("\nPurge complete.");
     });
 
   return program;

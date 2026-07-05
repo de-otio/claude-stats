@@ -130,6 +130,12 @@ At the top of the page, five stats are always visible:
 | **Cache** | Cache efficiency percentage |
 | **Cost** | Estimated API-equivalent cost |
 
+### Cost-per-successful-task card
+
+Below the summary bar on the Overview tab, a card shows **cost per successful task** for the selected period — equivalent-API dollars per shipped/confirmed task, with the `mean cost per attempt ÷ success rate` decomposition. Badges report coverage (how many tasks were observable) and how many outcomes are user-labelled versus proxied, plus the four-state outcome breakdown (`success` / `failed` / `in-flight` / `unobservable`) and a per-model table. When coverage is low, the card warns and leads with the mean cost per attempt.
+
+In the **VS Code dashboard webview only**, each task row also carries `success` / `partial` / `fail` / clear controls — labelling a task overrides the proxy and updates the metric on refresh. The read-only `serve` HTTP dashboard renders the card without these controls and without per-task prompt text. (The card caps an "All" period to the current month to avoid a slow cold-cache pass; use the CLI `cost-per-task --period all` for the full window.)
+
 ### Chart panels
 
 | Panel | Chart type | What it shows |

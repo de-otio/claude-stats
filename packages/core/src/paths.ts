@@ -20,17 +20,35 @@ export const paths = {
   /** ~/.claude/cache/changelog.md — used to detect Claude Code version updates */
   changelogFile: path.join(home, ".claude", "cache", "changelog.md"),
 
+  /** ~/.claude/sessions/ — per-process live-session state files (anchor pins) */
+  sessionsDir: path.join(home, ".claude", "sessions"),
+
   /** ~/.claude-stats/ — tool's own storage, separate from Claude Code's directory */
   statsDir: path.join(home, ".claude-stats"),
 
-  /** ~/.claude-stats/stats.db */
-  statsDb: path.join(home, ".claude-stats", "stats.db"),
+  /** ~/.claude-stats/stats.db — override with CLAUDE_STATS_DB (tests / a
+   *  disposable exercise DB) so tooling never has to touch the live DB. */
+  statsDb: process.env.CLAUDE_STATS_DB && process.env.CLAUDE_STATS_DB.length > 0
+    ? process.env.CLAUDE_STATS_DB
+    : path.join(home, ".claude-stats", "stats.db"),
 
   /** ~/.claude-stats/quarantine/ */
   quarantineDir: path.join(home, ".claude-stats", "quarantine"),
 
-  /** ~/.claude-stats/config.toml */
-  configFile: path.join(home, ".claude-stats", "config.toml"),
+  /** ~/.claude-stats/archive/ — opt-in raw transcript mirror (Phase A). Holds
+   *  the byte-range copies of session JSONL files, `0700`/`0600`, pruned by real
+   *  last-activity (never mtime). Path components under here are validated with
+   *  the shared path-safety guard (see types/shard.ts). */
+  archiveDir: path.join(home, ".claude-stats", "archive"),
+
+  /** ~/.claude-stats/bundle/ — per-device append-only shard bundle staged for
+   *  backup/sync (Phase C). Contains `manifest.json` + one `<device-id>/` subtree
+   *  per enrolled device; each device writes only its own subtree so writers are
+   *  partitioned and the bundle is conflict-free by construction. */
+  bundleDir: path.join(home, ".claude-stats", "bundle"),
+
+  /** ~/.claude-stats/config.json (config.ts is the authoritative loader) */
+  configFile: path.join(home, ".claude-stats", "config.json"),
 
   /** ~/.claude.json — Claude Code's main config (account info, OAuth) */
   claudeConfigFile: path.join(home, ".claude.json"),

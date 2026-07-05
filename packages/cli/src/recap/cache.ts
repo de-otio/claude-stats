@@ -46,6 +46,18 @@ export interface SnapshotHashInputs {
    * Optional for back-compat: absent in v1/v2 cache entries.
    */
   perSessionLastMessageUuid?: Readonly<Record<string, string | null>>;
+  /**
+   * Active session-level filters (projectPath / accountUuid / repoUrl /
+   * includeCI).  Absent means "no filter" (equivalent to all wildcards).
+   * Folded into the cache key so that a filtered and an unfiltered digest
+   * for the same day never collide.
+   */
+  filter?: {
+    projectPath?: string;
+    accountUuid?: string;
+    repoUrl?: string;
+    includeCI?: boolean;
+  };
 }
 
 /**
@@ -72,12 +84,26 @@ export function computeSnapshotHash(inputs: SnapshotHashInputs): string {
   // for the incremental patcher (v3.06) to diff which specific session changed,
   // but it does not affect cache key correctness and must not change hashes
   // for existing entries (back-compat with precompute.ts and v1/v2 entries).
+
+  // Deterministic filter part: absent filter → stable "no filter" sentinel so
+  // existing unfiltered hashes are unchanged (only the algo:2 bump applies).
+  const f = inputs.filter;
+  const filterPart = f !== undefined
+    ? `proj=${f.projectPath ?? '*'}|acct=${f.accountUuid ?? '*'}|repo=${f.repoUrl ?? '*'}|ci=${f.includeCI ? '1' : '0'}`
+    : 'proj=*|acct=*|repo=*|ci=0';
+
   const parts = [
+    // Digest-algorithm version. Bump whenever digest *computation* changes so
+    // that entries cached by an older algorithm are invalidated (cache miss →
+    // recompute). v2: per-segment cost attribution + folded subagent cost +
+    // costByModel (the cost-attribution fix).
+    `algo:2`,
     `date:${inputs.date}`,
     `tz:${inputs.tz}`,
     `projects:${sortedPaths.join(',')}`,
     `maxUuid:${inputs.maxMessageUuid ?? 'null'}`,
     `commits:${commitPart}`,
+    `filter:${filterPart}`,
   ];
 
   return crypto
@@ -118,7 +144,13 @@ export interface CacheClient {
 }
 
 const DEFAULT_ROOT_DIR = path.join(os.homedir(), '.claude-stats', 'recap-cache');
-const DEFAULT_MAX_ENTRIES = 30;
+// A "month" cost-per-task report builds ~31 per-day digests; the dashboard also
+// caches filtered variants (all-accounts + each account) and the daily-recap
+// feature/precompute share this dir. At 30 a single month-view self-evicted and
+// went cold on every revisit. Entries are small (~17 KB median) and the cache is
+// pure derived data, so a higher cap is cheap (~3.4 MB at 200) and keeps month
+// warm across the common filter combinations. Prune is still oldest-by-mtime.
+const DEFAULT_MAX_ENTRIES = 200;
 
 /**
  * Parse a cache file's raw JSON into a { digest, inputs? } shape.

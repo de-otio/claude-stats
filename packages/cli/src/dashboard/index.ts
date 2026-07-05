@@ -4,10 +4,13 @@
  */
 import type { Store, SessionRow } from "../store/index.js";
 import type { ReportOptions } from "../reporter/index.js";
-import { periodStart } from "../reporter/index.js";
-import { estimateCost, lookupPlanFee } from "@claude-stats/core/pricing";
+import { periodRange } from "../reporter/index.js";
+import { estimateCost, lookupPlanFee, PLAN_FEES } from "@claude-stats/core/pricing";
 import type { UsageWindow } from "@claude-stats/core/types";
+import { classifyUsageIntensity } from "@claude-stats/core/planMechanics";
 import { readClaudeAccount } from "../account.js";
+import { resolveAccountFee, type Config } from "../config.js";
+import { buildFeeAttribution, type FeeAttribution } from "./fee-attribution.js";
 import {
   scoreComplexity,
   scoreToTier,
@@ -16,8 +19,43 @@ import {
   type ModelEfficiencyData,
 } from "../classifier.js";
 import { attributeToolCosts, groupByMcpServer, detectAnomalies, aggregateMcpServerUsage } from "../spending.js";
+import type { CostPerTaskReport, CostPerTaskOptions } from "../cost-per-task/index.js";
+import type { CalibrationReport } from "../cost-per-task/calibration.js";
 import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor, modelClass } from "@claude-stats/core/energy";
 import type { ModelClass } from "@claude-stats/core/energy";
+import { decodeHtmlEntities } from "@claude-stats/core/sanitize";
+
+/**
+ * Human-readable, entity-decoded, length-capped preview of a stored prompt.
+ * `prompt_text` is persisted HTML-escaped (see {@link sanitizePromptText}); the
+ * dashboard renders previews on a Chart.js canvas and in HTML cells, neither of
+ * which decode entities, so decode here at the display boundary.
+ */
+function promptPreviewOf(text: string | null | undefined): string {
+  const decoded = decodeHtmlEntities(text);
+  if (!decoded) return "(no prompt text)";
+  return decoded.length > 120 ? decoded.slice(0, 120) + "..." : decoded;
+}
+
+/**
+ * Format an epoch-ms instant as YYYY-MM-DD in the given IANA timezone.
+ *
+ * `new Date(ms).toISOString().slice(0, 10)` (the pattern this replaces at
+ * every `*Iso` field below) reads the **UTC** calendar date, which is wrong
+ * for any positive-offset timezone at local midnight — e.g. midnight
+ * 2026-06-01 in Europe/Berlin (UTC+2 in June) is 2026-05-31T22:00:00Z, so
+ * `.toISOString().slice(0,10)` reports "2026-05-31". Found while manually
+ * verifying the custom-date-range feature (doc/analysis/custom-date-range):
+ * a dashboard request for `since=2026-06-01` echoed back `sinceIso:
+ * "2026-05-31"`. `since`/`until` are always constructed as local-tz
+ * midnight (via `periodStart`/`periodRange`/`dayWindowInTz`), so they must
+ * be read back out in the same timezone, not UTC.
+ */
+function ymdInTz(ms: number, tz: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date(ms));
+}
 
 type WorkCategory = "exploring" | "editing" | "running" | "researching" | "planning";
 
@@ -73,6 +111,13 @@ export interface DashboardData {
   period: string;
   timezone: string;
   sinceIso: string | null;    // ISO date of period start, or null for "all time"
+  /**
+   * ISO date of period end (resolved `until`). Optional (not `string | null`)
+   * so pre-existing `DashboardData` test fixtures outside this task's file
+   * allowlist that predate this field keep compiling; `buildDashboard` always
+   * populates it.
+   */
+  untilIso?: string;
   summary: DashboardSummary;
   byDay: Array<{
     date: string;             // YYYY-MM-DD
@@ -160,8 +205,22 @@ export interface DashboardData {
     truncatedOutputWindowPercent: number;
     totalWindows: number;
     // Recommendation
-    recommendedPlan: string | null;  // "pro", "max_5x", "max_20x", "team_standard", "team_premium", or null
+    recommendedPlan: string | null;  // "pro", "max_5x", "max_20x", "team_standard", "team_premium", "enterprise", or null
     currentPlanVerdict: string;      // "good-value" | "underusing" | "no-plan"
+    /**
+     * Usage-intensity classification of `monthlyEquiv` against Anthropic's
+     * per-user Claude Code benchmarks (from `classifyUsageIntensity` in
+     * @claude-stats/core/planMechanics). Optional so full-literal
+     * planUtilization fixtures typecheck without it; when present it is
+     * populated whenever planUtilization is non-null (byWeek.length > 0) and
+     * is `null` only when planUtilization itself is null. Computation is B1's;
+     * this is the declared contract only.
+     */
+    usageIntensityTier?: {
+      tier: "light" | "typical" | "power";
+      benchmarkUsd: number;
+      source: "anthropic-benchmark";
+    } | null;
     // Per-account breakdown (always populated when planUtilization is present)
     byAccount: Array<{
       accountId: string;             // truncated UUID for display
@@ -173,10 +232,30 @@ export interface DashboardData {
       planVerdict: string;
     }>;
   } | null;
+  /** Subscription-fee-to-project attribution for the selected period. */
+  feeAttribution: FeeAttribution | null;
   modelEfficiency: ModelEfficiencyData | null;
   contextAnalysis: ContextAnalysis | null;
   spending: DashboardSpending | null;
   energy: DashboardEnergy | null;
+  /**
+   * Cost-per-successful-task metric for the current period/filter, or null.
+   * `buildDashboard` (synchronous) always leaves this null; it is populated
+   * asynchronously by {@link attachCostPerTask} in the full-dashboard renderers
+   * (serve / VS Code panel / CLI `dashboard`), because the metric iterates the
+   * async recap pipeline per day and the lightweight callers (statusBar, MCP
+   * `get_stats`) must not pay that cost.
+   */
+  costPerTask: CostPerTaskReport | null;
+  /**
+   * Calibration of the outcome proxy/signals against the user's labels. Null
+   * until {@link attachCalibration} runs (VS Code panel only — it drives the
+   * in-dashboard "is the success rate trustworthy yet" view + the activation
+   * toggle). Sync signals only (no per-refresh LLM-judge calls).
+   */
+  calibration: CalibrationReport | null;
+  /** Whether the experimental accuracy signals are currently enabled (config). */
+  experimentalSignalsEnabled: boolean;
   recommendations: Recommendation[];
   /** All accounts present in the store for the current period — independent of
    * the account filter. Drives the dashboard's account selector. */
@@ -363,16 +442,46 @@ export interface ContextAnalysis {
 }
 
 
+/**
+ * Plan-fee ladder used to derive the `recommendedPlan` thresholds, in
+ * ascending price order. Deliberately an explicit list rather than
+ * `Object.entries(PLAN_FEES)` — the latter includes the `team` alias
+ * (duplicate of `team_standard`'s fee, in insertion order, not price order)
+ * and would corrupt the derived midpoints.
+ */
+const PLAN_FEE_LADDER = ["pro", "team_standard", "max_5x", "team_premium", "max_20x"] as const;
+
+/**
+ * Recommendation thresholds: the midpoint between each adjacent pair of fees
+ * on the ladder. Derived from `PLAN_FEES` (core/pricing.ts) instead of
+ * hand-coded, so the two never drift apart (analysis 03's drift lesson).
+ * With pro 20 / team_standard 25 / max_5x 100 / team_premium 125 / max_20x 200:
+ *   22.5 / 62.5 / 112.5 / 162.5 — matches the previously hand-coded constants.
+ */
+export const PLAN_LADDER_THRESHOLDS: readonly number[] = PLAN_FEE_LADDER.slice(1).map(
+  (plan, i) => (PLAN_FEES[PLAN_FEE_LADDER[i]!]! + PLAN_FEES[plan]!) / 2,
+);
+
 export function buildDashboard(store: Store, opts: ReportOptions): DashboardData {
   const tz = opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const since = periodStart(opts.period, tz);
+  const { since, until } = periodRange(opts, tz);
+  // A custom since/until range has no preset name; downstream consumers (the
+  // returned `period` field, the "day"-only display gates below) need an
+  // unambiguous signal that this isn't one of the fixed presets.
+  const isCustomRange = Boolean(opts.since && opts.until);
 
+  // Include sessions ACTIVE in the period (last activity at/after `since`), not
+  // just those that STARTED in it. A session running across the period boundary
+  // (e.g. one straddling midnight into a new day/month) contributes cost, energy
+  // and active-hours — all filtered by MESSAGE timestamp below — so it must be
+  // counted here too, else the summary shows "0 sessions" beside a non-zero cost.
   const rows = store.getSessions({
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
     accountUuid: opts.accountUuid,
     entrypoint: opts.entrypoint,
-    since: since > 0 ? since : undefined,
+    activeSince: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
     includeCI: opts.includeCI ?? false,
   });
 
@@ -426,8 +535,9 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     dayEntry.cacheCreationTokens += row.cache_creation_tokens;
     dayMap.set(dateStr, dayEntry);
 
-    // byHour (only for "day" period)
-    if (opts.period === "day" && row.first_timestamp != null) {
+    // byHour (only for "day" period, or a custom range that collapses to a
+    // single day — gets the same richer hourly display a period=day request gets)
+    if ((opts.period === "day" || (until - since) <= 86_400_000) && row.first_timestamp != null) {
       const h = parseInt(hourFmt.format(new Date(row.first_timestamp)), 10) % 24;
       const hourEntry = hourMap.get(h) ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 };
       hourEntry.inputTokens += row.input_tokens;
@@ -464,6 +574,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
     since: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
   });
 
   let totalCost = 0;
@@ -488,11 +599,13 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   // ── Fill empty day buckets for the full period range so charts always show
   //    all days in the selected window, not just days that have sessions ────
   if (since > 0) {
-    const todayStr = dayFmt.format(new Date());
+    // Cap at `until`'s own day, not always "today" — a historical custom range
+    // (e.g. last month) shouldn't fill days between its end and now.
+    const untilStr = dayFmt.format(new Date(until));
     let cursor = new Date(since);
     for (let i = 0; i < 400; i++) { // safety cap
       const dateStr = dayFmt.format(cursor);
-      if (dateStr > todayStr) break;
+      if (dateStr > untilStr) break;
       if (!dayMap.has(dateStr)) {
         dayMap.set(dateStr, { sessions: 0, prompts: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 });
       }
@@ -548,8 +661,8 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     .sort(([, a], [, b]) => b - a)
     .map(([entrypoint, sessions]) => ({ entrypoint, sessions }));
 
-  // ── Hourly breakdown (day period only) ───────────────────────────────────
-  const byHour: DashboardData["byHour"] = opts.period === "day"
+  // ── Hourly breakdown (day period, or a custom range collapsed to a single day) ──
+  const byHour: DashboardData["byHour"] = (opts.period === "day" || (until - since) <= 86_400_000)
     ? Array.from({ length: 24 }, (_, h) => {
         const e = hourMap.get(h) ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 };
         return { hour: String(h).padStart(2, "0"), ...e };
@@ -557,10 +670,37 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     : [];
 
   // ── Plan ROI metrics ─────────────────────────────────────────────────────
-  const planFee = opts.planFee ?? 0;
+  // An explicit CLI `--plan-fee` (opts.planFee) is a deliberate single-number
+  // override and wins. Otherwise per-account subscriptions are the source of
+  // truth: sum each in-scope account's resolved fee (explicit per-account fee →
+  // its plan-type default → telemetry-detected), so two different plans
+  // (e.g. personal Max 20x + work Team Premium) add up correctly.
+  const explicitPlanFee = opts.planFee && opts.planFee > 0 ? opts.planFee : 0;
+  // Synthetic config for per-account fee resolution: the dashboard receives the
+  // resolved pieces (accountFees map + any explicit global fee) rather than a
+  // full Config, so reconstruct the minimal shape resolveAccountFee reads.
+  const feeConfig: Config = { accountFees: opts.accountFees, plan: { monthly_fee: explicitPlanFee || undefined } };
+  const sumPerAccountFees = (): number => {
+    // Effective plan type per in-scope account: explicit per-account type →
+    // telemetry subscription_type → (legacy) global configured type.
+    const typeByAccount = new Map<string, string | null>();
+    for (const row of rows) {
+      const key = row.account_uuid ?? "(unknown)";
+      const prev = typeByAccount.get(key) ?? null;
+      typeByAccount.set(key, row.subscription_type ?? prev);
+    }
+    let total = 0;
+    for (const [key, subType] of typeByAccount) {
+      const effType = opts.accountFees?.[key]?.type ?? subType ?? opts.planType ?? null;
+      const resolved = resolveAccountFee(feeConfig, key, effType, typeByAccount.size);
+      if (resolved) total += resolved.monthlyFee;
+    }
+    return total;
+  };
+  const planFee = explicitPlanFee > 0 ? explicitPlanFee : sumPerAccountFees();
   const planMultiplier = planFee > 0 ? Math.round((totalCost / planFee) * 10) / 10 : 0;
   const costPerPrompt = totalPrompts > 0 ? totalCost / totalPrompts : 0;
-  const daysInPeriod = since > 0 ? Math.max(1, (Date.now() - since) / (24 * 60 * 60 * 1000)) : 30;
+  const daysInPeriod = since > 0 ? Math.max(1, (until - since) / (24 * 60 * 60 * 1000)) : 30;
   const dailyValueRate = totalCost / daysInPeriod;
 
   // ── Velocity + active hours ──────────────────────────────────────────────
@@ -569,12 +709,15 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   // across sessions first (rather than summing per-session durations) so that
   // overlapping parallel sessions — common when agents spawn subagents — don't
   // get double-counted.
+  // `Store.getMessageTimestamps` has no `until` param (out of this task's file
+  // allowlist to add one) — bound the upper edge here instead. A no-op for
+  // presets, where `until` is already ~now.
   const mergedTimestamps = store.getMessageTimestamps({
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
     accountUuid: opts.accountUuid,
     since: since > 0 ? since : undefined,
-  });
+  }).filter(t => t <= until);
   const IDLE_GAP_MS = 30 * 60_000;
   let totalActiveDurationMs = 0;
   for (let i = 1; i < mergedTimestamps.length; i++) {
@@ -660,6 +803,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
     since: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
   });
 
   // ── Weekly aggregation + plan utilization ──────────────────────────────
@@ -751,18 +895,11 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       }
     }
 
-    // Determine effective plan fee: use explicit --plan-fee, or auto-detect
-    // from the dominant account's subscription type, or sum across accounts
-    let effectivePlanFee = planFee;
-    if (effectivePlanFee <= 0) {
-      // Auto-detect: sum detected fees across all known accounts
-      let detectedTotal = 0;
-      for (const [, acct] of accountMap) {
-        const detected = lookupPlanFee(acct.subscriptionType);
-        if (detected) detectedTotal += detected;
-      }
-      if (detectedTotal > 0) effectivePlanFee = detectedTotal;
-    }
+    // `planFee` already resolves the effective subscription cost: an explicit
+    // --plan-fee, else the sum of each in-scope account's per-account fee (see
+    // sumPerAccountFees above). The per-account verdicts below use the same
+    // resolveAccountFee, so the weekly budget and the per-account rows agree.
+    const effectivePlanFee = planFee;
 
     const weeklyPlanBudget = effectivePlanFee > 0 ? effectivePlanFee / 4.33 : 0;
     const weeklyCosts = byWeek.map(w => w.estimatedCost);
@@ -785,16 +922,24 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     const truncatedOutputWindowPercent = byWindow.length > 0
       ? Math.round((truncatedCount / byWindow.length) * 1000) / 10 : 0;
 
-    // Plan recommendation based on weekly API-equivalent cost
+    // Plan recommendation based on weekly API-equivalent cost. Ladder thresholds
+    // are derived at module scope from PLAN_FEES (see PLAN_LADDER_THRESHOLDS).
     const monthlyEquiv = avgWeeklyCost * 4.33;
     let recommendedPlan: string | null = null;
     let currentPlanVerdict = "no-plan";
 
-    if (monthlyEquiv < 22.5) recommendedPlan = "pro";
-    else if (monthlyEquiv < 62.5) recommendedPlan = "team_standard";
-    else if (monthlyEquiv < 112.5) recommendedPlan = "max_5x";
-    else if (monthlyEquiv < 162.5) recommendedPlan = "team_premium";
-    else recommendedPlan = "max_20x";
+    if (monthlyEquiv < PLAN_LADDER_THRESHOLDS[0]!) recommendedPlan = "pro";
+    else if (monthlyEquiv < PLAN_LADDER_THRESHOLDS[1]!) recommendedPlan = "team_standard";
+    else if (monthlyEquiv < PLAN_LADDER_THRESHOLDS[2]!) recommendedPlan = "max_5x";
+    else if (monthlyEquiv < PLAN_LADDER_THRESHOLDS[3]!) recommendedPlan = "team_premium";
+    else if (monthlyEquiv <= PLAN_FEES.max_20x!) recommendedPlan = "max_20x";
+    else recommendedPlan = "enterprise";
+
+    // Usage-intensity classification: populated whenever planUtilization is
+    // non-null (this branch only runs when byWeek.length > 0); null only when
+    // planUtilization itself is null (the `else` branch below the containing
+    // `if`). B4 (template) renders the intensity card only when this is set.
+    const usageIntensityTier = classifyUsageIntensity(monthlyEquiv);
 
     if (effectivePlanFee > 0) {
       const utilRate = totalCost / effectivePlanFee;
@@ -812,13 +957,24 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       accountMap.delete("(unknown)");
       accountMap.set(claudeAcct.accountUuid, unknown);
     }
+    // Email labels persisted the last time each account was current, so the
+    // per-account breakdown shows a readable address for accounts OTHER than the
+    // currently-logged-in one instead of a truncated UUID (mirrors the fallback
+    // in buildAccountsForConfig).
+    const emailLabelByUuid = new Map(
+      store.listAccountsFull().map((a) => [a.accountUuid, a.emailLabel ?? null] as const),
+    );
     const byAccount: DashboardData["planUtilization"] extends { byAccount: infer T } | null ? T : never =
       Array.from(accountMap.entries())
         .sort(([, a], [, b]) => b.cost - a.cost)
         .map(([acctKey, acct]) => {
-          // Fall back to configured plan type when telemetry subscription_type is absent
-          const subscriptionType = acct.subscriptionType ?? opts.planType ?? null;
-          const detectedFee = lookupPlanFee(subscriptionType);
+          // Effective plan type, per account: an explicitly-configured per-account
+          // type wins, then telemetry's subscription_type, then the (legacy)
+          // global configured type. Two accounts can resolve to different plans.
+          const subscriptionType =
+            feeConfig.accountFees?.[acctKey]?.type ?? acct.subscriptionType ?? opts.planType ?? null;
+          // Prefer a user-configured per-account fee over the type-derived default.
+          const detectedFee = resolveAccountFee(feeConfig, acctKey, subscriptionType, accountMap.size)?.monthlyFee ?? null;
           let verdict = "no-plan";
           if (detectedFee && detectedFee > 0) {
             verdict = acct.cost >= detectedFee ? "good-value" : "underusing";
@@ -827,7 +983,9 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
             const share = effectivePlanFee * (acct.sessions / rows.length);
             verdict = acct.cost >= share ? "good-value" : "underusing";
           }
-          const email = claudeAcct?.accountUuid === acctKey ? claudeAcct.emailAddress : null;
+          const email = claudeAcct?.accountUuid === acctKey
+            ? claudeAcct.emailAddress
+            : (emailLabelByUuid.get(acctKey) ?? null);
           return {
             accountId: acctKey === "(unknown)" ? "(unknown)" : acctKey.slice(0, 8) + "...",
             emailAddress: email,
@@ -853,6 +1011,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       totalWindows: byWindow.length,
       recommendedPlan,
       currentPlanVerdict,
+      usageIntensityTier,
       byAccount,
     };
   }
@@ -862,6 +1021,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
     since: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
   });
 
   // ── Spending breakdown ──────────────────────────────────────────────────
@@ -870,6 +1030,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     repoUrl: opts.repoUrl,
     accountUuid: opts.accountUuid,
     since: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
   });
 
   // ── Energy dashboard ────────────────────────────────────────────────────
@@ -878,8 +1039,59 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     repoUrl: opts.repoUrl,
     accountUuid: opts.accountUuid,
     since: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
     timezone: tz,
   });
+
+  // ── Subscription-fee attribution ────────────────────────────────────────
+  // Distribute each account's monthly fee across the projects it used in the
+  // selected period, weighted by API-equivalent cost (sessionCostMap). Pure math
+  // lives in fee-attribution.ts; here we only assemble its inputs from `rows`.
+  let feeAttribution: FeeAttribution | null = null;
+  {
+    // Apply the same lone-"(unknown)" repair planUtilization uses, so the fee
+    // tab and the plan tab attribute usage to the same account.
+    const distinctKeys = new Set(rows.map(r => r.account_uuid ?? "(unknown)"));
+    let repairUnknownTo: string | null = null;
+    if (distinctKeys.size === 1 && distinctKeys.has("(unknown)")) {
+      const claudeAcct = readClaudeAccount();
+      if (claudeAcct) repairUnknownTo = claudeAcct.accountUuid;
+    }
+    const keyFor = (raw: string | null): string => {
+      const k = raw ?? "(unknown)";
+      return k === "(unknown)" && repairUnknownTo ? repairUnknownTo : k;
+    };
+
+    const costByAccountProject = new Map<string, { accountUuid: string; projectPath: string; cost: number }>();
+    const subTypeByAccount = new Map<string, string | null>();
+    for (const row of rows) {
+      const acct = keyFor(row.account_uuid);
+      if (row.subscription_type || !subTypeByAccount.has(acct)) {
+        subTypeByAccount.set(acct, row.subscription_type ?? subTypeByAccount.get(acct) ?? null);
+      }
+      const cost = sessionCostMap.get(row.session_id)?.cost ?? 0;
+      const mapKey = acct + "\u0000" + row.project_path;
+      const existing = costByAccountProject.get(mapKey);
+      if (existing) existing.cost += cost;
+      else costByAccountProject.set(mapKey, { accountUuid: acct, projectPath: row.project_path, cost });
+    }
+
+    const accountCount = subTypeByAccount.size;
+    const fees: Record<string, { monthlyFee: number; currency: string; label: string } | null> =
+      Object.create(null) as Record<string, { monthlyFee: number; currency: string; label: string } | null>;
+    for (const [acct, subType] of subTypeByAccount) {
+      const resolved = resolveAccountFee(feeConfig, acct, subType, accountCount);
+      fees[acct] = resolved
+        ? { monthlyFee: resolved.monthlyFee, currency: resolved.currency, label: opts.accountFees?.[acct]?.label ?? "" }
+        : null;
+    }
+
+    feeAttribution = buildFeeAttribution({
+      costByAccountProject: Array.from(costByAccountProject.values()),
+      fees,
+      periodDays: daysInPeriod,
+    });
+  }
 
   // ── Actionable recommendations ─────────────────────────────────────────
   const recommendations = buildRecommendations({
@@ -895,9 +1107,15 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
 
   return {
     generated: new Date().toISOString(),
-    period: opts.period ?? "all",
+    period: isCustomRange ? "custom" : (opts.period ?? "all"),
     timezone: tz,
-    sinceIso: since > 0 ? new Date(since).toISOString().slice(0, 10) : null,
+    sinceIso: since > 0 ? ymdInTz(since, tz) : null,
+    // `until` is the exclusive upper boundary (midnight of the day *after*
+    // the requested/effective end — see periodRange()/dayWindowInTz), but
+    // untilIso is a user-facing display/echo field (e.g. the toolbar's
+    // #until-date-input value) — subtract 1ms so it reports the inclusive
+    // last calendar day, matching what a user actually requested.
+    untilIso: ymdInTz(until - 1, tz),
     summary: {
       sessions: rows.length,
       prompts: totalPrompts,
@@ -937,10 +1155,14 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     byConversationCost,
     byWeek,
     planUtilization,
+    feeAttribution,
     modelEfficiency,
     contextAnalysis,
     spending,
     energy,
+    costPerTask: null,
+    calibration: null,
+    experimentalSignalsEnabled: false,
     recommendations,
     availableAccounts: (() => {
       // Always list accounts using the unfiltered period so the dropdown can
@@ -948,11 +1170,17 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       const claudeAcct = readClaudeAccount();
       const list = store.listAccounts({
         since: since > 0 ? since : undefined,
+        until: isCustomRange ? until : undefined,
         includeCI: opts.includeCI ?? false,
       });
+      const emailLabelByUuid = new Map(
+        store.listAccountsFull().map((a) => [a.accountUuid, a.emailLabel ?? null] as const),
+      );
       return list.map(a => ({
         accountUuid: a.accountUuid,
-        emailAddress: claudeAcct?.accountUuid === a.accountUuid ? claudeAcct.emailAddress : null,
+        emailAddress: claudeAcct?.accountUuid === a.accountUuid
+          ? claudeAcct.emailAddress
+          : (emailLabelByUuid.get(a.accountUuid) ?? null),
         subscriptionType: a.subscriptionType,
         sessionCount: a.sessionCount,
         isCurrent: claudeAcct?.accountUuid === a.accountUuid,
@@ -962,12 +1190,123 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   };
 }
 
+/**
+ * Populate `data.costPerTask` for a dashboard, asynchronously.
+ *
+ * Kept separate from the synchronous {@link buildDashboard} because the metric
+ * iterates the recap pipeline per day (async, git-enriched). Only the
+ * full-dashboard renderers call this; lightweight callers leave it null.
+ * Reuses the dashboard's period/account/project filters. Never throws — on any
+ * failure the card is simply omitted (returns the data unchanged).
+ */
+export async function attachCostPerTask(
+  store: Store,
+  data: DashboardData,
+  opts: ReportOptions,
+  extra?: Pick<CostPerTaskOptions, "digestDeps" | "correctionsClient" | "tz" | "nowMs"> & {
+    /**
+     * Include the per-task labelling list. ONLY the VS Code webview sets this —
+     * the list carries prompt text, so the `serve` LAN path and the CLI JSON
+     * export leave it off. See {@link CostPerTaskOptions.includeTasks}.
+     */
+    includeTasks?: boolean;
+    /**
+     * Fold the experimental accuracy signals into the live outcome (config-gated
+     * opt-in; off by default). The webview sets this from `config.experimentalSignals`.
+     */
+    experimentalSignals?: boolean;
+  },
+): Promise<DashboardData> {
+  data.experimentalSignalsEnabled = extra?.experimentalSignals === true;
+  try {
+    const { buildCostPerTaskReport } = await import("../cost-per-task/index.js");
+    // Cap the card to `month` when the dashboard is on `all` (or unset, which
+    // defaults to `all`): an all-time window iterates the git-enriched recap
+    // pipeline per day across the whole history — a multi-second hang on a cold
+    // cache. The plan's mitigation: month default, all opt-in via the CLI.
+    // An explicit custom since/until range is NOT capped this way — the user
+    // already bounded it with two real dates, unlike the implicit/unbounded
+    // "all" default, so no new hard cap is introduced for custom ranges.
+    const isCustomRange = Boolean(opts.since && opts.until);
+    const dashPeriod = opts.period ?? "all";
+    const period = isCustomRange
+      ? undefined
+      : (dashPeriod === "all" ? "month" : dashPeriod) as CostPerTaskOptions["period"];
+    const report = await buildCostPerTaskReport(store, {
+      period,
+      since: isCustomRange ? opts.since : undefined,
+      until: isCustomRange ? opts.until : undefined,
+      projectPath: opts.projectPath,
+      accountUuid: opts.accountUuid,
+      repoUrl: opts.repoUrl,
+      includeCI: opts.includeCI,
+      byModel: true,
+      includeTasks: extra?.includeTasks ?? false,
+      experimentalSignals: extra?.experimentalSignals === true,
+      tz: extra?.tz ?? opts.timezone,
+      nowMs: extra?.nowMs,
+      digestDeps: extra?.digestDeps,
+      correctionsClient: extra?.correctionsClient,
+    });
+    data.costPerTask = report;
+  } catch {
+    data.costPerTask = null;
+  }
+  return data;
+}
+
+/**
+ * Populate `data.calibration` — how well the proxy/signals agree with the user's
+ * labels — for the in-dashboard trust view (VS Code panel only). Never throws.
+ *
+ * Sync signals only (no `judgeProvider`): the panel auto-refreshes, and per-
+ * refresh LLM-judge calls would be costly/slow. Evaluate the judge via the CLI
+ * (`cost-per-task --calibrate --llm-judge`).
+ */
+export async function attachCalibration(
+  store: Store,
+  data: DashboardData,
+  opts: ReportOptions,
+  extra?: Pick<CostPerTaskOptions, "digestDeps" | "correctionsClient" | "tz" | "nowMs">,
+): Promise<DashboardData> {
+  try {
+    const { buildCalibrationReport } = await import("../cost-per-task/index.js");
+    // See attachCostPerTask's comment: same "all"→"month" perf cap, same
+    // custom-range opt-out of that cap.
+    const isCustomRange = Boolean(opts.since && opts.until);
+    const dashPeriod = opts.period ?? "all";
+    const period = isCustomRange
+      ? undefined
+      : (dashPeriod === "all" ? "month" : dashPeriod) as CostPerTaskOptions["period"];
+    data.calibration = await buildCalibrationReport(store, {
+      period,
+      since: isCustomRange ? opts.since : undefined,
+      until: isCustomRange ? opts.until : undefined,
+      projectPath: opts.projectPath,
+      accountUuid: opts.accountUuid,
+      repoUrl: opts.repoUrl,
+      includeCI: opts.includeCI,
+      tz: extra?.tz ?? opts.timezone,
+      nowMs: extra?.nowMs,
+      digestDeps: extra?.digestDeps,
+      correctionsClient: extra?.correctionsClient,
+    });
+  } catch {
+    data.calibration = null;
+  }
+  return data;
+}
+
 const PLAN_LABELS: Record<string, string> = {
   pro: "Pro ($20/mo)",
   team_standard: "Team Standard ($25/mo)",
   max_5x: "Max 5x ($100/mo)",
   team_premium: "Team Premium ($125/mo)",
   max_20x: "Max 20x ($200/mo)",
+  // No `$<digits>` token: buildRecommendations regex-parses `/\$(\d+)/` out of
+  // this label to compute a suggested downgrade fee, and Enterprise is a
+  // metered plan with no single seat fee to suggest.
+  enterprise: "Enterprise (metered)",
 };
 
 function buildRecommendations(input: {
@@ -1010,7 +1349,8 @@ function buildRecommendations(input: {
       planUtilization.weeklyPlanBudget > 0 &&
       planUtilization.totalWeeks >= 4 &&
       planUtilization.avgWeeklyCost < planUtilization.weeklyPlanBudget * 0.5 &&
-      planUtilization.recommendedPlan
+      planUtilization.recommendedPlan &&
+      planUtilization.recommendedPlan !== "enterprise"
     ) {
       const monthlyFee = Math.round(planUtilization.weeklyPlanBudget * 4.33);
       const monthlyUse = (planUtilization.avgWeeklyCost * 4.33).toFixed(0);
@@ -1180,7 +1520,7 @@ function buildSpendingSection(
   store: Store,
   rows: SessionRow[],
   sessionCostMap: Map<string, { cost: number; topModel: string; topModelTokens: number }>,
-  filters: { projectPath?: string; repoUrl?: string; accountUuid?: string; since?: number },
+  filters: { projectPath?: string; repoUrl?: string; accountUuid?: string; since?: number; until?: number },
 ): DashboardSpending | null {
   if (rows.length === 0) return null;
 
@@ -1189,6 +1529,7 @@ function buildSpendingSection(
     repoUrl: filters.repoUrl,
     accountUuid: filters.accountUuid,
     since: filters.since,
+    until: filters.until,
     limit: 20,
   });
 
@@ -1257,7 +1598,7 @@ function buildSpendingSection(
       model: a.message.model ?? "unknown",
       totalTokens: a.totalTokens,
       estimatedCost: Math.round(cost * 100) / 100,
-      promptPreview: a.message.prompt_text?.slice(0, 120) ?? "",
+      promptPreview: decodeHtmlEntities(a.message.prompt_text).slice(0, 120),
       timesAvg: Math.round(a.timesAvg * 10) / 10,
       flags,
     };
@@ -1325,9 +1666,16 @@ function buildSpendingSection(
 
 function buildModelEfficiency(
   store: Store,
-  filters: { projectPath?: string; repoUrl?: string; since?: number },
+  filters: { projectPath?: string; repoUrl?: string; since?: number; until?: number },
 ): ModelEfficiencyData | null {
-  const msgRows = store.getMessagesForEfficiency(filters);
+  // `Store.getMessagesForEfficiency` has no `until` param (out of this task's
+  // file allowlist to add one) — bound the upper edge here instead. Keep
+  // null-timestamp rows (no basis to exclude them, matches how `since` never
+  // excluded them either).
+  let msgRows = store.getMessagesForEfficiency(filters);
+  if (filters.until !== undefined) {
+    msgRows = msgRows.filter(r => r.timestamp == null || r.timestamp <= filters.until!);
+  }
   if (msgRows.length === 0) return null;
 
   // Group messages into "turns": each turn starts with a prompt-bearing message
@@ -1438,9 +1786,7 @@ function buildModelEfficiency(
         if (savings > 0.001) {
           overuseList.push({
             sessionId: turn.sessionId,
-            promptPreview: turn.promptText
-              ? turn.promptText.slice(0, 120) + (turn.promptText.length > 120 ? "..." : "")
-              : "(no prompt text)",
+            promptPreview: promptPreviewOf(turn.promptText),
             model: turn.model,
             tier,
             cost: Math.round(actualCost * 10000) / 10000,
@@ -1458,9 +1804,7 @@ function buildModelEfficiency(
         if (savings > 0.001) {
           overuseList.push({
             sessionId: turn.sessionId,
-            promptPreview: turn.promptText
-              ? turn.promptText.slice(0, 120) + (turn.promptText.length > 120 ? "..." : "")
-              : "(no prompt text)",
+            promptPreview: promptPreviewOf(turn.promptText),
             model: turn.model,
             tier,
             cost: Math.round(actualCost * 10000) / 10000,
@@ -1529,16 +1873,30 @@ function buildContextAnalysis(
   store: Store,
   rows: SessionRow[],
   sessionCostMap: Map<string, { cost: number; topModel: string; topModelTokens: number }>,
-  filters: { projectPath?: string; repoUrl?: string; since?: number },
+  filters: { projectPath?: string; repoUrl?: string; since?: number; until?: number },
 ): ContextAnalysis | null {
   if (rows.length === 0) return null;
 
-  const contextMsgs = store.getMessagesForContext(filters);
+  // `Store.getMessagesForContext` has no `until` param (out of this task's
+  // file allowlist to add one) — bound the upper edge here instead.
+  let contextMsgs = store.getMessagesForContext(filters);
+  if (filters.until !== undefined) {
+    contextMsgs = contextMsgs.filter(m => m.timestamp == null || m.timestamp <= filters.until!);
+  }
   if (contextMsgs.length === 0) return null;
+
+  // getMessagesForContext only filters by project/repo/period — it ignores the
+  // account/entrypoint/includeCI scoping that getSessions (and therefore `rows`)
+  // applies. Restrict the message set to the same sessions as `rows` so the
+  // numerator of compactionRate can never exceed its denominator (and so every
+  // context metric below stays consistent with the dashboard's scope). Without
+  // this, e.g. a second account's compactions inflate the rate past 100%.
+  const rowSessionIds = new Set(rows.map(r => r.session_id));
 
   // Group messages by session
   const bySession = new Map<string, Array<{ inputTokens: number; cacheRead: number; cacheCreate: number }>>();
   for (const msg of contextMsgs) {
+    if (!rowSessionIds.has(msg.session_id)) continue;
     const arr = bySession.get(msg.session_id) ?? [];
     arr.push({
       inputTokens: msg.input_tokens,
@@ -1700,46 +2058,77 @@ function buildContextAnalysis(
 
 // ── Energy section builder ────────────────────────────────────────────────────
 
-function buildEnergySection(
+/**
+ * In-DB-aggregated energy section. Output-preserving refactor of the former
+ * per-message estimateEnergy + Intl date-format loop: replaces it with GROUP BY
+ * rollups (Store.getEnergyAggregates), then applies the SAME
+ * estimateEnergy/aggregateEnergy arithmetic over the grouped token sums.
+ * (Parity vs. the per-message implementation is locked by the reference-output
+ * test in __tests__/energy.test.ts.)
+ *
+ * Safe because estimateEnergy is linear in the four token counts at fixed
+ * per-model-class rates and a fixed section-level {region, gridIntensity}
+ * (per-message inference_geo does NOT override the section config — see the
+ * `!config.gridIntensity` guards in core/energy.ts), so SUM(tokens) GROUP BY
+ * model → estimate equals the per-message sum to display-rounding precision.
+ */
+export function buildEnergySection(
   store: Store,
-  filters: { projectPath?: string; repoUrl?: string; accountUuid?: string; since?: number; timezone: string },
+  filters: { projectPath?: string; repoUrl?: string; accountUuid?: string; since?: number; until?: number; timezone: string },
 ): DashboardEnergy | null {
-  const messages = store.getMessagesForEnergy({
+  const agg = store.getEnergyAggregates({
     projectPath: filters.projectPath,
     repoUrl: filters.repoUrl,
     accountUuid: filters.accountUuid,
     since: filters.since,
+    until: filters.until,
   });
 
-  if (messages.length === 0) return null;
+  if (agg.totalMessages === 0) return null;
 
   let effectiveSince = filters.since && filters.since > 0 ? filters.since : Date.now();
   if (!(filters.since && filters.since > 0)) {
-    for (const m of messages) {
-      if (m.timestamp != null && m.timestamp < effectiveSince) effectiveSince = m.timestamp;
-    }
+    // Legacy: min over non-null message timestamps, floored at Date.now().
+    if (agg.minTimestamp != null && agg.minTimestamp < effectiveSince) effectiveSince = agg.minTimestamp;
   }
-  const daysInPeriod = Math.max(1, (Date.now() - effectiveSince) / (24 * 60 * 60 * 1000));
+  const effectiveUntil = filters.until ?? Date.now();
+  const daysInPeriod = Math.max(1, (effectiveUntil - effectiveSince) / (24 * 60 * 60 * 1000));
 
-  // Determine grid region: prefer most common detected inferenceGeo, fall back to locale
+  // ── Region detection (must run first: sets gridIntensity used by all sums) ──
+  // geoCount counts per non-null geo. Build it in first-seen (earliest-
+  // timestamp) order — the same insertion order the legacy per-message loop
+  // produced — so Object.entries iteration (used for dominantGeo's tiebreak)
+  // matches the legacy exactly. Counts come from the byGeo histogram.
+  const byGeoCounts = new Map<string, number>();
+  for (const g of agg.byGeo) {
+    if (g.inference_geo) byGeoCounts.set(g.inference_geo, g.msgs);
+  }
   const geoCount: Record<string, number> = {};
   let geoMessages = 0;
-  for (const m of messages) {
-    if (m.inference_geo) {
-      geoCount[m.inference_geo] = (geoCount[m.inference_geo] ?? 0) + 1;
-      geoMessages++;
+  for (const g of agg.geoByEarliest) {
+    if (geoCount[g.inference_geo] !== undefined) continue;
+    const cnt = byGeoCounts.get(g.inference_geo) ?? 0;
+    geoCount[g.inference_geo] = cnt;
+    geoMessages += cnt;
+  }
+  // Geos appearing only on null-timestamp messages aren't in geoByEarliest;
+  // append them so coverage/counts match the legacy (which counts all geos).
+  for (const [geo, cnt] of byGeoCounts) {
+    if (geoCount[geo] === undefined) {
+      geoCount[geo] = cnt;
+      geoMessages += cnt;
     }
   }
-  const coveragePct = messages.length > 0 ? (geoMessages / messages.length) * 100 : 0;
+  const coveragePct = agg.totalMessages > 0 ? (geoMessages / agg.totalMessages) * 100 : 0;
 
-  // Find dominant inferenceGeo for region detection
+  // Dominant geo: first geo with a strictly-greater count over Object.entries
+  // (first-seen) order — identical to the legacy loop.
   let dominantGeo: string | null = null;
   let maxCount = 0;
   for (const [geo, cnt] of Object.entries(geoCount)) {
     if (cnt > maxCount) { maxCount = cnt; dominantGeo = geo; }
   }
 
-  // Determine user locale-based region as fallback
   const localeRegion = localeToRegion(
     new Intl.DateTimeFormat().resolvedOptions().locale ?? "en-US",
   );
@@ -1760,111 +2149,120 @@ function buildEnergySection(
   const regionInfo = REGIONS[regionKey];
   const gridIntensity = regionInfo?.gridIntensity ?? 436;
 
-  // Per-day and per-model accumulators
+  // detectedRegion for equivalents = region of the earliest in-period message
+  // with a non-null MAPPABLE inference_geo (matches aggregateEnergy's
+  // estimates.find(e => e.detectedRegion) over ORDER BY timestamp ASC, which
+  // skips messages whose geo does not map to a region). geoByEarliest is sorted
+  // by earliest timestamp, so the first mappable geo is the winner.
+  let earliestMappableGeo: string | null = null;
+  let detectedRegion: string | null = null;
+  for (const g of agg.geoByEarliest) {
+    const region = estimateEnergy({
+      model: "claude-sonnet",
+      inputTokens: 0, outputTokens: 0,
+      cacheCreationTokens: 0, cacheReadTokens: 0,
+      ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0,
+      inferenceGeo: g.inference_geo,
+    }).detectedRegion;
+    if (region) { earliestMappableGeo = g.inference_geo; detectedRegion = region; break; }
+  }
+
+  // Estimate energy for a summed-token group using the section config.
+  const estimateGroup = (g: { model: string; input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_creation_tokens: number }) =>
+    estimateEnergy({
+      model: g.model,
+      inputTokens: g.input_tokens,
+      outputTokens: g.output_tokens,
+      cacheCreationTokens: g.cache_creation_tokens,
+      cacheReadTokens: g.cache_read_tokens,
+      ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0,
+      // inferenceGeo intentionally omitted: section passes {region, gridIntensity}
+      // to every estimate, and per-message geo never overrode it (guards above).
+    }, { region: regionKey, gridIntensity });
+
+  // ── Totals via per-model estimates → aggregateEnergy (exact reuse of math) ──
+  // aggregateEnergy picks detectedRegion via estimates.find(e => e.detectedRegion);
+  // none of these per-model estimates carry a geo, so we inject the earliest
+  // mappable geo's region by passing it through a leading zero-token estimate,
+  // reproducing the legacy aggregate's detectedRegion → equivalents region.
+  const modelEstimates = agg.byModel.map(estimateGroup);
+  // Prepend a zero-token estimate carrying detectedRegion so aggregateEnergy
+  // resolves the same equivalents region as the legacy per-message aggregate.
+  const aggInput = (detectedRegion && earliestMappableGeo)
+    ? [estimateEnergy({
+        model: "claude-sonnet",
+        inputTokens: 0, outputTokens: 0,
+        cacheCreationTokens: 0, cacheReadTokens: 0,
+        ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0,
+        inferenceGeo: earliestMappableGeo,
+      }, { region: regionKey, gridIntensity }), ...modelEstimates]
+    : modelEstimates;
+  const aggregated = aggregateEnergy(aggInput);
+  const totalEnergyWh = aggregated.totalEnergyWh;
+
+  // ── byModel ──
+  const byModelEntries = agg.byModel.map((g, i) => ({
+    model: g.model,
+    energyWh: modelEstimates[i]!.totalEnergyWh,
+    co2Grams: modelEstimates[i]!.co2Grams,
+    minTs: g.min_ts ?? Number.POSITIVE_INFINITY,
+  }));
+  // Legacy pre-sort order = first-seen (timestamp ASC) Map insertion; stable
+  // sort by energyWh desc preserves that for ties.
+  byModelEntries.sort((a, b) => a.minTs - b.minTs);
+  const byModel: DashboardEnergy["byModel"] = byModelEntries
+    .slice()
+    .sort((a, b) => b.energyWh - a.energyWh)
+    .map(e => ({
+      model: e.model,
+      energyWh: Math.round(e.energyWh * 10000) / 10000,
+      co2Grams: Math.round(e.co2Grams * 1000) / 1000,
+      pct: totalEnergyWh > 0 ? Math.round((e.energyWh / totalEnergyWh) * 1000) / 10 : 0,
+    }));
+
+  // ── byProject (sum per-(project,model) estimates into project totals) ──
+  const projectMap = new Map<string, { energyWh: number; co2Grams: number; minTs: number }>();
+  for (const g of agg.byProjectModel) {
+    const est = estimateGroup(g);
+    const entry = projectMap.get(g.project_path) ?? { energyWh: 0, co2Grams: 0, minTs: Number.POSITIVE_INFINITY };
+    entry.energyWh += est.totalEnergyWh;
+    entry.co2Grams += est.co2Grams;
+    const ts = g.min_ts ?? Number.POSITIVE_INFINITY;
+    if (ts < entry.minTs) entry.minTs = ts;
+    projectMap.set(g.project_path, entry);
+  }
+  const byProject: DashboardEnergy["byProject"] = Array.from(projectMap.entries())
+    .sort(([, a], [, b]) => a.minTs - b.minTs) // first-seen order pre-sort
+    .sort(([, a], [, b]) => b.energyWh - a.energyWh)
+    .map(([project, e]) => ({
+      project,
+      energyWh: Math.round(e.energyWh * 10000) / 10000,
+      co2Grams: Math.round(e.co2Grams * 1000) / 1000,
+    }));
+
+  // ── byDay: re-bucket (UTC hour, model) groups to local day in JS ──
+  // The legacy loop formats each message's exact instant to a local day. Here
+  // we format each UTC-hour-START instant. Hour grain is EXACT for integer-
+  // offset timezones (every local day boundary falls on a UTC-hour boundary).
+  // ACCEPTED DEVIATION: for fractional-offset zones (e.g. Asia/Kolkata, +5:30),
+  // a local-midnight instant falls mid-UTC-hour, so messages in that boundary
+  // hour can be misattributed by one local-day bucket. Callers needing exact
+  // byDay in fractional-offset zones must use the legacy per-message path.
   const dayFmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: filters.timezone,
     year: "numeric", month: "2-digit", day: "2-digit",
   });
-
   const dayEnergyMap = new Map<string, { energyWh: number; co2Grams: number }>();
-  const modelEnergyMap = new Map<string, { energyWh: number; co2Grams: number }>();
-  const projectEnergyMap = new Map<string, { energyWh: number; co2Grams: number }>();
-
-  const allEstimates = [];
-  let thinkingEnergy = 0;
-  let sessionsWithThinking = new Set<string>();
-
-  const emptyClass = () => ({ msgs: 0, inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0, rawEnergyWh: 0 });
-  const classAccum: Record<ModelClass, ReturnType<typeof emptyClass>> = {
-    haiku: emptyClass(), sonnet: emptyClass(), opus: emptyClass(),
-  };
-
-  // Cache impact: estimate energy saved by cache reads vs re-computing as input
-  let cacheEnergySavedWh = 0;
-  let cacheCO2SavedGrams = 0;
-  let totalCacheReadTokens = 0;
-  let totalInputTokens = 0;
-
-  for (const m of messages) {
-    const estimate = estimateEnergy({
-      model: m.model,
-      inputTokens: m.input_tokens,
-      outputTokens: m.output_tokens,
-      cacheCreationTokens: m.cache_creation_tokens,
-      cacheReadTokens: m.cache_read_tokens,
-      ephemeral5mCacheTokens: m.ephemeral_5m_cache_tokens,
-      ephemeral1hCacheTokens: m.ephemeral_1h_cache_tokens,
-      inferenceGeo: m.inference_geo,
-    }, { region: regionKey, gridIntensity });
-
-    allEstimates.push(estimate);
-
-    // byClass accumulator for the calculation-transparency panel
-    const cls = modelClass(m.model);
-    const acc = classAccum[cls];
-    acc.msgs += 1;
-    acc.inputTokens += m.input_tokens;
-    acc.outputTokens += m.output_tokens;
-    acc.cacheWriteTokens += m.cache_creation_tokens;
-    acc.cacheReadTokens += m.cache_read_tokens;
-    acc.rawEnergyWh += estimate.energyWh;
-
-    // byDay
-    const dateStr = m.timestamp != null
-      ? dayFmt.format(new Date(m.timestamp))
+  for (const g of agg.byHourModel) {
+    const est = estimateGroup(g);
+    const dateStr = g.hour_bucket != null
+      ? dayFmt.format(new Date(g.hour_bucket * 3600000))
       : "unknown";
     const dayEntry = dayEnergyMap.get(dateStr) ?? { energyWh: 0, co2Grams: 0 };
-    dayEntry.energyWh += estimate.totalEnergyWh;
-    dayEntry.co2Grams += estimate.co2Grams;
+    dayEntry.energyWh += est.totalEnergyWh;
+    dayEntry.co2Grams += est.co2Grams;
     dayEnergyMap.set(dateStr, dayEntry);
-
-    // byModel
-    const modelEntry = modelEnergyMap.get(m.model) ?? { energyWh: 0, co2Grams: 0 };
-    modelEntry.energyWh += estimate.totalEnergyWh;
-    modelEntry.co2Grams += estimate.co2Grams;
-    modelEnergyMap.set(m.model, modelEntry);
-
-    // byProject
-    const projEntry = projectEnergyMap.get(m.project_path) ?? { energyWh: 0, co2Grams: 0 };
-    projEntry.energyWh += estimate.totalEnergyWh;
-    projEntry.co2Grams += estimate.co2Grams;
-    projectEnergyMap.set(m.project_path, projEntry);
-
-    // Thinking impact
-    if (m.thinking_blocks > 0) {
-      sessionsWithThinking.add(m.session_id);
-      // Thinking tokens are output tokens — estimate their energy fraction
-      thinkingEnergy += estimate.totalEnergyWh * 0.3; // approximate thinking fraction
-    }
-
-    // Cache impact: energy cost of cache reads is ~3% of output rate.
-    // Without cache, those tokens would be input (full input rate).
-    // Saved = (cache_read / 1K) * (inputRate - outputRate * 0.03) * pue
-    totalCacheReadTokens += m.cache_read_tokens;
-    totalInputTokens += m.input_tokens;
   }
-
-  const aggregated = aggregateEnergy(allEstimates);
-  const totalEnergyWh = aggregated.totalEnergyWh;
-
-  // Compute cache savings: each 1K cache-read token saved ~inputRate vs charged ~outputRate*0.03
-  {
-    // Use sonnet rates as representative for the aggregate cache savings estimate
-    const { inputWhPer1K, outputWhPer1K } = MODEL_ENERGY.sonnet;
-    const pue = 1.2;
-    cacheEnergySavedWh = (totalCacheReadTokens / 1000) * (inputWhPer1K - outputWhPer1K * 0.03) * pue;
-    cacheCO2SavedGrams = (cacheEnergySavedWh / 1000) * gridIntensity;
-  }
-
-  const logicalInput = totalInputTokens + totalCacheReadTokens;
-  const cacheEfficiencyPct = logicalInput > 0
-    ? Math.round((totalCacheReadTokens / logicalInput) * 1000) / 10
-    : 0;
-
-  const pctEnergyFromThinking = totalEnergyWh > 0
-    ? Math.round((thinkingEnergy / totalEnergyWh) * 1000) / 10
-    : 0;
-
   const byDay: DashboardEnergy["byDay"] = Array.from(dayEnergyMap.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, e]) => ({
@@ -1873,22 +2271,46 @@ function buildEnergySection(
       co2Grams: Math.round(e.co2Grams * 1000) / 1000,
     }));
 
-  const byModel: DashboardEnergy["byModel"] = Array.from(modelEnergyMap.entries())
-    .sort(([, a], [, b]) => b.energyWh - a.energyWh)
-    .map(([model, e]) => ({
-      model,
-      energyWh: Math.round(e.energyWh * 10000) / 10000,
-      co2Grams: Math.round(e.co2Grams * 1000) / 1000,
-      pct: totalEnergyWh > 0 ? Math.round((e.energyWh / totalEnergyWh) * 1000) / 10 : 0,
-    }));
+  // ── byClass (model → class, re-sum token totals; rawEnergyWh = pre-PUE) ──
+  const emptyClass = () => ({ msgs: 0, inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0, rawEnergyWh: 0 });
+  const classAccum: Record<ModelClass, ReturnType<typeof emptyClass>> = {
+    haiku: emptyClass(), sonnet: emptyClass(), opus: emptyClass(),
+  };
+  agg.byModel.forEach((g, i) => {
+    const cls = modelClass(g.model);
+    const acc = classAccum[cls];
+    acc.msgs += g.msgs;
+    acc.inputTokens += g.input_tokens;
+    acc.outputTokens += g.output_tokens;
+    acc.cacheWriteTokens += g.cache_creation_tokens;
+    acc.cacheReadTokens += g.cache_read_tokens;
+    acc.rawEnergyWh += modelEstimates[i]!.energyWh;
+  });
 
-  const byProject: DashboardEnergy["byProject"] = Array.from(projectEnergyMap.entries())
-    .sort(([, a], [, b]) => b.energyWh - a.energyWh)
-    .map(([project, e]) => ({
-      project,
-      energyWh: Math.round(e.energyWh * 10000) / 10000,
-      co2Grams: Math.round(e.co2Grams * 1000) / 1000,
-    }));
+  // ── cacheImpact ──
+  let totalCacheReadTokens = 0;
+  let totalInputTokens = 0;
+  for (const g of agg.byModel) {
+    totalCacheReadTokens += g.cache_read_tokens;
+    totalInputTokens += g.input_tokens;
+  }
+  const { inputWhPer1K, outputWhPer1K } = MODEL_ENERGY.sonnet;
+  const pue = 1.2;
+  const cacheEnergySavedWh = (totalCacheReadTokens / 1000) * (inputWhPer1K - outputWhPer1K * 0.03) * pue;
+  const cacheCO2SavedGrams = (cacheEnergySavedWh / 1000) * gridIntensity;
+  const logicalInput = totalInputTokens + totalCacheReadTokens;
+  const cacheEfficiencyPct = logicalInput > 0
+    ? Math.round((totalCacheReadTokens / logicalInput) * 1000) / 10
+    : 0;
+
+  // ── thinkingImpact ──
+  let thinkingEnergy = 0;
+  for (const g of agg.thinkingByModel) {
+    thinkingEnergy += estimateGroup(g).totalEnergyWh * 0.3;
+  }
+  const pctEnergyFromThinking = totalEnergyWh > 0
+    ? Math.round((thinkingEnergy / totalEnergyWh) * 1000) / 10
+    : 0;
 
   return {
     totalEnergyWh: Math.round(aggregated.totalEnergyWh * 10000) / 10000,
@@ -1908,8 +2330,10 @@ function buildEnergySection(
       hydroTurbineLiters: Math.round(aggregated.equivalents.hydroTurbineLiters * 100) / 100,
     },
     journeyAnchor: nearestJourneyAnchor(aggregated.equivalents.carKm),
-    periodStartIso: new Date(effectiveSince).toISOString().slice(0, 10),
-    periodEndIso: new Date().toISOString().slice(0, 10),
+    periodStartIso: ymdInTz(effectiveSince, filters.timezone),
+    // See the untilIso comment above: effectiveUntil is an exclusive
+    // boundary; -1ms reports the inclusive last day for display.
+    periodEndIso: ymdInTz(effectiveUntil - 1, filters.timezone),
     periodDays: Math.round(daysInPeriod),
     byDay,
     byModel,
@@ -1920,7 +2344,7 @@ function buildEnergySection(
       cacheEfficiencyPct,
     },
     thinkingImpact: {
-      sessionsWithThinking: sessionsWithThinking.size,
+      sessionsWithThinking: agg.sessionsWithThinking,
       pctEnergyFromThinking,
     },
     inferenceGeo: {

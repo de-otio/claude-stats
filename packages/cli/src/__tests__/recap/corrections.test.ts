@@ -14,8 +14,10 @@ import fs from 'node:fs';
 import {
   openCorrections,
   computeSignature,
+  latestOutcome,
   type CorrectionSignature,
   type CorrectionAction,
+  type OutcomeValue,
 } from '../../recap/corrections.js';
 import type { SegmentId } from '../../recap/types.js';
 
@@ -350,6 +352,156 @@ describe('openCorrections', () => {
 
       const actions = client.forSignature(sig);
       expect(actions).toHaveLength(1);
+    } finally {
+      client.close();
+    }
+  });
+
+  // ─── outcome action tests ─────────────────────────────────────────────────
+
+  it('outcome round-trip: add success outcome, forSignature returns it', () => {
+    const dbPath = tmpDbPath();
+    tmpFiles.push(dbPath);
+    const client = openCorrections({ dbPath });
+    try {
+      const sig = makeSig();
+      client.add(sig, { kind: 'outcome', value: 'success' });
+
+      const actions = client.forSignature(sig);
+      expect(actions).toHaveLength(1);
+      expect(actions[0]).toMatchObject({ kind: 'outcome', value: 'success' });
+    } finally {
+      client.close();
+    }
+  });
+
+  it('outcome round-trip: all three values persist correctly', () => {
+    const dbPath = tmpDbPath();
+    tmpFiles.push(dbPath);
+    const client = openCorrections({ dbPath });
+    try {
+      const values: OutcomeValue[] = ['success', 'partial', 'fail'];
+      for (const value of values) {
+        const sig = makeSig({ promptPrefix: `task-${value}` });
+        client.add(sig, { kind: 'outcome', value });
+        const actions = client.forSignature(sig);
+        expect(actions).toHaveLength(1);
+        const a = actions[0] as Extract<CorrectionAction, { kind: 'outcome' }>;
+        expect(a.value).toBe(value);
+      }
+    } finally {
+      client.close();
+    }
+  });
+
+  it('multiple outcomes for one sig: forSignature returns all in insertion order', () => {
+    const dbPath = tmpDbPath();
+    tmpFiles.push(dbPath);
+    const client = openCorrections({ dbPath });
+    try {
+      const sig = makeSig();
+      client.add(sig, { kind: 'outcome', value: 'fail' });
+      client.add(sig, { kind: 'outcome', value: 'partial' });
+      client.add(sig, { kind: 'outcome', value: 'success' });
+
+      const actions = client.forSignature(sig);
+      expect(actions).toHaveLength(3);
+      // forSignature orders by id ASC (chronological)
+      expect(actions.map((a) => (a as Extract<CorrectionAction, { kind: 'outcome' }>).value))
+        .toEqual(['fail', 'partial', 'success']);
+    } finally {
+      client.close();
+    }
+  });
+
+  it('mixed actions: hide + outcome coexist for one signature', () => {
+    const dbPath = tmpDbPath();
+    tmpFiles.push(dbPath);
+    const client = openCorrections({ dbPath });
+    try {
+      const sig = makeSig();
+      client.add(sig, { kind: 'hide' });
+      client.add(sig, { kind: 'outcome', value: 'partial' });
+
+      const actions = client.forSignature(sig);
+      expect(actions).toHaveLength(2);
+      const kinds = actions.map((a) => a.kind).sort();
+      expect(kinds).toEqual(['hide', 'outcome']);
+    } finally {
+      client.close();
+    }
+  });
+
+  it('outcome remove: subsequent forSignature no longer contains the outcome', () => {
+    const dbPath = tmpDbPath();
+    tmpFiles.push(dbPath);
+    const client = openCorrections({ dbPath });
+    try {
+      const sig = makeSig();
+      const action: CorrectionAction = { kind: 'outcome', value: 'success' };
+      client.add(sig, action);
+      expect(client.forSignature(sig)).toHaveLength(1);
+
+      client.remove(sig, action);
+      expect(client.forSignature(sig)).toHaveLength(0);
+    } finally {
+      client.close();
+    }
+  });
+});
+
+// ─── latestOutcome helper ─────────────────────────────────────────────────────
+
+describe('latestOutcome', () => {
+  it('empty array returns null', () => {
+    expect(latestOutcome([])).toBeNull();
+  });
+
+  it('list with no outcome action returns null', () => {
+    const actions: CorrectionAction[] = [
+      { kind: 'hide' },
+      { kind: 'rename', label: 'My Label' },
+    ];
+    expect(latestOutcome(actions)).toBeNull();
+  });
+
+  it('single outcome action returns its value', () => {
+    const actions: CorrectionAction[] = [{ kind: 'outcome', value: 'fail' }];
+    expect(latestOutcome(actions)).toBe('fail');
+  });
+
+  it('multiple outcomes: returns the value of the last one', () => {
+    const actions: CorrectionAction[] = [
+      { kind: 'outcome', value: 'fail' },
+      { kind: 'outcome', value: 'partial' },
+      { kind: 'outcome', value: 'success' },
+    ];
+    expect(latestOutcome(actions)).toBe('success');
+  });
+
+  it('mixed actions: picks last outcome, ignores non-outcome actions after it', () => {
+    const actions: CorrectionAction[] = [
+      { kind: 'hide' },
+      { kind: 'outcome', value: 'partial' },
+      { kind: 'rename', label: 'After outcome' },
+    ];
+    // Rename is last, but latestOutcome scans for last *outcome* kind
+    expect(latestOutcome(actions)).toBe('partial');
+  });
+
+  it('integration: latestOutcome on forSignature result reflects most recent add', () => {
+    const dbPath = tmpDbPath();
+    tmpFiles.push(dbPath);
+    const client = openCorrections({ dbPath });
+    try {
+      const sig = makeSig();
+      client.add(sig, { kind: 'outcome', value: 'fail' });
+      client.add(sig, { kind: 'hide' });
+      client.add(sig, { kind: 'outcome', value: 'success' });
+
+      const actions = client.forSignature(sig);
+      // forSignature is chronological (id ASC); last outcome is 'success'
+      expect(latestOutcome(actions)).toBe('success');
     } finally {
       client.close();
     }

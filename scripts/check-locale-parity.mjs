@@ -158,7 +158,7 @@ export function runCheck(localesDir = LOCALES_DIR, referenceLocale = REFERENCE_L
   }
 
   const entries = fs.readdirSync(localesDir, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
+    .filter((e) => e.isDirectory() && !e.name.startsWith("."))
     .map((e) => e.name);
 
   if (!entries.includes(referenceLocale)) {

@@ -18,7 +18,7 @@ Claude Code stores rich session data locally in `~/.claude/projects/`. Every mes
 | 02 | [02-collection-strategy.md](02-collection-strategy.md) | Parsing, aggregation, incremental collection, concurrency |
 | 03 | [03-architecture.md](03-architecture.md) | Tool components, CLI interface, storage, future sync |
 | 04 | [04-insights.md](04-insights.md) | What questions the data can answer |
-| 05 | [05-privacy-security.md](05-privacy-security.md) | Data sensitivity, local-only principle, sync rules |
+| 05 | [05-privacy-security.md](05-privacy-security.md) | Data sensitivity, local-only principle, org-plane sync rules, the opt-in transcript archive, the personal E2E plane, and the two-plane separation |
 | 06 | [06-limitations.md](06-limitations.md) | Known gaps and constraints |
 | 07 | [07-schema-reference.md](07-schema-reference.md) | Exact field-level schemas for parser implementation |
 | 08 | [08-resilience.md](08-resilience.md) | Handling Claude Code updates and schema changes |
@@ -32,6 +32,10 @@ Read in order for full context, or jump to 07 and 02 to start implementing.
 |-----------|---------|
 | [daily-recap/](daily-recap/) | "What did I get done today?" — hybrid AI + deterministic pipeline for token-efficient day summaries |
 | [energy-dashboard/](energy-dashboard/) | Energy consumption and carbon footprint estimation dashboard |
+| [cost-per-successful-task/](cost-per-successful-task/) | "What does a correct result actually cost?" — outcome-cost metric per model, for the post-subsidy pricing era |
+| [value-per-cost/](value-per-cost/) | Reanalysis of the above: splits the one value-flavoured number into efficiency (machine-owned) + output/survival + value (user-owned), to answer "was the AI investment justified, was it efficient, what to change?" |
+| [account-attribution/](account-attribution/) | "Whose account ran this?" — reliably attributing usage to one of several accounts that share a machine, when transcripts carry no account id; observation-timeline + anchors + optional OTEL |
+| [data-planes/](data-planes/) | How backup, cross-device sync, and team features relate — one two-plane model (personal E2E plane vs org aggregate plane), the encrypted-bundle keystone, per-class optional encryption, and the effortless/dummy-proof UX; reconciles cross-device-sync/, team-dashboard/, and team-app/ |
 
 ## Architecture Summary
 
@@ -75,5 +79,5 @@ Each session file is a JSONL stream where `assistant` messages carry the token u
 - **No API access** — all data comes from local file parsing
 - **Schema instability** — Claude Code updates frequently with no format contract; treat all fields as optional
 - **Concurrent writes** — session files are written in real-time; discard partial last lines
-- **Privacy by default** — prompt content never stored or synced; only aggregated metrics
+- **Privacy by default** — user prompt text is stored locally (sanitized, since schema V8) but never leaves the machine except via the personal plane the user explicitly enables; the org/team plane only ever receives locally-computed aggregates (see [05-privacy-security.md](05-privacy-security.md))
 - **Idempotent collection** — message `uuid` used as upsert key; safe to re-run after crashes

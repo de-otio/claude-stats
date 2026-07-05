@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { DatabaseSync } from "node:sqlite";
 import { collect } from "../aggregator/index.js";
 import { Store } from "../store/index.js";
 import * as pathsMod from "@claude-stats/core/paths";
-import * as accountMod from "../account.js";
 import os from "os";
 import path from "path";
 import fs from "fs";
@@ -104,6 +104,42 @@ describe("collect", () => {
     expect(sessions[0]!.input_tokens).toBe(100);
   });
 
+  it("resolves project_path and repo_url from the session's own cwd, not the lossy decoded directory name", async () => {
+    // Real project directory with a hyphenated leaf name and a .git/config —
+    // decodeProjectPath would corrupt any encoded name derived from a path
+    // like this (the hyphen in "my-project" is indistinguishable from an
+    // encoded '/'), so this proves the aggregator no longer depends on it.
+    const realProjectDir = path.join(tmpDir(), "my-project");
+    fs.mkdirSync(path.join(realProjectDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(realProjectDir, ".git", "config"),
+      '[remote "origin"]\n\turl = git@github.com:example/my-project.git\n'
+    );
+
+    // Encoded session directory deliberately does NOT decode to
+    // realProjectDir — simulating the lossy decode. If the aggregator still
+    // used this decoded path for the git-remote lookup, it would find
+    // nothing (the decoded path doesn't exist on disk) and repo_url would
+    // stay null.
+    const encodedDir = path.join(projectsDir, "-nonexistent-wrong-path");
+    fs.mkdirSync(encodedDir);
+    fs.writeFileSync(
+      path.join(encodedDir, "sess-repo-url.jsonl"),
+      [
+        makeUserLine("sess-repo-url"),
+        makeSessionLine({ sessionId: "sess-repo-url", cwd: realProjectDir }),
+      ].join("\n") + "\n"
+    );
+
+    await collect(store);
+
+    const sessions = store.getSessions({ includeCI: true, includeDeleted: true });
+    const session = sessions.find((s) => s.session_id === "sess-repo-url");
+    expect(session).toBeDefined();
+    expect(session!.project_path).toBe(realProjectDir);
+    expect(session!.repo_url).toBe("git@github.com:example/my-project.git");
+  });
+
   it("skips unchanged files on second run", async () => {
     const projDir = path.join(projectsDir, "-proj-skip");
     fs.mkdirSync(projDir);
@@ -164,59 +200,11 @@ describe("collect", () => {
     expect(result2.filesDeleted).toBe(1);
   });
 
-  it("stamps account from ~/.claude.json when telemetry has no match", async () => {
-    vi.spyOn(accountMod, "readClaudeAccount").mockReturnValue({
-      accountUuid: "acct-from-config",
-      emailAddress: "me@example.com",
-      organizationUuid: "org-123",
-    });
-
-    const projDir = path.join(projectsDir, "-proj-acct");
-    fs.mkdirSync(projDir);
-    fs.writeFileSync(
-      path.join(projDir, "sess-agg-1.jsonl"),
-      [makeUserLine(), makeSessionLine()].join("\n") + "\n",
-    );
-
-    await collect(store);
-    const sessions = store.getSessions({ includeCI: true, includeDeleted: true });
-    expect(sessions).toHaveLength(1);
-    expect(sessions[0]!.account_uuid).toBe("acct-from-config");
-  });
-
-  it("does not overwrite existing account_uuid on reparse", async () => {
-    // First parse: stamp with account A
-    vi.spyOn(accountMod, "readClaudeAccount").mockReturnValue({
-      accountUuid: "acct-A",
-      emailAddress: "a@example.com",
-      organizationUuid: null,
-    });
-
-    const projDir = path.join(projectsDir, "-proj-reparse");
-    fs.mkdirSync(projDir);
-    const sessFile = path.join(projDir, "sess-agg-1.jsonl");
-    fs.writeFileSync(sessFile, [makeUserLine(), makeSessionLine()].join("\n") + "\n");
-
-    await collect(store);
-    let sessions = store.getSessions({ includeCI: true, includeDeleted: true });
-    expect(sessions[0]!.account_uuid).toBe("acct-A");
-
-    // Simulate switching to account B and reparsing (file rewrite triggers full reparse)
-    vi.spyOn(accountMod, "readClaudeAccount").mockReturnValue({
-      accountUuid: "acct-B",
-      emailAddress: "b@example.com",
-      organizationUuid: null,
-    });
-
-    // Force reparse by rewriting the file with different first-KB hash
-    fs.writeFileSync(sessFile, [makeUserLine(), makeSessionLine({ uuid: "msg-rewrite" })].join("\n") + "\n");
-
-    await collect(store);
-    sessions = store.getSessions({ includeCI: true, includeDeleted: true });
-    expect(sessions).toHaveLength(1);
-    // Account A should be preserved — COALESCE(sessions.account_uuid, excluded.account_uuid)
-    expect(sessions[0]!.account_uuid).toBe("acct-A");
-  });
+  // NOTE: the two tests that asserted the surface-blind ~/.claude.json account
+  // fallback during collect were removed in Phase 1 — that fallback was
+  // deliberately deleted from the aggregator (it mis-attributed non-CLI
+  // surfaces; see plan B4). Surface-aware attribution + its tests land in
+  // Phase 2 (A).
 
   it("sets is_subagent = 1 for files in subagents/ directory", async () => {
     const projDir = path.join(projectsDir, "-proj-sub");
@@ -307,5 +295,214 @@ describe("collect", () => {
     expect(child).toBeDefined();
     expect(child!.is_subagent).toBe(1);
     expect(child!.parent_session_id).toBeNull();
+  });
+});
+
+// ── message_hourly incremental maintenance (Build 2 Phase 1, Stream A) ─────────
+//
+// collect() maintains the message_hourly rollup incrementally by recomputing only
+// the hour partitions touched in each run. These tests assert that the incremental
+// maintenance produces a table BYTE-IDENTICAL to a from-scratch full rebuild, across
+// initial collect, append, rewrite, and no-change re-collect.
+
+describe("collect — message_hourly incremental maintenance", () => {
+  let projectsDir: string;
+  let dbPath: string;
+  let store: Store;
+
+  const HOUR = 3_600_000;
+
+  // A message at a chosen hour bucket with chosen token counts. Distinct hour
+  // buckets are produced by setting timestamp = bucket * HOUR (+ a small offset).
+  function msgLine(o: {
+    sessionId?: string;
+    uuid?: string;
+    bucket: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    model?: string;
+  }): string {
+    return JSON.stringify({
+      type: "assistant",
+      sessionId: o.sessionId ?? "sess-mh",
+      version: "2.1.70",
+      timestamp: o.bucket * HOUR + 1, // +1 so floor() lands squarely in `bucket`
+      uuid: o.uuid ?? `msg-${Math.random()}`,
+      message: {
+        model: o.model ?? "claude-opus-4-6",
+        stop_reason: "end_turn",
+        content: [],
+        usage: {
+          input_tokens: o.inputTokens ?? 100,
+          output_tokens: o.outputTokens ?? 50,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+      },
+    });
+  }
+
+  type HourlyRow = Record<string, unknown>;
+
+  // Read the full message_hourly table via an INDEPENDENT node:sqlite connection,
+  // ordered by the full PK so two snapshots are directly comparable.
+  function readHourly(): HourlyRow[] {
+    const db = new DatabaseSync(dbPath);
+    try {
+      return db
+        .prepare(
+          "SELECT * FROM message_hourly ORDER BY hour_utc, project_path, model, inference_geo"
+        )
+        .all() as HourlyRow[];
+    } finally {
+      db.close();
+    }
+  }
+
+  // The oracle: snapshot the rollup, force a full from-scratch rebuild, snapshot
+  // again, then restore the incremental state by rebuilding once more (the full
+  // rebuild is deterministic, so the restored state equals the pre-oracle state).
+  // Returns { incremental, fullRebuild } for comparison.
+  function snapshotVsFullRebuild(): { incremental: HourlyRow[]; fullRebuild: HourlyRow[] } {
+    const incremental = readHourly();
+    store.recomputeMessageHourly(); // full rebuild (no args)
+    const fullRebuild = readHourly();
+    return { incremental, fullRebuild };
+  }
+
+  beforeEach(() => {
+    projectsDir = tmpDir();
+    dbPath = path.join(os.tmpdir(), `cs-agg-mh-db-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+    store = new Store(dbPath);
+
+    const original = pathsMod.paths;
+    vi.spyOn(pathsMod, "paths", "get").mockReturnValue({
+      ...original,
+      projectsDir,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+    fs.rmSync(projectsDir, { recursive: true, force: true });
+  });
+
+  it("(1) initial collect populates the rollup and matches a full rebuild", async () => {
+    const projDir = path.join(projectsDir, "-proj-mh-init");
+    fs.mkdirSync(projDir);
+    // Two distinct hour buckets, two models → multiple rollup rows.
+    fs.writeFileSync(
+      path.join(projDir, "sess-mh.jsonl"),
+      [
+        makeUserLine("sess-mh"),
+        msgLine({ uuid: "i1", bucket: 100, inputTokens: 100, outputTokens: 10 }),
+        msgLine({ uuid: "i2", bucket: 100, inputTokens: 200, outputTokens: 20 }),
+        msgLine({ uuid: "i3", bucket: 200, inputTokens: 300, outputTokens: 30, model: "claude-sonnet-4-6" }),
+      ].join("\n") + "\n",
+    );
+
+    await collect(store);
+
+    // Rollup is non-empty after the initial collect.
+    expect(readHourly().length).toBeGreaterThan(0);
+
+    const { incremental, fullRebuild } = snapshotVsFullRebuild();
+    expect(incremental).toEqual(fullRebuild);
+  });
+
+  it("(2) append updates affected hours and still equals a full rebuild", async () => {
+    const projDir = path.join(projectsDir, "-proj-mh-append");
+    fs.mkdirSync(projDir);
+    const sessFile = path.join(projDir, "sess-mh.jsonl");
+
+    fs.writeFileSync(
+      sessFile,
+      [
+        makeUserLine("sess-mh"),
+        msgLine({ uuid: "a1", bucket: 100, inputTokens: 100, outputTokens: 10 }),
+      ].join("\n") + "\n",
+    );
+    await collect(store);
+
+    // Append a message in a NEW hour bucket and one in the EXISTING bucket.
+    fs.appendFileSync(
+      sessFile,
+      [
+        msgLine({ uuid: "a2", bucket: 100, inputTokens: 50, outputTokens: 5 }),
+        msgLine({ uuid: "a3", bucket: 300, inputTokens: 70, outputTokens: 7 }),
+      ].join("\n") + "\n",
+    );
+    const r = await collect(store);
+    expect(r.filesProcessed).toBe(1);
+
+    const { incremental, fullRebuild } = snapshotVsFullRebuild();
+    expect(incremental).toEqual(fullRebuild);
+  });
+
+  it("(3) rewrite with changed token counts updates without double-counting", async () => {
+    const projDir = path.join(projectsDir, "-proj-mh-rewrite");
+    fs.mkdirSync(projDir);
+    const sessFile = path.join(projDir, "sess-mh.jsonl");
+
+    fs.writeFileSync(
+      sessFile,
+      [
+        makeUserLine("sess-mh"),
+        msgLine({ uuid: "r1", bucket: 100, inputTokens: 100, outputTokens: 10 }),
+        msgLine({ uuid: "r2", bucket: 100, inputTokens: 200, outputTokens: 20 }),
+      ].join("\n") + "\n",
+    );
+    await collect(store);
+
+    // Rewrite the whole file (offset 0) with DIFFERENT token counts for the same
+    // message UUIDs (upsert overwrites in `messages`). A correct partition recompute
+    // (DELETE the bucket then re-SUM from messages) yields the NEW totals, not new+old.
+    fs.writeFileSync(
+      sessFile,
+      [
+        makeUserLine("sess-mh"),
+        msgLine({ uuid: "r1", bucket: 100, inputTokens: 1, outputTokens: 1 }),
+        msgLine({ uuid: "r2", bucket: 100, inputTokens: 2, outputTokens: 2 }),
+      ].join("\n") + "\n",
+    );
+    const r = await collect(store);
+    expect(r.filesProcessed).toBe(1);
+
+    // The bucket-100 input total must reflect the rewrite (1+2=3), not 300 or 303.
+    const bucket100 = readHourly().filter(
+      (row) => row.hour_utc === 100 && row.model === "claude-opus-4-6"
+    );
+    const inputSum = bucket100.reduce((a, row) => a + (row.input_tokens as number), 0);
+    expect(inputSum).toBe(3);
+
+    const { incremental, fullRebuild } = snapshotVsFullRebuild();
+    expect(incremental).toEqual(fullRebuild);
+  });
+
+  it("(4) no-change re-collect leaves the rollup byte-identical", async () => {
+    const projDir = path.join(projectsDir, "-proj-mh-nochange");
+    fs.mkdirSync(projDir);
+    fs.writeFileSync(
+      path.join(projDir, "sess-mh.jsonl"),
+      [
+        makeUserLine("sess-mh"),
+        msgLine({ uuid: "n1", bucket: 100, inputTokens: 100, outputTokens: 10 }),
+        msgLine({ uuid: "n2", bucket: 200, inputTokens: 200, outputTokens: 20 }),
+      ].join("\n") + "\n",
+    );
+    await collect(store);
+
+    const before = JSON.stringify(readHourly());
+
+    // Re-collect with no filesystem change → file is skipped, no message upserts,
+    // touchedHours is empty, recomputeMessageHourly is not called.
+    const r = await collect(store);
+    expect(r.filesSkipped).toBe(1);
+    expect(r.filesProcessed).toBe(0);
+
+    const after = JSON.stringify(readHourly());
+    expect(after).toBe(before);
   });
 });

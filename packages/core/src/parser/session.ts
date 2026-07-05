@@ -44,6 +44,43 @@ export function hashFirstKb(filePath: string, maxBytes: number = 1024): string {
     .digest("hex");
 }
 
+/**
+ * Cheaply scan a session JSONL file for its first cwd-bearing entry, without
+ * a full parse. Used by the project-path repair backfill, which only needs
+ * ground truth for project_path — not full session/message parsing. Gives up
+ * after `maxLines` lines: `cwd` appears on the large majority of lines in a
+ * real session file, always within the first handful, so scanning the whole
+ * file is unnecessary.
+ */
+export async function extractCwdFromSessionFile(
+  filePath: string,
+  maxLines: number = 200,
+): Promise<string | null> {
+  const stream = fs.createReadStream(filePath, { encoding: "utf8" });
+  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  try {
+    let lineCount = 0;
+    for await (const line of rl) {
+      if (line.trim()) {
+        try {
+          const entry = JSON.parse(line) as RawSessionEntry;
+          if (typeof entry.cwd === "string" && entry.cwd.length > 0) {
+            return entry.cwd;
+          }
+        } catch {
+          // skip malformed line — not this function's concern to report it
+        }
+      }
+      lineCount++;
+      if (lineCount >= maxLines) break;
+    }
+    return null;
+  } finally {
+    rl.close();
+    stream.destroy();
+  }
+}
+
 /** Parse a session JSONL file from the given byte offset onward.
  *  Reads incrementally — only processes new lines since the last run. */
 export async function parseSessionFile(
@@ -88,6 +125,12 @@ export async function parseSessionFile(
   let entrypoint: string | null = null;
   let gitBranch: string | null = null;
   let permissionMode: string | null = null;
+  // Ground-truth project path from the session content itself. Preferred
+  // over the caller-supplied `projectPath` (decoded from the directory
+  // name), which is lossy for any path with a literal hyphen in a
+  // directory name — Claude Code's own encoding can't distinguish a
+  // hyphen from an encoded '/'.
+  let cwdFromContent: string | null = null;
   let hasQueueOperation = false;
   let promptCount = 0;
   let assistantMessageCount = 0;
@@ -141,6 +184,7 @@ export async function parseSessionFile(
     if (entry.gitBranch && !gitBranch) gitBranch = entry.gitBranch;
     if (entry.permissionMode && !permissionMode)
       permissionMode = entry.permissionMode;
+    if (entry.cwd && !cwdFromContent) cwdFromContent = entry.cwd;
 
     const ts = toEpochMs(entry.timestamp);
     if (ts !== null) {
@@ -155,6 +199,22 @@ export async function parseSessionFile(
     if (type === "queue-operation") {
       hasQueueOperation = true;
     } else if (type === "user") {
+      // Tool results are echoed back as a user turn; a tool_result flagged
+      // is_error means that tool call failed. Attribute it to the assistant
+      // message that issued the call (the previously-pushed record) so the
+      // per-message tool_error_count reflects failed work. Additive — never
+      // changes existing fields. (Not gated on isMeta: a tool_result is real.)
+      const uContent = entry.message?.content;
+      if (Array.isArray(uContent) && messages.length > 0) {
+        let errs = 0;
+        for (const block of uContent) {
+          if (block.type === "tool_result" && block.is_error === true) errs++;
+        }
+        if (errs > 0) {
+          const prev = messages[messages.length - 1]!;
+          prev.toolErrorCount = (prev.toolErrorCount ?? 0) + errs;
+        }
+      }
       if (!entry.isMeta) {
         promptCount++;
         if (ts !== null) lastUserTimestamp = ts;
@@ -201,7 +261,13 @@ export async function parseSessionFile(
       const msgTools: string[] = [];
       const msgFilePathsSet = new Set<string>();
       let thinkingBlockCount = 0;
+      let toolErrorCount = 0;
       for (const block of contentArr) {
+        // A tool_result flagged is_error means the tool call failed (non-zero
+        // Bash exit, failed Edit, etc). Additive capture — existing fields untouched.
+        if (block.type === "tool_result" && block.is_error === true) {
+          toolErrorCount++;
+        }
         if (block.type === "tool_use" && block.name) {
           toolUseCounts.set(
             block.name,
@@ -271,6 +337,7 @@ export async function parseSessionFile(
           ephemeral5mCacheTokens: usage?.cache_creation?.ephemeral_5m_input_tokens ?? 0,
           ephemeral1hCacheTokens: usage?.cache_creation?.ephemeral_1h_input_tokens ?? 0,
           promptText: lastPromptText,
+          toolErrorCount,
         });
       }
       lastPromptText = null;
@@ -306,7 +373,7 @@ export async function parseSessionFile(
   const session: SessionRecord | null = sessionId
     ? {
         sessionId,
-        projectPath,
+        projectPath: cwdFromContent ?? projectPath,
         sourceFile: filePath,
         firstTimestamp,
         lastTimestamp,

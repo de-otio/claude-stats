@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { formatTokens, formatBytes, formatDuration, periodStart, printSummary, printStatus, formatEntrypoint, printSessionList, printSessionDetail, buildBuckets, printTrend, printSpendingReport } from "../reporter/index.js";
+import { formatTokens, formatBytes, formatDuration, periodStart, periodRange, printSummary, printStatus, formatEntrypoint, printSessionList, printSessionDetail, buildBuckets, printTrend, printSpendingReport, printCostPerTask } from "../reporter/index.js";
+import type { CostPerTaskReport, ModelCostPerTask } from "../cost-per-task/index.js";
 import { Store } from "../store/index.js";
 import os from "os";
 import path from "path";
@@ -102,13 +103,82 @@ describe("periodStart", () => {
     expect(start).toBeLessThanOrEqual(Date.now());
   });
 
-  it("day start is <= week start is <= month start for same point in time", () => {
-    // All three start at or before now, and day >= month (day is more recent)
+  it("month and week starts are on or before the day start, which is on or before now", () => {
+    // The day start (today 00:00) is the most recent of the three boundaries;
+    // the month and week starts are on or before it, and all are on or before
+    // now. We deliberately do NOT assert `month <= week`: when the current week
+    // began in the previous month (a week straddling a month boundary, e.g.
+    // Wed 1 Jul whose week started Sun 28 Jun), the week start is BEFORE the
+    // month start, so that ordering does not hold on all dates.
     const day = periodStart("day", "UTC");
     const week = periodStart("week", "UTC");
     const month = periodStart("month", "UTC");
-    expect(month).toBeLessThanOrEqual(week);
+    const now = Date.now();
+    expect(month).toBeLessThanOrEqual(day);
     expect(week).toBeLessThanOrEqual(day);
+    expect(day).toBeLessThanOrEqual(now);
+  });
+});
+
+// ── periodRange ──────────────────────────────────────────────────────────────
+
+describe("periodRange", () => {
+  it("passes through preset periods, with until ≈ Date.now()", () => {
+    const before = Date.now();
+    const { since, until } = periodRange({ period: "week" }, "UTC");
+    const after = Date.now();
+    expect(since).toBe(periodStart("week", "UTC"));
+    expect(until).toBeGreaterThanOrEqual(before);
+    expect(until).toBeLessThanOrEqual(after);
+  });
+
+  it("resolves a custom since/until pair (happy path)", () => {
+    const { since, until } = periodRange({ since: "2026-01-01", until: "2026-01-10" }, "UTC");
+    expect(since).toBe(Date.UTC(2026, 0, 1, 0, 0, 0));
+    // until is the start of the day AFTER "2026-01-10" (exclusive end),
+    // clamped to Date.now() — here it's in the past so no clamping applies.
+    expect(until).toBe(Date.UTC(2026, 0, 11, 0, 0, 0));
+  });
+
+  it("rejects since without until", () => {
+    expect(() => periodRange({ since: "2026-01-01" }, "UTC")).toThrow(RangeError);
+  });
+
+  it("rejects until without since", () => {
+    expect(() => periodRange({ until: "2026-01-10" }, "UTC")).toThrow(RangeError);
+  });
+
+  it("rejects since > until", () => {
+    expect(() => periodRange({ since: "2026-01-10", until: "2026-01-01" }, "UTC")).toThrow(RangeError);
+  });
+
+  it("accepts since === until as a single-day range", () => {
+    const { since, until } = periodRange({ since: "2026-01-05", until: "2026-01-05" }, "UTC");
+    expect(since).toBe(Date.UTC(2026, 0, 5, 0, 0, 0));
+    expect(until).toBe(Date.UTC(2026, 0, 6, 0, 0, 0));
+    expect(since).toBeLessThan(until);
+  });
+
+  it("resolves a custom range correctly in a positive-offset timezone near local midnight", () => {
+    // Asia/Kolkata is UTC+5:30 — local midnight on 2026-01-02 is
+    // 2026-01-01T18:30:00Z.
+    const tz = "Asia/Kolkata";
+    const { since, until } = periodRange({ since: "2026-01-02", until: "2026-01-02" }, tz);
+    expect(since).toBe(Date.UTC(2026, 0, 1, 18, 30, 0));
+    expect(until).toBe(Date.UTC(2026, 0, 2, 18, 30, 0));
+  });
+
+  it("rejects a malformed date that does not round-trip (2026-02-30)", () => {
+    expect(() => periodRange({ since: "2026-02-30", until: "2026-03-05" }, "UTC")).toThrow(RangeError);
+  });
+
+  it("clamps a future until to now rather than rejecting", () => {
+    const farFuture = "2999-01-10";
+    const before = Date.now();
+    const { until } = periodRange({ since: "2026-01-01", until: farFuture }, "UTC");
+    const after = Date.now();
+    expect(until).toBeGreaterThanOrEqual(before);
+    expect(until).toBeLessThanOrEqual(after);
   });
 });
 
@@ -872,6 +942,52 @@ describe("buildBuckets", () => {
     expect(buckets[1]!.label).toContain("Feb");
     expect(buckets[2]!.label).toContain("Mar");
   });
+
+  it("produces daily buckets for a 'day'-period trend", () => {
+    const start = Date.UTC(2026, 2, 2, 0, 0, 0);
+    const end = start + 24 * 60 * 60 * 1000;
+    const buckets = buildBuckets("day", "UTC", start, end);
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]!.startMs).toBe(start);
+    expect(buckets[0]!.endMs).toBe(end);
+  });
+
+  it("uses pickGranularity for a non-preset period: daily buckets at/around the 9-day threshold", () => {
+    const start = Date.UTC(2026, 0, 1, 0, 0, 0);
+
+    // Exactly 9 days → daily buckets
+    const end9 = start + 9 * 24 * 60 * 60 * 1000;
+    const buckets9 = buildBuckets("custom", "UTC", start, end9);
+    expect(buckets9).toHaveLength(9);
+    for (const b of buckets9) {
+      expect(b.endMs - b.startMs).toBe(24 * 60 * 60 * 1000);
+    }
+
+    // Just over 9 days → weekly buckets, not daily
+    const end10 = start + 10 * 24 * 60 * 60 * 1000;
+    const buckets10 = buildBuckets("custom", "UTC", start, end10);
+    for (const b of buckets10) {
+      expect(b.endMs - b.startMs).not.toBe(24 * 60 * 60 * 1000);
+    }
+  });
+
+  it("uses pickGranularity for a non-preset period: weekly buckets at/around the 62-day threshold", () => {
+    const start = Date.UTC(2026, 0, 1, 0, 0, 0);
+
+    // Exactly 62 days → weekly buckets (7-day spans, possibly truncated at the end)
+    const end62 = start + 62 * 24 * 60 * 60 * 1000;
+    const buckets62 = buildBuckets("custom", "UTC", start, end62);
+    for (const b of buckets62.slice(0, -1)) {
+      expect(b.endMs - b.startMs).toBe(7 * 24 * 60 * 60 * 1000);
+    }
+
+    // Just over 62 days → monthly buckets
+    const end63 = start + 63 * 24 * 60 * 60 * 1000;
+    const buckets63 = buildBuckets("custom", "UTC", start, end63);
+    for (const b of buckets63) {
+      expect(b.endMs - b.startMs).not.toBe(7 * 24 * 60 * 60 * 1000);
+    }
+  });
 });
 
 // ── printTrend ──────────────────────────────────────────────────────────────
@@ -1274,5 +1390,120 @@ describe("printSpendingReport", () => {
     // Should show both models with percentages
     expect(output.some(s => s.includes("opus") && s.includes("%"))).toBe(true);
     expect(output.some(s => s.includes("sonnet") && s.includes("%"))).toBe(true);
+  });
+});
+
+// ── printCostPerTask ─────────────────────────────────────────────────────────
+
+describe("printCostPerTask", () => {
+  /** Collect lines written to a fake stream so we can assert on the output. */
+  function capture(report: CostPerTaskReport, opts?: Parameters<typeof printCostPerTask>[2]): string {
+    let buf = "";
+    const out = { write: (s: string) => { buf += s; return true; } } as unknown as NodeJS.WritableStream;
+    printCostPerTask(report, out, opts);
+    return buf;
+  }
+
+  function makeModel(over: Partial<ModelCostPerTask> = {}): ModelCostPerTask {
+    return {
+      model: "claude-opus-4-6",
+      tasksObservable: 40,
+      successCount: 12,
+      successRate: 0.3,
+      costObservable: 420,
+      costByModelExact: 420,
+      meanCostPerAttempt: 10.5,
+      costPerSuccessfulTask: 35,
+      ...over,
+    };
+  }
+
+  function makeReport(over: Partial<CostPerTaskReport> = {}): CostPerTaskReport {
+    return {
+      period: "month",
+      windowStart: 0,
+      windowEnd: 0,
+      tasksTotal: 100,
+      observable: 40,
+      coverage: 0.4,
+      successCount: 12,
+      failedCount: 28,
+      inFlightCount: 30,
+      unobservableCount: 30,
+      successRate: 0.3,
+      totalCostObservable: 420,
+      meanCostPerAttempt: 10.5,
+      costPerSuccessfulTask: 35,
+      labelledCount: 5,
+      byModel: [],
+      ...over,
+    };
+  }
+
+  it("emits valid JSON of the report in json mode", () => {
+    const report = makeReport();
+    const out = capture(report, { json: true });
+    expect(JSON.parse(out)).toEqual(report);
+  });
+
+  it("prints a no-tasks message when the window is empty", () => {
+    const out = capture(makeReport({ tasksTotal: 0, observable: 0, successCount: 0, failedCount: 0, inFlightCount: 0, unobservableCount: 0, successRate: null, meanCostPerAttempt: null, costPerSuccessfulTask: null, coverage: 0, totalCostObservable: 0, labelledCount: 0 }));
+    expect(out).toContain("No tasks in this window.");
+  });
+
+  it("leads with the headline and the mean ÷ rate decomposition at healthy coverage", () => {
+    const out = capture(makeReport());
+    expect(out).toContain("Cost per successful task: $35.00");
+    expect(out).toContain("$10.50"); // mean cost per attempt
+    expect(out).toContain("30%");    // success rate
+    // Coverage + labelling line and the four-state outcome line are present.
+    expect(out).toContain("40 observable (40% coverage)");
+    expect(out).toContain("5 labelled");
+    expect(out).toContain("12 success");
+    expect(out).toContain("28 failed");
+    expect(out).toContain("30 in-flight");
+    expect(out).toContain("30 unobservable");
+  });
+
+  it("warns and leads with mean-cost-per-attempt below the coverage floor", () => {
+    const out = capture(makeReport({ coverage: 0.1 }));
+    expect(out).toContain("⚠");
+    expect(out).toContain("Low coverage (10%)");
+    expect(out).toContain("Mean cost per attempt: $10.50");
+    // The headline is still shown but flagged unreliable.
+    expect(out).toContain("rate may be unreliable");
+  });
+
+  it("respects a custom coverage floor", () => {
+    // coverage 0.4 is below a 0.5 floor → warn path
+    const out = capture(makeReport(), { coverageFloor: 0.5 });
+    expect(out).toContain("Low coverage (40%)");
+  });
+
+  it("renders 'n/a' when there are no successes", () => {
+    const out = capture(makeReport({ successCount: 0, costPerSuccessfulTask: null, successRate: 0, meanCostPerAttempt: 10.5 }));
+    expect(out).toContain("Cost per successful task: n/a");
+  });
+
+  it("renders the per-model table with the dominant-model rate", () => {
+    const out = capture(makeReport({
+      byModel: [
+        makeModel({ model: "claude-opus-4-6", costPerSuccessfulTask: 35, successRate: 0.3, tasksObservable: 40, costObservable: 420 }),
+        makeModel({ model: "claude-sonnet-4-6", costPerSuccessfulTask: 5.45, successRate: 0.55, tasksObservable: 60, costObservable: 180 }),
+      ],
+    }));
+    expect(out).toContain("By model:");
+    expect(out).toContain("opus-4-6");
+    expect(out).toContain("$35.00/success");
+    expect(out).toContain("sonnet-4-6");
+    expect(out).toContain("$5.45/success");
+  });
+
+  it("marks a thinly-observed model as insufficient rather than printing a noisy rate", () => {
+    const out = capture(makeReport({
+      byModel: [makeModel({ model: "claude-haiku-4-5", tasksObservable: 3, successRate: null, costPerSuccessfulTask: null, costObservable: 12 })],
+    }));
+    expect(out).toContain("haiku-4-5");
+    expect(out).toContain("n/a (<10 obs)");
   });
 });

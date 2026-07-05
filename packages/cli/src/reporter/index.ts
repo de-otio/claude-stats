@@ -6,24 +6,36 @@
 import type { Store, SessionRow, MessageRow, StatusInfo, SpendingReport } from "../store/index.js";
 import type { SearchResult } from "../history/index.js";
 import type { DailyDigest, DailyDigestItem } from "../recap/index.js";
+import type { CostPerTaskReport } from "../cost-per-task/index.js";
+import { MIN_OBSERVABLE_FOR_MODEL_RATE } from "../cost-per-task/index.js";
 import { estimateCost, formatCost } from "@claude-stats/core/pricing";
 import { attributeToolCosts, groupByMcpServer, detectAnomalies } from "../spending.js";
 import { t } from "../i18n.js";
 import { renderItem } from "../recap/templates.js";
+import { dayWindowInTz } from "../recap/index.js";
 
-export interface ReportOptions {
+export type Preset = "day" | "week" | "month" | "all";
+
+export interface DateRangeOpts {
+  period?: Preset;
+  since?: string;
+  until?: string;
+}
+
+export interface ReportOptions extends DateRangeOpts {
   projectPath?: string;
   repoUrl?: string;
   accountUuid?: string;
   entrypoint?: string;
   tag?: string;
-  period?: "day" | "week" | "month" | "all";
   timezone?: string;
   includeCI?: boolean;
   /** Monthly plan fee in USD for ROI calculations (0 = disabled). */
   planFee?: number;
   /** Plan type string (e.g. "pro", "max_5x") used as fallback when telemetry subscription_type is absent. */
   planType?: string;
+  /** Per-account subscription fees (keyed by account_uuid) for fee attribution. */
+  accountFees?: import("../config.js").Config["accountFees"];
 }
 
 export function formatEntrypoint(ep: string): string {
@@ -108,6 +120,57 @@ export function periodStart(period: string | undefined, tz: string): number {
   return 0;
 }
 
+/**
+ * Resolve a {@link DateRangeOpts} (either a preset `period` or an explicit
+ * `since`/`until` pair) into a concrete `[since, until]` epoch-ms window.
+ *
+ * - `since`/`until` (both required together) take precedence over `period`.
+ *   Each is a `YYYY-MM-DD` date string, inclusive, interpreted in `tz`.
+ * - A future `until` is clamped to `Date.now()`, not rejected.
+ * - Malformed dates (e.g. `2026-02-30`, which `Date`-based arithmetic
+ *   silently normalizes to a different calendar date) are rejected via a
+ *   round-trip check against each date's own calendar-day start.
+ */
+export function periodRange(opts: DateRangeOpts, tz: string): { since: number; until: number } {
+  if (opts.since || opts.until) {
+    if (!opts.since || !opts.until) {
+      throw new RangeError("since and until must be provided together");
+    }
+    if (!isRoundTripYmd(opts.since, tz)) {
+      throw new RangeError(`since (${opts.since}) is not a valid calendar date`);
+    }
+    if (!isRoundTripYmd(opts.until, tz)) {
+      throw new RangeError(`until (${opts.until}) is not a valid calendar date`);
+    }
+    const start = dayWindowInTz(opts.since, tz).startMs;
+    const end = dayWindowInTz(opts.until, tz).endMs;
+    if (start >= end) {
+      throw new RangeError(`since (${opts.since}) must be before until (${opts.until})`);
+    }
+    return { since: start, until: Math.min(end, Date.now()) };
+  }
+  const since = periodStart(opts.period, tz);
+  return { since, until: Date.now() };
+}
+
+/**
+ * True if `dateYmd` (a `YYYY-MM-DD` string) round-trips through
+ * {@link dayWindowInTz}'s calendar-day-start computation — i.e. formatting
+ * that day's start back into `YYYY-MM-DD` in `tz` yields the same string.
+ * Catches malformed dates like `2026-02-30`, which JS `Date` arithmetic
+ * silently normalizes (to `2026-03-02`) rather than rejecting.
+ */
+function isRoundTripYmd(dateYmd: string, tz: string): boolean {
+  const { startMs } = dayWindowInTz(dateYmd, tz);
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return fmt.format(new Date(startMs)) === dateYmd;
+}
+
 type Totals = { sessions: number; input: number; output: number; prompts: number };
 
 function makeTotals(): Totals {
@@ -147,24 +210,50 @@ export interface TrendBucket {
 }
 
 /**
+ * Pick a bucket granularity from a range's width, for ranges where the
+ * granularity isn't dictated by a fixed preset (custom ranges, and the
+ * `"all"` / `"custom"` period paths).
+ * - ≤ 9 days   → daily buckets
+ * - ≤ 62 days  → weekly buckets
+ * - otherwise  → monthly buckets
+ */
+function pickGranularity(rangeStart: number, rangeEnd: number): "day" | "week" | "month" {
+  const days = (rangeEnd - rangeStart) / 86_400_000;
+  if (days <= 9) return "day";
+  if (days <= 62) return "week";
+  return "month";
+}
+
+/**
  * Build time buckets for trend display.
  * - week  → 7 daily buckets
  * - month → weekly buckets (Mon–Sun weeks, 4-5 rows)
- * - all   → monthly buckets from rangeStart to rangeEnd
+ * - day   → daily buckets (single day)
+ * - other (e.g. "all", "custom") → granularity picked from range width via
+ *   {@link pickGranularity}
  */
 export function buildBuckets(period: string, tz: string, rangeStart: number, rangeEnd: number): TrendBucket[] {
   const buckets: TrendBucket[] = [];
+  const granularity = period === "week"
+    ? "day"
+    : period === "month"
+      ? "week"
+      : period === "day"
+        ? "day"
+        : pickGranularity(rangeStart, rangeEnd);
 
-  if (period === "week") {
-    // 7 daily buckets
+  if (granularity === "day") {
+    // Daily buckets covering the full range (7 for the "week" preset; for
+    // "day"/custom/"all" ranges the bucket count follows the range width).
     const dayFmt = new Intl.DateTimeFormat("en-US", {
       timeZone: tz,
       weekday: "short",
       month: "short",
       day: "numeric",
     });
+    const dayCount = period === "week" ? 7 : Math.max(1, Math.ceil((rangeEnd - rangeStart) / 86_400_000));
     let cursor = rangeStart;
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < dayCount; i++) {
       const dayStart = cursor;
       const dayEnd = dayStart + 24 * 60 * 60 * 1000;
       buckets.push({
@@ -174,7 +263,7 @@ export function buildBuckets(period: string, tz: string, rangeStart: number, ran
       });
       cursor = dayEnd;
     }
-  } else if (period === "month") {
+  } else if (granularity === "week") {
     // Weekly buckets (Mon–Sun), covering the full month
     const dateFmt = new Intl.DateTimeFormat("en-US", {
       timeZone: tz,
@@ -230,8 +319,12 @@ export function buildBuckets(period: string, tz: string, rangeStart: number, ran
 
 export function printTrend(store: Store, opts: ReportOptions = {}): void {
   const tz = opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const period = opts.period ?? "month";
-  const since = periodStart(period, tz);
+  const isCustomRange = Boolean(opts.since && opts.until);
+  // A custom since/until range has no fixed preset bucket shape — buildBuckets
+  // falls through to pickGranularity(range width) for any period other than
+  // the fixed "week"/"month"/"day" presets, so "custom" routes it there.
+  const period = isCustomRange ? "custom" : (opts.period ?? "month");
+  const { since, until } = periodRange({ period: opts.period ?? "month", since: opts.since, until: opts.until }, tz);
 
   const rows = store.getSessions({
     projectPath: opts.projectPath,
@@ -240,6 +333,12 @@ export function printTrend(store: Store, opts: ReportOptions = {}): void {
     entrypoint: opts.entrypoint,
     tag: opts.tag,
     since: since > 0 ? since : undefined,
+    // Only bound `until` for an explicit custom range — a preset's `until`
+    // is Date.now() computed moments ago and is a strict upper bound in the
+    // store query, so threading it unconditionally would flakily exclude a
+    // session inserted in the same millisecond. Presets stay unbounded/"now"
+    // exactly as before.
+    until: isCustomRange ? until : undefined,
     includeCI: opts.includeCI ?? false,
   });
 
@@ -249,7 +348,7 @@ export function printTrend(store: Store, opts: ReportOptions = {}): void {
   }
 
   const rangeStart = since > 0 ? since : Math.min(...rows.map(r => r.first_timestamp ?? Infinity));
-  const rangeEnd = Date.now();
+  const rangeEnd = until;
 
   const buckets = buildBuckets(period, tz, rangeStart, rangeEnd);
 
@@ -284,11 +383,13 @@ export function printTrend(store: Store, opts: ReportOptions = {}): void {
     : period === "month"
       ? t("cli:report.trendColumnWeek")
       : t("cli:report.trendColumnMonth");
-  const periodLabel = period === "week"
-    ? t("cli:report.trendPeriodWeekly")
-    : period === "month"
-      ? t("cli:report.trendPeriodMonthly")
-      : t("cli:report.trendPeriodAllTime");
+  const periodLabel = isCustomRange
+    ? `${opts.since} – ${opts.until}`
+    : period === "week"
+      ? t("cli:report.trendPeriodWeekly")
+      : period === "month"
+        ? t("cli:report.trendPeriodMonthly")
+        : t("cli:report.trendPeriodAllTime");
 
   console.log(`\n\u2500\u2500\u2500 ${t("cli:report.titleTrend", { period: periodLabel, timezone: tz })} \u2500\u2500\u2500\n`);
 
@@ -315,7 +416,8 @@ export function printTrend(store: Store, opts: ReportOptions = {}): void {
 
 export function printSummary(store: Store, opts: ReportOptions = {}): void {
   const tz = opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const since = periodStart(opts.period, tz);
+  const isCustomRange = Boolean(opts.since && opts.until);
+  const { since, until } = periodRange({ period: opts.period, since: opts.since, until: opts.until }, tz);
 
   const rows = store.getSessions({
     projectPath: opts.projectPath,
@@ -324,6 +426,10 @@ export function printSummary(store: Store, opts: ReportOptions = {}): void {
     entrypoint: opts.entrypoint,
     tag: opts.tag,
     since: since > 0 ? since : undefined,
+    // See printTrend's comment on the same guard: only bound `until` for an
+    // explicit custom range, to avoid a same-millisecond race excluding a
+    // just-inserted session under the preset "now" path.
+    until: isCustomRange ? until : undefined,
     includeCI: opts.includeCI ?? false,
   });
 
@@ -387,9 +493,11 @@ export function printSummary(store: Store, opts: ReportOptions = {}): void {
     ? ((totalCacheRead / totalLogicalInput) * 100).toFixed(1)
     : "0.0";
 
-  const periodLabel = opts.period
-    ? `${opts.period} (${tz})`
-    : t("common:periods.allTime");
+  const periodLabel = opts.since && opts.until
+    ? `${opts.since} \u2013 ${opts.until} (${tz})`
+    : opts.period
+      ? `${opts.period} (${tz})`
+      : t("common:periods.allTime");
 
   console.log(`\n\u2500\u2500\u2500 ${t("cli:report.titleSummary", { period: periodLabel })} \u2500\u2500\u2500\n`);
   const durationSuffix = totalDurationMs > 0 ? ` (${formatDuration(totalDurationMs)} ${t("cli:report.tableTotal").toLowerCase()})` : "";
@@ -404,6 +512,7 @@ export function printSummary(store: Store, opts: ReportOptions = {}): void {
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
     since: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
   });
   let totalCost = 0;
   let unknownTokens = 0;
@@ -547,7 +656,8 @@ export interface SpendingOptions extends ReportOptions {
 
 export function printSpendingReport(store: Store, opts: SpendingOptions = {}): void {
   const tz = opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const since = periodStart(opts.period ?? "day", tz);
+  const isCustomRange = Boolean(opts.since && opts.until);
+  const { since, until } = periodRange({ period: opts.period ?? "day", since: opts.since, until: opts.until }, tz);
   const top = opts.top ?? 5;
 
   const report = store.getSpendingReport({
@@ -555,6 +665,10 @@ export function printSpendingReport(store: Store, opts: SpendingOptions = {}): v
     repoUrl: opts.repoUrl,
     accountUuid: opts.accountUuid,
     since: since > 0 ? since : undefined,
+    // See printTrend's comment on the same guard: only bound `until` for an
+    // explicit custom range, to avoid a same-millisecond race excluding a
+    // just-inserted session under the preset "now" path.
+    until: isCustomRange ? until : undefined,
     limit: Math.max(top, 20), // fetch enough for tool/anomaly analysis
   });
 
@@ -583,7 +697,9 @@ export function printSpendingReport(store: Store, opts: SpendingOptions = {}): v
     return;
   }
 
-  const periodLabel = opts.period === "day" ? "Today" : opts.period ?? "day";
+  const periodLabel = opts.since && opts.until
+    ? `${opts.since} – ${opts.until}`
+    : opts.period === "day" ? "Today" : opts.period ?? "day";
   const dateStr = new Date().toLocaleDateString("en-US", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
   console.log(`\n\u2500\u2500\u2500 ${t("cli:report.spendingTitle", { period: periodLabel, date: dateStr })} \u2500\u2500\u2500\n`);
 
@@ -703,6 +819,148 @@ export function printSpendingReport(store: Store, opts: SpendingOptions = {}): v
   console.log();
 }
 
+// ── Cost per successful task ─────────────────────────────────────────────────
+
+export interface CostPerTaskPrintOptions {
+  /** Emit the raw report as JSON instead of the formatted view. */
+  json?: boolean;
+  /**
+   * Below this `observable / total` ratio, the success rate rests on too thin a
+   * slice to trust: lead with `mean_cost_per_attempt` (which needs no outcome)
+   * and warn. See doc/analysis/cost-per-successful-task/03-outcome-model.md §3.6.
+   */
+  coverageFloor?: number;
+}
+
+const DEFAULT_COVERAGE_FLOOR = 0.2;
+
+function fmtPct(x: number): string {
+  return `${(x * 100).toFixed(0)}%`;
+}
+
+/** Trim the `claude-` prefix and a trailing `-YYYYMMDD` date stamp for display. */
+function shortModel(model: string): string {
+  return model.replace(/^claude-/, "").replace(/-\d{8}$/, "");
+}
+
+/**
+ * Print the cost-per-successful-task report. Pure formatting over an already
+ * built {@link CostPerTaskReport} (the CLI command builds it via
+ * `buildCostPerTaskReport`), mirroring `printDailyRecap`'s digest-in shape so
+ * the heavy async build stays out of this function and out of coverage.
+ */
+export function printCostPerTask(
+  report: CostPerTaskReport,
+  out: NodeJS.WritableStream = process.stdout,
+  opts: CostPerTaskPrintOptions = {},
+): void {
+  if (opts.json) {
+    out.write(JSON.stringify(report, null, 2) + "\n");
+    return;
+  }
+
+  const write = (line: string) => out.write(line + "\n");
+  const floor = opts.coverageFloor ?? DEFAULT_COVERAGE_FLOOR;
+  const na = t("cli:report.costPerTaskNa");
+
+  write("");
+  write(`─── ${t("cli:report.costPerTaskTitle", { period: report.period })} ───`);
+  write("");
+
+  if (report.tasksTotal === 0) {
+    write(t("cli:report.costPerTaskNoTasks"));
+    write("");
+    return;
+  }
+
+  // Headline — below the coverage floor, lead loudly with the exact half.
+  if (report.coverage < floor) {
+    write(`⚠ ${t("cli:report.costPerTaskLowCoverageWarn", { coverage: fmtPct(report.coverage) })}`);
+    write("");
+    const mean = report.meanCostPerAttempt !== null ? formatCost(report.meanCostPerAttempt) : na;
+    write(`${t("cli:report.costPerTaskMeanLead")}: ${mean}  (${report.observable} ${t("cli:report.costPerTaskObservableNoun")})`);
+    if (report.costPerSuccessfulTask !== null) {
+      write(`${t("cli:report.costPerTaskHeadline")}: ${formatCost(report.costPerSuccessfulTask)}  (${t("cli:report.costPerTaskUnreliable")})`);
+    }
+  } else {
+    const headline = report.costPerSuccessfulTask !== null ? formatCost(report.costPerSuccessfulTask) : na;
+    write(`${t("cli:report.costPerTaskHeadline")}: ${headline}`);
+    if (report.meanCostPerAttempt !== null && report.successRate !== null) {
+      write(`  = ${t("cli:report.costPerTaskDecomp", {
+        mean: formatCost(report.meanCostPerAttempt),
+        rate: fmtPct(report.successRate),
+      })}`);
+    }
+  }
+  write("");
+
+  // Coverage / labelling line — tells the reader which tier the number rests on.
+  write(
+    `${t("cli:report.costPerTaskTasks")}: ` +
+    `${report.tasksTotal} ${t("cli:report.costPerTaskTotalNoun")} · ` +
+    `${report.observable} ${t("cli:report.costPerTaskObservableNoun")} (${fmtPct(report.coverage)} ${t("cli:report.costPerTaskCoverageNoun")}) · ` +
+    `${report.labelledCount} ${t("cli:report.costPerTaskLabelledNoun")}`,
+  );
+
+  // Four-state outcome breakdown.
+  write(
+    `${t("cli:report.costPerTaskOutcomes")}: ` +
+    `${report.successCount} ${t("cli:report.costPerTaskSuccess")} · ` +
+    `${report.failedCount} ${t("cli:report.costPerTaskFailed")} · ` +
+    `${report.inFlightCount} ${t("cli:report.costPerTaskInFlight")} · ` +
+    `${report.unobservableCount} ${t("cli:report.costPerTaskUnobservable")}`,
+  );
+
+  // Per-model table (dominant-model assignment for the rate).
+  if (report.byModel.length > 0) {
+    write("");
+    write(`${t("cli:report.costPerTaskByModel")}:`);
+    for (const m of report.byModel) {
+      const name = shortModel(m.model).padEnd(16).slice(0, 16);
+      const cps = (m.costPerSuccessfulTask !== null
+        ? `${formatCost(m.costPerSuccessfulTask)}/${t("cli:report.costPerTaskSuccessShort")}`
+        : na).padStart(14);
+      const rate = (m.successRate !== null
+        ? `${fmtPct(m.successRate)} ${t("cli:report.costPerTaskSuccessShort")}`
+        : t("cli:report.costPerTaskInsufficient", { min: MIN_OBSERVABLE_FOR_MODEL_RATE })).padEnd(18);
+      write(`  ${name} ${cps}   ${rate} ${String(m.tasksObservable).padStart(4)} ${t("cli:report.costPerTaskObsShort")}   ${formatCost(m.costObservable).padStart(9)}`);
+    }
+  }
+
+  // ── Efficiency frontier (value-per-cost Phase 1) ──
+  // Shown when the report carries an efficiency block with non-trivial data.
+  // Human text for Lever.kind is rendered here from the enum (never in the
+  // payload). Only the top 3 levers are printed (sorted by estSavingUsd desc).
+  const eff = report.efficiency;
+  if (eff && (eff.byArchetype.some((a) => !a.abstained) || eff.levers.length > 0)) {
+    write("");
+    write(`─── ${t("dashboard:costEfficiency.title")} ───`);
+    if (eff.realisedCost <= 0) {
+      // No archetype has a proven cheaper alternative — show the honest note
+      // rather than a misleading all-zero comparison (review H1 / caption fix).
+      write(`  ${t("dashboard:costEfficiency.insufficient")}`);
+    } else {
+      write(
+        `  ${t("dashboard:costEfficiency.realised")} ${formatCost(eff.realisedCost).padStart(9)}` +
+        `   ${t("dashboard:costEfficiency.frontier")} ${formatCost(eff.frontierCost).padStart(9)}` +
+        `   ${t("dashboard:costEfficiency.recoverable")} ${formatCost(eff.recoverableWaste).padStart(9)}`,
+      );
+      if (eff.levers.length > 0) {
+        write("");
+        const topLevers = [...eff.levers]
+          .sort((a, b) => (b.estSavingUsd ?? 0) - (a.estSavingUsd ?? 0))
+          .slice(0, 3);
+        for (const lv of topLevers) {
+          const saving = lv.estSavingUsd != null ? `  (~${formatCost(lv.estSavingUsd)})` : "";
+          write(`  > ${t(`dashboard:costEfficiency.leverKind.${lv.kind}`)}${saving}`);
+        }
+      }
+    }
+    write(`  ${t("dashboard:costEfficiency.basisNote")}`);
+  }
+  write("");
+}
+
 function highlightMatch(text: string, query: string): string {
   const idx = text.toLowerCase().indexOf(query.toLowerCase());
   if (idx === -1) return text;
@@ -746,7 +1004,8 @@ export function printSearchResults(results: SearchResult[], query: string): void
 
 export function printSessionList(store: Store, opts: ReportOptions = {}): void {
   const tz = opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const since = periodStart(opts.period, tz);
+  const isCustomRange = Boolean(opts.since && opts.until);
+  const { since, until } = periodRange({ period: opts.period, since: opts.since, until: opts.until }, tz);
 
   const rows = store.getSessions({
     projectPath: opts.projectPath,
@@ -755,6 +1014,10 @@ export function printSessionList(store: Store, opts: ReportOptions = {}): void {
     entrypoint: opts.entrypoint,
     tag: opts.tag,
     since: since > 0 ? since : undefined,
+    // See printTrend's comment on the same guard: only bound `until` for an
+    // explicit custom range, to avoid a same-millisecond race excluding a
+    // just-inserted session under the preset "now" path.
+    until: isCustomRange ? until : undefined,
     includeCI: opts.includeCI ?? false,
   });
 
@@ -763,7 +1026,9 @@ export function printSessionList(store: Store, opts: ReportOptions = {}): void {
     return;
   }
 
-  const periodLabel = opts.period ? `${opts.period} (${tz})` : t("common:periods.allTime");
+  const periodLabel = opts.since && opts.until
+    ? `${opts.since} \u2013 ${opts.until} (${tz})`
+    : opts.period ? `${opts.period} (${tz})` : t("common:periods.allTime");
   console.log(`\n\u2500\u2500\u2500 ${t("cli:report.titleSessions", { period: periodLabel })} \u2500\u2500\u2500\n`);
 
   // Fetch per-session message totals for cost estimation

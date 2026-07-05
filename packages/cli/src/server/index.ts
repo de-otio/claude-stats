@@ -18,9 +18,12 @@ import crypto from "node:crypto";
 import { URL } from "node:url";
 import type { Store } from "../store/index.js";
 import { buildDashboard } from "../dashboard/index.js";
+import type { DashboardData } from "../dashboard/index.js";
 import type { ReportOptions } from "../reporter/index.js";
-import { loadConfig, saveConfig, getPlanConfig, type Config } from "../config.js";
+import { loadConfig, saveConfig, mergeConfig, buildAccountsForConfig, redactConfigForHttp } from "../config.js";
+import { readClaudeAccount } from "../account.js";
 import { t } from "../i18n.js";
+import { escapeHtml } from "./utils.js";
 
 const AUTH_COOKIE_NAME = "claude_stats_token";
 
@@ -45,6 +48,8 @@ function parseOpts(url: URL): ReportOptions {
   const account = p.get("account");
   return {
     period: (p.get("period") ?? undefined) as ReportOptions["period"],
+    since: p.get("since") ?? undefined,
+    until: p.get("until") ?? undefined,
     projectPath: p.get("project") ?? undefined,
     repoUrl: p.get("repo") ?? undefined,
     accountUuid: account && account.length > 0 ? account : undefined,
@@ -68,6 +73,11 @@ function sendHtml(res: http.ServerResponse, status: number, body: string, extraH
   res.writeHead(status, {
     "Content-Type": "text/html; charset=utf-8",
     "Content-Length": Buffer.byteLength(body),
+    // Defense-in-depth alongside output escaping: the dashboard ships inline
+    // scripts/styles (so 'unsafe-inline' is required), but constrain network
+    // egress to same-origin so an injected handler can't exfiltrate to a remote.
+    "Content-Security-Policy":
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'",
     ...extraHeaders,
   });
   res.end(body);
@@ -81,14 +91,65 @@ async function tryRenderDashboard(data: unknown): Promise<string> {
     return mod.renderDashboard(data, t);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return `<!DOCTYPE html><html><body><p>Render error: ${msg}</p><pre>${JSON.stringify(data, null, 2)}</pre></body></html>`;
+    // sec#2: HTML-escape both the error message and the JSON payload so that
+    // attacker-controlled string values (e.g., a session title containing
+    // </pre><script>…</script>) cannot break out of the <pre> block.
+    const safeMsg = escapeHtml(msg);
+    const safeJson = escapeHtml(JSON.stringify(data, null, 2));
+    return `<!DOCTYPE html><html><body><p>Render error: ${safeMsg}</p><pre>${safeJson}</pre></body></html>`;
   }
 }
+
+/**
+ * Strip PII and raw rate-limit/billing/seat fields from dashboard data before
+ * sending it on the unauthenticated HTTP path (GET / and GET /api/dashboard).
+ *
+ * Specifically:
+ *  - availableAccounts[].emailAddress → null  (sec#1 email leak)
+ *  - planUtilization.byAccount[].emailAddress → null  (sec#1)
+ *  - availableAccounts[].subscriptionType, rateLimitTier, billingType,
+ *    seatTier are NOT present on DashboardData (those live in AccountRecord).
+ *    The raw `subscriptionType` field on availableAccounts is kept since it is
+ *    derived data already present in the template's account selector label;
+ *    raw rate-limit / billing / seat fields are not present here.
+ *
+ * The VS Code panel path (panel.ts) is authenticated and keeps full data.
+ */
+export function redactDashboardForHttp(data: DashboardData): DashboardData {
+  return {
+    ...data,
+    availableAccounts: data.availableAccounts.map((a) => ({
+      ...a,
+      emailAddress: null,
+    })),
+    planUtilization: data.planUtilization
+      ? {
+          ...data.planUtilization,
+          byAccount: data.planUtilization.byAccount.map((ba) => ({
+            ...ba,
+            emailAddress: null,
+          })),
+        }
+      : null,
+  };
+}
+
+/** Max accepted request body. Config payloads are a few KB; cap well above that. */
+const MAX_BODY_BYTES = 64 * 1024;
 
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    let size = 0;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error("payload too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
     req.on("error", reject);
   });
@@ -177,11 +238,18 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
 
         if (req.method === "GET" && pathname === "/") {
           const opts = parseOpts(url);
-          const planCfg = getPlanConfig(loadConfig());
-          if (planCfg && !opts.planFee) opts.planFee = planCfg.monthlyFee;
-          if (planCfg && !opts.planType) opts.planType = planCfg.type;
+          const cfg = loadConfig();
+          // Per-account subscriptions are the source of truth: buildDashboard
+          // sums each in-scope account's fee (from accountFees, by type) for the
+          // headline plan fee and budget. We deliberately do NOT seed a single
+          // global planFee/planType here — that would override the per-account
+          // split when two accounts hold different plans.
+          if (!opts.accountFees) opts.accountFees = cfg.accountFees;
           const data = buildDashboard(store, opts);
-          const html = await tryRenderDashboard(data);
+          const { attachCostPerTask } = await import("../dashboard/index.js");
+          await attachCostPerTask(store, data, opts);
+          // sec#1 / sec#8: strip email and raw tier/billing/seat from unauth path.
+          const html = await tryRenderDashboard(redactDashboardForHttp(data));
           // Set auth cookie so SPA can authenticate subsequent mutating
           // requests. SameSite=Strict prevents CSRF; Path=/ so same-origin
           // fetch carries it automatically. Not HttpOnly because we want to
@@ -193,8 +261,12 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
 
         if (req.method === "GET" && pathname === "/api/dashboard") {
           const opts = parseOpts(url);
+          if (!opts.accountFees) opts.accountFees = loadConfig().accountFees;
           const data = buildDashboard(store, opts);
-          sendJson(res, 200, data);
+          const { attachCostPerTask } = await import("../dashboard/index.js");
+          await attachCostPerTask(store, data, opts);
+          // sec#1 / sec#8: strip email and raw tier/billing/seat from unauth path.
+          sendJson(res, 200, redactDashboardForHttp(data));
           return;
         }
 
@@ -205,7 +277,17 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
         }
 
         if (req.method === "GET" && pathname === "/api/config") {
-          sendJson(res, 200, loadConfig());
+          // Unauthenticated, localhost-only. Strip secrets (llmJudge.apiKey) and
+          // do NOT include account email here (PII on an unauth endpoint).
+          // Pass listAccountsFull() so buildAccountsForConfig can derive a richer
+          // planLabel from the tier/subscription data in the accounts table.
+          const accounts = buildAccountsForConfig(
+            store.listAccounts(),
+            readClaudeAccount(),
+            false,
+            store.listAccountsFull(),
+          );
+          sendJson(res, 200, { ...redactConfigForHttp(loadConfig()), accounts });
           return;
         }
 
@@ -215,22 +297,18 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
             sendJson(res, 401, { error: "unauthorized" });
             return;
           }
-          const body = await readBody(req);
-          const incoming = JSON.parse(body) as Config;
-          const current = loadConfig();
-          // Deep merge nested objects so partial updates don't drop sibling keys
-          const merged: Config = {
-            ...current,
-            ...incoming,
-            plan: incoming.plan !== undefined
-              ? { ...current.plan, ...incoming.plan }
-              : current.plan,
-            costThresholds: incoming.costThresholds !== undefined
-              ? { ...current.costThresholds, ...incoming.costThresholds }
-              : current.costThresholds,
-          };
+          let body: string;
+          try {
+            body = await readBody(req);
+          } catch {
+            sendJson(res, 413, { error: "payload too large" });
+            return;
+          }
+          // mergeConfig allow-lists keys, shallow-merges siblings, and validates
+          // accountFees (prototype-safe, bounded). Never spread raw input.
+          const merged = mergeConfig(loadConfig(), JSON.parse(body));
           saveConfig(merged);
-          sendJson(res, 200, { ok: true, config: merged });
+          sendJson(res, 200, { ok: true, config: redactConfigForHttp(merged) });
           return;
         }
 
@@ -238,7 +316,16 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         try {
-          sendJson(res, 500, { error: msg });
+          // periodRange (invoked from buildDashboard) throws RangeError for a
+          // malformed/invalid since/until pair (missing partner, unparsable
+          // calendar date, since after until). Surface that as a client error
+          // (400) rather than a 500 — the request, not the server, is at fault
+          // — and fail closed: no dashboard is rendered/returned for it.
+          if (err instanceof RangeError) {
+            sendJson(res, 400, { error: msg });
+          } else {
+            sendJson(res, 500, { error: msg });
+          }
         } catch {
           // Response already partially written; nothing more we can do
         }

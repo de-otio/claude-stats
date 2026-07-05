@@ -80,6 +80,20 @@ claude mcp add -s user claude-stats -- "$(which node)" --experimental-sqlite \
 | `list_projects`      | Per-project usage breakdown                                                    |
 | `get_status`         | Database health, session count, last collection time                           |
 | `search_history`     | Search prompt history by keyword                                               |
+| `get_cost_per_task`  | Cost per successful task — outcome-cost overall and per model (read-only)       |
+| `get_account_info`   | Current login's seat tier, billing type, and known accounts on this machine     |
+| `get_plan_mechanics_reference` | Dated snapshot of Team/Enterprise seat ranges, pricing, and usage-intensity benchmarks, with a staleness warning |
+| `size_seats`         | Seat-sizing scenario table for a company rollout from headcount + technical fraction (never picks a plan) |
+
+### License advisor skill
+
+`skills/license-advisor/SKILL.md` is a repo-level Claude Code skill that walks
+a stakeholder through picking a Team vs Enterprise plan and seat count using
+the tools above — grounded in measured usage where it exists, falling back to
+benchmarks otherwise, and surfacing the compliance and spend-limit tradeoffs
+as choices rather than resolving them silently. See
+[doc/user-doc/commands.md](doc/user-doc/commands.md) for the matching
+`account` and `plan-advisor` CLI commands.
 
 ### Example queries
 
@@ -87,6 +101,7 @@ claude mcp add -s user claude-stats -- "$(which node)" --experimental-sqlite \
 - "What were my most expensive sessions today?"
 - "Which projects am I spending the most on?"
 - "How much CO₂ did my Claude usage cause last week?"
+- "What's my cost per successful task, broken down by model?"
 
 ## Commandline Usage
 
@@ -111,6 +126,8 @@ claude-stats report --html        # export a standalone HTML dashboard file
 | `collect`      | Incrementally import session data from `~/.claude/projects/`    |
 | `report`       | Print usage summary, per-session detail, or trend breakdown     |
 | `spending`     | Detailed cost breakdown by model, session, tool, and MCP server |
+| `cost-per-task`| Cost per successful task — outcome-cost overall and per model   |
+| `task-outcome` | Label a task `success`/`partial`/`fail` to ground the metric    |
 | `serve`        | Start a local web dashboard (`http://localhost:9120`)           |
 | `status`       | Show database size, session count, and last collection time     |
 | `export`       | Export sessions as JSON or CSV                                  |
@@ -121,6 +138,7 @@ claude-stats report --html        # export a standalone HTML dashboard file
 | `backfill`     | Re-parse all session files to populate newly added fields       |
 | `diagnose`     | Show quarantine counts and schema health                        |
 | `mcp`          | Start a local MCP server over stdio for AI agent access         |
+| `purge`        | Delete local claude-stats data (dry run by default; `--yes` to apply) |
 
 ## Build
 
@@ -148,7 +166,7 @@ This is an informal side-project maintained for personal use — built for fun, 
 
 Claude Code writes a JSONL file for every session under `~/.claude/projects/`. This tool reads those files incrementally, stores aggregated token counts and session metadata in a local SQLite database (`~/.claude-stats/stats.db`), and renders summaries on demand.
 
-- **Nothing leaves your machine.** All data stays in `~/.claude-stats/`.
+- **Local by default.** All data stays in `~/.claude-stats/` and no network requests are made. Optional, opt-in [backup and sync](doc/user-doc/backup-and-sync.md) can copy an **end-to-end-encrypted** bundle to a cloud folder you already control — you turn it on explicitly, and your cloud provider only ever sees opaque ciphertext.
 - **Incremental.** Only new lines are read on each `collect` run.
 - **Non-destructive.** The tool never modifies Claude Code's own files.
 - **No API scraping.** Unlike some alternatives, claude-stats does not call undocumented Anthropic endpoints, scrape session cookies, or inject code into Claude Code's process. It only reads the local JSONL files that Claude Code already writes to disk — fully compliant with Anthropic's Terms of Service.

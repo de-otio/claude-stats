@@ -41,6 +41,18 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
 
   const escapeHtml = (s: string) => s.replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+  // Escape a string for safe embedding inside a single-quoted JS string
+  // literal in the inline <script> block. Translations routinely contain
+  // apostrophes ("haven't", French "l'autre", Ukrainian "прив'язано") — left
+  // unescaped, one terminates the literal early and breaks the whole script,
+  // silently killing every chart on the page. Every `'${t(...)}'` call site
+  // must wrap the translation in this.
+  const jsStr = (s: string) => s
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/<\/script/gi, "<\\/script");
   const sevColor: Record<string, string> = { critical: "#e15759", warning: "#f28e2b", info: "#4e79a7", success: "#59a14f" };
   const sevIcon: Record<string, string> = { critical: "!", warning: "!", info: "i", success: "\u2713" };
   const recs = data.recommendations ?? [];
@@ -67,6 +79,150 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     </div>` : "";
   const recsHtml = actionsHtml + positivesHtml;
 
+  // ── Cost per successful task (read-only card) ──
+  const cpt = data.costPerTask;
+  const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
+  const fmtPct0 = (x: number) => `${Math.round(x * 100)}%`;
+  const cptBadge = (text: string, color = "#9aa3c0") =>
+    `<span style="font-size:0.65rem;color:${color};background:#0f1830;border:1px solid #2a3552;border-radius:3px;padding:0.1rem 0.45rem;">${text}</span>`;
+  // Per-task labelling control button. Rendered only when costPerTask.tasks is
+  // present, which only the VS Code webview sets (the serve path leaves it off).
+  // The webview bridge reads data-cpt-index into __DASHBOARD__.costPerTask.tasks.
+  const cptBtn = (i: number, val: string, glyph: string, active: boolean) =>
+    `<button data-cpt-index="${i}" data-cpt-value="${val}" title="${t("dashboard:costPerTask.mark." + val)}" style="cursor:pointer;background:${active ? "#2b5238" : "#0f1830"};color:#cfd8ea;border:1px solid #2a3552;border-radius:3px;padding:0.05rem 0.35rem;font-size:0.7rem;line-height:1.1;">${glyph}</button>`;
+  const costPerTaskHtml = (cpt && cpt.tasksTotal > 0) ? `
+    <div class="cpt-card" style="margin-bottom:1rem;background:#16213e;border:1px solid #2a3552;border-radius:6px;padding:0.75rem 1rem;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5rem;">
+        <span style="font-size:0.75rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;">${t("dashboard:costPerTask.title")}</span>
+        <span style="font-size:0.65rem;color:#666;">${t(`dashboard:costPerTask.period.${cpt.period}`)}</span>
+      </div>
+      ${cpt.coverage < 0.2 ? `<div style="font-size:0.7rem;color:#f28e2b;margin-bottom:0.5rem;">⚠ ${t("dashboard:costPerTask.lowCoverage", { coverage: fmtPct0(cpt.coverage) })}</div>` : ""}
+      <div style="display:flex;flex-wrap:wrap;gap:1.5rem;align-items:baseline;">
+        <div>
+          <div style="font-size:1.6rem;font-weight:bold;color:#fff;">${cpt.costPerSuccessfulTask !== null ? fmtUsd(cpt.costPerSuccessfulTask) : t("dashboard:costPerTask.na")}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:costPerTask.headline")}</div>
+        </div>
+        ${(cpt.meanCostPerAttempt !== null && cpt.successRate !== null) ? `
+        <div style="font-size:0.78rem;color:#b0b0b0;">${t("dashboard:costPerTask.decomp", { mean: fmtUsd(cpt.meanCostPerAttempt), rate: fmtPct0(cpt.successRate) })}</div>` : ""}
+      </div>
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.6rem;">
+        ${cptBadge(t("dashboard:costPerTask.coverageBadge", { observable: cpt.observable, total: cpt.tasksTotal, coverage: fmtPct0(cpt.coverage) }))}
+        ${cptBadge(t("dashboard:costPerTask.labelledBadge", { labelled: cpt.labelledCount, observable: cpt.observable }))}
+        ${cptBadge(`${cpt.successCount} ${t("dashboard:costPerTask.success")}`, "#8ec07c")}
+        ${cptBadge(`${cpt.failedCount} ${t("dashboard:costPerTask.failed")}`, "#e15759")}
+        ${cptBadge(`${cpt.inFlightCount} ${t("dashboard:costPerTask.inFlight")}`)}
+        ${cptBadge(`${cpt.unobservableCount} ${t("dashboard:costPerTask.unobservable")}`)}
+      </div>
+      ${cpt.byModel.length > 0 ? `
+      <table style="width:100%;margin-top:0.7rem;font-size:0.72rem;border-collapse:collapse;">
+        <thead><tr style="color:#888;text-align:left;">
+          <th style="padding:0.2rem 0.4rem;">${t("dashboard:costPerTask.model")}</th>
+          <th style="padding:0.2rem 0.4rem;text-align:right;">${t("dashboard:costPerTask.perSuccess")}</th>
+          <th style="padding:0.2rem 0.4rem;text-align:right;">${t("dashboard:costPerTask.successRate")}</th>
+          <th style="padding:0.2rem 0.4rem;text-align:right;">${t("dashboard:costPerTask.observableCol")}</th>
+        </tr></thead>
+        <tbody>
+          ${cpt.byModel.map(m => `<tr style="border-top:1px solid #2a3552;">
+            <td style="padding:0.2rem 0.4rem;color:#e8e8e8;">${escapeHtml(m.model.replace(/^claude-/, ""))}</td>
+            <td style="padding:0.2rem 0.4rem;text-align:right;color:#fff;">${m.costPerSuccessfulTask !== null ? fmtUsd(m.costPerSuccessfulTask) : t("dashboard:costPerTask.na")}</td>
+            <td style="padding:0.2rem 0.4rem;text-align:right;color:#b0b0b0;">${m.successRate !== null ? fmtPct0(m.successRate) : t("dashboard:costPerTask.insufficient")}</td>
+            <td style="padding:0.2rem 0.4rem;text-align:right;color:#b0b0b0;">${m.tasksObservable}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>` : ""}
+      ${(cpt.tasks && cpt.tasks.length > 0) ? `
+      <div style="margin-top:0.7rem;">
+        <div style="font-size:0.65rem;color:#888;margin-bottom:0.3rem;">${t("dashboard:costPerTask.labelTasksHeading")}</div>
+        ${cpt.tasks.map((task, i) => {
+          const o = task.outcome;
+          const lab = task.labelled;
+          return `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0;border-top:1px solid #2a3552;font-size:0.72rem;">
+            <span style="flex:1;min-width:0;color:#e8e8e8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(task.title)} <span style="color:#666;">· ${escapeHtml(task.project.split("/").pop() ?? task.project)}</span></span>
+            <span style="color:#888;font-size:0.6rem;white-space:nowrap;">${lab ? t("dashboard:costPerTask.labelledTag") : t("dashboard:costPerTask.outcomeShort." + o)}</span>
+            <span style="display:flex;gap:0.2rem;flex:0 0 auto;">
+              ${cptBtn(i, "success", "✓", lab && o === "success")}
+              ${cptBtn(i, "partial", "~", lab && o === "in_flight")}
+              ${cptBtn(i, "fail", "✗", lab && o === "failed")}
+              ${cptBtn(i, "clear", "⌫", false)}
+            </span>
+          </div>`;
+        }).join("")}
+      </div>` : ""}
+      <div style="font-size:0.6rem;color:#666;margin-top:0.5rem;line-height:1.4;">${t("dashboard:costPerTask.proxyNote")}</div>
+    </div>` : "";
+
+  // ── Calibration + signal-activation (VS Code webview only — data.calibration
+  //    is null elsewhere). Shows how well the signals agree with the user's
+  //    labels and lets them flip the signals on for the live rate. ──
+  const cal = data.calibration;
+  const fmtPctNa = (x: number | null) => (x === null ? t("dashboard:calibration.na") : fmtPct0(x));
+  const fmtBrier = (x: number | null) => (x === null ? t("dashboard:calibration.na") : x.toFixed(3));
+  const signalsOn = data.experimentalSignalsEnabled;
+  const floorPct = cal ? fmtPct0(cal.floor) : "";
+  const calibrationHtml = cal ? `
+    <div class="cpt-card" style="margin-bottom:1rem;background:#16213e;border:1px solid #2a3552;border-radius:6px;padding:0.75rem 1rem;">
+      <div style="font-size:0.75rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">${t("dashboard:calibration.title")}</div>
+      ${cal.n === 0 ? `
+      <div style="font-size:0.78rem;color:#b0b0b0;line-height:1.5;">${t("dashboard:calibration.noLabels")}</div>` : `
+      <table style="width:100%;font-size:0.72rem;border-collapse:collapse;">
+        <thead><tr style="color:#888;text-align:left;">
+          <th style="padding:0.2rem 0.4rem;"></th>
+          <th style="padding:0.2rem 0.4rem;text-align:right;">${t("dashboard:calibration.colProxy")}</th>
+          <th style="padding:0.2rem 0.4rem;text-align:right;">${t("dashboard:calibration.colSignals")}</th>
+        </tr></thead>
+        <tbody>
+          <tr style="border-top:1px solid #2a3552;"><td style="padding:0.2rem 0.4rem;color:#e8e8e8;">${t("dashboard:calibration.failedPrecision")}</td><td style="padding:0.2rem 0.4rem;text-align:right;color:#fff;">${fmtPctNa(cal.proxyOnly.failedPrecision)}</td><td style="padding:0.2rem 0.4rem;text-align:right;color:#fff;">${fmtPctNa(cal.withSignals.failedPrecision)}</td></tr>
+          <tr style="border-top:1px solid #2a3552;"><td style="padding:0.2rem 0.4rem;color:#e8e8e8;">${t("dashboard:calibration.accuracy")}</td><td style="padding:0.2rem 0.4rem;text-align:right;color:#b0b0b0;">${fmtPctNa(cal.proxyOnly.accuracy)}</td><td style="padding:0.2rem 0.4rem;text-align:right;color:#b0b0b0;">${fmtPctNa(cal.withSignals.accuracy)}</td></tr>
+          <tr style="border-top:1px solid #2a3552;"><td style="padding:0.2rem 0.4rem;color:#e8e8e8;">${t("dashboard:calibration.brier")}</td><td style="padding:0.2rem 0.4rem;text-align:right;color:#b0b0b0;">${fmtBrier(cal.proxyOnly.brier)}</td><td style="padding:0.2rem 0.4rem;text-align:right;color:#b0b0b0;">${fmtBrier(cal.withSignals.brier)}</td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:0.72rem;margin-top:0.5rem;color:${cal.withSignals.meetsFailedFloor ? "#8ec07c" : "#f28e2b"};">
+        ${cal.withSignals.meetsFailedFloor ? t("dashboard:calibration.ready", { floor: floorPct }) : t("dashboard:calibration.notReady", { floor: floorPct })}
+      </div>
+      <div style="font-size:0.65rem;color:#888;margin-top:0.2rem;">${t("dashboard:calibration.labelled", { n: cal.n })}</div>`}
+      <label style="display:flex;align-items:center;gap:0.5rem;margin-top:0.7rem;font-size:0.78rem;color:#cfd8ea;cursor:pointer;">
+        <input type="checkbox" id="signals-toggle"${signalsOn ? " checked" : ""}>
+        ${t("dashboard:calibration.toggle")}
+      </label>
+      <div style="font-size:0.65rem;color:${signalsOn ? "#8ec07c" : "#888"};margin-top:0.2rem;">${signalsOn ? t("dashboard:calibration.enabledNote") : t("dashboard:calibration.disabledNote")}</div>
+    </div>` : "";
+
+  // ── Cost-efficiency frontier panel (value-per-cost Phase 1) ──
+  // Shown beside the cost-per-task headline on the Spending tab whenever
+  // the report carries an efficiency block. Human text for Lever.kind is
+  // rendered here from the enum; the payload never carries free text (plan §1).
+  const eff = cpt?.efficiency;
+  const leverKindText = (kind: string): string =>
+    t(`dashboard:costEfficiency.leverKind.${kind}`);
+  const costEfficiencyHtml = (eff && cpt && cpt.tasksTotal > 0) ? `
+    <div class="cpt-card" style="margin-bottom:1rem;background:#16213e;border:1px solid #2a3552;border-radius:6px;padding:0.75rem 1rem;">
+      <div style="font-size:0.75rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">${t("dashboard:costEfficiency.title")}</div>
+      ${eff.realisedCost <= 0 ? `
+      <div style="font-size:0.78rem;color:#b0b0b0;">${t("dashboard:costEfficiency.insufficient")}</div>` : `
+      <div style="display:flex;flex-wrap:wrap;gap:1.5rem;align-items:baseline;margin-bottom:0.5rem;">
+        <div>
+          <div style="font-size:1.1rem;font-weight:bold;color:#fff;">${fmtUsd(eff.realisedCost)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:costEfficiency.realised")}</div>
+        </div>
+        <div>
+          <div style="font-size:1.1rem;font-weight:bold;color:#59a14f;">${fmtUsd(eff.frontierCost)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:costEfficiency.frontier")}</div>
+        </div>
+        <div>
+          <div style="font-size:1.1rem;font-weight:bold;color:#f28e2b;">${fmtUsd(eff.recoverableWaste)}</div>
+          <div style="font-size:0.65rem;color:#888;">${t("dashboard:costEfficiency.recoverable")}</div>
+        </div>
+      </div>`}
+      ${eff.realisedCost > 0 && eff.levers.length > 0 ? `
+      <div style="margin-top:0.4rem;">
+        ${eff.levers.slice(0, 3).map(lv => `
+        <div style="font-size:0.75rem;color:#cfd8ea;padding:0.2rem 0;border-top:1px solid #2a3552;">
+          <span style="color:#a0c4ff;margin-right:0.3rem;">&#9656;</span>${leverKindText(lv.kind)}${lv.estSavingUsd != null ? ` <span style="color:#59a14f;font-size:0.7rem;">(~${fmtUsd(lv.estSavingUsd)})</span>` : ""}
+        </div>`).join("")}
+      </div>` : ""}
+      <div style="font-size:0.6rem;color:#666;margin-top:0.5rem;">${t("dashboard:costEfficiency.basisNote")}</div>
+    </div>` : "";
+
   // Build pricing info rows for the cost-related panel
   const pricingRows = Object.entries(PRICING)
     .map(([model, p]) =>
@@ -82,6 +238,149 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         }</option>`
     )
     .join("\n          ");
+
+  // Custom since/until date range toolbar inputs. `max` caps both pickers at
+  // "today" in the dashboard's configured timezone (matches the en-CA
+  // YYYY-MM-DD tz formatting convention used elsewhere in this codebase, e.g.
+  // reporter/index.ts's periodStart/isRoundTripYmd and dashboard/index.ts's
+  // day bucketing) so a user can't pick a future date client-side.
+  const todayInTz = new Intl.DateTimeFormat("en-CA", { timeZone: data.timezone }).format(new Date());
+  // sec: never echo the raw `since`/`until` query-param string into the
+  // input's `value` — only the server-derived, already-validated
+  // `sinceIso`/`untilIso` fields, and only when a custom range is actually
+  // active (data.period === "custom"). This both closes the reflected-HTML
+  // gap called out in the plan's hardening note and gives the toolbar its
+  // mutual-exclusivity default: a preset period leaves both inputs empty.
+  const sinceInputValue = data.period === "custom" && data.sinceIso ? escapeHtml(data.sinceIso) : "";
+  const untilInputValue = data.period === "custom" && data.untilIso ? escapeHtml(data.untilIso) : "";
+
+  // ── Subscription fee by project (server-rendered; all user data escaped) ──
+  const fmtMoney = (n: number, currency: string): string => {
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(n);
+    } catch {
+      return `${currency} ${n.toFixed(2)}`;
+    }
+  };
+  const projShort = (p: string): string => {
+    const parts = p.replace(/\\/g, "/").split("/").filter(Boolean);
+    return parts.length >= 2 ? parts.slice(-2).join("/") : (parts[parts.length - 1] ?? p);
+  };
+  // Largest-remainder rounding so displayed slices sum to the displayed total (M5).
+  const roundShares = (amounts: number[]): number[] => {
+    const cents = amounts.map((a) => Math.floor(a * 100));
+    const target = Math.round(amounts.reduce((s, a) => s + a, 0) * 100);
+    const residual = target - cents.reduce((s, c) => s + c, 0);
+    const order = amounts
+      .map((a, i) => ({ i, frac: a * 100 - Math.floor(a * 100) }))
+      .sort((x, y) => y.frac - x.frac);
+    for (let k = 0; k < residual && k < order.length; k++) cents[order[k]!.i]!++;
+    return cents.map((c) => c / 100);
+  };
+  const fee = data.feeAttribution;
+  let feeByProjectHtml = "";
+  if (!fee || !fee.configured) {
+    feeByProjectHtml = `
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h2>${escapeHtml(t("dashboard:fees.title"))}</h2>
+        <p style="font-size:0.78rem;color:#b0b0b0;margin:0.3rem 0 0 0;">${escapeHtml(t("dashboard:fees.notConfigured"))}</p>
+      </div>`;
+  } else {
+    const blocks = fee.byCurrency
+      .map((b, blockIdx) => {
+        const rounded = roundShares(b.perProject.map((p) => p.amount));
+        // Numeric detail lives in real DOM text (the pie's table-view twin) —
+        // never only in the canvas, which screen readers/copy-paste can't reach.
+        const listRows = b.perProject
+          .map((p, i) => {
+            const pct = Math.max(0, Math.min(100, p.percentOfTotal));
+            return `
+            <div style="display:flex;align-items:center;gap:0.5rem;padding:0.2rem 0;font-size:0.72rem;">
+              <span style="flex:1;color:#e8e8e8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(p.projectPath)}">${escapeHtml(projShort(p.projectPath))}</span>
+              <span style="flex:0 0 5rem;text-align:right;color:#fff;">${escapeHtml(fmtMoney(rounded[i] ?? 0, b.currency))}</span>
+              <span style="flex:0 0 3rem;text-align:right;color:#888;">${Math.round(pct)}%</span>
+            </div>`;
+          })
+          .join("");
+        const idleRows = b.idle
+          .map(
+            (it) => `
+            <div style="display:flex;align-items:center;gap:0.5rem;padding:0.2rem 0;font-size:0.72rem;color:#888;border-top:1px dashed #2a3552;">
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(t("dashboard:fees.idle", { label: it.label }))}</span>
+              <span style="flex:0 0 5rem;text-align:right;">${escapeHtml(fmtMoney(it.amount, b.currency))}</span>
+              <span style="flex:0 0 3rem;"></span>
+            </div>`
+          )
+          .join("");
+        return `
+          <div style="margin-bottom:0.75rem;">
+            <div style="font-size:0.7rem;color:#a0c4ff;margin-bottom:0.3rem;">${escapeHtml(
+              t("dashboard:fees.currencyHeader", {
+                period: fmtMoney(b.periodTotal, b.currency),
+                monthly: fmtMoney(b.monthlyTotal, b.currency),
+              })
+            )}</div>
+            <div style="max-width:15rem;margin:0 auto 0.5rem auto;">
+              <canvas id="chart-fees-${blockIdx}"></canvas>
+            </div>
+            ${listRows}
+            ${idleRows}
+            <div style="font-size:0.6rem;color:#666;margin-top:0.3rem;">${escapeHtml(
+              t("dashboard:fees.reconcile", { attributed: fmtMoney(b.attributed, b.currency) })
+            )}</div>
+          </div>`;
+      })
+      .join("");
+
+    // Per-subscription: each account's OWN fee, split across the projects it
+    // used. (Idle accounts have no slices, so they're omitted here.) Labels
+    // prefer the resolved email, falling back to the configured label.
+    const emailByUuid = new Map(
+      (data.availableAccounts ?? []).map((a) => [a.accountUuid, a.emailAddress] as const),
+    );
+    const activeAccounts = fee.perAccount.filter((a) => !a.idle && a.perProject.length > 0);
+    const acctBlocks = activeAccounts
+      .map((blk, idx) => {
+        const label = emailByUuid.get(blk.accountUuid) || blk.label;
+        const rounded = roundShares(blk.perProject.map((p) => p.amount));
+        const rows = blk.perProject
+          .map((p, i) => {
+            const pct = Math.max(0, Math.min(100, p.percentOfPool));
+            return `
+            <div style="display:flex;align-items:center;gap:0.5rem;padding:0.2rem 0;font-size:0.72rem;">
+              <span style="flex:1;color:#e8e8e8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(p.projectPath)}">${escapeHtml(projShort(p.projectPath))}</span>
+              <span style="flex:0 0 5rem;text-align:right;color:#fff;">${escapeHtml(fmtMoney(rounded[i] ?? 0, blk.currency))}</span>
+              <span style="flex:0 0 3rem;text-align:right;color:#888;">${Math.round(pct)}%</span>
+            </div>`;
+          })
+          .join("");
+        return `
+          <div style="margin-bottom:0.75rem;">
+            <div style="font-size:0.7rem;color:#a0c4ff;margin-bottom:0.3rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(label)}">${escapeHtml(
+              t("dashboard:fees.subscriptionHeader", { label, pool: fmtMoney(blk.pool, blk.currency) })
+            )}</div>
+            <div style="max-width:15rem;margin:0 auto 0.5rem auto;">
+              <canvas id="chart-fees-acct-${idx}"></canvas>
+            </div>
+            ${rows}
+          </div>`;
+      })
+      .join("");
+    const acctSection =
+      activeAccounts.length > 0
+        ? `
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h2>${escapeHtml(t("dashboard:fees.bySubscriptionTitle"))}</h2>
+        <p style="font-size:0.72rem;color:#b0b0b0;margin:0.2rem 0 0.6rem 0;">${escapeHtml(t("dashboard:fees.bySubscriptionDesc"))}</p>
+        ${acctBlocks}
+      </div>`
+        : "";
+    feeByProjectHtml = `
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h2>${escapeHtml(t("dashboard:fees.title"))}</h2>
+        ${blocks}
+      </div>${acctSection}`;
+  }
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -212,6 +511,10 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     <select id="period-select" onchange="changePeriod(this.value)">
       ${periodOptions}
     </select>
+    <label for="since-date-input" style="margin-left:0.5rem;">${t("dashboard:toolbar.since")}</label>
+    <input type="date" id="since-date-input" max="${todayInTz}" value="${sinceInputValue}" onchange="changeDateRange(this.value, document.getElementById('until-date-input').value)" />
+    <label for="until-date-input" style="margin-left:0.5rem;">${t("dashboard:toolbar.until")}</label>
+    <input type="date" id="until-date-input" max="${todayInTz}" value="${untilInputValue}" onchange="changeDateRange(document.getElementById('since-date-input').value, this.value)" />
     ${data.availableAccounts.length > 1 ? `
     <label for="account-select" style="margin-left:0.5rem;">${t("dashboard:toolbar.account")}</label>
     <select id="account-select" onchange="changeAccount(this.value)">
@@ -232,12 +535,12 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     <button class="tab-btn active" data-tab="overview">${t("dashboard:tabs.overview")}</button>
     ${data.energy ? `<button class="tab-btn" data-tab="energy">${t("dashboard:tabs.energy")}</button>` : ""}
     ${data.spending ? `<button class="tab-btn" data-tab="spending">Spending</button>` : ""}
-    <button class="tab-btn" data-tab="models">${t("dashboard:tabs.models")}</button>
     <button class="tab-btn" data-tab="projects">${t("dashboard:tabs.projects")}</button>
     <button class="tab-btn" data-tab="sessions">${t("dashboard:tabs.sessions")}</button>
     <button class="tab-btn" data-tab="plan">${t("dashboard:tabs.plan")}</button>
     ${data.contextAnalysis ? `<button class="tab-btn" data-tab="context">${t("dashboard:tabs.context")}</button>` : ""}
     ${data.modelEfficiency ? `<button class="tab-btn" data-tab="efficiency">${t("dashboard:tabs.efficiency")}</button>` : ""}
+    <button class="tab-btn" data-tab="classify">${t("dashboard:tabs.classify")}</button>
     <button class="tab-btn" data-tab="settings">${t("dashboard:tabs.settings")}</button>
   </div>
 
@@ -249,6 +552,11 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <span style="font-size:0.7rem; color:#888;">${t("dashboard:toolbar.period")} </span>
         <span style="font-size:0.75rem; color:#a0c4ff;">${data.sinceIso ? t("dashboard:summary.periodRange", { start: data.sinceIso }) : t("dashboard:summary.allTime")}</span>
       </div>
+      ${data.summary.sessions === 0 ? `
+      <div class="summary-card" style="grid-column: 1 / -1; text-align: left; padding: 0.5rem 0.75rem; border-color:#e0a458; background:rgba(224,164,88,0.08);">
+        <span style="font-size:0.75rem; color:#e0a458;">${t("dashboard:summary.emptyPeriodHint")}</span>
+      </div>
+      ` : ""}
       <div class="summary-card">
         <div class="label">${t("dashboard:summary.sessions")}</div>
         <div class="value">${data.summary.sessions}</div>
@@ -283,6 +591,13 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <div class="label">${t("dashboard:summary.estCost")}</div>
         <div class="value">${formattedCost}</div>
       </div>
+      ${(cpt && cpt.tasksTotal > 0 && cpt.costPerSuccessfulTask !== null) ? `
+      <div class="summary-card">
+        <div class="label">${t("dashboard:costPerTask.title")}</div>
+        <div class="value">${fmtUsd(cpt.costPerSuccessfulTask)}</div>
+        <div style="font-size:0.6rem;color:#888;margin-top:0.2rem;">${t("dashboard:costPerTask.summaryHint")}</div>
+      </div>
+      ` : ""}
       ${showPlan ? `
       <div class="summary-card" style="border-color:#59a14f;">
         <div class="label">${t("dashboard:summary.planValue")}</div>
@@ -334,23 +649,10 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     </div>
   </div>
 
-  <!-- ═══════════════ TAB: Models ═══════════════ -->
-  <div class="tab-panel" id="tab-models">
-    <div class="charts-grid">
-      <div class="chart-card">
-        <h2>${t("dashboard:charts.tokensByModel")}</h2>
-        <canvas id="chart-model"></canvas>
-      </div>
-      <div class="chart-card">
-        <h2>${t("dashboard:charts.stopReasons")}</h2>
-        <canvas id="chart-stops"></canvas>
-      </div>
-    </div>
-  </div>
-
   <!-- ═══════════════ TAB: Projects ═══════════════ -->
   <div class="tab-panel" id="tab-projects">
     <div class="charts-grid">
+      ${feeByProjectHtml}
       <div class="chart-card">
         <h2>${t("dashboard:charts.topProjects")}</h2>
         <canvas id="chart-project"></canvas>
@@ -446,10 +748,20 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       ${pu.recommendedPlan ? `
       <div class="summary-card" style="border-color:#b07aa1;">
         <div class="label">${t("dashboard:plan.suggestedPlan")}</div>
-        <div class="value" style="font-size:0.95rem;color:#b07aa1;">${t(`dashboard:plan.planNames.${pu.recommendedPlan!}`, { defaultValue: pu.recommendedPlan })}</div>
+        <div class="value" style="font-size:0.95rem;color:#b07aa1;">${t(`dashboard:plan.planNames.${pu.recommendedPlan!}`, { defaultValue: escapeHtml(pu.recommendedPlan) })}</div>
         <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${t("dashboard:plan.basedOnAvg", { value: pu.avgWeeklyCost.toFixed(2) })}</div>
       </div>
       ` : ''}
+      ${pu.usageIntensityTier ? (() => {
+        const intensityColor = pu.usageIntensityTier!.tier === 'light' ? '#59a14f' : pu.usageIntensityTier!.tier === 'typical' ? '#b07aa1' : '#f28e2b';
+        const intensityLabel = t(`dashboard:plan.usageIntensity.${pu.usageIntensityTier!.tier}`, { defaultValue: escapeHtml(pu.usageIntensityTier!.tier) });
+        return `
+      <div class="summary-card" style="border-color:${intensityColor};">
+        <div class="label">${t("dashboard:plan.usageIntensity.title")}</div>
+        <div class="value" style="font-size:0.95rem;color:${intensityColor};">${intensityLabel}</div>
+        <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${t("dashboard:plan.usageIntensity.benchmark", { benchmark: pu.usageIntensityTier!.benchmarkUsd.toFixed(0) })}</div>
+      </div>`;
+      })() : ''}
       <div class="summary-card">
         <div class="label">${t("dashboard:plan.avgWeeklyValue")}</div>
         <div class="value">$${pu.avgWeeklyCost.toFixed(2)}</div>
@@ -664,6 +976,12 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">~$${data.spending.subagentOverhead.totalCost.toFixed(2)}</div>
       </div>` : ""}
     </div>
+
+    ${costPerTaskHtml}
+
+    ${costEfficiencyHtml}
+
+    ${calibrationHtml}
 
     <div class="charts-grid">
       <div class="chart-card">
@@ -998,6 +1316,26 @@ CO₂_grams = total_kWh × grid_intensity</div>
   ` : ""}
 
   <!-- ═══════════════ TAB: Settings ═══════════════ -->
+  <div class="tab-panel" id="tab-classify">
+    <div class="summary-bar" style="margin-bottom:1rem;">
+      <div class="summary-card" style="grid-column: 1 / -1; text-align: left; padding: 1rem;">
+        <h2 style="margin:0 0 0.35rem 0; font-size:1rem; color:#a0c4ff;">${t("dashboard:classify.title")}</h2>
+        <p style="font-size:0.75rem; color:#aaa; margin:0 0 0.75rem 0;">${t("dashboard:classify.intro")}</p>
+        <div id="classify-coverage" style="font-size:0.8rem; color:#ccc; margin-bottom:0.75rem;"></div>
+        <div id="classify-empty" style="display:none; font-size:0.8rem; color:#888;">${t("dashboard:classify.empty")}</div>
+        <div id="classify-vscode-only" style="display:none; font-size:0.8rem; color:#888;">${t("dashboard:classify.vscodeOnly")}</div>
+        <div id="classify-no-accounts" style="display:none; font-size:0.8rem; color:#888;">${t("dashboard:classify.noAccounts")}</div>
+        <div id="classify-unlinked-hint" style="display:none; font-size:0.65rem; color:#e0af68; margin-bottom:0.75rem; line-height:1.4;">${t("dashboard:classify.unlinkedHint")}</div>
+        <div id="classify-list"></div>
+        <div style="display:flex; align-items:center; gap:0.75rem; margin-top:1rem;">
+          <button type="button" id="classify-apply" disabled style="padding:0.5rem 1.5rem; background:#4e79a7; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; opacity:0.5;">${t("dashboard:classify.apply")}</button>
+          <span id="classify-status" style="font-size:0.75rem; color:#59a14f;"></span>
+        </div>
+        <div style="font-size:0.65rem; color:#777; margin-top:0.75rem; line-height:1.5;">${t("dashboard:classify.splitHint")}</div>
+      </div>
+    </div>
+  </div>
+
   <div class="tab-panel" id="tab-settings">
     <div class="summary-bar" style="margin-bottom:1rem;">
       <div class="summary-card" style="grid-column: 1 / -1; text-align: left; padding: 1rem;">
@@ -1006,22 +1344,11 @@ CO₂_grams = total_kWh × grid_intensity</div>
 
         <form id="settings-form" style="display:flex; flex-direction:column; gap:1rem; max-width:400px;">
           <div>
-            <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">${t("dashboard:settings.planType")}</label>
-            <select id="cfg-plan-type" style="width:100%; padding:0.4rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.8rem;">
-              <option value="">${t("dashboard:settings.notSetAutoDetect")}</option>
-              <option value="pro">${t("dashboard:settings.planOptions.pro")}</option>
-              <option value="max_5x">${t("dashboard:settings.planOptions.max_5x")}</option>
-              <option value="max_20x">${t("dashboard:settings.planOptions.max_20x")}</option>
-              <option value="team_standard">${t("dashboard:settings.planOptions.team_standard")}</option>
-              <option value="team_premium">${t("dashboard:settings.planOptions.team_premium")}</option>
-              <option value="custom">${t("dashboard:settings.planOptions.custom")}</option>
-            </select>
-            <div style="font-size:0.6rem; color:#999; margin-top:0.2rem;">${t("dashboard:settings.planAutoDetectHint")}</div>
-          </div>
-          <div>
-            <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">${t("dashboard:settings.monthlyFee")}</label>
-            <input id="cfg-monthly-fee" type="number" min="0" step="1" placeholder="${t("dashboard:settings.monthlyFeePlaceholder")}" style="width:100%; padding:0.4rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.8rem; box-sizing:border-box;">
-            <div style="font-size:0.6rem; color:#999; margin-top:0.2rem;">${t("dashboard:settings.monthlyFeeHint")}</div>
+            <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">${t("dashboard:settings.subscriptions")}</label>
+            <div style="font-size:0.6rem; color:#999; margin-bottom:0.5rem;">${t("dashboard:settings.subscriptionsHint")}</div>
+            <div style="font-size:0.6rem; color:#777; margin-bottom:0.5rem;">${t("dashboard:settings.subscriptionsAutoDetectHint")}</div>
+            <div id="account-fees-rows"></div>
+            <div id="account-fees-empty" style="font-size:0.7rem; color:#888; display:none;">${t("dashboard:settings.noAccounts")}</div>
           </div>
 
           <div style="border-top:1px solid #2a2a4a; padding-top:1rem; margin-top:0.5rem;">
@@ -1040,6 +1367,12 @@ CO₂_grams = total_kWh × grid_intensity</div>
                 <input id="cfg-threshold-month" type="number" min="0" step="0.01" placeholder="—" style="width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;">
               </div>
             </div>
+          </div>
+
+          <div style="border-top:1px solid #2a2a4a; padding-top:1rem; margin-top:0.5rem;">
+            <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">${t("dashboard:settings.autoRefreshInterval")}</label>
+            <input id="cfg-auto-refresh" type="number" min="60" step="1" placeholder="120" style="width:100%; max-width:150px; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;">
+            <div style="font-size:0.6rem; color:#999; margin-top:0.3rem;">${t("dashboard:settings.autoRefreshHint")}</div>
           </div>
 
           <div style="display:flex; align-items:center; gap:0.75rem; margin-top:0.5rem;">
@@ -1094,7 +1427,28 @@ CO₂_grams = total_kWh × grid_intensity</div>
       }
 
       // ── Period selector ──────────────────────────────────────────────────
-      window.changePeriod = function (val) { window.location.href = setUrlParam('period', val); };
+      // Mutual exclusivity: picking a preset clears any custom since/until
+      // range so the UI never carries all three params at once (period +
+      // since + until). Built off a single URL so the three edits (set
+      // period, drop since, drop until) land in one navigation, mirroring
+      // setUrlParam's null-deletes-the-param semantics.
+      window.changePeriod = function (val) {
+        var url = new URL(window.location.href);
+        url.searchParams.set('period', val);
+        url.searchParams.delete('since');
+        url.searchParams.delete('until');
+        window.location.href = url.toString();
+      };
+      // ── Custom date range ────────────────────────────────────────────────
+      // Mirror of changePeriod: picking a since/until pair clears the preset
+      // period param so the two controls stay mutually exclusive.
+      window.changeDateRange = function (since, until) {
+        var url = new URL(window.location.href);
+        if (since) url.searchParams.set('since', since); else url.searchParams.delete('since');
+        if (until) url.searchParams.set('until', until); else url.searchParams.delete('until');
+        url.searchParams.delete('period');
+        window.location.href = url.toString();
+      };
       // ── Account selector ─────────────────────────────────────────────────
       // Empty value means "all accounts combined"; drop the param so the URL
       // stays clean and the server treats it as the default.
@@ -1107,14 +1461,20 @@ CO₂_grams = total_kWh × grid_intensity</div>
       window.doRefresh = function () { location.reload(); };
 
       // ── Auto-refresh toggle ───────────────────────────────────────────────
+      // Floor enforced here (against a hand-edited ?refresh= URL) and in
+      // mergeConfig server-side (against a hand-edited config file) — never
+      // more often than once a minute.
+      var MIN_AUTO_REFRESH_SECS = 60;
+      var configuredAutoRefreshSecs = 120;
       var refreshSecs = parseInt(urlParam('refresh') || '0', 10);
+      if (refreshSecs > 0 && refreshSecs < MIN_AUTO_REFRESH_SECS) refreshSecs = MIN_AUTO_REFRESH_SECS;
       var autoBtn = document.getElementById('autorefresh-btn');
       if (refreshSecs > 0) {
-        if (autoBtn) autoBtn.textContent = '${t("dashboard:toolbar.autoOn", { seconds: "__SECS__" })}'.replace('__SECS__', refreshSecs);
+        if (autoBtn) autoBtn.textContent = '${jsStr(t("dashboard:toolbar.autoOn", { seconds: "__SECS__" }))}'.replace('__SECS__', refreshSecs);
         setTimeout(function () { location.reload(); }, refreshSecs * 1000);
       }
       window.toggleRefresh = function () {
-        window.location.href = refreshSecs > 0 ? setUrlParam('refresh', null) : setUrlParam('refresh', '30');
+        window.location.href = refreshSecs > 0 ? setUrlParam('refresh', null) : setUrlParam('refresh', String(configuredAutoRefreshSecs));
       };
 
       // ── Tab navigation ────────────────────────────────────────────────────
@@ -1151,7 +1511,6 @@ CO₂_grams = total_kWh × grid_intensity</div>
       function initTab(tabId) {
         switch (tabId) {
           case 'overview': initOverview(); break;
-          case 'models': initModels(); break;
           case 'projects': initProjects(); break;
           case 'sessions': initSessions(); break;
           case 'plan': initPlan(); break;
@@ -1159,6 +1518,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
           case 'efficiency': initEfficiency(); break;
           case 'energy': initEnergy(); break;
           case 'spending': initSpending(); break;
+          case 'classify': initClassify(); break;
           case 'settings': initSettings(); break;
         }
       }
@@ -1241,43 +1601,103 @@ CO₂_grams = total_kWh × grid_intensity</div>
         }());
       }
 
-      // ═══════════════ MODELS CHARTS ═══════════════
-      function initModels() {
-        // Tokens by model
-        (function () {
-          var ctx = document.getElementById('chart-model').getContext('2d');
-          var labels = d.byModel.map(function (r) { return r.model; });
-          new Chart(ctx, {
-            type: 'bar',
-            data: {
-              labels: labels,
-              datasets: [
-                { label: 'Output', data: d.byModel.map(function (r) { return r.outputTokens; }), backgroundColor: '#f28e2b' },
-                { label: 'Input', data: d.byModel.map(function (r) { return r.inputTokens; }), backgroundColor: '#4e79a7' }
-              ]
-            },
-            options: Object.assign({}, chartOpts, {
-              scales: { x: { stacked: true }, y: { stacked: true, title: { display: true, text: 'Tokens', color: '#888' }, ticks: { callback: function(v) { return fmtTokens(v); } } } }
-            })
-          });
-        }());
-
-        // Stop reasons
-        (function () {
-          var ctx = document.getElementById('chart-stops').getContext('2d');
-          new Chart(ctx, {
-            type: 'bar',
-            data: {
-              labels: d.stopReasons.map(function (r) { return r.reason; }),
-              datasets: [{ label: 'Count', data: d.stopReasons.map(function (r) { return r.count; }), backgroundColor: '#59a14f' }]
-            },
-            options: chartOpts
-          });
-        }());
-      }
-
       // ═══════════════ PROJECTS CHARTS ═══════════════
       function initProjects() {
+        // Subscription fee by project — one pie per currency block. Idle
+        // (unattributed) pools are folded into a single gray "Idle" slice so
+        // the pie still sums to the full period total, not just the
+        // attributed portion.
+        (function () {
+          var fee = d.feeAttribution;
+          if (!fee || !fee.configured) return;
+          function fmtCurrency(n, currency) {
+            try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency }).format(n); }
+            catch (e) { return currency + ' ' + n.toFixed(2); }
+          }
+          fee.byCurrency.forEach(function (block, blockIdx) {
+            var el = document.getElementById('chart-fees-' + blockIdx);
+            if (!el) return;
+            var ctx = el.getContext('2d');
+            var idleTotal = block.idle.reduce(function (s, it) { return s + it.amount; }, 0);
+            var hasIdle = idleTotal > 0;
+            var maxProjects = hasIdle ? COLORS.length - 1 : COLORS.length;
+            var top = block.perProject.slice(0, maxProjects);
+            var labels = top.map(function (p) {
+              var parts = p.projectPath.replace(/\\\\/g, '/').split('/').filter(Boolean);
+              return parts.length >= 2 ? parts.slice(-2).join('/') : (parts[parts.length - 1] || p.projectPath);
+            });
+            var values = top.map(function (p) { return p.amount; });
+            var colors = COLORS.slice(0, top.length);
+            if (hasIdle) {
+              labels.push('${jsStr(t("dashboard:fees.idleSliceLabel"))}');
+              values.push(idleTotal);
+              colors.push('#bab0ac');
+            }
+            var grand = block.periodTotal;
+            new Chart(ctx, {
+              type: 'doughnut',
+              data: { labels: labels, datasets: [{ data: values, backgroundColor: colors }] },
+              options: Object.assign({}, chartOpts, {
+                plugins: {
+                  legend: chartOpts.plugins.legend,
+                  tooltip: {
+                    callbacks: {
+                      label: function (context) {
+                        var val = context.parsed;
+                        var pct = grand > 0 ? ((val / grand) * 100).toFixed(1) : '0.0';
+                        return ' ' + fmtCurrency(val, block.currency) + ' (' + pct + '%)';
+                      }
+                    }
+                  }
+                }
+              })
+            });
+          });
+        }());
+
+        // Per-subscription — one pie per active account: share of THAT
+        // subscription's own pool by project (percentages sum to 100).
+        (function () {
+          var fee = d.feeAttribution;
+          if (!fee || !fee.configured || !fee.perAccount) return;
+          function fmtCurrency(n, currency) {
+            try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency }).format(n); }
+            catch (e) { return currency + ' ' + n.toFixed(2); }
+          }
+          var active = fee.perAccount.filter(function (a) { return !a.idle && a.perProject.length > 0; });
+          active.forEach(function (blk, idx) {
+            var el = document.getElementById('chart-fees-acct-' + idx);
+            if (!el) return;
+            var ctx = el.getContext('2d');
+            var top = blk.perProject.slice(0, COLORS.length);
+            var labels = top.map(function (p) {
+              var parts = p.projectPath.replace(/\\\\/g, '/').split('/').filter(Boolean);
+              return parts.length >= 2 ? parts.slice(-2).join('/') : (parts[parts.length - 1] || p.projectPath);
+            });
+            var values = top.map(function (p) { return p.amount; });
+            var colors = COLORS.slice(0, top.length);
+            var pool = blk.pool;
+            new Chart(ctx, {
+              type: 'doughnut',
+              data: { labels: labels, datasets: [{ data: values, backgroundColor: colors }] },
+              options: Object.assign({}, chartOpts, {
+                plugins: {
+                  legend: chartOpts.plugins.legend,
+                  tooltip: {
+                    callbacks: {
+                      label: function (context) {
+                        var val = context.parsed;
+                        var pct = pool > 0 ? ((val / pool) * 100).toFixed(1) : '0.0';
+                        return ' ' + fmtCurrency(val, blk.currency) + ' (' + pct + '%)';
+                      }
+                    }
+                  }
+                }
+              })
+            });
+          });
+        }());
+
         // Top projects
         (function () {
           var ctx = document.getElementById('chart-project').getContext('2d');
@@ -1896,30 +2316,221 @@ CO₂_grams = total_kWh × grid_intensity</div>
         }
       }
 
-      // Handle responses from VS Code extension
+      // Handle responses from VS Code extension (config + cluster I/O share the
+      // callbackId map — both resolve a pending request by its id).
       window.addEventListener('message', function (event) {
         var msg = event.data;
-        if (msg && msg.command === 'configResult' && msg.callbackId) {
+        if (msg && (msg.command === 'configResult' || msg.command === 'clustersResult') && msg.callbackId) {
           var cb = _configCallbacks[msg.callbackId];
           delete _configCallbacks[msg.callbackId];
           if (cb) cb(msg.error || null, msg.data);
         }
       });
 
+      // Cluster I/O for the Classify tab. getClustersAsync mirrors
+      // loadConfigAsync (request/response over the callbackId map);
+      // applyClassificationAsync is fire-and-forget — the host reattributes and
+      // triggers a full refresh, so there is no response to await. Both are
+      // VS Code-only: the read-only served dashboard has no write channel.
+      function getClustersAsync(callback) {
+        if (typeof window.__vscodeApi !== 'undefined') {
+          var id = ++_configCallbackId;
+          _configCallbacks[id] = callback;
+          window.__vscodeApi.postMessage({ command: 'getClusters', callbackId: id });
+        } else {
+          callback(new Error('unavailable'));
+        }
+      }
+      function applyClassificationAsync(assignments) {
+        if (typeof window.__vscodeApi !== 'undefined') {
+          window.__vscodeApi.postMessage({ command: 'applyClassification', assignments: assignments });
+        }
+      }
+
       function populateSettingsForm(cfg) {
-        var planType = document.getElementById('cfg-plan-type');
-        var monthlyFee = document.getElementById('cfg-monthly-fee');
         var threshDay = document.getElementById('cfg-threshold-day');
         var threshWeek = document.getElementById('cfg-threshold-week');
         var threshMonth = document.getElementById('cfg-threshold-month');
 
-        if (cfg.plan && cfg.plan.type) planType.value = cfg.plan.type;
-        if (cfg.plan && cfg.plan.monthly_fee != null) monthlyFee.value = cfg.plan.monthly_fee;
         if (cfg.costThresholds) {
           if (cfg.costThresholds.day != null) threshDay.value = cfg.costThresholds.day;
           if (cfg.costThresholds.week != null) threshWeek.value = cfg.costThresholds.week;
           if (cfg.costThresholds.month != null) threshMonth.value = cfg.costThresholds.month;
         }
+        if (cfg.autoRefreshSeconds != null) {
+          document.getElementById('cfg-auto-refresh').value = cfg.autoRefreshSeconds;
+          configuredAutoRefreshSecs = Math.max(MIN_AUTO_REFRESH_SECS, cfg.autoRefreshSeconds);
+        }
+        renderAccountFees(cfg);
+      }
+
+      // Per-account plan types + their default monthly fee (USD). Labels are
+      // localized server-side; the fee map mirrors core/pricing PLAN_FEES so
+      // selecting a type auto-fills its default amount.
+      var PLAN_OPTIONS = [
+        { value: '', label: '${jsStr(t("dashboard:settings.notSetAutoDetect"))}' },
+        { value: 'pro', label: '${jsStr(t("dashboard:settings.planOptions.pro"))}' },
+        { value: 'max_5x', label: '${jsStr(t("dashboard:settings.planOptions.max_5x"))}' },
+        { value: 'max_20x', label: '${jsStr(t("dashboard:settings.planOptions.max_20x"))}' },
+        { value: 'team_standard', label: '${jsStr(t("dashboard:settings.planOptions.team_standard"))}' },
+        { value: 'team_premium', label: '${jsStr(t("dashboard:settings.planOptions.team_premium"))}' },
+        { value: 'custom', label: '${jsStr(t("dashboard:settings.planOptions.custom"))}' }
+      ];
+      var PLAN_FEE_DEFAULTS = { pro: 20, max_5x: 100, max_20x: 200, team_standard: 25, team_premium: 125 };
+
+      // Static USD-based FX rates for converting a plan's default fee into the
+      // account's selected currency. This dashboard makes no runtime network
+      // calls (fully local/offline tool), so these are approximate, point-in-
+      // time figures — refresh them occasionally rather than treating them as
+      // exact. Unlisted currencies fall back to a 1:1 rate.
+      var FX_RATES_FROM_USD = { USD: 1, EUR: 0.92, GBP: 0.79, CAD: 1.36, AUD: 1.52, JPY: 150, CHF: 0.88, SEK: 10.3 };
+
+      // Default fee for a plan type, converted to the given currency and
+      // rounded to match the amount input's step="1" granularity.
+      function planFeeDefaultInCurrency(planTypeValue, currencyCode) {
+        var usd = PLAN_FEE_DEFAULTS[planTypeValue];
+        if (usd == null) return null;
+        var rate = FX_RATES_FROM_USD[currencyCode] || 1;
+        return Math.round(usd * rate);
+      }
+
+      // Best-effort map of a telemetry subscriptionType string to a plan-type
+      // option value (normalises case/separators); '' when it doesn't match.
+      function normalizePlanType(sub) {
+        if (!sub) return '';
+        var k = String(sub).toLowerCase().replace(/[- ]/g, '_');
+        if (PLAN_FEE_DEFAULTS[k] != null) return k;
+        for (var key in PLAN_FEE_DEFAULTS) {
+          if (k.indexOf(key) === 0) return key;
+        }
+        return '';
+      }
+
+      // Build one fee row per account from cfg.accounts. Uses createElement +
+      // textContent/value (never innerHTML) so account labels/UUIDs can't inject.
+      var FEE_CURRENCIES = ['USD','EUR','GBP','CAD','AUD','JPY','CHF','SEK'];
+      function renderAccountFees(cfg) {
+        var rows = document.getElementById('account-fees-rows');
+        var empty = document.getElementById('account-fees-empty');
+        if (!rows) return;
+        rows.textContent = '';
+        var accounts = (cfg && cfg.accounts) || [];
+        var fees = (cfg && cfg.accountFees) || {};
+        if (!accounts.length) { if (empty) empty.style.display = 'block'; return; }
+        if (empty) empty.style.display = 'none';
+        accounts.forEach(function (a) {
+          var fee = fees[a.accountUuid] || {};
+          var row = document.createElement('div');
+          row.className = 'account-fee-row';
+          row.setAttribute('data-account', a.accountUuid);
+          row.style.cssText = 'display:grid; grid-template-columns:1fr 5rem 4rem; gap:0.4rem; align-items:center; margin-bottom:0.6rem;';
+
+          var name = document.createElement('div');
+          name.style.cssText = 'grid-column:1 / -1; font-size:0.72rem; color:#e8e8e8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+          name.textContent = a.email || (a.accountUuid.slice(0, 8) + '…');
+          // Use the derived plan label (e.g. "Max 20x") rather than the raw
+          // subscription type string. planLabel is always populated by
+          // buildAccountsForConfig and never exposes raw tier/billing data.
+          name.title = a.accountUuid + ' · ' + (a.planLabel || a.subscriptionType || '') + ' · ' + a.sessionCount + ' sessions';
+          row.appendChild(name);
+
+          if (!a.email) {
+            var unlinkedHint = document.createElement('div');
+            unlinkedHint.style.cssText = 'grid-column:1 / -1; font-size:0.62rem; color:#e0af68; line-height:1.3;';
+            unlinkedHint.textContent = '${jsStr(t("dashboard:settings.unlinkedAccountHint"))}';
+            row.appendChild(unlinkedHint);
+          }
+
+          // Per-account plan type. Default: explicitly-saved type, else the
+          // telemetry-detected subscription type, else "auto".
+          var planType = document.createElement('select');
+          planType.className = 'acct-fee-type';
+          planType.style.cssText = 'width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;';
+          var selectedType = fee.type || normalizePlanType(a.subscriptionType);
+          PLAN_OPTIONS.forEach(function (o) {
+            var opt = document.createElement('option');
+            opt.value = o.value; opt.textContent = o.label;
+            if (o.value === selectedType) opt.selected = true;
+            planType.appendChild(opt);
+          });
+          row.appendChild(planType);
+
+          // Resolved before the amount input so the initial pre-fill (below)
+          // converts into the account's already-selected currency.
+          var selectedCurrency = (fee.currency || 'USD').toUpperCase();
+
+          var amount = document.createElement('input');
+          amount.type = 'number'; amount.min = '0'; amount.step = '1';
+          amount.className = 'acct-fee-amount';
+          amount.style.cssText = 'width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;';
+          if (fee.monthlyFee != null) {
+            amount.value = fee.monthlyFee;
+          } else {
+            // No saved fee yet, but a plan is already selected (saved type or
+            // telemetry-detected) — pre-fill its default, converted to the
+            // selected currency, so the field isn't blank on first render;
+            // still a plain editable number input.
+            var initialDefault = planFeeDefaultInCurrency(selectedType, selectedCurrency);
+            if (initialDefault != null) amount.value = initialDefault;
+          }
+          amount.placeholder = '${jsStr(t("dashboard:settings.feePlaceholder"))}';
+          row.appendChild(amount);
+
+          // Selecting a known plan type fills its default fee, converted to
+          // whatever currency is currently selected (still editable).
+          planType.addEventListener('change', function () {
+            var def = planFeeDefaultInCurrency(planType.value, currency.value);
+            if (def != null) amount.value = def;
+          });
+
+          var currency = document.createElement('select');
+          currency.className = 'acct-fee-currency';
+          currency.style.cssText = 'width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;';
+          if (FEE_CURRENCIES.indexOf(selectedCurrency) === -1) FEE_CURRENCIES.push(selectedCurrency);
+          FEE_CURRENCIES.forEach(function (code) {
+            var opt = document.createElement('option');
+            opt.value = code; opt.textContent = code;
+            if (code === selectedCurrency) opt.selected = true;
+            currency.appendChild(opt);
+          });
+          row.appendChild(currency);
+
+          var labelInput = document.createElement('input');
+          labelInput.type = 'text'; labelInput.maxLength = 100;
+          labelInput.className = 'acct-fee-label';
+          labelInput.style.cssText = 'grid-column:1 / -1; width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.7rem; box-sizing:border-box;';
+          labelInput.placeholder = '${jsStr(t("dashboard:settings.labelPlaceholder"))}';
+          if (fee.label) labelInput.value = fee.label;
+          row.appendChild(labelInput);
+
+          rows.appendChild(row);
+        });
+      }
+
+      function collectAccountFees() {
+        var out = {};
+        var rowEls = document.querySelectorAll('#account-fees-rows .account-fee-row');
+        for (var i = 0; i < rowEls.length; i++) {
+          var row = rowEls[i];
+          var uuid = row.getAttribute('data-account');
+          var type = row.querySelector('.acct-fee-type').value;
+          var amt = row.querySelector('.acct-fee-amount').value;
+          var num = (amt === '' || amt == null) ? null : parseFloat(amt);
+          var hasFee = num != null && isFinite(num) && num >= 0;
+          // Keep a row that carries a fee OR a non-custom plan type (the type
+          // implies a default fee server-side). A bare "auto"/custom row with no
+          // fee is dropped.
+          if (!hasFee && (type === '' || type === 'custom')) continue;
+          var entry = {};
+          if (hasFee) entry.monthlyFee = num;
+          if (type) entry.type = type;
+          var cur = row.querySelector('.acct-fee-currency').value;
+          if (cur) entry.currency = cur;
+          var lbl = row.querySelector('.acct-fee-label').value;
+          if (lbl) entry.label = lbl;
+          out[uuid] = entry;
+        }
+        return out;
       }
 
       // ═══════════════ ENERGY CHARTS ═══════════════
@@ -2095,6 +2706,188 @@ CO₂_grams = total_kWh × grid_intensity</div>
         }());
       }
 
+      // ═══════════════ CLASSIFY (cost-ownership) ═══════════════
+      // VS Code webview only. Shows cost-ranked project clusters; the user
+      // assigns each to a subscription or split. Assignments batch into a
+      // pending map and apply in one message; the host reattributes + refreshes.
+      function initClassify() {
+        var listEl = document.getElementById('classify-list');
+        var coverageEl = document.getElementById('classify-coverage');
+        var emptyEl = document.getElementById('classify-empty');
+        var vscodeOnlyEl = document.getElementById('classify-vscode-only');
+        var noAcctEl = document.getElementById('classify-no-accounts');
+        var unlinkedHintEl = document.getElementById('classify-unlinked-hint');
+        var applyBtn = document.getElementById('classify-apply');
+        var statusEl = document.getElementById('classify-status');
+        if (!listEl) return;
+
+        // Classification needs the write channel; the served dashboard is
+        // read-only. Show a note and stop.
+        if (typeof window.__vscodeApi === 'undefined') {
+          if (vscodeOnlyEl) vscodeOnlyEl.style.display = 'block';
+          if (applyBtn) applyBtn.style.display = 'none';
+          return;
+        }
+
+        var LBL_UNASSIGNED = '${jsStr(t("dashboard:classify.optionUnassigned"))}';
+        var LBL_SPLIT = '${jsStr(t("dashboard:classify.optionSplit"))}';
+        var COVERAGE_TMPL = '${jsStr(t("dashboard:classify.coverage"))}';
+        var PENDING_TMPL = '${jsStr(t("dashboard:classify.pending"))}';
+        var SESSIONS_TMPL = '${jsStr(t("dashboard:classify.sessions"))}';
+        var PROJECTS_TMPL = '${jsStr(t("dashboard:classify.projects"))}';
+        var REMOTE_BADGE = '${jsStr(t("dashboard:classify.remoteBadge"))}';
+        var PATH_BADGE = '${jsStr(t("dashboard:classify.pathBadge"))}';
+        var APPLYING_MSG = '${jsStr(t("dashboard:classify.applying"))}';
+        var UNLINKED_HINT = '${jsStr(t("dashboard:classify.unlinkedHint"))}';
+        var SPLIT_VALUE = '__split__';
+
+        var pending = {}; // clusterKey -> { suggestedMatcher, target }
+
+        function fmtMoney(n) { return '$' + (n || 0).toFixed(2); }
+        function targetValue(tt) {
+          if (!tt) return '';
+          if (tt.kind === 'split') return SPLIT_VALUE;
+          if (tt.kind === 'account') return tt.accountUuid;
+          return '';
+        }
+        function valueToTarget(v) {
+          if (!v) return null;
+          if (v === SPLIT_VALUE) return { kind: 'split' };
+          return { kind: 'account', accountUuid: v };
+        }
+        function updateApplyState() {
+          var count = Object.keys(pending).length;
+          if (applyBtn) {
+            applyBtn.disabled = count === 0;
+            applyBtn.style.opacity = count === 0 ? '0.5' : '1';
+          }
+          if (statusEl) {
+            statusEl.style.color = '#e0af68';
+            statusEl.textContent = count === 0 ? '' : PENDING_TMPL.replace('__COUNT__', String(count));
+          }
+        }
+
+        function render(data) {
+          var clusters = (data && data.clusters) || [];
+          var accounts = (data && data.accounts) || [];
+          listEl.textContent = '';
+          if (noAcctEl) noAcctEl.style.display = accounts.length === 0 ? 'block' : 'none';
+          if (unlinkedHintEl) {
+            var hasUnlinked = accounts.some(function (a) { return !a.email; });
+            unlinkedHintEl.style.display = hasUnlinked ? 'block' : 'none';
+          }
+          if (!clusters.length) {
+            if (emptyEl) emptyEl.style.display = 'block';
+            if (coverageEl) coverageEl.textContent = '';
+            return;
+          }
+          if (emptyEl) emptyEl.style.display = 'none';
+
+          var total = (data && data.totalCost) || 0;
+          var classified = (data && data.classifiedCost) || 0;
+          var pct = total > 0 ? Math.round((classified / total) * 100) : 0;
+          if (coverageEl) {
+            coverageEl.style.color = '#ccc';
+            coverageEl.textContent = COVERAGE_TMPL
+              .replace('__CLASSIFIED__', classified.toFixed(2))
+              .replace('__TOTAL__', total.toFixed(2))
+              .replace('__PERCENT__', String(pct));
+          }
+
+          clusters.forEach(function (c) {
+            var row = document.createElement('div');
+            row.style.cssText = 'display:grid; grid-template-columns:1fr auto 12rem; gap:0.6rem; align-items:center; padding:0.5rem 0; border-top:1px solid #2a2a4a;';
+
+            var left = document.createElement('div');
+            left.style.cssText = 'min-width:0;';
+            var name = document.createElement('div');
+            name.style.cssText = 'font-size:0.8rem; color:#e8e8e8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+            name.textContent = c.label;
+            name.title = (c.projectPaths || []).join('\\n');
+            left.appendChild(name);
+            var sub = document.createElement('div');
+            sub.style.cssText = 'font-size:0.65rem; color:#999;';
+            var subParts = [SESSIONS_TMPL.replace('__COUNT__', String(c.sessionCount))];
+            if ((c.projectPaths || []).length > 1) {
+              subParts.push(PROJECTS_TMPL.replace('__COUNT__', String(c.projectPaths.length)));
+            }
+            subParts.push(c.kind === 'remote' ? REMOTE_BADGE : PATH_BADGE);
+            sub.textContent = subParts.join(' · ');
+            left.appendChild(sub);
+            row.appendChild(left);
+
+            var cost = document.createElement('div');
+            cost.style.cssText = 'font-size:0.8rem; color:#a0c4ff; text-align:right; font-variant-numeric:tabular-nums;';
+            cost.textContent = fmtMoney(c.estimatedCost);
+            row.appendChild(cost);
+
+            var sel = document.createElement('select');
+            sel.style.cssText = 'width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.72rem; box-sizing:border-box;';
+            var optNone = document.createElement('option');
+            optNone.value = ''; optNone.textContent = LBL_UNASSIGNED;
+            sel.appendChild(optNone);
+            accounts.forEach(function (a) {
+              var opt = document.createElement('option');
+              opt.value = a.accountUuid;
+              var label = a.email || a.planLabel || (a.accountUuid.slice(0, 8) + '…');
+              if (!a.email) {
+                label += ' (' + a.accountUuid.slice(0, 8) + '…)';
+                opt.title = UNLINKED_HINT;
+              }
+              opt.textContent = label;
+              sel.appendChild(opt);
+            });
+            var optSplit = document.createElement('option');
+            optSplit.value = SPLIT_VALUE; optSplit.textContent = LBL_SPLIT;
+            sel.appendChild(optSplit);
+
+            var currentVal = targetValue(c.currentTarget);
+            // If the current owner is an account not in the dropdown (e.g. from a
+            // CLI rule for an account with no recorded sessions), add it so the
+            // select reflects the real value instead of silently resetting.
+            if (currentVal && currentVal !== SPLIT_VALUE && !accounts.some(function (a) { return a.accountUuid === currentVal; })) {
+              var optUnknown = document.createElement('option');
+              optUnknown.value = currentVal; optUnknown.textContent = currentVal.slice(0, 8) + '…';
+              sel.appendChild(optUnknown);
+            }
+            sel.value = currentVal;
+
+            sel.addEventListener('change', function () {
+              var origVal = targetValue(c.currentTarget);
+              if (sel.value === origVal) delete pending[c.key];
+              else pending[c.key] = { suggestedMatcher: c.suggestedMatcher, target: valueToTarget(sel.value) };
+              updateApplyState();
+            });
+            row.appendChild(sel);
+
+            listEl.appendChild(row);
+          });
+        }
+
+        if (applyBtn) {
+          applyBtn.addEventListener('click', function () {
+            var assignments = Object.keys(pending).map(function (k) { return pending[k]; });
+            if (!assignments.length) return;
+            applyBtn.disabled = true;
+            applyBtn.style.opacity = '0.5';
+            if (statusEl) { statusEl.style.color = '#888'; statusEl.textContent = APPLYING_MSG; }
+            // Fire-and-forget: the host reattributes then triggers a full
+            // refresh() that re-renders this tab with the new attribution.
+            applyClassificationAsync(assignments);
+          });
+        }
+
+        getClustersAsync(function (err, data) {
+          if (err) {
+            if (coverageEl) { coverageEl.style.color = '#e15759'; coverageEl.textContent = String(err.message || err); }
+            return;
+          }
+          pending = {};
+          render(data);
+          updateApplyState();
+        });
+      }
+
       function initSettings() {
         loadConfigAsync(function (err, cfg) {
           if (!err && cfg) populateSettingsForm(cfg);
@@ -2102,34 +2895,32 @@ CO₂_grams = total_kWh × grid_intensity</div>
 
         document.getElementById('settings-form').addEventListener('submit', function (e) {
           e.preventDefault();
-          var planType = document.getElementById('cfg-plan-type').value;
-          var monthlyFee = document.getElementById('cfg-monthly-fee').value;
           var threshDay = document.getElementById('cfg-threshold-day').value;
           var threshWeek = document.getElementById('cfg-threshold-week').value;
           var threshMonth = document.getElementById('cfg-threshold-month').value;
+          var autoRefreshVal = document.getElementById('cfg-auto-refresh').value;
 
           var config = {};
-          config.plan = {};
-          if (planType) config.plan.type = planType;
-          if (monthlyFee) config.plan.monthly_fee = parseFloat(monthlyFee);
           config.costThresholds = {};
           if (threshDay) config.costThresholds.day = parseFloat(threshDay);
           if (threshWeek) config.costThresholds.week = parseFloat(threshWeek);
           if (threshMonth) config.costThresholds.month = parseFloat(threshMonth);
+          if (autoRefreshVal) config.autoRefreshSeconds = Math.max(MIN_AUTO_REFRESH_SECS, parseInt(autoRefreshVal, 10) || MIN_AUTO_REFRESH_SECS);
+          config.accountFees = collectAccountFees();
 
           var statusEl = document.getElementById('settings-status');
           saveConfigAsync(config, function (err, result) {
             if (err) {
-              statusEl.textContent = '${t("dashboard:settings.networkError")}';
+              statusEl.textContent = '${jsStr(t("dashboard:settings.networkError"))}';
               statusEl.style.color = '#e15759';
               statusEl.style.opacity = '1';
               return;
             }
             if (result && result.ok) {
-              statusEl.textContent = '${t("dashboard:settings.savedReload")}';
+              statusEl.textContent = '${jsStr(t("dashboard:settings.savedReload"))}';
               statusEl.style.color = '#59a14f';
             } else {
-              statusEl.textContent = '${t("dashboard:settings.errorSaving")}';
+              statusEl.textContent = '${jsStr(t("dashboard:settings.errorSaving"))}';
               statusEl.style.color = '#e15759';
             }
             statusEl.style.opacity = '1';

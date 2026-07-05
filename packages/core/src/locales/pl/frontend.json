@@ -2,7 +2,7 @@
   "login": {
     "subtitle": "Zaloguj się swoim służbowym e-mailem, aby uzyskać dostęp do panelu",
     "emailLabel": "Adres e-mail",
-    "emailPlaceholder": "you@company.com",
+    "emailPlaceholder": "ty@firma.com",
     "sendButton": "Wyślij magiczny link",
     "sending": "Wysyłanie...",
     "checkEmailHeading": "Sprawdź swój e-mail",
@@ -70,7 +70,7 @@
     "connected": {
       "name": "Połączony",
       "description": "Pierwsza synchronizacja w chmurze",
-      "category": "Onboarding",
+      "category": "Wprowadzenie",
       "threshold": "Zsynchronizuj 1 sesję"
     },
     "teamPlayer": {

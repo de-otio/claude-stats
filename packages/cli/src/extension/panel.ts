@@ -10,9 +10,14 @@ import * as fs from "node:fs";
 import * as vscode from "vscode";
 import { Store } from "../store/index.js";
 import { getNonce, escapeHtml } from "./utils.js";
-import { buildDashboard } from "../dashboard/index.js";
+import { buildDashboard, attachCostPerTask, attachCalibration } from "../dashboard/index.js";
 import { renderDashboard } from "../server/template.js";
-import { loadConfig, saveConfig, getPlanConfig, type Config } from "../config.js";
+import { loadConfig, saveConfig, mergeConfig, buildAccountsForConfig, type Config } from "../config.js";
+import { readClaudeAccount } from "../account.js";
+import { openCorrections, type CorrectionSignature, type OutcomeValue } from "../recap/corrections.js";
+import { clusterProjects, enrichClusters, planApply, reattribute } from "../attribution/index.js";
+import type { ClassifyAssignment } from "../attribution/classify.js";
+import type { OwnerTarget } from "@claude-stats/core/types";
 import type { ReportOptions } from "../reporter/index.js";
 import type { SidebarProvider } from "./sidebar.js";
 import { t } from "./i18n.js";
@@ -23,7 +28,17 @@ export class DashboardPanel {
 
   private readonly panel: vscode.WebviewPanel;
   private readonly disposables: vscode.Disposable[] = [];
-  private period: ReportOptions["period"] = "all";
+  // Default to the cheapest period to compute. buildDashboard cost is O(messages
+  // in the period); "all" re-scans the entire message history on every open and
+  // grows unboundedly (see doc/analysis/startup-performance/). "day" keeps the
+  // first paint sub-300ms regardless of total history; users can widen on demand.
+  private period: ReportOptions["period"] = "day";
+  // Custom date-range override. When both are set they take precedence over
+  // `period` (mirrors periodRange()'s precedence rule) — see the toolbar
+  // contract in plans/custom-date-range/plan.md: picking a date clears the
+  // preset's effect, and vice versa (enforced in handleMessage below).
+  private since: string | undefined;
+  private until: string | undefined;
   private accountUuid: string | undefined;
   private activeTab: string = "overview";
   private readonly chartJsUri: vscode.Uri;
@@ -34,7 +49,7 @@ export class DashboardPanel {
    * Called by the AutoCollector after each successful collection.
    */
   static refreshIfVisible(): void {
-    DashboardPanel.instance?.refresh();
+    DashboardPanel.instance?.refresh().catch(() => {});
   }
 
   static createOrShow(context: vscode.ExtensionContext, sidebar?: SidebarProvider): void {
@@ -64,15 +79,21 @@ export class DashboardPanel {
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
     this.panel.webview.onDidReceiveMessage(
-      (msg: { command: string; period?: string; accountUuid?: string; tab?: string }) => this.handleMessage(msg),
+      (msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; signature?: unknown; value?: string }) => this.handleMessage(msg),
       null,
       this.disposables,
     );
 
-    this.refresh();
+    // Paint a loading screen immediately. refresh() is async and only assigns
+    // the webview HTML once buildDashboard()/attachCostPerTask() have completed —
+    // on a cold first run over a large history that can take several seconds,
+    // during which the webview would otherwise be a blank white panel.
+    this.panel.webview.html = renderLoading(this.panel.webview.cspSource);
+
+    void this.refresh();
   }
 
-  private refresh(): void {
+  private async refresh(): Promise<void> {
     // Open and close the store on each refresh so we always read
     // the latest committed data (safe with WAL + busy_timeout)
     const store = new Store();
@@ -87,13 +108,27 @@ export class DashboardPanel {
       }
 
       const cfg = loadConfig();
-      const planCfg = getPlanConfig(cfg);
-      const data = buildDashboard(store, {
+      // Per-account subscriptions are the source of truth — buildDashboard sums
+      // each in-scope account's fee from accountFees (by plan type). No single
+      // global planFee/planType is seeded here; that would override the
+      // per-account split when accounts hold different plans.
+      const dashOpts = {
         period: this.period,
+        since: this.since,
+        until: this.until,
         accountUuid: this.accountUuid,
-        planFee: planCfg?.monthlyFee,
-        planType: planCfg?.type,
-      });
+        accountFees: cfg.accountFees,
+      };
+      const data = buildDashboard(store, dashOpts);
+      // includeTasks: this is the VS Code webview — the only surface allowed to
+      // render the per-task labelling controls (the list carries prompt text).
+      // experimentalSignals: config-gated opt-in (the in-dashboard activation
+      // toggle writes it); when on, the live card folds in the accuracy signals.
+      const experimentalSignals = cfg.experimentalSignals === true;
+      await attachCostPerTask(store, data, dashOpts, { includeTasks: true, experimentalSignals });
+      // Calibration view (proxy/signal agreement vs the user's labels) — drives
+      // the trust display + the activation toggle. Sync signals only.
+      await attachCalibration(store, data, dashOpts);
       const html = renderDashboard(data, t);
       this.panel.webview.html = patchForWebview(
         html,
@@ -106,23 +141,62 @@ export class DashboardPanel {
     }
   }
 
-  private handleMessage(msg: { command: string; period?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number }): void {
+  private handleMessage(msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean; assignments?: unknown }): void {
     if (msg.command === "changePeriod" && msg.period) {
       this.period = msg.period as ReportOptions["period"];
-      this.refresh();
+      // Mutual exclusivity per the toolbar contract: a preset pick clears any
+      // custom range in effect.
+      this.since = undefined;
+      this.until = undefined;
+      void this.refresh();
+    } else if (msg.command === "changeDateRange" && msg.since && msg.until) {
+      // Mutual exclusivity per the toolbar contract: a custom range clears the
+      // active preset so the two never combine.
+      this.since = msg.since;
+      this.until = msg.until;
+      this.period = undefined;
+      void this.refresh();
+    } else if (msg.command === "setOutcome") {
+      // Write-back labelling — VS Code webview ONLY. The read-only `serve` HTTP
+      // path has no message channel and never reaches this handler, keeping the
+      // LAN surface write-free. The signature is round-tripped extension data;
+      // openCorrections().add re-validates/sanitises it (parameterised SQL).
+      this.setOutcome(msg.signature, msg.value);
     } else if (msg.command === "changeAccount") {
       // Empty string from the dropdown means "all accounts combined".
       this.accountUuid = msg.accountUuid ? msg.accountUuid : undefined;
-      this.refresh();
+      void this.refresh();
     } else if (msg.command === "refresh") {
-      this.refresh();
+      void this.refresh();
+    } else if (msg.command === "setExperimentalSignals") {
+      // In-dashboard activation toggle: flip config.experimentalSignals and
+      // re-render so the live cost-per-task card reflects the choice.
+      try {
+        const current = loadConfig();
+        saveConfig({ ...current, experimentalSignals: msg.enabled === true });
+      } catch {
+        // best-effort; a failed write just leaves the toggle where it was
+      }
+      void this.refresh();
     } else if (msg.command === "tabChanged" && msg.tab) {
       this.activeTab = msg.tab;
       this.sidebar?.setActiveTab(msg.tab);
     } else if (msg.command === "getConfig" && msg.callbackId) {
       try {
         const cfg = loadConfig();
-        void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, data: cfg });
+        // Enrich with the accounts present in the store so the Settings tab can
+        // render one fee row per account. Webview path → include the current
+        // account's email (same trust context; needed to label the row).
+        // Also pass listAccountsFull() so buildAccountsForConfig can derive a
+        // richer planLabel from the tier/subscription data in the accounts table.
+        let accounts: ReturnType<typeof buildAccountsForConfig> = [];
+        const store = new Store();
+        try {
+          accounts = buildAccountsForConfig(store.listAccounts(), readClaudeAccount(), true, store.listAccountsFull());
+        } finally {
+          store.close();
+        }
+        void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, data: { ...cfg, accounts } });
       } catch {
         void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, error: t("extension:panel.errors.failedToLoadConfig") });
       }
@@ -130,29 +204,210 @@ export class DashboardPanel {
       try {
         const incoming = msg.config ?? {};
         const current = loadConfig();
-        const merged: Config = {
-          ...current,
-          ...incoming,
-          plan: incoming.plan !== undefined
-            ? { ...current.plan, ...incoming.plan }
-            : current.plan,
-          costThresholds: incoming.costThresholds !== undefined
-            ? { ...current.costThresholds, ...incoming.costThresholds }
-            : current.costThresholds,
-        };
+        const merged = mergeConfig(current, incoming);
         saveConfig(merged);
         void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, data: { ok: true, config: merged } });
-        this.refresh();
+        void this.refresh();
       } catch {
         void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, error: t("extension:panel.errors.failedToSaveConfig") });
       }
+    } else if (msg.command === "getClusters" && msg.callbackId) {
+      this.getClusters(msg.callbackId);
+    } else if (msg.command === "applyClassification") {
+      // Fire-and-forget: apply writes rules + reattributes, then refresh()
+      // re-renders every tab with the new attribution (and re-fetches the
+      // Classify list). Errors surface as a native notification.
+      this.applyClassification(msg.assignments);
     }
+  }
+
+  /**
+   * Load cost-ranked project clusters for the Classify panel, each enriched with
+   * its current owner target and own-rule id. Read-only. Responds on the same
+   * callbackId the webview is awaiting.
+   */
+  private getClusters(callbackId: number): void {
+    const store = new Store();
+    try {
+      const sessions = store.getSessions({ includeCI: false });
+      const costBySession = store.getCostBySession(sessions.map((s) => s.session_id));
+      const clusters = clusterProjects(
+        sessions.map((s) => ({
+          sessionId: s.session_id,
+          projectPath: s.project_path,
+          repoUrl: s.repo_url ?? null,
+        })),
+        costBySession,
+      );
+      const rules = store.listOwnerRules();
+      const enriched = enrichClusters(clusters, rules);
+      const totalCost = enriched.reduce((sum, c) => sum + c.estimatedCost, 0);
+      const classifiedCost = enriched
+        .filter((c) => c.currentTarget !== null)
+        .reduce((sum, c) => sum + c.estimatedCost, 0);
+      const accounts = buildAccountsForConfig(
+        store.listAccounts(),
+        readClaudeAccount(),
+        true,
+        store.listAccountsFull(),
+      ).map((a) => ({
+        accountUuid: a.accountUuid,
+        email: a.email ?? null,
+        planLabel: a.planLabel ?? null,
+      }));
+      void this.panel.webview.postMessage({
+        command: "clustersResult",
+        callbackId,
+        data: { clusters: enriched, accounts, totalCost, classifiedCost },
+      });
+    } catch {
+      void this.panel.webview.postMessage({
+        command: "clustersResult",
+        callbackId,
+        error: t("extension:panel.errors.failedToLoadClusters"),
+      });
+    } finally {
+      store.close();
+    }
+  }
+
+  /**
+   * Apply a batch of classification assignments. Order (mirrors the tested CLI
+   * `--clear` flow, applied globally): clear ALL stale owner overrides → run the
+   * rule CRUD plan → reattribute (re-infer + re-apply the CURRENT account rules,
+   * atomic + backed-up). A full refresh then re-renders every tab. Pre-validates
+   * account existence and the 200-rule cap so no mutation is left half-applied.
+   * Best-effort — any failure surfaces as a notification and the panel refreshes.
+   */
+  private applyClassification(assignmentsRaw: unknown): void {
+    const store = new Store();
+    try {
+      const assignments = sanitizeAssignments(assignmentsRaw);
+      if (assignments.length === 0) return;
+
+      const rules = store.listOwnerRules();
+      const plan = planApply(assignments, rules);
+
+      // Pre-validate so createOwnerRule can't throw mid-batch.
+      const known = new Set(store.listAccounts().map((a) => a.accountUuid));
+      for (const c of plan.toCreate) {
+        if (c.target.kind === "account" && !known.has(c.target.accountUuid)) {
+          throw new Error(`account ${c.target.accountUuid} not found`);
+        }
+      }
+      const finalCount = rules.length - plan.toDelete.length + plan.toCreate.length;
+      if (finalCount > 200) {
+        throw new Error(`would exceed the 200-rule limit (${finalCount})`);
+      }
+
+      store.clearAllOwnerOverrides();
+      for (const id of plan.toDelete) store.deleteOwnerRule(id);
+      for (const c of plan.toCreate) {
+        store.createOwnerRule(
+          { pathGlob: c.pathGlob, remoteGlob: c.remoteGlob, target: c.target },
+          () => Date.now(),
+        );
+      }
+      reattribute(store, { force: true, dbPath: paths.statsDb }, () => Date.now());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      void vscode.window.showErrorMessage(
+        t("extension:panel.errors.classifyFailed", { message }),
+      );
+    } finally {
+      store.close();
+      void this.refresh();
+    }
+  }
+
+  /**
+   * Write (or clear) an outcome label for a task, then refresh. The signature is
+   * round-tripped from extension-rendered data; we still validate its shape and
+   * the value before touching the corrections DB, and `add()` re-validates +
+   * sanitises (parameterised SQL). Best-effort — failures are swallowed so a bad
+   * payload never crashes the panel.
+   */
+  private setOutcome(signature: unknown, value: string | undefined): void {
+    const allowed = new Set(["success", "partial", "fail", "clear"]);
+    if (!value || !allowed.has(value)) return;
+    const sig = signature as { projectPath?: unknown; filePaths?: unknown; promptPrefix?: unknown } | null;
+    if (
+      !sig ||
+      typeof sig.projectPath !== "string" ||
+      typeof sig.promptPrefix !== "string" ||
+      !Array.isArray(sig.filePaths) ||
+      !sig.filePaths.every((p) => typeof p === "string")
+    ) {
+      return;
+    }
+    const cleanSig: CorrectionSignature = {
+      projectPath: sig.projectPath,
+      filePaths: sig.filePaths as string[],
+      promptPrefix: sig.promptPrefix,
+    };
+    const client = openCorrections();
+    try {
+      if (value === "clear") {
+        for (const a of client.forSignature(cleanSig).filter((a) => a.kind === "outcome")) {
+          client.remove(cleanSig, a);
+        }
+      } else {
+        client.add(cleanSig, { kind: "outcome", value: value as OutcomeValue });
+      }
+    } catch {
+      // add() throws on validation failure — labelling is best-effort UI.
+    } finally {
+      client.close();
+    }
+    void this.refresh();
   }
 
   private dispose(): void {
     DashboardPanel.instance = undefined;
     for (const d of this.disposables) d.dispose();
   }
+}
+
+/**
+ * Validate the round-tripped assignments payload from the webview into a typed
+ * ClassifyAssignment[]. Malformed items are dropped. createOwnerRule re-validates
+ * globs, target format, and account existence downstream, so this only enforces
+ * the shape/types needed before that.
+ */
+function sanitizeAssignments(raw: unknown): ClassifyAssignment[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ClassifyAssignment[] = [];
+  for (const item of raw) {
+    if (item == null || typeof item !== "object") continue;
+    const rec = item as { suggestedMatcher?: unknown; target?: unknown };
+    const sm = rec.suggestedMatcher;
+    if (sm == null || typeof sm !== "object") continue;
+    const smRec = sm as { pathGlob?: unknown; remoteGlob?: unknown };
+    const pathGlob = typeof smRec.pathGlob === "string" ? smRec.pathGlob : undefined;
+    const remoteGlob = typeof smRec.remoteGlob === "string" ? smRec.remoteGlob : undefined;
+    if (pathGlob === undefined && remoteGlob === undefined) continue;
+    const target = sanitizeTarget(rec.target);
+    if (target === "invalid") continue;
+    const matcher: { pathGlob?: string; remoteGlob?: string } = {};
+    if (pathGlob !== undefined) matcher.pathGlob = pathGlob;
+    if (remoteGlob !== undefined) matcher.remoteGlob = remoteGlob;
+    out.push({ suggestedMatcher: matcher, target });
+  }
+  return out;
+}
+
+/** Parse a target payload: null | {kind:'split'} | {kind:'account',accountUuid}.
+ *  Returns the sentinel "invalid" for a malformed (non-null) target so the whole
+ *  assignment can be dropped rather than silently treated as an unassign. */
+function sanitizeTarget(raw: unknown): OwnerTarget | null | "invalid" {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== "object") return "invalid";
+  const rec = raw as { kind?: unknown; accountUuid?: unknown };
+  if (rec.kind === "split") return { kind: "split" };
+  if (rec.kind === "account" && typeof rec.accountUuid === "string") {
+    return { kind: "account", accountUuid: rec.accountUuid };
+  }
+  return "invalid";
 }
 
 
@@ -223,6 +478,25 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
     });
   }
 
+  // Wire up custom date-range inputs (mirrors #period-select wiring above).
+  // Inline change handlers are stripped by the nonce CSP (step 3 below), so
+  // both inputs need their own addEventListener pair here. Only fire once
+  // both inputs have a value — matches the both-or-neither rule (a lone date
+  // pick doesn't yet form a valid range).
+  var sinceInput = document.getElementById('since-date-input');
+  var untilInput = document.getElementById('until-date-input');
+  if (sinceInput && untilInput) {
+    var onDateRangeChange = function() {
+      var sinceVal = sinceInput.value;
+      var untilVal = untilInput.value;
+      if (sinceVal && untilVal) {
+        vscode.postMessage({ command: 'changeDateRange', since: sinceVal, until: untilVal });
+      }
+    };
+    sinceInput.addEventListener('change', onDateRangeChange);
+    untilInput.addEventListener('change', onDateRangeChange);
+  }
+
   // Wire up account selector (only rendered when >= 2 accounts are present)
   var acctSel = document.getElementById('account-select');
   if (acctSel) {
@@ -246,6 +520,9 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
   // Override global functions in case they're called from chart init script
   window.changePeriod = function(val) {
     vscode.postMessage({ command: 'changePeriod', period: val });
+  };
+  window.changeDateRange = function(since, until) {
+    vscode.postMessage({ command: 'changeDateRange', since: since, until: until });
   };
   window.changeAccount = function(val) {
     vscode.postMessage({ command: 'changeAccount', accountUuid: val });
@@ -271,11 +548,111 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
     var tab = activeTab.getAttribute('data-tab');
     if (tab) vscode.postMessage({ command: 'tabChanged', tab: tab });
   }
+
+  // Wire up cost-per-task outcome-labelling controls (webview-only). Each button
+  // carries data-cpt-index into __DASHBOARD__.costPerTask.tasks (the signature
+  // source) and data-cpt-value (success|partial|fail|clear). The serve path
+  // renders no such controls and has no vscode bridge, so it stays read-only.
+  document.querySelectorAll('[data-cpt-index]').forEach(function(b) {
+    b.addEventListener('click', function() {
+      var tasks = (window.__DASHBOARD__ && window.__DASHBOARD__.costPerTask && window.__DASHBOARD__.costPerTask.tasks) || [];
+      var task = tasks[parseInt(b.getAttribute('data-cpt-index'), 10)];
+      if (!task || !task.signature) return;
+      vscode.postMessage({ command: 'setOutcome', signature: task.signature, value: b.getAttribute('data-cpt-value') });
+    });
+  });
+
+  // Signal-activation toggle: flip config.experimentalSignals and re-render.
+  var sigToggle = document.getElementById('signals-toggle');
+  if (sigToggle) {
+    sigToggle.addEventListener('change', function() {
+      vscode.postMessage({ command: 'setExperimentalSignals', enabled: sigToggle.checked });
+    });
+  }
 })();
 </script>`;
   html = html.replace("</body>", `${bridgeScript}\n</body>`);
 
   return html;
+}
+
+/**
+ * Render a lightweight "loading" page shown immediately when the panel opens,
+ * before buildDashboard()/attachCostPerTask() finish computing the dashboard.
+ *
+ * Without this, the webview has no HTML during that computation — which on a
+ * cold first run over a large history is multi-second — and VS Code renders a
+ * blank white panel with no indication that anything is happening. refresh()
+ * replaces this with the real dashboard (or the welcome screen) once ready.
+ *
+ * Purely presentational: it runs no scripts, so the CSP omits script-src
+ * entirely (nothing to nonce).
+ */
+export function renderLoading(cspSource: string): string {
+  const title = escapeHtml(t("extension:loading.title"));
+  const subtitle = escapeHtml(t("extension:loading.subtitle"));
+
+  const csp = [
+    "default-src 'none'",
+    `style-src ${cspSource} 'unsafe-inline'`,
+  ].join("; ");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
+  <title>${title}</title>
+  <style>
+    body {
+      font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size);
+      color: var(--vscode-foreground);
+      background: var(--vscode-editor-background);
+      margin: 0;
+    }
+    .wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      min-height: 70vh;
+      padding: 32px;
+      text-align: center;
+    }
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.3));
+      border-top-color: var(--vscode-progressBar-background, var(--vscode-button-background, #0e639c));
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .title {
+      font-size: 0.98rem;
+      font-weight: 600;
+    }
+    .subtitle {
+      font-size: 0.85rem;
+      color: var(--vscode-descriptionForeground);
+      max-width: 360px;
+      line-height: 1.5;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .spinner { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap" role="status" aria-live="polite">
+    <div class="spinner"></div>
+    <div class="title">${title}</div>
+    <div class="subtitle">${subtitle}</div>
+  </div>
+</body>
+</html>`;
 }
 
 /**

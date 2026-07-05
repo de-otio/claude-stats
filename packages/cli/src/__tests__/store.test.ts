@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Store, validateTag } from "../store/index.js";
-import type { SessionRecord, FileCheckpoint, ParseError } from "@claude-stats/core/types";
+import type { SessionRecord, MessageRecord, FileCheckpoint, ParseError } from "@claude-stats/core/types";
 import os from "os";
 import path from "path";
 import fs from "fs";
+import { DatabaseSync } from "node:sqlite";
 
 function tmpDb(): string {
   return path.join(os.tmpdir(), `cs-store-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
@@ -190,6 +191,65 @@ describe("Store — getSessions filters", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.session_id).toBe("s5");
     expect(rows[0]!.entrypoint).toBe("claude");
+  });
+
+  it("includes subagent sessions by default but excludes them when includeSubagents is false", () => {
+    store.upsertSession(makeSession({
+      sessionId: "sub1", projectPath: "/proj/a", firstTimestamp: 6_000,
+      isInteractive: true, isSubagent: true, parentSessionId: "s1",
+    }));
+    // Default: subagents included
+    expect(store.getSessions().map(r => r.session_id)).toContain("sub1");
+    // includeSubagents:false excludes them, keeps normal sessions
+    const filtered = store.getSessions({ includeSubagents: false }).map(r => r.session_id);
+    expect(filtered).not.toContain("sub1");
+    expect(filtered).toEqual(expect.arrayContaining(["s1", "s2"]));
+  });
+});
+
+describe("Store — getMessageCostInputsByUuids", () => {
+  let store: Store;
+  let dbPath: string;
+
+  const msg = (uuid: string, model: string | null, input: number, output: number) => ({
+    uuid, sessionId: "s1", timestamp: 1000, claudeVersion: "2.1.70",
+    model, stopReason: "end_turn", inputTokens: input, outputTokens: output,
+    cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], filePaths: [],
+    thinkingBlocks: 0, serviceTier: null, inferenceGeo: null,
+    ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0, promptText: null,
+  });
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+    store.upsertMessages([msg("a", "claude-sonnet-4-6", 100, 50), msg("b", "claude-opus-4-6", 200, 80), msg("c", null, 10, 10)]);
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  it("returns an empty array for empty input (no SQL run)", () => {
+    expect(store.getMessageCostInputsByUuids([])).toEqual([]);
+  });
+
+  it("returns only the requested uuids with token columns", () => {
+    const rows = store.getMessageCostInputsByUuids(["a", "c"]);
+    expect(rows.map(r => r.uuid).sort()).toEqual(["a", "c"]);
+    const a = rows.find(r => r.uuid === "a")!;
+    expect(a.model).toBe("claude-sonnet-4-6");
+    expect(a.input_tokens).toBe(100);
+    expect(a.output_tokens).toBe(50);
+    expect(rows.find(r => r.uuid === "c")!.model).toBeNull();
+  });
+
+  it("ignores unknown uuids and batches large inputs (>500)", () => {
+    // 600 ids, only 'a' and 'b' exist → batching over two IN(...) chunks
+    const ids = Array.from({ length: 600 }, (_, i) => `x${i}`);
+    ids.push("a", "b");
+    const rows = store.getMessageCostInputsByUuids(ids);
+    expect(rows.map(r => r.uuid).sort()).toEqual(["a", "b"]);
   });
 });
 
@@ -390,6 +450,13 @@ describe("Store — getStatus", () => {
     const status = store.getStatus();
     expect(status.sessionCount).toBe(1);
     expect(status.lastCollected).toBeGreaterThan(0);
+  });
+
+  it("excludes source_deleted sessions from sessionCount, like sibling queries", () => {
+    store.upsertSession(makeSession({ sessionId: "sess-live" }));
+    store.upsertSession(makeSession({ sessionId: "sess-gone", sourceDeleted: true }));
+    const status = store.getStatus();
+    expect(status.sessionCount).toBe(1);
   });
 });
 
@@ -938,5 +1005,730 @@ describe("Store — getSpendingReport", () => {
     expect(report.subagentCosts[0]!.parent_session_id).toBe("parent-1");
     expect(report.subagentCosts[0]!.subagent_count).toBe(2);
     expect(report.subagentCosts[0]!.subagent_tokens).toBe(10_000 + 5_000 + 500 + 8_000 + 3_000 + 200);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Period-filter conversion: session-id subquery seek (output-preserving).
+//
+// The four message-querying methods (getMessageTotals, getMessagesForEfficiency,
+// getMessagesForContext, getMessagesForEnergy) were converted from
+//   FROM messages m JOIN sessions s ON m.session_id = s.session_id
+//   WHERE … s.first_timestamp >= ? …
+// to a session-id subquery seek. These tests assert ROW/AGGREGATE PARITY against
+// an explicitly-computed expectation from a small, known synthetic fixture —
+// covering a period boundary, the live edge case (session first_timestamp LATER
+// than one of its message timestamps), multiple models/projects/accounts, a
+// since/until window, a project_path filter, and an empty period. Synthetic data
+// only (no live DB). Fixed epoch-ms; no Date.now()/Math.random() in assertions.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("Store — message period filter (subquery seek parity)", () => {
+  let store: Store;
+  let dbPath: string;
+
+  // Fixed epoch-ms period boundaries (UTC; no tz-dependent buckets used here).
+  const T0 = 1_000_000_000_000; // day 0
+  const DAY = 86_400_000;
+
+  // mkMsg: a full MessageRecord with sensible defaults; only the fields the
+  // converted queries read/return are varied per test.
+  const mkMsg = (o: {
+    uuid: string;
+    sessionId: string;
+    timestamp: number;
+    model: string | null;
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheCreation?: number;
+    eph5m?: number;
+    eph1h?: number;
+    thinking?: number;
+    inferenceGeo?: string | null;
+    tools?: string[];
+    promptText?: string | null;
+  }) => ({
+    uuid: o.uuid,
+    sessionId: o.sessionId,
+    timestamp: o.timestamp,
+    claudeVersion: "2.1.70",
+    model: o.model,
+    stopReason: "end_turn",
+    inputTokens: o.input ?? 0,
+    outputTokens: o.output ?? 0,
+    cacheCreationTokens: o.cacheCreation ?? 0,
+    cacheReadTokens: o.cacheRead ?? 0,
+    tools: o.tools ?? [],
+    filePaths: [],
+    thinkingBlocks: o.thinking ?? 0,
+    serviceTier: null,
+    inferenceGeo: o.inferenceGeo ?? null,
+    ephemeral5mCacheTokens: o.eph5m ?? 0,
+    ephemeral1hCacheTokens: o.eph1h ?? 0,
+    promptText: o.promptText ?? null,
+  });
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+
+    // Sessions ----------------------------------------------------------------
+    // sA: project /Users/alice/a, account acct-1, spans day 0 → day 2 (multi-day,
+    //     straddles the day-1 boundary). first_timestamp = T0.
+    store.upsertSession(makeSession({
+      sessionId: "sA", projectPath: "/Users/alice/a", accountUuid: "acct-1",
+      firstTimestamp: T0, lastTimestamp: T0 + 2 * DAY,
+    }));
+    // sB: EDGE CASE — first_timestamp is T0 + 10min, but it owns a message at T0
+    //     (10 min EARLIER than the session's first_timestamp). Reproduces the
+    //     live case where first_timestamp (min over all parsed entries) is later
+    //     than an earliest persisted assistant message. project /Users/alice/b,
+    //     account acct-2.
+    store.upsertSession(makeSession({
+      sessionId: "sB", projectPath: "/Users/alice/b", accountUuid: "acct-2",
+      firstTimestamp: T0 + 600_000, lastTimestamp: T0 + 700_000,
+    }));
+    // sC: day 3, project /Users/alice/a, account acct-1.
+    store.upsertSession(makeSession({
+      sessionId: "sC", projectPath: "/Users/alice/a", accountUuid: "acct-1",
+      firstTimestamp: T0 + 3 * DAY, lastTimestamp: T0 + 3 * DAY + 1000,
+    }));
+
+    // Messages ----------------------------------------------------------------
+    store.upsertMessages([
+      // sA messages
+      mkMsg({ uuid: "mA1", sessionId: "sA", timestamp: T0 + 100, model: "claude-opus-4-6", input: 100, output: 10, cacheRead: 5, cacheCreation: 1, eph5m: 2, eph1h: 3, thinking: 1, inferenceGeo: "us", tools: ["Read"], promptText: "pa1" }),
+      mkMsg({ uuid: "mA2", sessionId: "sA", timestamp: T0 + DAY + 200, model: "claude-sonnet-4-6", input: 200, output: 20, cacheRead: 6, cacheCreation: 2, eph5m: 0, eph1h: 0, thinking: 0, inferenceGeo: null, tools: [], promptText: null }),
+      // sB messages — note mB_early at T0, BEFORE sB.first_timestamp (T0+600_000)
+      mkMsg({ uuid: "mB_early", sessionId: "sB", timestamp: T0, model: "claude-opus-4-6", input: 300, output: 30, cacheRead: 7, cacheCreation: 3, eph5m: 0, eph1h: 0, thinking: 2, inferenceGeo: "eu", tools: ["Edit"], promptText: "pb0" }),
+      mkMsg({ uuid: "mB_late", sessionId: "sB", timestamp: T0 + 650_000, model: "claude-sonnet-4-6", input: 400, output: 40, cacheRead: 8, cacheCreation: 4, eph5m: 1, eph1h: 1, thinking: 0, inferenceGeo: null, tools: [], promptText: null }),
+      // sC message (day 3)
+      mkMsg({ uuid: "mC1", sessionId: "sC", timestamp: T0 + 3 * DAY, model: "claude-opus-4-6", input: 500, output: 50, cacheRead: 9, cacheCreation: 5, eph5m: 0, eph1h: 0, thinking: 0, inferenceGeo: "us", tools: [], promptText: null }),
+      // A NULL-model message in sA: included by Context/Totals, excluded by
+      // Efficiency/Energy (m.model IS NOT NULL).
+      mkMsg({ uuid: "mA_null", sessionId: "sA", timestamp: T0 + 300, model: null, input: 11, output: 1, cacheRead: 1, cacheCreation: 0 }),
+      // ORPHAN message: session_id "sX" has NO row in sessions. The prior inner
+      // join dropped it; the subquery must drop it too (parity).
+      mkMsg({ uuid: "mOrphan", sessionId: "sX", timestamp: T0 + 50, model: "claude-opus-4-6", input: 999, output: 99 }),
+    ]);
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  // ── getMessageTotals ──────────────────────────────────────────────────────
+  describe("getMessageTotals", () => {
+    it("no filters: aggregates per model over all NON-ORPHAN messages (orphan dropped)", () => {
+      const rows = store.getMessageTotals();
+      const byModel = new Map(rows.map(r => [r.model ?? "∅", r]));
+      // opus: mA1(100) + mB_early(300) + mC1(500) = 900 in (mOrphan excluded)
+      expect(byModel.get("claude-opus-4-6")).toEqual({
+        model: "claude-opus-4-6",
+        input_tokens: 100 + 300 + 500,
+        output_tokens: 10 + 30 + 50,
+        cache_read_tokens: 5 + 7 + 9,
+        cache_creation_tokens: 1 + 3 + 5,
+      });
+      // sonnet: mA2(200) + mB_late(400)
+      expect(byModel.get("claude-sonnet-4-6")).toEqual({
+        model: "claude-sonnet-4-6",
+        input_tokens: 200 + 400,
+        output_tokens: 20 + 40,
+        cache_read_tokens: 6 + 8,
+        cache_creation_tokens: 2 + 4,
+      });
+      // null-model row aggregates under model = null
+      expect(byModel.get("∅")).toEqual({
+        model: null,
+        input_tokens: 11,
+        output_tokens: 1,
+        cache_read_tokens: 1,
+        cache_creation_tokens: 0,
+      });
+      // orphan never appears
+      expect(rows.reduce((s, r) => s + r.input_tokens, 0)).toBe(100 + 300 + 500 + 200 + 400 + 11);
+    });
+
+    it("since boundary filters on MESSAGE timestamp: mB_early (T0) drops, sA's later messages stay", () => {
+      // Message-timestamp semantics: since = T0 + 1 selects messages SENT at/after
+      // T0+1 (regardless of their session's first_timestamp). mB_early (T0) drops;
+      // mA1/mA_null/mA2 (all > T0) now qualify even though sA.first_ts = T0.
+      const rows = store.getMessageTotals({ since: T0 + 1 });
+      const byModel = new Map(rows.map(r => [r.model, r]));
+      // opus: mA1(100) + mC1(500); mB_early(300) dropped by its own timestamp
+      expect(byModel.get("claude-opus-4-6")!.input_tokens).toBe(100 + 500);
+      // sonnet: mA2(200) + mB_late(400)
+      expect(byModel.get("claude-sonnet-4-6")!.input_tokens).toBe(200 + 400);
+      // null-model row present now (mA_null at T0+300 ≥ since)
+      expect(rows.some(r => r.model === null)).toBe(true);
+    });
+
+    it("until upper bound (message timestamp) and project filter", () => {
+      // project /Users/alice/a → sessions sA, sC. until = T0 + DAY filters on
+      // MESSAGE timestamp: keeps messages sent before T0+DAY. From sA/sC that is
+      // mA1(T0+100) and mA_null(T0+300); mA2(T0+DAY+200) and mC1(T0+3DAY) drop.
+      const rows = store.getMessageTotals({ projectPath: "/Users/alice/a", until: T0 + DAY });
+      const byModel = new Map(rows.map(r => [r.model ?? "∅", r]));
+      expect(byModel.get("claude-opus-4-6")!.input_tokens).toBe(100); // mA1
+      // sonnet row absent: mA2 is past `until` by its own timestamp
+      expect(byModel.has("claude-sonnet-4-6")).toBe(false);
+      expect(byModel.get("∅")!.input_tokens).toBe(11); // mA_null
+    });
+
+    it("empty period → no rows", () => {
+      expect(store.getMessageTotals({ since: T0 + 100 * DAY })).toEqual([]);
+    });
+  });
+
+  // ── getMessagesForEfficiency ──────────────────────────────────────────────
+  describe("getMessagesForEfficiency", () => {
+    it("no filters: every non-null-model, non-orphan message, ordered by timestamp ASC", () => {
+      const rows = store.getMessagesForEfficiency();
+      // Order by m.timestamp ASC: mB_early(T0), mA1(T0+100), mA2(T0+DAY+200),
+      // mB_late(T0+650_000)→ wait, recompute: T0, T0+100, T0+650_000, T0+DAY+200, T0+3DAY
+      // Actual ascending: mB_early(T0) < mA1(T0+100) < mB_late(T0+650_000)
+      //   < mA2(T0+DAY+200) < mC1(T0+3DAY). mA_null excluded (model null),
+      //   mOrphan excluded (no session).
+      expect(rows.map(r => r.uuid)).toEqual(["mB_early", "mA1", "mB_late", "mA2", "mC1"]);
+      const a1 = rows.find(r => r.uuid === "mA1")!;
+      expect(a1).toEqual({
+        uuid: "mA1", session_id: "sA", timestamp: T0 + 100, model: "claude-opus-4-6",
+        input_tokens: 100, output_tokens: 10, cache_read_tokens: 5, cache_creation_tokens: 1,
+        tools: JSON.stringify(["Read"]), thinking_blocks: 1, prompt_text: "pa1",
+      });
+    });
+
+    it("project filter excludes other projects' sessions", () => {
+      // /Users/alice/b → only sB
+      const rows = store.getMessagesForEfficiency({ projectPath: "/Users/alice/b" });
+      expect(rows.map(r => r.uuid)).toEqual(["mB_early", "mB_late"]);
+    });
+
+    it("since window filters on message timestamp: mB_early (T0) drops, sA's later messages stay", () => {
+      const rows = store.getMessagesForEfficiency({ since: T0 + 1 });
+      // Message-timestamp semantics: mB_early (T0) drops; mA1/mA2 (sA, > T0) stay
+      // even though sA.first_ts = T0. Ordered by timestamp ASC.
+      expect(rows.map(r => r.uuid)).toEqual(["mA1", "mB_late", "mA2", "mC1"]);
+    });
+
+    it("empty period → empty array", () => {
+      expect(store.getMessagesForEfficiency({ since: T0 + 100 * DAY })).toEqual([]);
+    });
+  });
+
+  // ── getMessagesForContext ─────────────────────────────────────────────────
+  describe("getMessagesForContext", () => {
+    it("no filters: all non-orphan messages (incl. null-model), ORDER BY session_id, timestamp ASC", () => {
+      const rows = store.getMessagesForContext();
+      // ORDER BY m.session_id, m.timestamp ASC →
+      //   sA: mA1(T0+100), mA_null(T0+300), mA2(T0+DAY+200)
+      //   sB: mB_early(T0), mB_late(T0+650_000)
+      //   sC: mC1
+      expect(rows.map(r => `${r.session_id}@${r.timestamp}`)).toEqual([
+        `sA@${T0 + 100}`, `sA@${T0 + 300}`, `sA@${T0 + DAY + 200}`,
+        `sB@${T0}`, `sB@${T0 + 650_000}`,
+        `sC@${T0 + 3 * DAY}`,
+      ]);
+      const a1 = rows.find(r => r.session_id === "sA" && r.timestamp === T0 + 100)!;
+      expect(a1).toEqual({
+        session_id: "sA", timestamp: T0 + 100, input_tokens: 100,
+        cache_read_tokens: 5, cache_creation_tokens: 1,
+      });
+    });
+
+    it("project filter + since window (message timestamp)", () => {
+      // /Users/alice/a → sA, sC. since = T0 + 1 filters MESSAGE timestamp: all of
+      // sA's messages (mA1 T0+100, mA_null T0+300, mA2 T0+DAY+200) are > T0, so sA
+      // stays; sC's mC1 too. ORDER BY session_id, timestamp ASC.
+      const rows = store.getMessagesForContext({ projectPath: "/Users/alice/a", since: T0 + 1 });
+      expect(rows.map(r => r.session_id)).toEqual(["sA", "sA", "sA", "sC"]);
+    });
+
+    it("empty period → empty array", () => {
+      expect(store.getMessagesForContext({ since: T0 + 100 * DAY })).toEqual([]);
+    });
+  });
+
+  // ── getMessagesForEnergy ──────────────────────────────────────────────────
+  describe("getMessagesForEnergy", () => {
+    it("no filters: non-null-model, non-orphan messages with project_path, ORDER BY timestamp ASC", () => {
+      const rows = store.getMessagesForEnergy();
+      // Order by timestamp ASC: mB_early(T0), mA1(T0+100), mB_late(T0+650_000),
+      // mA2(T0+DAY+200), mC1(T0+3DAY). mA_null + mOrphan excluded.
+      expect(rows.map(r => `${r.session_id}@${r.timestamp}`)).toEqual([
+        `sB@${T0}`, `sA@${T0 + 100}`, `sB@${T0 + 650_000}`,
+        `sA@${T0 + DAY + 200}`, `sC@${T0 + 3 * DAY}`,
+      ]);
+      // project_path comes from the correlated subquery — must match the session.
+      const mb0 = rows.find(r => r.session_id === "sB" && r.timestamp === T0)!;
+      expect(mb0).toEqual({
+        session_id: "sB", timestamp: T0, model: "claude-opus-4-6",
+        input_tokens: 300, output_tokens: 30, cache_read_tokens: 7, cache_creation_tokens: 3,
+        ephemeral_5m_cache_tokens: 0, ephemeral_1h_cache_tokens: 0,
+        thinking_blocks: 2, inference_geo: "eu", project_path: "/Users/alice/b",
+      });
+      const ma1 = rows.find(r => r.session_id === "sA" && r.timestamp === T0 + 100)!;
+      expect(ma1.project_path).toBe("/Users/alice/a");
+      expect(ma1.ephemeral_5m_cache_tokens).toBe(2);
+      expect(ma1.ephemeral_1h_cache_tokens).toBe(3);
+    });
+
+    it("account filter restricts to that account's sessions", () => {
+      // acct-2 → only sB
+      const rows = store.getMessagesForEnergy({ accountUuid: "acct-2" });
+      expect(rows.map(r => r.session_id)).toEqual(["sB", "sB"]);
+      expect(rows.every(r => r.project_path === "/Users/alice/b")).toBe(true);
+    });
+
+    it("project filter + since window (message timestamp) drops the edge message", () => {
+      // /Users/alice/b → sB; since = T0 + 1 filters MESSAGE timestamp: mB_early
+      // (T0) drops even though sB.first_ts = T0+600_000; only mB_late (T0+650k) stays.
+      const rows = store.getMessagesForEnergy({ projectPath: "/Users/alice/b", since: T0 + 1 });
+      expect(rows.map(r => `${r.session_id}@${r.timestamp}`)).toEqual([
+        `sB@${T0 + 650_000}`,
+      ]);
+    });
+
+    it("empty period → empty array", () => {
+      expect(store.getMessagesForEnergy({ since: T0 + 100 * DAY })).toEqual([]);
+    });
+  });
+
+  // ── Message-timestamp semantics: explicit boundary-straddle guard ─────────
+  describe("boundary straddle (message-timestamp axis)", () => {
+    it("counts messages by their OWN timestamp, not their session's first_timestamp", () => {
+      // sB starts at T0+600_000 but owns mB_early at T0. With a window
+      // [T0+1, T0+700_000): mB_early (T0) is EXCLUDED though its session starts
+      // in-window; mB_late (T0+650k) is INCLUDED. Conversely sA starts at T0 but
+      // its mA2 (T0+DAY+200) lands outside this window. This is the signed-off
+      // behaviour change from session-start to message-timestamp semantics.
+      const rows = store.getMessageTotals({ since: T0 + 1, until: T0 + 700_000 });
+      const byModel = new Map(rows.map(r => [r.model ?? "∅", r]));
+      // opus: only mA1 (T0+100); mB_early (T0) excluded, mC1 (T0+3DAY) excluded
+      expect(byModel.get("claude-opus-4-6")!.input_tokens).toBe(100);
+      // sonnet: only mB_late (T0+650k); mA2 (T0+DAY+200) excluded
+      expect(byModel.get("claude-sonnet-4-6")!.input_tokens).toBe(400);
+      // null-model mA_null (T0+300) is in-window
+      expect(byModel.get("∅")!.input_tokens).toBe(11);
+      // orphan never appears regardless of axis
+      expect(rows.every(r => r.input_tokens !== 999)).toBe(true);
+    });
+  });
+});
+
+// ─── Phase 1: persisted hourly rollup (message_hourly) parity ────────────────
+//
+// Synthetic data only (/Users/alice paths). Asserts that summing message_hourly
+// reproduces the raw per-message sums under the EXISTS-only inclusion predicate
+// (orphan-drop; null-model INCLUDED; null-ts INCLUDED under hour_utc=-1), and
+// that recomputeMessageHourly is partition-correct and idempotent.
+describe("Store — message_hourly rollup parity (Phase 1)", () => {
+  let store: Store;
+  let dbPath: string;
+
+  const HOUR = 3_600_000;
+
+  function mkMsg(o: Partial<MessageRecord> & { uuid: string; sessionId: string }): MessageRecord {
+    return {
+      timestamp: HOUR, // default: hour bucket 1
+      claudeVersion: "2.1.70",
+      model: "claude-opus-4-6",
+      stopReason: "end_turn",
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      tools: [],
+      filePaths: [],
+      thinkingBlocks: 0,
+      serviceTier: null,
+      inferenceGeo: null,
+      ephemeral5mCacheTokens: 0,
+      ephemeral1hCacheTokens: 0,
+      promptText: null,
+      ...o,
+    };
+  }
+
+  // Fixture covering every correction: multiple models (incl. null), multiple
+  // projects, varied + null inference_geo, thinking + non-thinking, a null-ts
+  // message, and an orphan (session_id absent from `sessions`).
+  const messages: MessageRecord[] = [
+    // session sA (/Users/alice/a), bucket 1, opus, geo "eu", thinking
+    mkMsg({ uuid: "m1", sessionId: "sA", inputTokens: 100, outputTokens: 10, cacheReadTokens: 5, cacheCreationTokens: 1, inferenceGeo: "eu", thinkingBlocks: 2, timestamp: HOUR + 1 }),
+    // session sA, bucket 1, opus, geo "eu", NON-thinking
+    mkMsg({ uuid: "m2", sessionId: "sA", inputTokens: 200, outputTokens: 20, cacheReadTokens: 7, cacheCreationTokens: 2, inferenceGeo: "eu", thinkingBlocks: 0, timestamp: HOUR + 2 }),
+    // session sA, bucket 2, sonnet, geo NULL, thinking
+    mkMsg({ uuid: "m3", sessionId: "sA", model: "claude-sonnet-4-6", inputTokens: 300, outputTokens: 30, cacheReadTokens: 9, cacheCreationTokens: 3, inferenceGeo: null, thinkingBlocks: 1, timestamp: 2 * HOUR + 1 }),
+    // session sB (/Users/alice/b), bucket 1, NULL model, geo "us", non-thinking
+    mkMsg({ uuid: "m4", sessionId: "sB", model: null, inputTokens: 400, outputTokens: 40, cacheReadTokens: 11, cacheCreationTokens: 4, inferenceGeo: "us", thinkingBlocks: 0, timestamp: HOUR + 3 }),
+    // session sB, NULL timestamp → hour_utc -1 bucket, opus, geo null
+    mkMsg({ uuid: "m5", sessionId: "sB", inputTokens: 500, outputTokens: 50, cacheReadTokens: 13, cacheCreationTokens: 5, inferenceGeo: null, thinkingBlocks: 0, timestamp: null }),
+    // orphan: session "sZ" never inserted into `sessions` → must be excluded
+    mkMsg({ uuid: "m6", sessionId: "sZ", inputTokens: 999, outputTokens: 999, cacheReadTokens: 999, cacheCreationTokens: 999, inferenceGeo: "eu", thinkingBlocks: 3, timestamp: HOUR + 4 }),
+  ];
+
+  type HourlyRow = {
+    hour_utc: number; project_path: string; model: string; inference_geo: string;
+    input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_creation_tokens: number;
+    th_input_tokens: number; th_output_tokens: number; th_cache_read_tokens: number; th_cache_creation_tokens: number;
+    msg_count: number; th_msg_count: number; min_ts: number | null;
+  };
+
+  // Read message_hourly via an independent connection to the same file.
+  function readHourly(): HourlyRow[] {
+    const db = new DatabaseSync(dbPath);
+    try {
+      return db.prepare("SELECT * FROM message_hourly ORDER BY hour_utc, project_path, model, inference_geo").all() as HourlyRow[];
+    } finally {
+      db.close();
+    }
+  }
+
+  // Raw per-message sum over EXISTS-included messages (orphan excluded), with
+  // optional predicate (e.g. model present, thinking only).
+  function rawSum(field: keyof MessageRecord, pred: (m: MessageRecord) => boolean = () => true): number {
+    return messages
+      .filter(m => m.sessionId !== "sZ") // EXISTS: sZ has no session row
+      .filter(pred)
+      .reduce((acc, m) => acc + (m[field] as number), 0);
+  }
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+    store.upsertSession(makeSession({ sessionId: "sA", projectPath: "/Users/alice/a", firstTimestamp: HOUR }));
+    store.upsertSession(makeSession({ sessionId: "sB", projectPath: "/Users/alice/b", firstTimestamp: HOUR }));
+    // NOTE: "sZ" deliberately NOT inserted → m6 is an orphan.
+    store.upsertMessages(messages);
+    // Rollup was backfilled at construction (empty); recompute now that messages exist.
+    store.recomputeMessageHourly();
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  it("(a) Σ all rollup tokens == raw SUM over EXISTS-included messages (orphan excluded, null-model & null-ts INCLUDED)", () => {
+    const rows = readHourly();
+    const sum = (k: keyof HourlyRow) => rows.reduce((a, r) => a + (r[k] as number), 0);
+    expect(sum("input_tokens")).toBe(rawSum("inputTokens"));          // 100+200+300+400+500 = 1500
+    expect(sum("output_tokens")).toBe(rawSum("outputTokens"));        // 10+20+30+40+50 = 150
+    expect(sum("cache_read_tokens")).toBe(rawSum("cacheReadTokens")); // 5+7+9+11+13 = 45
+    expect(sum("cache_creation_tokens")).toBe(rawSum("cacheCreationTokens")); // 1+2+3+4+5 = 15
+    // orphan never contributes
+    expect(rows.every(r => r.input_tokens !== 999)).toBe(true);
+    // null-ts message landed in the -1 sentinel bucket
+    expect(rows.some(r => r.hour_utc === -1 && r.input_tokens === 500)).toBe(true);
+  });
+
+  it("(b) Σ where model != '' == raw SUM over model IS NOT NULL (energy-read semantics)", () => {
+    const rows = readHourly().filter(r => r.model !== null);
+    const sumIn = rows.reduce((a, r) => a + r.input_tokens, 0);
+    expect(sumIn).toBe(rawSum("inputTokens", m => m.model !== null)); // excludes m4(null model)=400 → 1100
+    // null-model row is stored as actual NULL (no '' sentinel)
+    const nullModelRow = readHourly().find(r => r.model === null);
+    expect(nullModelRow).toBeDefined();
+    expect(nullModelRow!.input_tokens).toBe(400);
+  });
+
+  it("(c) th_* sums == raw SUM where thinking_blocks > 0", () => {
+    const rows = readHourly();
+    const sum = (k: keyof HourlyRow) => rows.reduce((a, r) => a + (r[k] as number), 0);
+    const thinking = (m: MessageRecord) => m.thinkingBlocks > 0;
+    expect(sum("th_input_tokens")).toBe(rawSum("inputTokens", thinking));   // m1+m3 = 100+300 = 400
+    expect(sum("th_output_tokens")).toBe(rawSum("outputTokens", thinking)); // 10+30 = 40
+    expect(sum("th_cache_read_tokens")).toBe(rawSum("cacheReadTokens", thinking)); // 5+9 = 14
+    expect(sum("th_cache_creation_tokens")).toBe(rawSum("cacheCreationTokens", thinking)); // 1+3 = 4
+    expect(sum("th_msg_count")).toBe(messages.filter(m => m.sessionId !== "sZ" && m.thinkingBlocks > 0).length); // 2
+  });
+
+  it("(d) Σ msg_count == COUNT of EXISTS-included messages", () => {
+    const rows = readHourly();
+    const total = rows.reduce((a, r) => a + r.msg_count, 0);
+    expect(total).toBe(messages.filter(m => m.sessionId !== "sZ").length); // 5 (orphan m6 excluded)
+  });
+
+  it("groups distinct (hour, project, model, geo) and resolves project_path / sentinels", () => {
+    const rows = readHourly();
+    // m1+m2 share (hour 1, /Users/alice/a, opus, eu) → one merged row
+    const merged = rows.find(r => r.hour_utc === 1 && r.project_path === "/Users/alice/a" && r.model === "claude-opus-4-6" && r.inference_geo === "eu");
+    expect(merged).toBeDefined();
+    expect(merged!.msg_count).toBe(2);
+    expect(merged!.input_tokens).toBe(300); // 100 + 200
+    expect(merged!.min_ts).toBe(HOUR + 1);  // MIN(timestamp) in the group
+    // null geo stored as actual NULL (no '' sentinel) (m3)
+    expect(rows.some(r => r.inference_geo === null && r.model === "claude-sonnet-4-6")).toBe(true);
+  });
+
+  it("recomputeMessageHourly([h]) recomputes only that bucket, leaving others untouched", () => {
+    const before = readHourly();
+    // Mutate the messages backing bucket 2 (m3), then recompute ONLY bucket 1.
+    store.upsertMessages([mkMsg({ uuid: "m3", sessionId: "sA", model: "claude-sonnet-4-6", inputTokens: 9999, outputTokens: 30, cacheReadTokens: 9, cacheCreationTokens: 3, inferenceGeo: null, thinkingBlocks: 1, timestamp: 2 * HOUR + 1 })],);
+    store.recomputeMessageHourly([1]); // touch bucket 1 only
+    const after = readHourly();
+    // bucket 2 row still reflects the OLD value (untouched)
+    const b2 = after.find(r => r.hour_utc === 2)!;
+    const b2Before = before.find(r => r.hour_utc === 2)!;
+    expect(b2.input_tokens).toBe(b2Before.input_tokens); // 300, not 9999
+    // bucket 1 rows unchanged in value (the mutation was in bucket 2)
+    const b1After = after.filter(r => r.hour_utc === 1).reduce((a, r) => a + r.input_tokens, 0);
+    const b1Before = before.filter(r => r.hour_utc === 1).reduce((a, r) => a + r.input_tokens, 0);
+    expect(b1After).toBe(b1Before);
+    // empty hours array is a no-op (no throw)
+    expect(() => store.recomputeMessageHourly([])).not.toThrow();
+  });
+
+  it("a second full backfill is idempotent (byte-identical table)", () => {
+    const first = readHourly();
+    store.recomputeMessageHourly(); // full rebuild again
+    const second = readHourly();
+    expect(second).toEqual(first);
+  });
+});
+
+// ─── Build 2 Phase 1 (Stream B): rollup READ-PATH parity + dispatcher ─────────
+//
+// Synthetic data only (/Users/alice paths). Asserts that the unbounded
+// fast-path readers (getEnergyAggregatesFromRollup / getMessageTotalsFromRollup)
+// reproduce the raw readers EXACTLY, and that getEnergyAggregates/getMessageTotals
+// dispatch to the rollup ONLY when fully unbounded (no period, no session-scope).
+describe("Store — rollup read-path parity (Build 2 Phase 1, Stream B)", () => {
+  let store: Store;
+  let dbPath: string;
+  const HOUR = 3_600_000;
+
+  function mkMsg(o: Partial<MessageRecord> & { uuid: string; sessionId: string }): MessageRecord {
+    return {
+      timestamp: HOUR,
+      claudeVersion: "2.1.70",
+      model: "claude-opus-4-6",
+      stopReason: "end_turn",
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      tools: [],
+      filePaths: [],
+      thinkingBlocks: 0,
+      serviceTier: null,
+      inferenceGeo: null,
+      ephemeral5mCacheTokens: 0,
+      ephemeral1hCacheTokens: 0,
+      promptText: null,
+      ...o,
+    };
+  }
+
+  // Same fixture shape as the Phase-1 rollup test: multi-model (incl. null),
+  // multi-project, varied + null geo, thinking + non-thinking, a null-ts
+  // message (hour_utc=-1 sentinel), and an orphan (no session row).
+  const messages: MessageRecord[] = [
+    mkMsg({ uuid: "m1", sessionId: "sA", inputTokens: 100, outputTokens: 10, cacheReadTokens: 5, cacheCreationTokens: 1, inferenceGeo: "eu", thinkingBlocks: 2, timestamp: HOUR + 1 }),
+    mkMsg({ uuid: "m2", sessionId: "sA", inputTokens: 200, outputTokens: 20, cacheReadTokens: 7, cacheCreationTokens: 2, inferenceGeo: "eu", thinkingBlocks: 0, timestamp: HOUR + 2 }),
+    mkMsg({ uuid: "m3", sessionId: "sA", model: "claude-sonnet-4-6", inputTokens: 300, outputTokens: 30, cacheReadTokens: 9, cacheCreationTokens: 3, inferenceGeo: null, thinkingBlocks: 1, timestamp: 2 * HOUR + 1 }),
+    mkMsg({ uuid: "m4", sessionId: "sB", model: null, inputTokens: 400, outputTokens: 40, cacheReadTokens: 11, cacheCreationTokens: 4, inferenceGeo: "us", thinkingBlocks: 0, timestamp: HOUR + 3 }),
+    mkMsg({ uuid: "m5", sessionId: "sB", inputTokens: 500, outputTokens: 50, cacheReadTokens: 13, cacheCreationTokens: 5, inferenceGeo: null, thinkingBlocks: 0, timestamp: null }),
+    // a second project (sC, /Users/alice/c) sonnet in geo "us" with thinking, to
+    // exercise multi-project + multi-geo grouping in byProjectModel / byGeo.
+    mkMsg({ uuid: "m7", sessionId: "sC", model: "claude-sonnet-4-6", inputTokens: 600, outputTokens: 60, cacheReadTokens: 15, cacheCreationTokens: 6, inferenceGeo: "us", thinkingBlocks: 4, timestamp: 2 * HOUR + 5 }),
+    // orphan: never inserted into `sessions` → excluded everywhere.
+    mkMsg({ uuid: "m6", sessionId: "sZ", inputTokens: 999, outputTokens: 999, cacheReadTokens: 999, cacheCreationTokens: 999, inferenceGeo: "eu", thinkingBlocks: 3, timestamp: HOUR + 4 }),
+  ];
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+    store.upsertSession(makeSession({ sessionId: "sA", projectPath: "/Users/alice/a", firstTimestamp: HOUR }));
+    store.upsertSession(makeSession({ sessionId: "sB", projectPath: "/Users/alice/b", firstTimestamp: HOUR }));
+    store.upsertSession(makeSession({ sessionId: "sC", projectPath: "/Users/alice/c", firstTimestamp: HOUR }));
+    store.upsertMessages(messages);
+    store.recomputeMessageHourly();
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  // Access the private *Raw / *FromRollup methods (TS private, runtime public).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const s = () => store as any;
+
+  // Order-independent comparison: key each row by a composite of its grouping
+  // columns (the GROUP BY emission order is not guaranteed), then deep-compare
+  // the keyed maps. NULL/undefined min_ts normalised so the optional column
+  // doesn't spuriously differ.
+  function keyBy<T>(rows: T[], key: (r: T) => string): Record<string, T> {
+    const out: Record<string, T> = {};
+    for (const r of rows) out[key(r)] = r;
+    return out;
+  }
+  const normMinTs = <T extends { min_ts?: number | null }>(r: T): T => ({ ...r, min_ts: r.min_ts ?? null });
+
+  it("getMessageTotalsFromRollup deep-equals getMessageTotalsRaw({}) (order-independent, '' ↔ null model)", () => {
+    const raw = s().getMessageTotalsRaw({}) as Array<{ model: string | null }>;
+    const roll = s().getMessageTotalsFromRollup() as Array<{ model: string | null }>;
+    // null-model row is present in both (totals INCLUDE null model).
+    expect(roll.some(r => r.model === null)).toBe(true);
+    expect(raw.some(r => r.model === null)).toBe(true);
+    const k = (r: { model: string | null }) => String(r.model); // null → "null"
+    expect(keyBy(roll, k)).toEqual(keyBy(raw, k));
+  });
+
+  it("getEnergyAggregatesFromRollup deep-equals getEnergyAggregatesRaw({}) — byModel (excludes null model; min_ts tiebreak)", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    // energy excludes null-model: neither side has a null/'' model entry.
+    expect(roll.byModel.every((r: { model: string }) => r.model !== "" && r.model !== null)).toBe(true);
+    const k = (r: { model: string }) => r.model;
+    expect(keyBy(roll.byModel.map(normMinTs), k)).toEqual(keyBy(raw.byModel.map(normMinTs), k));
+  });
+
+  it("byProjectModel parity (multi-project, GROUP BY project_path, model)", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    const k = (r: { project_path: string; model: string }) => `${r.project_path} ${r.model}`;
+    expect(keyBy(roll.byProjectModel.map(normMinTs), k)).toEqual(keyBy(raw.byProjectModel.map(normMinTs), k));
+  });
+
+  it("byHourModel parity (-1 sentinel ↔ NULL hour_bucket)", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    // null-ts message (m5) surfaces as a NULL hour_bucket in BOTH.
+    expect(roll.byHourModel.some((r: { hour_bucket: number | null }) => r.hour_bucket === null)).toBe(true);
+    expect(raw.byHourModel.some((r: { hour_bucket: number | null }) => r.hour_bucket === null)).toBe(true);
+    const k = (r: { hour_bucket: number | null; model: string }) => `${r.hour_bucket} ${r.model}`;
+    expect(keyBy(roll.byHourModel, k)).toEqual(keyBy(raw.byHourModel, k));
+  });
+
+  it("byGeo parity ('' ↔ null geo; SUM over model-not-null)", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    // m3's null geo surfaces as inference_geo:null in BOTH.
+    expect(roll.byGeo.some((r: { inference_geo: string | null }) => r.inference_geo === null)).toBe(true);
+    expect(raw.byGeo.some((r: { inference_geo: string | null }) => r.inference_geo === null)).toBe(true);
+    const k = (r: { inference_geo: string | null }) => String(r.inference_geo);
+    expect(keyBy(roll.byGeo, k)).toEqual(keyBy(raw.byGeo, k));
+  });
+
+  it("geoByEarliest parity (non-null geos, MIN(min_ts) ASC) — order matters here", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    // This one is ORDER-BY min_ts ASC, so compare arrays directly.
+    expect(roll.geoByEarliest).toEqual(raw.geoByEarliest);
+  });
+
+  it("thinkingByModel parity (th_* sums, th_msg_count as msgs, only thinking buckets)", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    const k = (r: { model: string }) => r.model;
+    expect(keyBy(roll.thinkingByModel.map(normMinTs), k)).toEqual(keyBy(raw.thinkingByModel.map(normMinTs), k));
+  });
+
+  it("scalar fields parity (sessionsWithThinking, totalMessages, minTimestamp)", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    expect(roll.sessionsWithThinking).toBe(raw.sessionsWithThinking);
+    expect(roll.totalMessages).toBe(raw.totalMessages);
+    expect(roll.minTimestamp).toBe(raw.minTimestamp);
+  });
+
+  it("full EnergyAggregates parity, every collection keyed (single deep-equal)", () => {
+    const raw = s().getEnergyAggregatesRaw({});
+    const roll = s().getEnergyAggregatesFromRollup();
+    expect({
+      byModel: keyBy(roll.byModel.map(normMinTs), (r: { model: string }) => r.model),
+      byProjectModel: keyBy(roll.byProjectModel.map(normMinTs), (r: { project_path: string; model: string }) => `${r.project_path} ${r.model}`),
+      byHourModel: keyBy(roll.byHourModel, (r: { hour_bucket: number | null; model: string }) => `${r.hour_bucket} ${r.model}`),
+      byGeo: keyBy(roll.byGeo, (r: { inference_geo: string | null }) => String(r.inference_geo)),
+      geoByEarliest: roll.geoByEarliest,
+      sessionsWithThinking: roll.sessionsWithThinking,
+      thinkingByModel: keyBy(roll.thinkingByModel.map(normMinTs), (r: { model: string }) => r.model),
+      totalMessages: roll.totalMessages,
+      minTimestamp: roll.minTimestamp,
+    }).toEqual({
+      byModel: keyBy(raw.byModel.map(normMinTs), (r: { model: string }) => r.model),
+      byProjectModel: keyBy(raw.byProjectModel.map(normMinTs), (r: { project_path: string; model: string }) => `${r.project_path} ${r.model}`),
+      byHourModel: keyBy(raw.byHourModel, (r: { hour_bucket: number | null; model: string }) => `${r.hour_bucket} ${r.model}`),
+      byGeo: keyBy(raw.byGeo, (r: { inference_geo: string | null }) => String(r.inference_geo)),
+      geoByEarliest: raw.geoByEarliest,
+      sessionsWithThinking: raw.sessionsWithThinking,
+      thinkingByModel: keyBy(raw.thinkingByModel.map(normMinTs), (r: { model: string }) => r.model),
+      totalMessages: raw.totalMessages,
+      minTimestamp: raw.minTimestamp,
+    });
+  });
+
+  // ─── Dispatcher: bound → raw path; unbounded → rollup path ─────────────────
+
+  it("getEnergyAggregates({}) (fully unbounded) returns the rollup result", () => {
+    const dispatched = store.getEnergyAggregates({});
+    const fromRollup = s().getEnergyAggregatesFromRollup();
+    expect(dispatched).toEqual(fromRollup);
+  });
+
+  it("getEnergyAggregates({since}) uses the RAW seek path, not the rollup", () => {
+    // A `since` above every timestamp yields an empty raw result; the rollup
+    // (which ignores since) would NOT be empty. So if the dispatcher routed to
+    // the rollup, totalMessages would be > 0. It must equal the raw path.
+    const since = 100 * HOUR;
+    const dispatched = store.getEnergyAggregates({ since });
+    const raw = s().getEnergyAggregatesRaw({ since });
+    expect(dispatched).toEqual(raw);
+    expect(dispatched.totalMessages).toBe(0); // proves it did NOT read the rollup
+  });
+
+  it("getEnergyAggregates({until}) uses the RAW seek path, not the rollup, and excludes messages at/after until", () => {
+    // Regression test for the custom-date-range feature: getEnergyAggregates
+    // previously had no `until` param at all, so a past custom range could
+    // silently include messages after the requested end. m1 (HOUR+1) and m2
+    // (HOUR+2) are strictly before HOUR+3; m3 (2*HOUR+1) and m4 (HOUR+3
+    // exactly, excluded by the strict `<`) must be dropped.
+    const until = HOUR + 3;
+    const dispatched = store.getEnergyAggregates({ until });
+    const raw = s().getEnergyAggregatesRaw({ until });
+    expect(dispatched).toEqual(raw);
+    const rollupTotal = s().getEnergyAggregatesFromRollup().totalMessages;
+    expect(dispatched.totalMessages).toBeGreaterThan(0);
+    expect(dispatched.totalMessages).toBeLessThan(rollupTotal);
+  });
+
+  it("getEnergyAggregates({since, until}) combines both bounds (RAW path)", () => {
+    const since = HOUR + 1;
+    const until = 2 * HOUR + 1; // excludes m3 (at exactly 2*HOUR+1, strict <)
+    const dispatched = store.getEnergyAggregates({ since, until });
+    const raw = s().getEnergyAggregatesRaw({ since, until });
+    expect(dispatched).toEqual(raw);
+    // Only m1 (HOUR+1) and m2 (HOUR+2) fall in [since, until).
+    expect(dispatched.totalMessages).toBe(2);
+  });
+
+  it("getEnergyAggregates({projectPath}) uses the RAW path (session-scoped)", () => {
+    const dispatched = store.getEnergyAggregates({ projectPath: "/Users/alice/a" });
+    const raw = s().getEnergyAggregatesRaw({ projectPath: "/Users/alice/a" });
+    expect(dispatched).toEqual(raw);
+    // scoped to project a → byModel has opus only (sonnet lives in /a bucket2 too,
+    // but at minimum it must differ from the unbounded rollup's total).
+    const rollupTotal = s().getEnergyAggregatesFromRollup().totalMessages;
+    expect(dispatched.totalMessages).toBeLessThan(rollupTotal);
+  });
+
+  it("getMessageTotals({}) (fully unbounded) returns the rollup result", () => {
+    const dispatched = store.getMessageTotals({});
+    const fromRollup = s().getMessageTotalsFromRollup();
+    const k = (r: { model: string | null }) => String(r.model);
+    expect(keyBy(dispatched, k)).toEqual(keyBy(fromRollup, k));
+  });
+
+  it("getMessageTotals({until}) uses the RAW seek path, not the rollup", () => {
+    const until = 0; // before every timestamp → raw is empty
+    const dispatched = store.getMessageTotals({ until });
+    const raw = s().getMessageTotalsRaw({ until });
+    expect(dispatched).toEqual(raw);
+    expect(dispatched).toHaveLength(0); // proves it did NOT read the rollup
   });
 });

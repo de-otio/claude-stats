@@ -2,17 +2,19 @@
   "pageTitle": "Claude Stats — {{period}} ({{date}})",
   "tabs": {
     "overview": "Übersicht",
-    "models": "Modelle",
     "projects": "Projekte",
     "sessions": "Sessions",
     "plan": "Abo",
     "context": "Kontext",
     "efficiency": "Effizienz",
     "energy": "Energie",
-    "settings": "Einstellungen"
+    "settings": "Einstellungen",
+    "classify": "Klassifizieren"
   },
   "toolbar": {
     "period": "Zeitraum:",
+    "since": "Von:",
+    "until": "Bis:",
     "refresh": "Aktualisieren",
     "autoOff": "Auto: aus",
     "autoOn": "Auto: an ({{seconds}}s)",
@@ -21,6 +23,7 @@
     "accountCurrent": "(aktuell)"
   },
   "summary": {
+    "emptyPeriodHint": "Noch keine Sessions in diesem Zeitraum — stellen Sie den Zeitraum auf „Woche“ oder „Alle“, um Ihre Daten zu sehen.",
     "sessions": "Sessions",
     "prompts": "Prompts",
     "totalInput": "Eingabe gesamt",
@@ -46,8 +49,6 @@
     "tokenBreakdown": "Token-Verteilung",
     "cacheUsage": "Cache-Nutzung",
     "cumulativeApiValue": "Kumulativer API-Wert vs. Abogebühr",
-    "tokensByModel": "Token nach Modell",
-    "stopReasons": "Abbruchgründe",
     "topProjects": "Top-Projekte",
     "tokensByProject": "Token-Anteil nach Projekt",
     "energyByProject": "Energieverbrauch nach Projekt",
@@ -100,12 +101,21 @@
       "team_standard": "Team Std ($25)",
       "max_5x": "Max 5x ($100)",
       "team_premium": "Team Premium ($125)",
-      "max_20x": "Max 20x ($200)"
+      "max_20x": "Max 20x ($200)",
+      "enterprise": "Enterprise (gemessen)"
+    },
+    "usageIntensity": {
+      "title": "Nutzungsintensität",
+      "light": "Light",
+      "typical": "Typical",
+      "power": "Power",
+      "benchmark": "≈ ${{benchmark}}/Mo. Claude Code-Benchmark",
+      "hint": "Ihre monatlich entsprechende Kosten vs. Anthropic's Pro-Benutzer-Planungs-Benchmarks."
     }
   },
   "context": {
     "avgPromptsPerSession": "Ø Prompts/Session",
-    "medianPrompts": "Median Prompts",
+    "medianPrompts": "Median-Prompts",
     "compactionRate": "Kompaktierungsrate",
     "avgPeakInputTokens": "Ø Spitzen-Eingabe-Token",
     "needCompaction": "Kompaktierung nötig",
@@ -185,8 +195,8 @@
       "periodHeader": "Ihr Zeitraum ({{start}} → {{end}}):",
       "col": {
         "class": "Klasse",
-        "inputRate": "Input Wh/1K",
-        "outputRate": "Output Wh/1K",
+        "inputRate": "Eingabe Wh/1K",
+        "outputRate": "Ausgabe Wh/1K",
         "msgs": "Msg",
         "output": "Output-Tok",
         "input": "Input-Tok",
@@ -285,7 +295,27 @@
     "save": "Speichern",
     "savedReload": "Gespeichert! Seite neu laden, um das aktualisierte Dashboard zu sehen.",
     "networkError": "Netzwerkfehler.",
-    "errorSaving": "Fehler beim Speichern."
+    "errorSaving": "Fehler beim Speichern.",
+    "subscriptions": "Abos",
+    "subscriptionsHint": "Legen Sie die monatliche Gebühr fest, die Sie für jedes Claude-Konto zahlen. Diese werden auf der Registerkarte \"Projekte\" auf Projekte verteilt.",
+    "subscriptionsAutoDetectHint": "Neue Konten erscheinen hier automatisch, sobald Claude Code eine Sitzung dafür aufzeichnet — Sie müssen keines manuell hinzufügen.",
+    "noAccounts": "Noch keine Konten gefunden — führen Sie einige Sitzungen durch und erfassen Sie erneut.",
+    "unlinkedAccountHint": "Noch nicht mit einer E-Mail-Adresse verknüpft — melden Sie sich einmal mit diesem Konto an und wechseln Sie danach zurück, um E-Mail-Adresse und Abo hier anzuzeigen.",
+    "feePlaceholder": "Gebühr",
+    "labelPlaceholder": "Label (z. B. Arbeit, Persönlich)",
+    "autoRefreshInterval": "Intervall für automatische Aktualisierung (Sekunden)",
+    "autoRefreshHint": "Mindestens 60 Sekunden. Gilt, wenn die automatische Aktualisierung in der Symbolleiste aktiviert ist."
+  },
+  "fees": {
+    "title": "Abogebühr nach Projekt",
+    "notConfigured": "Legen Sie Ihre Abogebühren in den Einstellungen fest, um sie Projekten zuzuweisen.",
+    "currencyHeader": "{{period}} in diesem Zeitraum · {{monthly}}/Mo.",
+    "idle": "{{label}} — keine Nutzung in diesem Zeitraum",
+    "idleSliceLabel": "Ungenutzt (keine Nutzung)",
+    "reconcile": "Zugerechnet {{attributed}}",
+    "bySubscriptionTitle": "Gebührenanteil je Abonnement",
+    "bySubscriptionDesc": "Die monatliche Gebühr jedes Abonnements, aufgeteilt auf die in diesem Zeitraum genutzten Projekte.",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "Token-Preise (pro 1M Token)",
@@ -298,5 +328,94 @@
   },
   "footer": {
     "generated": "Generiert {{timestamp}} • Zeitzone: {{timezone}}"
+  },
+  "costPerTask": {
+    "summaryHint": "Vollständige Aufschlüsselung im Spending-Tab",
+    "title": "Kosten pro erfolgreicher Aufgabe",
+    "headline": "pro erfolgreicher Aufgabe",
+    "na": "–",
+    "lowCoverage": "Geringe Abdeckung ({{coverage}}) — Rate beruht auf kleinem beobachtbaren Anteil",
+    "decomp": "= {{mean}}/Versuch ÷ {{rate}} Erfolgsrate",
+    "coverageBadge": "{{observable}}/{{total}} beobachtbar ({{coverage}})",
+    "labelledBadge": "{{labelled}}/{{observable}} gekennzeichnet",
+    "success": "erfolgreich",
+    "failed": "fehlgeschlagen",
+    "inFlight": "in Arbeit",
+    "unobservable": "nicht beobachtbar",
+    "model": "Modell",
+    "perSuccess": "$/Erfolg",
+    "successRate": "Erfolg",
+    "observableCol": "Beob.",
+    "insufficient": "–",
+    "proxyNote": "Das Ergebnis wird aus Git-Aktivität und Konfidenz abgeleitet, sofern du die Aufgabe nicht ausdrücklich gekennzeichnet hast; die Rate wird nur über beobachtbare Aufgaben berechnet.",
+    "period": {
+      "day": "heute",
+      "week": "letzte 7 Tage",
+      "month": "dieser Monat",
+      "all": "Gesamtzeitraum"
+    },
+    "labelTasksHeading": "Aufgabenergebnisse kennzeichnen",
+    "labelledTag": "gekennzeichnet",
+    "outcomeShort": {
+      "success": "erfolgreich",
+      "failed": "fehlgeschlagen",
+      "in_flight": "in Arbeit",
+      "unobservable": "nicht beobachtbar"
+    },
+    "mark": {
+      "success": "Als Erfolg markieren",
+      "partial": "Als teilweise markieren",
+      "fail": "Als Fehlschlag markieren",
+      "clear": "Kennzeichnung entfernen"
+    }
+  },
+  "calibration": {
+    "title": "Genauigkeit vs. deine Labels",
+    "noLabels": "Kennzeichne oben Aufgaben-Ergebnisse (✓ / ~ / ✗), um zu kalibrieren. Bis einige gelabelt sind, ist die Erfolgsrate eine Schätzung, keine Auswertung.",
+    "colProxy": "Schätzung",
+    "colSignals": "+ Signale",
+    "failedPrecision": "Fehler-Präzision",
+    "accuracy": "Genauigkeit",
+    "brier": "Brier (niedriger = besser)",
+    "ready": "✓ Signale erreichen die Fehler-Präzisions-Schwelle ({{floor}}) — Aktivierung ist sicher.",
+    "notReady": "⚠ Unter der Fehler-Präzisions-Schwelle ({{floor}}) — labele mehr, bevor du vertraust.",
+    "labelled": "{{n}} gelabelte Aufgabe(n) in diesem Zeitraum",
+    "toggle": "Experimentelle Genauigkeitssignale für die Live-Rate verwenden",
+    "enabledNote": "Aktiviert — die Rate oben bezieht die Genauigkeitssignale ein.",
+    "disabledNote": "Deaktiviert — die Rate oben ist nur die Schätzung.",
+    "na": "k. A."
+  },
+  "costEfficiency": {
+    "title": "Kosten-Effizienz-Frontier",
+    "realised": "Realisierte Kosten",
+    "frontier": "Frontier-Kosten",
+    "recoverable": "Vermeidbare Verschwendung",
+    "basisNote": "Basiert auf dem Fertigstellungs-Proxy, nicht auf Überlebensdaten",
+    "insufficient": "Noch zu wenig Modellvielfalt für eine Frontier — für keinen Archetyp gibt es eine günstigere, bewährte Alternative.",
+    "leverKind": {
+      "route_by_archetype": "Aufgaben nach Archetyp zum Frontier-Modell weiterleiten",
+      "default_effort_down": "Standard-Aufwandsstufe reduzieren",
+      "cache_hygiene": "Cache-Hygiene verbessern, um wiederholte Token zu reduzieren",
+      "stop_after_repairs": "Sitzungen nach abgeschlossenen Korrekturen beenden"
+    }
+  },
+  "classify": {
+    "title": "Projekte klassifizieren",
+    "intro": "Weisen Sie jedes Projekt dem Abonnement zu, über das es abgerechnet werden soll. Projekte sind nach Kosten sortiert, sodass das Klassifizieren der obersten den Großteil Ihrer Ausgaben abdeckt.",
+    "vscodeOnly": "Die Projektklassifizierung ist im VS Code-Panel verfügbar.",
+    "empty": "Noch keine Projekte zum Klassifizieren. Sobald Sie Claude Code in einigen Projekten verwendet haben, erscheinen sie hier.",
+    "noAccounts": "Noch keine Abonnements erkannt. Sie erscheinen hier, sobald Claude Code die Nutzung für jedes Konto aufgezeichnet hat.",
+    "unlinkedHint": "Konten, die mit einer ID in Klammern angezeigt werden, wurden noch nicht als Ihr aktiver Claude-Code-Login erkannt, daher können E-Mail-Adresse und Abo hier nicht angezeigt werden. Melden Sie sich einmal mit diesem Konto an und wechseln Sie danach zurück, um es zu verknüpfen.",
+    "coverage": "$__CLASSIFIED__ von $__TOTAL__ klassifiziert (__PERCENT__%)",
+    "pending": "__COUNT__ ausstehend",
+    "sessions": "__COUNT__ Sessions",
+    "projects": "__COUNT__ Projekte",
+    "remoteBadge": "remote",
+    "pathBadge": "Ordner",
+    "optionUnassigned": "Nicht zugewiesen",
+    "optionSplit": "Nach Nutzung aufteilen",
+    "splitHint": "Beim Aufteilen bleiben die Kosten jeder Session bei dem Konto, das sie tatsächlich ausgeführt hat. Verwenden Sie es für Projekte, die über mehrere Abonnements hinweg geteilt werden (z. B. wenn das Limit eines Plans nicht ausreicht).",
+    "apply": "Anwenden",
+    "applying": "Wird angewendet…"
   }
 }

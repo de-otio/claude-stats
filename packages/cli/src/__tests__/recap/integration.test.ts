@@ -2029,6 +2029,7 @@ describe('v3 Scenario 26 — phrase-template rendering by confidence', () => {
       characterVerb: 'Shipped',
       duration: { wallMs: 3_600_000, activeMs: 2_400_000 },
       estimatedCost: 0.04,
+      costByModel: { 'claude-opus-4-6': 0.04 },
       toolHistogram: {},
       filePathsTouched: ['src/auth.ts', 'src/middleware.ts'],
       git: {

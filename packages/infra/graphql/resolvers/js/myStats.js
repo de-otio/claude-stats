@@ -1,6 +1,11 @@
 /**
- * Query.myStats — Aggregate stats from SyncedSessions for the authenticated user.
+ * Query.myStats — Roll up aggregate rows for the authenticated user.
  * Filters by period (week/month) and returns MemberStats.
+ *
+ * Reads from the aggregate-only table (review F9): each item is a
+ * client-computed, client-minimized period bucket — never a per-session or
+ * per-message record — so this resolver can only ever sum counts/sums, not
+ * touch content.
  *
  * Args:
  *   period: String! — "week" or "month"
@@ -9,22 +14,20 @@ import { util } from "@aws-appsync/utils";
 import * as ddb from "@aws-appsync/utils/dynamodb";
 
 /**
- * Compute the epoch-millisecond start of the current period.
+ * Compute the inclusive lower-bound period label for the requested window.
+ * Period labels are ISO date strings (YYYY-MM-DD) so string comparison
+ * sorts correctly.
  */
 function periodStart(period) {
-  const now = util.time.nowEpochMilliSeconds();
-  if (period === "week") {
-    // 7 days ago
-    return now - 7 * 24 * 60 * 60 * 1000;
+  const now = util.time.nowISO8601();
+  const days = period === "week" ? 7 : period === "month" ? 30 : null;
+  if (days === null) {
+    util.error('Period must be "week" or "month"', "ValidationError");
+    return null;
   }
-  if (period === "month") {
-    // 30 days ago
-    return now - 30 * 24 * 60 * 60 * 1000;
-  }
-  util.error(
-    'Period must be "week" or "month"',
-    "ValidationError"
-  );
+  const nowMs = Date.parse(now);
+  const fromMs = nowMs - days * 24 * 60 * 60 * 1000;
+  return new Date(fromMs).toISOString().slice(0, 10);
 }
 
 export function request(ctx) {
@@ -33,12 +36,11 @@ export function request(ctx) {
   const from = periodStart(period);
 
   return ddb.query({
-    index: "SessionsByTimestamp",
     query: {
       userId: { eq: userId },
-      lastTimestamp: { ge: from },
+      period: { ge: from },
     },
-    limit: 10000, // Upper bound; typical users have far fewer
+    limit: 10000, // Upper bound; typical users have far fewer buckets
     scanIndexForward: false,
   });
 }
@@ -48,9 +50,11 @@ export function response(ctx) {
     util.error(ctx.error.message, ctx.error.type);
   }
 
-  const sessions = ctx.result.items ?? [];
+  const buckets = ctx.result.items ?? [];
 
-  // Aggregate stats across all sessions in the period
+  // Roll up aggregate buckets in the period
+  let sessions = 0;
+  let subagentSessions = 0;
   let prompts = 0;
   let inputTokens = 0;
   let outputTokens = 0;
@@ -60,45 +64,41 @@ export function response(ctx) {
   const toolsMap = {};
   const projectMap = {};
 
-  for (const s of sessions) {
-    prompts += s.promptCount ?? 0;
-    inputTokens += s.inputTokens ?? 0;
-    outputTokens += s.outputTokens ?? 0;
-    estimatedCost += s.estimatedCost ?? 0;
-
-    // Approximate active minutes from session duration
-    if (s.firstTimestamp && s.lastTimestamp) {
-      activeMinutes += Math.round(
-        (s.lastTimestamp - s.firstTimestamp) / 60000
-      );
-    }
+  for (const b of buckets) {
+    sessions += b.sessionCount ?? 0;
+    subagentSessions += b.subagentSessionCount ?? 0;
+    prompts += b.promptCount ?? 0;
+    inputTokens += b.inputTokens ?? 0;
+    outputTokens += b.outputTokens ?? 0;
+    estimatedCost += b.estimatedCost ?? 0;
+    activeMinutes += b.activeMinutes ?? 0;
 
     // Track unique models
-    if (s.models) {
-      for (const m of s.models) {
+    if (b.models) {
+      for (const m of b.models) {
         modelsSet[m] = (modelsSet[m] ?? 0) + 1;
       }
     }
 
     // Track tool usage from toolUseCounts (stored as AWSJSON)
-    if (s.toolUseCounts) {
+    if (b.toolUseCounts) {
       const tools =
-        typeof s.toolUseCounts === "string"
-          ? JSON.parse(s.toolUseCounts)
-          : s.toolUseCounts;
+        typeof b.toolUseCounts === "string"
+          ? JSON.parse(b.toolUseCounts)
+          : b.toolUseCounts;
       for (const tool of Object.keys(tools)) {
         toolsMap[tool] = (toolsMap[tool] ?? 0) + tools[tool];
       }
     }
 
     // Track project breakdown
-    const pid = s.projectId ?? "(unlinked)";
+    const pid = b.projectId ?? "(unlinked)";
     if (!projectMap[pid]) {
       projectMap[pid] = { projectId: pid, sessions: 0, prompts: 0, estimatedCost: 0 };
     }
-    projectMap[pid].sessions += 1;
-    projectMap[pid].prompts += s.promptCount ?? 0;
-    projectMap[pid].estimatedCost += s.estimatedCost ?? 0;
+    projectMap[pid].sessions += b.sessionCount ?? 0;
+    projectMap[pid].prompts += b.promptCount ?? 0;
+    projectMap[pid].estimatedCost += b.estimatedCost ?? 0;
   }
 
   // Derive top tools (sorted by usage count, top 10)
@@ -111,17 +111,14 @@ export function response(ctx) {
   const velocityTokensPerMin =
     activeMinutes > 0 ? Math.round((outputTokens / activeMinutes) * 100) / 100 : 0;
 
-  // Subagent ratio: sessions flagged as subagent / total sessions
-  const subagentCount = sessions.filter((s) => s.isSubagent).length;
+  // Subagent ratio: subagent sessions / total sessions
   const subagentRatio =
-    sessions.length > 0
-      ? Math.round((subagentCount / sessions.length) * 1000) / 1000
-      : 0;
+    sessions > 0 ? Math.round((subagentSessions / sessions) * 1000) / 1000 : 0;
 
   const projectBreakdown = Object.values(projectMap);
 
   return {
-    sessions: sessions.length,
+    sessions,
     prompts,
     inputTokens,
     outputTokens,

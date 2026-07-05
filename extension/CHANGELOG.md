@@ -2,6 +2,424 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.16.0 — 2026-07-05
+
+### Added — Optional end-to-end-encrypted backup & cross-device sync
+
+claude-stats can now back up your stats and sync them across machines — **opt-in,
+and end-to-end encrypted by default.** Run **Claude Stats: Set Up Backup & Sync…**
+from the Command Palette (or take the one-time nudge on activation).
+
+- **No new account, no server.** Your stats are written as per-device shards into
+  a folder your existing cloud app (Dropbox, iCloud Drive, Google Drive,
+  OneDrive, …) already syncs. Backup and sync are the same mechanism; every device
+  merges the others' shards, conflict-free.
+- **Encrypted by default for third-party folders.** Data is sealed on your device
+  before it leaves; your cloud provider only ever stores opaque bytes — even
+  project and session names in the file index are encrypted. Plaintext is offered
+  as an explicit, warned opt-out.
+- **Recovery key.** Encrypted setup generates a recovery key that is the only way
+  back into your backup — zero-knowledge, never uploaded. Losing it *and* all your
+  devices means the backup is unrecoverable; the UX states this plainly.
+- **Second device in one paste.** A new machine that sees the same folder offers
+  "Enter recovery key"; paste it once and the device enrolls itself and joins the
+  sync group. A wrong key fails cleanly, never silently.
+- **Delete All Stored Data.** A new command removes local data (and, optionally,
+  this device's cloud copy), honestly noting that your other devices keep their
+  own copies. The CLI gains `claude-stats purge` (a dry run by default).
+
+Your personal backup is separate from any team/organization dashboard, which only
+ever sees aggregate totals — never your prompts or transcripts. See the new
+[Backup, Sync & Privacy guide](https://github.com/de-otio/claude-stats/blob/master/doc/user-doc/backup-and-sync.md).
+
+### Added — Per-subscription fee-share charts (Projects tab)
+
+In addition to the overall "subscription fee by project" chart, the Projects tab
+now shows one chart per subscription, breaking down what share of *that*
+subscription's monthly fee each project accounts for.
+
+### Fixed — Dashboard display glitches
+
+- Task labels in the overuse chart no longer show raw HTML entities
+  (`&lt;`/`&gt;`) — they render as the intended `<…>` text.
+- Accounts other than the currently-signed-in one now show their email address
+  instead of a truncated internal UUID.
+- Harness `<task-notification>` system blocks are stripped from captured prompt
+  text, so they no longer inflate cost-per-task counts.
+
+## 0.15.0 — 2026-07-04
+
+### Added — License advisor: plan recommendations grounded in real usage
+
+The dashboard and MCP tools can now answer "which Claude plan should we buy?"
+— Team vs. Enterprise, seat-tier mix, how many seats — from measured usage
+instead of guesswork.
+
+- **Enterprise-aware plan classification.** The dashboard's Plan tab gains a
+  usage-intensity card (light / typical / power, against Anthropic's published
+  benchmarks), and the recommended-plan logic now recognizes usage beyond the
+  top consumer tier as Enterprise-scale rather than silently capping out.
+- **New MCP tools.** `get_account_info` (current seat/billing/org fields —
+  never a raw email), `get_plan_mechanics_reference` (a dated, sourced snapshot
+  of how Claude plans are sold, with a staleness warning and a nudge to verify
+  live pricing), and `size_seats` (pure seat-and-cost scenario projection that
+  surfaces the decision, never makes it). `get_stats` now also returns the
+  plan-advice block it already computed.
+- **New `plan-advisor` CLI command.** `claude-stats plan-advisor --headcount N
+  --technical-fraction P` prints a seat-sizing scenario table with cost
+  projections, Team-ceiling checks, and the compliance / spend-limit / timing
+  questions a buyer must decide — localized across all supported languages.
+- A `license-advisor` skill ties these together into a guided, sourced
+  recommendation workflow.
+
+## 0.14.0 — 2026-07-04
+
+### Removed — The "Models" tab
+
+The dashboard's "Models" tab (tokens-by-model and stop-reasons charts) has
+been removed — it wasn't earning its place. The same per-model breakdown is
+still available through the `dashboard` command's JSON output and the MCP
+tools, and the tab can come back if it turns out to be missed.
+
+### Changed — Auto-refresh interval is now configurable, with a 60-second floor
+
+0.12.1 bumped the dashboard's fixed auto-refresh interval from 30 seconds to
+2 minutes, with no way to change it. It's now a Settings tab field, and every
+path that sets it — the Settings form and a hand-edited `?refresh=` URL
+parameter alike — is floored to 60 seconds, so the dashboard can no longer be
+made to refresh more than once a minute.
+
+## 0.13.1 — 2026-07-03
+
+### Fixed — Project paths and costs could be silently wrong for hyphenated directory names
+
+Any project whose folder name contains a hyphen (e.g. `claude-stats`,
+`dot-atrium`) could have its sessions and cost split across a real project
+and one or more phantom sub-paths, and lose its git remote attribution
+entirely. Project paths are now read from each session's own recorded
+working directory instead of being guessed from the encoded folder name.
+A new `claude-stats repair project-paths` command (supports `--dry-run`)
+fixes already-collected sessions; it backs up the database before making
+any change.
+
+### Fixed — Claude Sonnet 5 and Opus 4.8 costs could be missing or inconsistent
+
+`list_sessions` and `get_session_detail` could disagree on a session's
+cost, and Sonnet 5 sessions could show as `$0 / unknown` depending on which
+MCP tool was called. Both now price consistently from the same per-message
+model data, and the MCP server now loads pricing correctly at startup.
+
+### Fixed — A few smaller MCP reporting-accuracy issues
+
+`get_status`'s session count no longer includes sessions whose source file
+has been deleted, matching every other reporting query. `get_cost_per_task`
+no longer surfaces an empty placeholder row for Claude Code's internal
+"synthetic" message marker.
+
+## 0.13.0 — 2026-07-03
+
+### Added — Custom date ranges everywhere, not just day/week/month/all
+
+Every surface — the CLI, the MCP tools, the web dashboard, and this
+extension — now accepts an arbitrary start/end date range alongside the
+existing presets. Pass `--since`/`--until` on the CLI, `since`/`until` to
+any MCP tool that takes a `period`, or pick two dates in the dashboard
+toolbar; a custom range takes precedence over a simultaneously-set preset,
+and every existing view (summary, trend, cost-per-task, energy/CO2)
+respects it.
+
+### Fixed — Wrong calendar day at month/year boundaries in local time
+
+A date-boundary calculation shared by daily recap, cost-per-task, and (now)
+custom date ranges could land on the wrong calendar day for the 1st or
+last day of a month in some timezones, and produced a negative-length
+window for December 31 and February 28. Corrected for every caller.
+
+### Improved — More UI strings translated across all 9 supported languages
+
+A batch of previously English-only strings (in the CLI, the dashboard,
+and this extension) now has real translations in German, Spanish, French,
+Japanese, Polish, Brazilian Portuguese, Russian, Ukrainian, and Simplified
+Chinese.
+
+## 0.12.2 — 2026-07-02
+
+### Fixed — Dashboard could fail to load entirely in some languages
+
+A translated string embedded in the dashboard's script was not escaped
+before being inserted into a JavaScript string literal. Any translation
+containing an apostrophe broke the whole script, silently disabling every
+chart and every interactive feature on the page. This is now fixed for all
+languages.
+
+### Changed — Subscription Fee by Project is now a pie chart
+
+Each currency's fee breakdown now renders as a pie chart, with unattributed
+("idle") subscription pools folded into a single slice, alongside the
+existing per-project dollar and percentage breakdown.
+
+### Added — Guidance for accounts missing an email or plan
+
+The Settings and Classify tabs now explain, inline, why an account might
+show without its email or plan, and how logging in as that account once
+resolves it. Settings also now notes that new accounts appear automatically
+once used with Claude Code — there's no need to add one manually.
+
+### Changed — Monthly fee pre-fills with the plan's default price
+
+Selecting a plan type in Settings now pre-fills the monthly fee with that
+plan's default price, converted to whichever currency is selected — still
+fully editable.
+
+## 0.12.1 — 2026-07-01
+
+### Fixed — Non-active accounts showed a truncated ID instead of an email
+
+On the **Settings** and **Classify** tabs, only the currently logged-in account
+showed its email address — every other known account fell back to a truncated
+account ID, even after you'd been logged in with it before. The dashboard now
+remembers the email of any account it has previously seen locally, so
+switching accounts no longer blanks out a label you already had.
+
+### Changed — Auto-refresh interval increased
+
+The dashboard's auto-refresh (browser mode) reloaded every 30 seconds by
+default, which was more often than needed for a stats view. It now defaults
+to every 2 minutes.
+
+## 0.12.0 — 2026-07-01
+
+### Added — Attribute a project's cost to the subscription that owns it
+
+Building on per-account attribution, you can now bill each **project** to the
+subscription that should pay for it — regardless of which account actually ran a
+given session. Use two accounts in one repo, or run a session an IDE couldn't
+attribute automatically, and the cost still lands on the right subscription.
+
+- New **Classify** tab in the dashboard: your projects, grouped and **ranked by
+  cost**, each with a picker to assign it to a subscription — or **Split across
+  usage** for a project shared between subscriptions (e.g. when one plan's limit
+  isn't enough). Classifying the few highest-cost projects covers most of your
+  spend; one **Apply** re-bills everything and refreshes the dashboard.
+- New CLI: `claude-stats account classify` lists your projects ranked by cost
+  with the total still unassigned; `claude-stats account own` sets a rule by
+  project path or git remote (`--path`, `--remote`, `--account <uuid|split>`,
+  plus `--list`, `--clear <id>`, `--dry-run`).
+- Ownership rules take precedence over automatic attribution. A **split** project
+  keeps each session on the account that actually ran it, so its cost divides by
+  real usage.
+
+Everything is computed **locally**.
+
+## 0.11.0 — 2026-07-01
+
+### Added — Per-account usage attribution
+
+Claude Stats now works out **which Claude account each session belonged to**, so
+your stats split cleanly when you use more than one account (for example a
+personal Max plan alongside a work Team plan) on the same machine.
+
+- The dashboard groups usage, cost, and plan value **by account**, with a
+  selector to filter to one account at a time.
+- Attribution is layered strongest-to-weakest: an OpenTelemetry export (if you
+  enable it) → Claude's own telemetry → live-session pins → an observed
+  account-switch timeline → a single-account backfill for older history. Each
+  session records the source and confidence behind its account.
+- New commands: `claude-stats account` shows the current account and the
+  accounts known from your history; `account reattribute` recomputes attribution
+  across all stored sessions (with `--dry-run`); `account otel ingest` loads an
+  OTLP export for exact, no-inference attribution.
+
+Everything is computed **locally**, and email addresses are stored only as a hash.
+
+### Fixed — Overview no longer looks empty at the start of a day or month
+
+In the first hours of a new day or month, the **Day**/**Month** view could show
+"0 sessions / 0 tokens" next to a non-zero cost — a session still running across
+midnight was counted for cost but not for sessions. Sessions active in the
+selected period are now counted consistently, and a genuinely empty period shows
+a short hint to switch to **Week** or **All** instead of a wall of zeros.
+
+## 0.10.0 — 2026-06-29
+
+### Fixed — Switching the dashboard to "Month" no longer takes ~a minute
+
+Selecting the **Month** period could hang the dashboard for close to a minute on
+a cold cache. The cost-per-task metric was shelling out to `git` and `gh` once
+per day per project across the whole window (~30 days), and most of that work —
+the author email, the push state, the merged-PR lookup — was identical every
+day. It now fetches each project's git/PR data **once over the whole window** and
+reuses it per day. Cold "Month" drops from ~57 s to a few seconds; repeated views
+stay fast (the digest cache also holds more days now).
+
+### Changed — Per-account subscription *plan type* (different plans per account)
+
+The Settings tab assumed all your subscriptions were the same plan. You can now
+set a **plan type per account** — e.g. a personal **Max 20x** alongside a work
+**Team Premium** — and selecting a type fills in its standard monthly fee
+(still editable).
+
+- Each account row in **Settings → Subscriptions** has its own plan-type picker;
+  the single global plan-type/fee fields are gone.
+- The Plan tab's headline fee is now the **sum of your accounts' plans**
+  (e.g. $200 + $125 = $325), and each account is judged against its own plan
+  rather than one shared number.
+
+## 0.9.0 — 2026-06-27
+
+### Added — Subscription fee attribution (per-account fees → per-project shares)
+
+You can now record what each of your Claude subscriptions actually costs and see
+that flat monthly fee distributed across the projects it paid for.
+
+- **Settings tab:** set a monthly fee, currency, and label for **each Claude
+  account** you use (the accounts are listed automatically from your history).
+  This replaces the single global fee for multi-account users while staying
+  backward-compatible for single-account ones.
+- **Projects tab:** a new **Subscription Fee by Project** card shows each
+  account's fee, pro-rated to the selected period, spread across that account's
+  projects in proportion to API-equivalent usage. Switch Day/Week/Month/All and
+  the attribution recomputes.
+- **Per-account pooling, not a global pool:** a work fee only flows to work
+  usage and a personal fee only to personal usage — no cross-account leakage.
+  Currencies are never mixed; each gets its own subtotal.
+- **Honest by design:** a configured account with no usage in the period shows
+  as an explicit *idle subscription* line rather than silently inflating active
+  projects, and usage that can't be attributed to an account is never invented.
+  The configured fees also feed the Plan tab's value verdicts.
+
+## 0.8.0 — 2026-06-27
+
+### Added — Cost-efficiency frontier (value per cost)
+
+A new **Cost-efficiency** panel sits beside the cost-per-successful-task metric
+in the dashboard, answering "was AI used as efficiently as possible, and could
+the same result have come cheaper?"
+
+- For each kind of work (archetype — mechanical edit, multi-file refactor,
+  debugging, research, greenfield), it finds the **frontier model**: the
+  cheapest model that has historically cleared the completion proxy on your own
+  history at a high success rate, over enough tasks to be meaningful.
+- It estimates **recoverable waste** — spend that ran on a pricier model than
+  the proven-cheaper alternative — and surfaces concrete **routing levers**.
+- **Honest by design:** the estimate is strictly cross-model. On a single-model
+  workload (e.g. everything on one model) there is no cheaper alternative to
+  route to, so the panel says *"not enough model diversity yet to compute a
+  frontier"* rather than inventing a saving. The numbers reconcile
+  (`realised − frontier = recoverable`), small samples abstain, and the metric
+  rests on the completion proxy, not on survival.
+- Fully local and read-only: the panel shows numbers and model names only — no
+  prompt text, file paths, or project names leave your machine, and the
+  read-only MCP tool carries the same prompt-text-free payload.
+
+## 0.7.1 — 2026-06-26
+
+### Changed — Startup performance
+
+The dashboard now paints fast regardless of how much Claude Code history you
+have accumulated. Before, first open re-scanned the entire message history on
+every refresh, so load time grew without bound as history piled up ("Crunching
+your Claude Code history…" lingering for seconds).
+
+- **Opens on the Day period by default** (was All). `buildDashboard` cost is
+  O(messages in the period), so Day keeps first paint sub-300ms no matter the
+  total history; widen to Week/Month/All on demand from the period dropdown.
+  The CLI `report`/`serve` defaults are unchanged.
+- **Faster wide periods too.** Measured on a 214k-message history (warm):
+  Day **~3.3s → ~0.14s**, Month **~1.9s → ~0.92s**, All **~3.7s → ~1.3s**.
+
+### Fixed — under the hood (no output change)
+
+Every change below was verified output-preserving against the live database.
+
+- Message-level reads now seek by `timestamp` through a session-membership
+  subquery instead of scanning, and adopt message-timestamp period semantics.
+- The energy section is aggregated in SQL (`GROUP BY`) rather than looping every
+  in-period message in JS.
+- A persisted hourly rollup (`message_hourly`, schema V12) serves unbounded
+  energy/totals reads — those reads dropped from ~725ms to ~44ms on All — and is
+  maintained incrementally by the collector.
+- The recap pipeline no longer recomputes its per-day snapshot hash from every
+  message before the cache lookup; the warm month floor fell from ~967ms to
+  ~242ms.
+
+## 0.7.0 — 2026-06-24
+
+### Added — Outcome accuracy + in-dashboard calibration
+
+Builds on 0.6.0's cost-per-successful-task metric with automatic accuracy
+signals and an in-dashboard way to calibrate and turn them on.
+
+- **Calibration view** on the Spending tab, beside the ✓/~/✗ labelling
+  controls: how well the proxy and the accuracy signals agree with your labels
+  (failed-precision, accuracy, Brier), with a floor verdict that tells you when
+  the signals are trustworthy enough to enable.
+- **Signal-activation toggle**: turn the experimental accuracy signals on for
+  the live rate straight from the dashboard — no config editing.
+- **Accuracy signals** (default-off, calibration-gated): conversational
+  repair/acceptance, output truncation, rework, failed tool calls (a new
+  per-message capture of `is_error` tool results), and revert/fixup commits —
+  combined through an evidence scorer with an abstain band so weak or
+  contradictory evidence never fabricates a verdict.
+- **Opt-in LLM-judge tier** (`cost-per-task --llm-judge`): an independent,
+  blinded model rules on ambiguous tasks. Local-first — configure an Ollama (or
+  any OpenAI-compatible) endpoint to keep data on the machine.
+- **Calibration CLI**: `cost-per-task --calibrate` reports proxy/signal
+  agreement against your labels as JSON.
+
+### Fixed
+
+- A committed-but-unpushed task is now classified as success, not in-flight.
+- The dashboard shows a loading screen on first open instead of a blank panel
+  while it computes.
+- The "Cost per Successful Task" detail moved to the Spending tab (the overview
+  keeps a compact summary box); the sidebar gained a Spending tab explanation.
+
+## 0.6.0 — 2026-06-23
+
+### Added — Cost per successful task
+
+A new outcome-cost metric: equivalent-API dollars spent per *shipped /
+confirmed* task, overall and per model — not per token. It answers "what does
+a correct result actually cost?", the question that matters once model
+subsidies end.
+
+Outcome is four-state (success / failed / in-flight / unobservable). The
+success rate is computed over the *observable* slice (success ∪ failed) only,
+never over all tasks, with coverage and the labelled share reported beside it —
+so the number never pretends to know more than it does. Below a coverage
+floor the dashboard and CLI lead with the exact half (mean cost per attempt)
+and warn.
+
+- **Dashboard:** a read-only card on the Overview tab — headline, the
+  mean ÷ rate decomposition, coverage/labelled badges, the four-state outcome
+  breakdown, and a per-model table.
+- **In-dashboard labelling (VS Code only):** per-task success / partial / fail /
+  clear controls. Explicit labels override the git/confidence proxy, turning the
+  metric from a hypothesis into an eval. This write path is gated to the VS Code
+  webview; the read-only `serve` HTTP surface never renders the controls and
+  carries no per-task prompt text.
+- **CLI:** `claude-stats cost-per-task` (with `--period / --by-model / --json`
+  and the usual project/account/repo filters) and `claude-stats task-outcome
+  <item> success|partial|fail [--clear]` for labelling.
+- **MCP:** a read-only `get_cost_per_task` tool. It reports the metric and how
+  much of it is labelled, but cannot set a label — keeping the producer of the
+  number separate from the judge of success.
+
+### Changed — Corrected per-task cost attribution
+
+Cost is now summed over each task's own messages (with sub-agent cost folded
+into the parent task and counted once), fixing a double-count in the previous
+roll-up. **Cost figures for already-recorded days will shift** when the cache
+is recomputed — the new numbers are the corrected ones. Per-task cost is also
+now broken down by model.
+
+### Fixed — Localized HTML export
+
+`claude-stats report --html` rendered every label as a raw translation key
+because it never passed a translator to the dashboard renderer. The exported
+HTML is now fully localized.
+
 ## 0.5.3 — 2026-05-23
 
 ### Fixed — Energy tab now respects the account selector
