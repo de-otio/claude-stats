@@ -30,7 +30,7 @@ const MAX_LEN = 2000;
  * Kept intentionally short — this is display polish, not a security filter.
  */
 const KNOWN_TAG_BLOCKS =
-  /<(?:system-reminder|local-command-caveat|ide_opened_file|ide_selection|ide_diagnostics|command-name|command-message|command-args|local-command-stdout|available-deferred-tools)>[\s\S]*?<\/(?:system-reminder|local-command-caveat|ide_opened_file|ide_selection|ide_diagnostics|command-name|command-message|command-args|local-command-stdout|available-deferred-tools)>/g;
+  /<(?:system-reminder|local-command-caveat|ide_opened_file|ide_selection|ide_diagnostics|command-name|command-message|command-args|local-command-stdout|available-deferred-tools|task-notification)>[\s\S]*?<\/(?:system-reminder|local-command-caveat|ide_opened_file|ide_selection|ide_diagnostics|command-name|command-message|command-args|local-command-stdout|available-deferred-tools|task-notification)>/g;
 
 /** Self-closing form of the same tags (e.g. `<ide_opened_file ... />`). */
 const KNOWN_SELF_CLOSING =

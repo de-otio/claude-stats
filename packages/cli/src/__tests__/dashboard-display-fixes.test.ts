@@ -24,6 +24,12 @@ describe("decodeHtmlEntities — display-boundary inverse of sanitizePromptText"
     expect(decodeHtmlEntities(escaped)).toBe(raw);
   });
 
+  it("strips a full <task-notification> system block so it is not a 'task' label", () => {
+    const raw =
+      "Fix the parser bug\n<task-notification>\n<task-id>abc</task-id>\n<status>completed</status>\n</task-notification>";
+    expect(sanitizePromptText(raw)).toBe("Fix the parser bug");
+  });
+
   it("decodes entities first and &amp; last so a literal &lt; survives", () => {
     // A user who literally typed the five characters "&lt;" gets it stored as
     // "&amp;lt;"; decoding must yield "&lt;", not collapse to "<".
