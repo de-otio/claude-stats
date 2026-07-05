@@ -627,6 +627,39 @@ Use 'status' for database metrics.
 
 ---
 
+## `purge`
+
+Delete claude-stats data from this machine and unregister the MCP server. **Dry
+run by default** — without `--yes` it only prints what *would* be deleted and
+exits without changing anything.
+
+```
+claude-stats purge [--yes] [--include-db] [--backup-cloud]
+```
+
+| Option | Description |
+|---|---|
+| _(none)_ | Dry run: preview what would be deleted; deletes nothing |
+| `--yes` | Actually delete claude-stats data (archive/bundle files); also unregisters the MCP server from `~/.claude.json` |
+| `--include-db` | Also delete the SQLite database `~/.claude-stats/stats.db` (otherwise the DB is kept) |
+| `--backup-cloud` | Also describe/target the encrypted cloud backup copy for this device (other devices keep their own copies) |
+
+```sh
+# Preview only (safe)
+claude-stats purge
+
+# Delete local data but keep the database
+claude-stats purge --yes
+
+# Delete everything including the database
+claude-stats purge --yes --include-db
+```
+
+See [backup-and-sync.md](backup-and-sync.md#removing-your-data) for the cloud
+scope and the VS Code **Delete All Stored Data…** equivalent.
+
+---
+
 ## VS Code Extension
 
 The optional VS Code extension embeds the dashboard directly inside the editor. It provides:
@@ -634,6 +667,7 @@ The optional VS Code extension embeds the dashboard directly inside the editor. 
 - **Automatic collection** — watches `~/.claude/projects/` for file changes and runs incremental collection automatically. No need to run `claude-stats collect` manually.
 - **Dashboard panel** — the same interactive Chart.js dashboard as `serve`, displayed in a VS Code webview tab (opened via the Command Palette: **Claude Stats: Open Dashboard**). Updates automatically after each collection.
 - **Status bar item** — shows today's token count and estimated cost in the bottom bar; click to open the dashboard. Updates automatically after each collection.
+- **Optional backup & sync** — **Claude Stats: Set Up Backup & Sync…** turns on optional, end-to-end-encrypted backup and cross-device sync via a cloud folder you already use; **Claude Stats: Delete All Stored Data…** removes it. See [backup-and-sync.md](backup-and-sync.md).
 
 ### Installation
 
