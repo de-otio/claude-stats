@@ -2,6 +2,51 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.16.0 — 2026-07-05
+
+### Added — Optional end-to-end-encrypted backup & cross-device sync
+
+claude-stats can now back up your stats and sync them across machines — **opt-in,
+and end-to-end encrypted by default.** Run **Claude Stats: Set Up Backup & Sync…**
+from the Command Palette (or take the one-time nudge on activation).
+
+- **No new account, no server.** Your stats are written as per-device shards into
+  a folder your existing cloud app (Dropbox, iCloud Drive, Google Drive,
+  OneDrive, …) already syncs. Backup and sync are the same mechanism; every device
+  merges the others' shards, conflict-free.
+- **Encrypted by default for third-party folders.** Data is sealed on your device
+  before it leaves; your cloud provider only ever stores opaque bytes — even
+  project and session names in the file index are encrypted. Plaintext is offered
+  as an explicit, warned opt-out.
+- **Recovery key.** Encrypted setup generates a recovery key that is the only way
+  back into your backup — zero-knowledge, never uploaded. Losing it *and* all your
+  devices means the backup is unrecoverable; the UX states this plainly.
+- **Second device in one paste.** A new machine that sees the same folder offers
+  "Enter recovery key"; paste it once and the device enrolls itself and joins the
+  sync group. A wrong key fails cleanly, never silently.
+- **Delete All Stored Data.** A new command removes local data (and, optionally,
+  this device's cloud copy), honestly noting that your other devices keep their
+  own copies. The CLI gains `claude-stats purge` (a dry run by default).
+
+Your personal backup is separate from any team/organization dashboard, which only
+ever sees aggregate totals — never your prompts or transcripts. See the new
+[Backup, Sync & Privacy guide](https://github.com/de-otio/claude-stats/blob/master/doc/user-doc/backup-and-sync.md).
+
+### Added — Per-subscription fee-share charts (Projects tab)
+
+In addition to the overall "subscription fee by project" chart, the Projects tab
+now shows one chart per subscription, breaking down what share of *that*
+subscription's monthly fee each project accounts for.
+
+### Fixed — Dashboard display glitches
+
+- Task labels in the overuse chart no longer show raw HTML entities
+  (`&lt;`/`&gt;`) — they render as the intended `<…>` text.
+- Accounts other than the currently-signed-in one now show their email address
+  instead of a truncated internal UUID.
+- Harness `<task-notification>` system blocks are stripped from captured prompt
+  text, so they no longer inflate cost-per-task counts.
+
 ## 0.15.0 — 2026-07-04
 
 ### Added — License advisor: plan recommendations grounded in real usage
