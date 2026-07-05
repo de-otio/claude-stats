@@ -112,14 +112,18 @@ export class AuthStack extends cdk.Stack {
 
     const lambdaDir = path.join(__dirname, "../../../lambda/auth");
 
+    // NODEJS_22_X (review N1): Node 20 reached Lambda deprecation on
+    // 2026-04-30. Pinned explicitly rather than left to the CDK default so
+    // this doesn't silently drift onto whatever runtime a future CDK
+    // version defaults to.
     const commonLambdaProps: Partial<lambda.NodejsFunctionProps> = {
-      runtime: lambdaRuntime.Runtime.NODEJS_20_X,
+      runtime: lambdaRuntime.Runtime.NODEJS_22_X,
       timeout: cdk.Duration.seconds(10),
       memorySize: 256,
       bundling: {
         minify: true,
         sourceMap: true,
-        target: "node20",
+        target: "node22",
       },
     };
 

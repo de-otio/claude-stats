@@ -1,5 +1,6 @@
 import * as cdk from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as kms from "aws-cdk-lib/aws-kms";
 import { Construct } from "constructs";
 import type { EnvironmentConfig } from "../config/types.js";
 import { putParam } from "../ssm-params.js";
@@ -19,19 +20,35 @@ export class DataStack extends cdk.Stack {
 
     // ---------- shared table settings ----------
 
-    const encryption =
-      config.dynamoDbEncryption === "CUSTOMER_MANAGED"
-        ? dynamodb.TableEncryption.CUSTOMER_MANAGED
-        : dynamodb.TableEncryption.DEFAULT;
-
     const removalPolicy =
       config.dynamoDbRemovalPolicy === "RETAIN"
         ? cdk.RemovalPolicy.RETAIN
         : cdk.RemovalPolicy.DESTROY;
 
+    // Customer-managed KMS key (review N2): when CUSTOMER_MANAGED encryption
+    // is selected, use an explicit key with rotation enabled rather than
+    // relying on CDK's implicit auto-created key, which does NOT enable
+    // rotation by default. Shared across the data tables (one CMK, not one
+    // per table) to keep KMS API cost bounded.
+    const tableEncryptionKey =
+      config.dynamoDbEncryption === "CUSTOMER_MANAGED"
+        ? new kms.Key(this, "DataEncryptionKey", {
+            description: `Claude Stats DynamoDB customer-managed key (${config.envName})`,
+            enableKeyRotation: true,
+            removalPolicy,
+            alias: `alias/${prefix}-data`,
+          })
+        : undefined;
+
+    const encryption =
+      config.dynamoDbEncryption === "CUSTOMER_MANAGED"
+        ? dynamodb.TableEncryption.CUSTOMER_MANAGED
+        : dynamodb.TableEncryption.DEFAULT;
+
     const commonProps = {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       encryption,
+      encryptionKey: tableEncryptionKey,
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: config.dynamoDbPointInTimeRecovery },
       deletionProtection: config.dynamoDbDeletionProtection,
       removalPolicy,
@@ -87,7 +104,22 @@ export class DataStack extends cdk.Stack {
       nonKeyAttributes: ["role", "joinedAt", "displayName"],
     });
 
-    // ---------- SyncedSessions ----------
+    // ---------- SyncedSessions / SyncedMessages ----------
+    //
+    // NOTE (review F9/S6, scoped down): these tables and their downstream
+    // DynamoDB-Streams consumer (`lambda/api/aggregate-stats.ts`, which
+    // groups per-session stream records into TeamStats by ISO week) are
+    // left untouched here — restructuring their key schema cascades into
+    // that Lambda's business logic and its test suite, both out of this
+    // phase's file scope. The structural fix for the aggregate-only
+    // invariant is applied at the schema/resolver layer instead: no
+    // GraphQL operation reads or writes these tables' per-session/per-
+    // message shape any more (`mySessions`/`sessionMessages`/
+    // `syncSessions`/`syncMessages` are deleted from `schema.graphql`).
+    // These tables become dead infrastructure once undeployed writers stop;
+    // migrating `aggregate-stats.ts` onto the new `UserAggregates` table
+    // below (and retiring these two) is follow-up work for whoever wires
+    // the DynamoDB-Streams pipeline end-to-end.
 
     const syncedSessions = new dynamodb.Table(this, "SyncedSessions", {
       ...commonProps,
@@ -152,14 +184,58 @@ export class DataStack extends cdk.Stack {
       ],
     });
 
-    // ---------- SyncedMessages ----------
-
     const syncedMessages = new dynamodb.Table(this, "SyncedMessages", {
       ...commonProps,
       tableName: `${prefix}-syncedMessages`,
       partitionKey: { name: "sessionId", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "uuid", type: dynamodb.AttributeType.STRING },
       timeToLiveAttribute: "expiresAt",
+    });
+
+    // ---------- UserAggregates (aggregate-only, review F9/S6) ----------
+    //
+    // The org backend's actual sync target: one row per (userId, period)
+    // client-computed, client-minimized aggregate bucket. There is no
+    // per-session or per-message field here, ever — the mutation/query
+    // surface for this table (`syncAggregate`/`myAggregates`/`myStats`/
+    // `myProjects` resolvers) is the only sync path exposed by the schema.
+
+    const userAggregates = new dynamodb.Table(this, "UserAggregates", {
+      ...commonProps,
+      tableName: `${prefix}-userAggregates`,
+      partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "period", type: dynamodb.AttributeType.STRING },
+    });
+
+    userAggregates.addGlobalSecondaryIndex({
+      indexName: "AggregatesByAccount",
+      partitionKey: { name: "accountId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "period", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: [
+        "userId",
+        "projectId",
+        "updatedAt",
+        "sessionCount",
+        "promptCount",
+        "estimatedCost",
+      ],
+    });
+
+    userAggregates.addGlobalSecondaryIndex({
+      indexName: "AggregatesByProject",
+      partitionKey: { name: "projectId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "period", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: [
+        "userId",
+        "accountId",
+        "sessionCount",
+        "promptCount",
+        "inputTokens",
+        "outputTokens",
+        "estimatedCost",
+      ],
     });
 
     // ---------- TeamStats ----------
@@ -253,6 +329,7 @@ export class DataStack extends cdk.Stack {
       teamMemberships,
       syncedSessions,
       syncedMessages,
+      userAggregates,
       teamStats,
       achievements,
       challenges,

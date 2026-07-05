@@ -10,6 +10,7 @@
  *   TEAM_MEMBERSHIPS_TABLE
  *   SYNCED_SESSIONS_TABLE
  *   SYNCED_MESSAGES_TABLE
+ *   USER_AGGREGATES_TABLE
  *   TEAM_STATS_TABLE
  *   ACHIEVEMENTS_TABLE
  *   CHALLENGES_TABLE
@@ -47,6 +48,7 @@ const USER_PROFILES_TABLE = process.env.USER_PROFILES_TABLE!;
 const TEAM_MEMBERSHIPS_TABLE = process.env.TEAM_MEMBERSHIPS_TABLE!;
 const SYNCED_SESSIONS_TABLE = process.env.SYNCED_SESSIONS_TABLE!;
 const SYNCED_MESSAGES_TABLE = process.env.SYNCED_MESSAGES_TABLE!;
+const USER_AGGREGATES_TABLE = process.env.USER_AGGREGATES_TABLE!;
 const TEAM_STATS_TABLE = process.env.TEAM_STATS_TABLE!;
 const ACHIEVEMENTS_TABLE = process.env.ACHIEVEMENTS_TABLE!;
 const CHALLENGES_TABLE = process.env.CHALLENGES_TABLE!;
@@ -216,6 +218,28 @@ async function deleteSyncedMessages(sessionIds: string[]): Promise<number> {
     `Deleted ${totalDeleted} SyncedMessage records across ${sessionIds.length} sessions`,
   );
   return totalDeleted;
+}
+
+/**
+ * 4b. Delete all UserAggregates rows (PK = userId) — the aggregate-only
+ * sync target (review F9). One row per (userId, period); no per-session or
+ * per-message content ever lands here, so this is a plain PK delete.
+ */
+async function deleteUserAggregates(userId: string): Promise<number> {
+  const buckets = await queryAll(
+    USER_AGGREGATES_TABLE,
+    "userId = :uid",
+    { ":uid": userId },
+  );
+
+  const keys = buckets.map((b) => ({
+    userId: b.userId,
+    period: b.period,
+  }));
+
+  const count = await batchDelete(USER_AGGREGATES_TABLE, keys);
+  console.log(`Deleted ${count} UserAggregates rows for ${userId}`);
+  return count;
 }
 
 /** 5. Delete all Achievements (PK = userId) */
@@ -442,6 +466,9 @@ export const handler = async (
 
     // 4. Delete synced messages for all sessions
     summary.syncedMessages = await deleteSyncedMessages(sessionIds);
+
+    // 4b. Delete user-aggregates rows (the aggregate-only sync target)
+    summary.userAggregates = await deleteUserAggregates(userId);
 
     // 5. Delete achievements
     summary.achievements = await deleteAchievements(userId);
