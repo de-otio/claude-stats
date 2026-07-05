@@ -39,7 +39,7 @@ describe("purge command", () => {
     await program.parseAsync(["node", "claude-stats", "purge"]);
 
     expect(purgeAllDataMock).not.toHaveBeenCalled();
-    const output = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    const output = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("\n");
     expect(output).toMatch(/Dry run/i);
     expect(output).toMatch(/would delete/i);
   });
