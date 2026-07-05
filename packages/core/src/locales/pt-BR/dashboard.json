@@ -312,7 +312,10 @@
     "currencyHeader": "{{period}} este período · {{monthly}}/mês",
     "idle": "{{label}} — sem uso este período",
     "idleSliceLabel": "Ociosa (sem uso)",
-    "reconcile": "Atribuído {{attributed}}"
+    "reconcile": "Atribuído {{attributed}}",
+    "bySubscriptionTitle": "Distribuição da taxa por assinatura",
+    "bySubscriptionDesc": "A taxa mensal de cada assinatura, dividida entre os projetos em que foi usada neste período.",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "Preço dos tokens (por 1M de tokens)",

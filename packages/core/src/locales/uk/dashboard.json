@@ -312,7 +312,10 @@
     "currencyHeader": "{{period}} цей період · {{monthly}}/міс",
     "idle": "{{label}} — немає використання цей період",
     "idleSliceLabel": "Простій (немає використання)",
-    "reconcile": "Наділено {{attributed}}"
+    "reconcile": "Наділено {{attributed}}",
+    "bySubscriptionTitle": "Розподіл плати за підпискою",
+    "bySubscriptionDesc": "Щомісячна плата за кожну підписку, розподілена між проєктами, у яких її використано за період.",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "Ціни на токени (за 1М токенів)",

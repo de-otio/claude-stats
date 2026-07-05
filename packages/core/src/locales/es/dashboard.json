@@ -312,7 +312,10 @@
     "currencyHeader": "{{period}} este período · {{monthly}}/mes",
     "idle": "{{label}} — sin uso este período",
     "idleSliceLabel": "Inactiva (sin uso)",
-    "reconcile": "Atribuido {{attributed}}"
+    "reconcile": "Atribuido {{attributed}}",
+    "bySubscriptionTitle": "Reparto de la cuota por suscripción",
+    "bySubscriptionDesc": "La cuota mensual de cada suscripción, repartida entre los proyectos en los que se usó en este periodo.",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "Precio de tokens (por 1M de tokens)",

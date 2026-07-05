@@ -214,3 +214,52 @@ describe("buildFeeAttribution — proration and edges", () => {
     expect(r.byCurrency[0]!.perProject.map((p) => p.projectPath)).toEqual(["big", "small"]);
   });
 });
+
+describe("buildFeeAttribution — per-account (per-subscription) breakdown", () => {
+  const input: FeeAttributionInput = {
+    periodDays: MONTH, // prorate = 1 → each pool == its monthlyFee
+    fees: {
+      A: { monthlyFee: 100, currency: "USD", label: "alice@example.com" },
+      B: { monthlyFee: 200, currency: "USD", label: "bob@example.com" },
+      C: { monthlyFee: 50, currency: "USD", label: "idle@example.com" },
+    },
+    costByAccountProject: [
+      { accountUuid: "A", projectPath: "x", cost: 3 },
+      { accountUuid: "A", projectPath: "y", cost: 1 },
+      { accountUuid: "B", projectPath: "z", cost: 1 },
+      // C configured but no in-period usage → idle
+    ],
+  };
+
+  it("emits one block per configured account, sorted by currency then pool desc", () => {
+    const r = buildFeeAttribution(input);
+    expect(r.perAccount.map((a) => a.accountUuid)).toEqual(["B", "A", "C"]);
+  });
+
+  it("splits each account's OWN pool across its projects; percentOfPool sums to 100", () => {
+    const r = buildFeeAttribution(input);
+    const a = r.perAccount.find((x) => x.accountUuid === "A")!;
+    expect(a.pool).toBeCloseTo(100, 6);
+    const byProj = Object.fromEntries(a.perProject.map((p) => [p.projectPath, p.amount]));
+    expect(byProj["x"]).toBeCloseTo(75, 6);
+    expect(byProj["y"]).toBeCloseTo(25, 6);
+    expect(a.perProject.reduce((s, p) => s + p.percentOfPool, 0)).toBeCloseTo(100, 6);
+    // Percent is of THIS account's pool (100), not the currency total (350).
+    expect(a.perProject.find((p) => p.projectPath === "x")!.percentOfPool).toBeCloseTo(75, 6);
+  });
+
+  it("does not leak projects across accounts", () => {
+    const r = buildFeeAttribution(input);
+    const b = r.perAccount.find((x) => x.accountUuid === "B")!;
+    expect(b.perProject.map((p) => p.projectPath)).toEqual(["z"]);
+    expect(b.perProject[0]!.percentOfPool).toBeCloseTo(100, 6);
+  });
+
+  it("marks an account with no in-period usage as idle with no slices", () => {
+    const r = buildFeeAttribution(input);
+    const c = r.perAccount.find((x) => x.accountUuid === "C")!;
+    expect(c.idle).toBe(true);
+    expect(c.perProject).toHaveLength(0);
+    expect(c.pool).toBeCloseTo(50, 6);
+  });
+});

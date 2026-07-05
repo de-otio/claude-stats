@@ -331,11 +331,55 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
           </div>`;
       })
       .join("");
+
+    // Per-subscription: each account's OWN fee, split across the projects it
+    // used. (Idle accounts have no slices, so they're omitted here.) Labels
+    // prefer the resolved email, falling back to the configured label.
+    const emailByUuid = new Map(
+      (data.availableAccounts ?? []).map((a) => [a.accountUuid, a.emailAddress] as const),
+    );
+    const activeAccounts = fee.perAccount.filter((a) => !a.idle && a.perProject.length > 0);
+    const acctBlocks = activeAccounts
+      .map((blk, idx) => {
+        const label = emailByUuid.get(blk.accountUuid) || blk.label;
+        const rounded = roundShares(blk.perProject.map((p) => p.amount));
+        const rows = blk.perProject
+          .map((p, i) => {
+            const pct = Math.max(0, Math.min(100, p.percentOfPool));
+            return `
+            <div style="display:flex;align-items:center;gap:0.5rem;padding:0.2rem 0;font-size:0.72rem;">
+              <span style="flex:1;color:#e8e8e8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(p.projectPath)}">${escapeHtml(projShort(p.projectPath))}</span>
+              <span style="flex:0 0 5rem;text-align:right;color:#fff;">${escapeHtml(fmtMoney(rounded[i] ?? 0, blk.currency))}</span>
+              <span style="flex:0 0 3rem;text-align:right;color:#888;">${Math.round(pct)}%</span>
+            </div>`;
+          })
+          .join("");
+        return `
+          <div style="margin-bottom:0.75rem;">
+            <div style="font-size:0.7rem;color:#a0c4ff;margin-bottom:0.3rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(label)}">${escapeHtml(
+              t("dashboard:fees.subscriptionHeader", { label, pool: fmtMoney(blk.pool, blk.currency) })
+            )}</div>
+            <div style="max-width:15rem;margin:0 auto 0.5rem auto;">
+              <canvas id="chart-fees-acct-${idx}"></canvas>
+            </div>
+            ${rows}
+          </div>`;
+      })
+      .join("");
+    const acctSection =
+      activeAccounts.length > 0
+        ? `
+      <div class="chart-card" style="grid-column: 1 / -1;">
+        <h2>${escapeHtml(t("dashboard:fees.bySubscriptionTitle"))}</h2>
+        <p style="font-size:0.72rem;color:#b0b0b0;margin:0.2rem 0 0.6rem 0;">${escapeHtml(t("dashboard:fees.bySubscriptionDesc"))}</p>
+        ${acctBlocks}
+      </div>`
+        : "";
     feeByProjectHtml = `
       <div class="chart-card" style="grid-column: 1 / -1;">
         <h2>${escapeHtml(t("dashboard:fees.title"))}</h2>
         ${blocks}
-      </div>`;
+      </div>${acctSection}`;
   }
 
   return `<!DOCTYPE html>
@@ -1602,6 +1646,49 @@ CO₂_grams = total_kWh × grid_intensity</div>
                         var val = context.parsed;
                         var pct = grand > 0 ? ((val / grand) * 100).toFixed(1) : '0.0';
                         return ' ' + fmtCurrency(val, block.currency) + ' (' + pct + '%)';
+                      }
+                    }
+                  }
+                }
+              })
+            });
+          });
+        }());
+
+        // Per-subscription — one pie per active account: share of THAT
+        // subscription's own pool by project (percentages sum to 100).
+        (function () {
+          var fee = d.feeAttribution;
+          if (!fee || !fee.configured || !fee.perAccount) return;
+          function fmtCurrency(n, currency) {
+            try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency }).format(n); }
+            catch (e) { return currency + ' ' + n.toFixed(2); }
+          }
+          var active = fee.perAccount.filter(function (a) { return !a.idle && a.perProject.length > 0; });
+          active.forEach(function (blk, idx) {
+            var el = document.getElementById('chart-fees-acct-' + idx);
+            if (!el) return;
+            var ctx = el.getContext('2d');
+            var top = blk.perProject.slice(0, COLORS.length);
+            var labels = top.map(function (p) {
+              var parts = p.projectPath.replace(/\\\\/g, '/').split('/').filter(Boolean);
+              return parts.length >= 2 ? parts.slice(-2).join('/') : (parts[parts.length - 1] || p.projectPath);
+            });
+            var values = top.map(function (p) { return p.amount; });
+            var colors = COLORS.slice(0, top.length);
+            var pool = blk.pool;
+            new Chart(ctx, {
+              type: 'doughnut',
+              data: { labels: labels, datasets: [{ data: values, backgroundColor: colors }] },
+              options: Object.assign({}, chartOpts, {
+                plugins: {
+                  legend: chartOpts.plugins.legend,
+                  tooltip: {
+                    callbacks: {
+                      label: function (context) {
+                        var val = context.parsed;
+                        var pct = pool > 0 ? ((val / pool) * 100).toFixed(1) : '0.0';
+                        return ' ' + fmtCurrency(val, blk.currency) + ' (' + pct + '%)';
                       }
                     }
                   }

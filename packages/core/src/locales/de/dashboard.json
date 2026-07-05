@@ -312,7 +312,10 @@
     "currencyHeader": "{{period}} in diesem Zeitraum · {{monthly}}/Mo.",
     "idle": "{{label}} — keine Nutzung in diesem Zeitraum",
     "idleSliceLabel": "Ungenutzt (keine Nutzung)",
-    "reconcile": "Zugerechnet {{attributed}}"
+    "reconcile": "Zugerechnet {{attributed}}",
+    "bySubscriptionTitle": "Gebührenanteil je Abonnement",
+    "bySubscriptionDesc": "Die monatliche Gebühr jedes Abonnements, aufgeteilt auf die in diesem Zeitraum genutzten Projekte.",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "Token-Preise (pro 1M Token)",
