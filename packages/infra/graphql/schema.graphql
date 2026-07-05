@@ -37,7 +37,6 @@ type LinkedAccount {
   accountId: ID!
   label: String!
   shareWithTeams: Boolean!
-  sharePrompts: Boolean!
 }
 
 type UserPreferences {
@@ -287,38 +286,31 @@ type InterTeamChallengeTeam {
 }
 
 # ── Sync types ─────────────────────────────────────────────────────────────
+#
+# Aggregate-only, by construction (review F9/S6): every field below is a
+# count, a sum, a cost, or a bounded enum/label list. There is no field, at
+# any nesting depth, that can carry free-form text, a file path, or a raw
+# transcript — `UserAggregate` / `AggregateSyncInput` cannot represent a
+# `SyncedMessage`-shaped per-message record with `promptText` because no
+# such type exists in this schema. The client computes and minimizes this
+# projection locally (org plane); the org backend never sees session-level
+# or message-level content.
 
-type SyncedSession {
-  sessionId: ID!
+type UserAggregate {
+  period: String!
   projectId: String
-  firstTimestamp: AWSTimestamp!
-  lastTimestamp: AWSTimestamp!
-  claudeVersion: String!
-  entrypoint: String!
+  sessionCount: Int!
+  subagentSessionCount: Int
   promptCount: Int!
   inputTokens: Long!
   outputTokens: Long!
   cacheCreationTokens: Long
   cacheReadTokens: Long
+  activeMinutes: Int!
   models: [String!]!
   accountId: String!
-  isSubagent: Boolean!
-  parentSessionId: String
   estimatedCost: Float!
   updatedAt: AWSTimestamp!
-}
-
-type SyncedMessage {
-  uuid: ID!
-  sessionId: ID!
-  timestamp: AWSTimestamp!
-  model: String!
-  stopReason: String
-  inputTokens: Long!
-  outputTokens: Long!
-  tools: [String!]
-  thinkingBlocks: Int
-  promptText: String
 }
 
 type SyncResult {
@@ -357,17 +349,15 @@ type Query {
   teamDashboard(teamId: ID!, period: String!): TeamDashboard! @aws_cognito_user_pools
   teamMembers(teamId: ID!): [TeamMember!]! @aws_cognito_user_pools
 
-  # Stats (own data)
-  mySessions(from: AWSTimestamp, to: AWSTimestamp, limit: Int): [SyncedSession!]! @aws_cognito_user_pools
+  # Stats (own data) — aggregate-only (review F9): no per-session or
+  # per-message query exists; the org backend never holds content to serve.
+  myAggregates(from: String, to: String, limit: Int): [UserAggregate!]! @aws_cognito_user_pools
   myStats(period: String!): MemberStats! @aws_cognito_user_pools
   myProjects(period: String!): [ProjectStats!]! @aws_cognito_user_pools
 
   # Project insights
   teamProjectInsights(teamId: ID!, projectId: String!, period: String!): ProjectInsights! @aws_cognito_user_pools
   teamProjects(teamId: ID!, period: String!): [ProjectStats!]! @aws_cognito_user_pools
-
-  # Session detail
-  sessionMessages(sessionId: ID!): [SyncedMessage!]! @aws_cognito_user_pools
 
   # Achievements
   myAchievements: [Achievement!]! @aws_cognito_user_pools
@@ -398,7 +388,7 @@ type Mutation {
   updateProfile(input: UpdateProfileInput!): User!
   linkAccount(input: LinkAccountInput!): LinkedAccount!
   unlinkAccount(accountId: ID!): Boolean!
-  updateAccountSharing(accountId: ID!, shareWithTeams: Boolean, sharePrompts: Boolean): LinkedAccount!
+  updateAccountSharing(accountId: ID!, shareWithTeams: Boolean): LinkedAccount!
 
   # Teams
   createTeam(input: CreateTeamInput!): Team!
@@ -413,9 +403,11 @@ type Mutation {
   removeMember(teamId: ID!, userId: ID!): Boolean!
   promoteMember(teamId: ID!, userId: ID!): TeamMember!
 
-  # Sync
-  syncSessions(input: [SyncSessionInput!]!): SyncResult!
-  syncMessages(input: [SyncMessageInput!]!): SyncResult!
+  # Sync — aggregate-only (review F9/S6): the server accepts only the
+  # minimized, client-computed aggregate projection. There is no mutation
+  # that accepts a per-session or per-message payload; `sessionToSyncInput`-
+  # style per-session sync and prompt-sharing are deleted, not gated.
+  syncAggregate(input: [AggregateSyncInput!]!): SyncResult!
 
   # Stats (internal)
   refreshTeamStats(teamId: ID!, period: String!): TeamStatsUpdate! @aws_iam
@@ -464,50 +456,33 @@ type Subscription {
   onInterTeamChallengeUpdated(challengeId: ID!): InterTeamChallenge
     @aws_subscribe(mutations: ["completeInterTeamChallenge"])
 
-  onSessionSynced(userId: ID!): SyncResult
-    @aws_subscribe(mutations: ["syncSessions"])
+  onAggregateSynced(userId: ID!): SyncResult
+    @aws_subscribe(mutations: ["syncAggregate"])
 }
 
 # ── Input types ────────────────────────────────────────────────────────────
 
-input SyncSessionInput {
-  sessionId: ID!
+# The aggregate-projection input (review 0b/F9): every field is a count, a
+# sum, a cost, a bounded model-name list, or a period label. Structurally
+# incapable of carrying prompt_text, file paths, or raw transcript content —
+# there is no free-text/blob field anywhere in this type, by design. Client
+# computes and minimizes this locally; k-anonymity (if any) is enforced org-
+# side over cohorts, not by this per-client payload (review N3).
+input AggregateSyncInput {
+  period: String!
   projectId: String
-  projectPathHash: String
-  firstTimestamp: AWSTimestamp!
-  lastTimestamp: AWSTimestamp!
-  claudeVersion: String!
-  entrypoint: String!
+  sessionCount: Int!
+  subagentSessionCount: Int
   promptCount: Int!
-  assistantMessageCount: Int!
   inputTokens: Long!
   outputTokens: Long!
   cacheCreationTokens: Long
   cacheReadTokens: Long
+  activeMinutes: Int!
   toolUseCounts: AWSJSON
   models: [String!]!
   accountId: String!
-  isSubagent: Boolean!
-  parentSessionId: String
-  thinkingBlocks: Int
   estimatedCost: Float!
-  _version: Int!
-}
-
-input SyncMessageInput {
-  sessionId: ID!
-  uuid: ID!
-  timestamp: AWSTimestamp!
-  model: String!
-  stopReason: String!
-  inputTokens: Long!
-  outputTokens: Long!
-  cacheCreationTokens: Long
-  cacheReadTokens: Long
-  tools: [String!]
-  thinkingBlocks: Int
-  serviceTier: String
-  promptText: String
   _version: Int!
 }
 
@@ -525,7 +500,6 @@ input LinkAccountInput {
   accountId: String!
   label: String!
   shareWithTeams: Boolean!
-  sharePrompts: Boolean
 }
 
 input CreateTeamInput {

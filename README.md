@@ -138,6 +138,7 @@ claude-stats report --html        # export a standalone HTML dashboard file
 | `backfill`     | Re-parse all session files to populate newly added fields       |
 | `diagnose`     | Show quarantine counts and schema health                        |
 | `mcp`          | Start a local MCP server over stdio for AI agent access         |
+| `purge`        | Delete local claude-stats data (dry run by default; `--yes` to apply) |
 
 ## Build
 
@@ -165,7 +166,7 @@ This is an informal side-project maintained for personal use — built for fun, 
 
 Claude Code writes a JSONL file for every session under `~/.claude/projects/`. This tool reads those files incrementally, stores aggregated token counts and session metadata in a local SQLite database (`~/.claude-stats/stats.db`), and renders summaries on demand.
 
-- **Nothing leaves your machine.** All data stays in `~/.claude-stats/`.
+- **Local by default.** All data stays in `~/.claude-stats/` and no network requests are made. Optional, opt-in [backup and sync](doc/user-doc/backup-and-sync.md) can copy an **end-to-end-encrypted** bundle to a cloud folder you already control — you turn it on explicitly, and your cloud provider only ever sees opaque ciphertext.
 - **Incremental.** Only new lines are read on each `collect` run.
 - **Non-destructive.** The tool never modifies Claude Code's own files.
 - **No API scraping.** Unlike some alternatives, claude-stats does not call undocumented Anthropic endpoints, scrape session cookies, or inject code into Claude Code's process. It only reads the local JSONL files that Claude Code already writes to disk — fully compliant with Anthropic's Terms of Service.

@@ -1,6 +1,9 @@
 /**
- * Query.myProjects — Group SyncedSessions by projectId for the authenticated user.
+ * Query.myProjects — Group aggregate rows by projectId for the authenticated user.
  * Filters by period (week/month) and returns [ProjectStats].
+ *
+ * Reads from the aggregate-only table (review F9) — one row per
+ * (userId, period), never a per-session record.
  *
  * Args:
  *   period: String! — "week" or "month"
@@ -9,17 +12,15 @@ import { util } from "@aws-appsync/utils";
 import * as ddb from "@aws-appsync/utils/dynamodb";
 
 function periodStart(period) {
-  const now = util.time.nowEpochMilliSeconds();
-  if (period === "week") {
-    return now - 7 * 24 * 60 * 60 * 1000;
+  const now = util.time.nowISO8601();
+  const days = period === "week" ? 7 : period === "month" ? 30 : null;
+  if (days === null) {
+    util.error('Period must be "week" or "month"', "ValidationError");
+    return null;
   }
-  if (period === "month") {
-    return now - 30 * 24 * 60 * 60 * 1000;
-  }
-  util.error(
-    'Period must be "week" or "month"',
-    "ValidationError"
-  );
+  const nowMs = Date.parse(now);
+  const fromMs = nowMs - days * 24 * 60 * 60 * 1000;
+  return new Date(fromMs).toISOString().slice(0, 10);
 }
 
 export function request(ctx) {
@@ -28,10 +29,9 @@ export function request(ctx) {
   const from = periodStart(period);
 
   return ddb.query({
-    index: "SessionsByTimestamp",
     query: {
       userId: { eq: userId },
-      lastTimestamp: { ge: from },
+      period: { ge: from },
     },
     limit: 10000,
     scanIndexForward: false,
@@ -43,11 +43,11 @@ export function response(ctx) {
     util.error(ctx.error.message, ctx.error.type);
   }
 
-  const sessions = ctx.result.items ?? [];
+  const buckets = ctx.result.items ?? [];
   const projectMap = {};
 
-  for (const s of sessions) {
-    const pid = s.projectId ?? "(unlinked)";
+  for (const b of buckets) {
+    const pid = b.projectId ?? "(unlinked)";
     if (!projectMap[pid]) {
       projectMap[pid] = {
         projectId: pid,
@@ -56,9 +56,9 @@ export function response(ctx) {
         estimatedCost: 0,
       };
     }
-    projectMap[pid].sessions += 1;
-    projectMap[pid].prompts += s.promptCount ?? 0;
-    projectMap[pid].estimatedCost += s.estimatedCost ?? 0;
+    projectMap[pid].sessions += b.sessionCount ?? 0;
+    projectMap[pid].prompts += b.promptCount ?? 0;
+    projectMap[pid].estimatedCost += b.estimatedCost ?? 0;
   }
 
   // Sort by session count descending
