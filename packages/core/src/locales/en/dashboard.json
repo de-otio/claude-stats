@@ -331,7 +331,10 @@
     "currencyHeader": "{{period}} this period · {{monthly}}/mo",
     "idle": "{{label}} — no usage this period",
     "idleSliceLabel": "Idle (no usage)",
-    "reconcile": "Attributed {{attributed}}"
+    "reconcile": "Attributed {{attributed}}",
+    "bySubscriptionTitle": "Fee Share by Subscription",
+    "bySubscriptionDesc": "Each subscription's monthly fee, split across the projects it was used on this period.",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "Token Pricing (per 1M tokens)",
