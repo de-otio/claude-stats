@@ -9,6 +9,7 @@ import type { PlanType, PlanConfig } from "@claude-stats/core/types";
 import { lookupPlanFee } from "@claude-stats/core/pricing";
 import { createHttpJudgeProvider } from "./cost-per-task/judge-http.js";
 import type { JudgeProvider } from "./cost-per-task/judge.js";
+import { clampRetentionDays } from "./archive/retention.js";
 
 export interface Config {
   costThresholds?: {
@@ -54,6 +55,44 @@ export interface Config {
    * `MIN_AUTO_REFRESH_SECONDS` on every write (see `mergeConfig`).
    */
   autoRefreshSeconds?: number;
+  /**
+   * Opt-in raw transcript archive (Phase A). When `enabled`, `collect` mirrors
+   * new transcript bytes under `paths.archiveDir`; `retentionDays` bounds the
+   * history kept, pruned by real last-activity (NEVER mtime).
+   */
+  archive?: {
+    enabled?: boolean;
+    retentionDays?: number;
+  };
+  /**
+   * Personal-plane backup/sync (Phases C–E). `target` is the storage sink (a
+   * directory today; a blind zero-knowledge service later — see
+   * `StorageTransport`). `encryption` selects which data classes are E2E-sealed
+   * before leaving the machine; keys live only on the user's devices + recovery
+   * secret, never on any server.
+   */
+  backup?: {
+    target?: string;
+    encryption?: {
+      /** Encrypt the sync-data shards (which carry `prompt_text`). */
+      syncData: boolean;
+      /** Encrypt the raw transcript archive class. */
+      archive: boolean;
+    };
+    /**
+     * True once the user clicked "I've saved my recovery key" during the
+     * onboarding fork (doc 02 §3). Never set automatically — drives whether
+     * the standing, dismissible reminder (doc 02 §8) is shown.
+     */
+    recoveryKeyConfirmed?: boolean;
+    /**
+     * Epoch ms the user dismissed the one-time "Back up your Claude stats?"
+     * nudge (doc 02 §9 step 2), or completed onboarding. Presence alone
+     * suppresses the nudge on future activations — it must never re-prompt
+     * aggressively once the user has made a choice either way.
+     */
+    onboardingDismissedAt?: number;
+  };
 }
 
 /** Auto-refresh can't be set faster than once a minute. */
@@ -94,7 +133,86 @@ const ALLOWED_CONFIG_KEYS: ReadonlyArray<keyof Config> = [
   "llmJudge",
   "accountFees",
   "autoRefreshSeconds",
+  "archive",
+  "backup",
 ];
+
+/** Archive/backup bounds — defensive caps so a bad/hostile write can't corrupt. */
+const MAX_RETENTION_DAYS = 3650; // ~10 years
+const MAX_BACKUP_TARGET_LEN = 4096;
+
+/** A validated, partial `backup` patch (leaf booleans optional so a partial
+ *  update doesn't wipe siblings — reconciled in `mergeConfig`). */
+interface BackupConfigPatch {
+  target?: string;
+  encryption?: { syncData?: boolean; archive?: boolean };
+  recoveryKeyConfirmed?: boolean;
+  onboardingDismissedAt?: number;
+}
+
+/**
+ * Validate an untrusted `archive` config. Drops unknown/invalid leaves rather
+ * than throwing (the write path is unattended). Returns a clean partial object.
+ */
+export function validateArchiveConfig(input: unknown): NonNullable<Config["archive"]> {
+  const out: NonNullable<Config["archive"]> = {};
+  if (!input || typeof input !== "object") return out;
+  const r = input as Record<string, unknown>;
+  if (typeof r.enabled === "boolean") out.enabled = r.enabled;
+  if (
+    typeof r.retentionDays === "number" &&
+    Number.isFinite(r.retentionDays) &&
+    r.retentionDays >= 1 &&
+    r.retentionDays <= MAX_RETENTION_DAYS
+  ) {
+    out.retentionDays = Math.floor(r.retentionDays);
+  }
+  return out;
+}
+
+/** True when the opt-in transcript archive (Phase A) is enabled. */
+export function isArchiveEnabled(config: Config): boolean {
+  return config.archive?.enabled === true;
+}
+
+/** Configured archive retention window (days), clamped to the valid range. */
+export function archiveRetentionDays(config: Config): number {
+  return clampRetentionDays(config.archive?.retentionDays);
+}
+
+/**
+ * Validate an untrusted `backup` config into a clean partial patch. `target` is
+ * length-bounded and NUL-free (it becomes a filesystem/transport path); each
+ * `encryption` boolean is only carried when actually present so a partial write
+ * never clobbers the other class's setting.
+ */
+export function validateBackupConfig(input: unknown): BackupConfigPatch {
+  const out: BackupConfigPatch = {};
+  if (!input || typeof input !== "object") return out;
+  const r = input as Record<string, unknown>;
+  if (
+    typeof r.target === "string" &&
+    r.target.length > 0 &&
+    r.target.length <= MAX_BACKUP_TARGET_LEN &&
+    !r.target.includes("\0")
+  ) {
+    out.target = r.target;
+  }
+  if (r.encryption && typeof r.encryption === "object") {
+    const e = r.encryption as Record<string, unknown>;
+    const enc: { syncData?: boolean; archive?: boolean } = {};
+    if (typeof e.syncData === "boolean") enc.syncData = e.syncData;
+    if (typeof e.archive === "boolean") enc.archive = e.archive;
+    out.encryption = enc;
+  }
+  if (typeof r.recoveryKeyConfirmed === "boolean") {
+    out.recoveryKeyConfirmed = r.recoveryKeyConfirmed;
+  }
+  if (typeof r.onboardingDismissedAt === "number" && Number.isFinite(r.onboardingDismissedAt)) {
+    out.onboardingDismissedAt = r.onboardingDismissedAt;
+  }
+  return out;
+}
 
 /** Account-fee bounds — defensive caps so a bad/hostile write can't corrupt or DoS. */
 const ACCOUNT_FEE_KEY_RE = /^[a-f0-9-]{8,64}$/i;
@@ -169,6 +287,22 @@ export function mergeConfig(current: Config, incoming: unknown): Config {
     } else if (key === "autoRefreshSeconds") {
       const n = Number(inc.autoRefreshSeconds);
       if (Number.isFinite(n)) merged.autoRefreshSeconds = Math.max(MIN_AUTO_REFRESH_SECONDS, Math.round(n));
+    } else if (key === "archive") {
+      merged.archive = { ...current.archive, ...validateArchiveConfig(inc.archive) };
+    } else if (key === "backup") {
+      const patch = validateBackupConfig(inc.backup);
+      const next: NonNullable<Config["backup"]> = { ...current.backup };
+      if (patch.target !== undefined) next.target = patch.target;
+      if (patch.encryption) {
+        // Nested shallow-merge so setting one class doesn't wipe the other.
+        next.encryption = {
+          ...current.backup?.encryption,
+          ...patch.encryption,
+        } as { syncData: boolean; archive: boolean };
+      }
+      if (patch.recoveryKeyConfirmed !== undefined) next.recoveryKeyConfirmed = patch.recoveryKeyConfirmed;
+      if (patch.onboardingDismissedAt !== undefined) next.onboardingDismissedAt = patch.onboardingDismissedAt;
+      merged.backup = next;
     }
   }
   return merged;

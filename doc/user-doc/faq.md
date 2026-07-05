@@ -12,7 +12,17 @@ If you use VS Code, install the extension for an in-editor dashboard panel and s
 
 ### Does this tool send my data anywhere?
 
-No. Everything stays on your machine. `claude-stats` reads `~/.claude/projects/`, writes to `~/.claude-stats/`, and makes no network requests.
+Not by default. Out of the box everything stays on your machine — `claude-stats` reads `~/.claude/projects/`, writes to `~/.claude-stats/`, and makes no network requests.
+
+There is one **opt-in** exception: if you explicitly turn on [backup and sync](backup-and-sync.md), an **end-to-end-encrypted** copy of your stats is written to a cloud folder *you* choose (e.g. your existing Dropbox/iCloud folder). It is encrypted on your device first — your cloud provider stores opaque bytes it cannot read — and it is never sent to any claude-stats server. You control whether this is on.
+
+### What happens if I lose my recovery key?
+
+If you enabled encrypted backup and you lose **both** your recovery key **and** all your enrolled devices, the encrypted backup is **unrecoverable** — by design. The recovery key never leaves your machines and no one (including the maintainers) can reset it. Save it in a password manager. See [backup-and-sync.md](backup-and-sync.md#the-recovery-key).
+
+### If my company uses a team dashboard, can it see my prompts?
+
+No. A team/organization dashboard only ever receives **aggregate** counts (session/token totals, estimated cost, model labels) for a time bucket. It is structurally incapable of carrying prompt text, transcripts, file paths, or session IDs — the aggregate is computed locally on your machine before anything is sent, and the org plane is fully separate from your end-to-end-encrypted personal backup. See [backup-and-sync.md](backup-and-sync.md#your-data--privacy--the-two-planes).
 
 ### Does it modify Claude Code's files?
 

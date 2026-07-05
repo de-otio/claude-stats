@@ -6,6 +6,11 @@ export default defineConfig({
     alias: {
       "@claude-stats/core/paths": path.resolve(__dirname, "packages/core/src/paths.ts"),
       "@claude-stats/core/sanitize": path.resolve(__dirname, "packages/core/src/sanitize.ts"),
+      // NOTE: subpath aliases under `@claude-stats/core/types/*` MUST precede the
+      // bare `@claude-stats/core/types` below — vite matches alias prefixes with a
+      // `/` boundary, so the bare alias would otherwise shadow the subpaths.
+      "@claude-stats/core/types/shard": path.resolve(__dirname, "packages/core/src/types/shard.ts"),
+      "@claude-stats/core/bundle": path.resolve(__dirname, "packages/core/src/bundle/index.ts"),
       "@claude-stats/core/types": path.resolve(__dirname, "packages/core/src/types.ts"),
       "@claude-stats/core/pricing": path.resolve(__dirname, "packages/core/src/pricing.ts"),
       "@claude-stats/core/planMechanics": path.resolve(__dirname, "packages/core/src/planMechanics.ts"),
@@ -17,6 +22,12 @@ export default defineConfig({
       "@claude-stats/core/types/auth": path.resolve(__dirname, "packages/core/src/types/auth.ts"),
       "@claude-stats/core/types/api": path.resolve(__dirname, "packages/core/src/types/api.ts"),
       "@claude-stats/core/types/config": path.resolve(__dirname, "packages/core/src/types/config.ts"),
+      "@claude-stats/core/crypto/types": path.resolve(__dirname, "packages/core/src/crypto/types.ts"),
+      "@claude-stats/core/crypto/keys": path.resolve(__dirname, "packages/core/src/crypto/keys.ts"),
+      "@claude-stats/core/crypto/aead": path.resolve(__dirname, "packages/core/src/crypto/aead.ts"),
+      "@claude-stats/core/crypto/sign": path.resolve(__dirname, "packages/core/src/crypto/sign.ts"),
+      "@claude-stats/core/crypto/keystore": path.resolve(__dirname, "packages/core/src/crypto/keystore.ts"),
+      "@claude-stats/core/crypto/random": path.resolve(__dirname, "packages/core/src/crypto/random.ts"),
       "@claude-stats/core": path.resolve(__dirname, "packages/core/src/index.ts"),
     },
   },
@@ -31,7 +42,8 @@ export default defineConfig({
     setupFiles: ["packages/cli/src/__tests__/setup.ts"],
     coverage: {
       provider: "v8",
-      reporter: ["text", "lcov"],
+      // json-summary feeds the per-directory coverage gate (scripts/check-coverage-dirs.mjs).
+      reporter: ["text", "lcov", "json-summary"],
       include: [
         "packages/cli/src/**/*.ts",
         "packages/core/src/**/*.ts",

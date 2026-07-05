@@ -23,7 +23,9 @@
     "locales:fill": "node scripts/fill-locales.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "coverage:dirs": "node scripts/check-coverage-dirs.mjs",
+    "coverage:gate": "vitest run --coverage && node scripts/check-coverage-dirs.mjs"
   },
   "overrides": {
     "brace-expansion": "^5.0.6",

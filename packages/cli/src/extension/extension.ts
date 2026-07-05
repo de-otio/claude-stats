@@ -15,6 +15,12 @@ import { initI18n } from "@claude-stats/core/i18n";
 import { setT, t } from "./i18n.js";
 import { ensureMcpServer } from "./mcp-register.js";
 import { verifyBundledModel } from "./integrity-check.js";
+import {
+  checkForExistingBackup,
+  maybeShowOnboardingNudge,
+  runBackupSetupWizard,
+  runDeleteAllStoredDataCommand,
+} from "./backup-onboarding.js";
 
 // Build a require() that works in both ESM and CJS (esbuild bundles).
 const _url = typeof import.meta?.url === "string"
@@ -77,6 +83,14 @@ export function activate(context: vscode.ExtensionContext): void {
     // Check whether the extension was just upgraded and prompt the user to
     // reload the window. Runs after i18n is ready so the prompt is localized.
     promptReloadIfUpgraded(context);
+
+    // Phase E: effortless consumer-cloud backup UX. The one-time nudge only
+    // fires once (see maybeShowOnboardingNudge); the existing-backup check is
+    // a cheap glance at the configured/detected cloud roots for a
+    // "second device" moment. Both are best-effort and must never break
+    // activation.
+    void maybeShowOnboardingNudge(context).catch(() => {});
+    void checkForExistingBackup(context).catch(() => {});
   });
 
   // Load cached pricing (sync) and refresh in background if stale
@@ -121,6 +135,14 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   );
   context.subscriptions.push(openDashboard);
+
+  // Phase E: guided backup/sync setup, and the honestly-scoped data-removal command.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("claude-stats.setupBackup", () => runBackupSetupWizard(context)),
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("claude-stats.deleteAllStoredData", () => runDeleteAllStoredDataCommand()),
+  );
 
   // Register MCP server in Claude Code global settings if not already present
   ensureMcpServer(context);

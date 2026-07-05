@@ -38,6 +38,9 @@ jobs:
       - name: Run tests
         run: npx vitest run --coverage
 
+      - name: Per-directory coverage gate (crypto / sync-merge / org >=90% lines)
+        run: node scripts/check-coverage-dirs.mjs
+
       - name: Upload coverage report
         uses: actions/upload-artifact@v7
         if: always()

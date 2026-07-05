@@ -12,6 +12,8 @@ describe("paths", () => {
     expect(paths.statsDir).toBe(path.join(home, ".claude-stats"));
     expect(paths.statsDb).toBe(path.join(home, ".claude-stats", "stats.db"));
     expect(paths.quarantineDir).toBe(path.join(home, ".claude-stats", "quarantine"));
+    expect(paths.archiveDir).toBe(path.join(home, ".claude-stats", "archive"));
+    expect(paths.bundleDir).toBe(path.join(home, ".claude-stats", "bundle"));
   });
 });
 

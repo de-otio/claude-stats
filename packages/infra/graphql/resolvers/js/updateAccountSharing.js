@@ -30,13 +30,12 @@ export function response(ctx) {
     util.error("Account not found", "NotFoundError");
   }
 
-  // Apply updates to the found account
+  // Apply updates to the found account. Prompt-sharing is not a supported
+  // flag (review S6): there is no per-session/per-message content on the
+  // org backend to gate, so `sharePrompts` is deleted, not just unused.
   const account = { ...accounts[index] };
   if (ctx.args.shareWithTeams !== undefined) {
     account.shareWithTeams = ctx.args.shareWithTeams;
-  }
-  if (ctx.args.sharePrompts !== undefined) {
-    account.sharePrompts = ctx.args.sharePrompts;
   }
 
   // Store updated account for pipeline second step
