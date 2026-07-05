@@ -497,5 +497,41 @@
       "noBackendUrl": "Claude Stats: No backend URL configured. Connect first to use the team dashboard.",
       "backendError": "Backend returned {{status}}. Check the URL and try again."
     }
+  },
+  "onboarding": {
+    "nudgeMessage": "Claude 統計情報をバックアップして、決して失わないようにしますか？",
+    "nudgeAction": "バックアップを設定",
+    "nudgeDismiss": "後で",
+    "detectingProgress": "既に使用しているクラウド フォルダを探しています (Dropbox、iCloud、Google Drive、OneDrive)...",
+    "detectedPrompt": "{{provider}} にバックアップしますか？",
+    "detectedYes": "はい",
+    "chooseLocation": "フォルダを選択…",
+    "chooseLocationTitle": "暗号化されたバックアップの保存場所を選択してください",
+    "noneDetected": "既に使用していたクラウド フォルダが見つかりません。フォルダを選択するか、任意のフォルダを選択してください。ネットワーク ドライブまたはマウントされたリモート ストレージも機能します。",
+    "encryptionForkPrompt": "自分のデバイスのみが読取可能になるように暗号化しますか？",
+    "encryptChoiceEncrypted": "暗号化 — 推奨",
+    "encryptChoiceEncryptedDetail": "自分のデバイスのみが読み取ることができます。1つの復旧キーを保存します。",
+    "encryptChoicePlaintext": "プレーンテキスト — 最もシンプル",
+    "encryptChoicePlaintextDetail": "管理するキーはありません。クラウド プロバイダーは統計情報を読み取ることができます。",
+    "recoveryKeyIntro": "このキーは、暗号化されたバックアップを復旧する唯一の方法です。キーとすべてのデバイスを失うと、バックアップは消失します — 回復できません。",
+    "recoveryKeySavedButton": "保存しました → 続行",
+    "setupComplete": "完了。バックアップとSync はこれ以降自動的に実行されます — 今後は気にする必要がありません。",
+    "trustNote": "これはあなたの個人用バックアップです — あなたのデバイスのみがアクセスできます。チーム/組織ダッシュボードは集計統計のみを表示し、プロンプトやトランスクリプトは決して表示しません。",
+    "secondDeviceFoundMessage": "バックアップが見つかりました — このデバイスを同期するために復旧キーを入力してください。",
+    "secondDeviceEnterKeyAction": "復旧キーを入力",
+    "secondDeviceKeyPrompt": "復旧キーを貼り付けてください",
+    "secondDeviceKeyPlaceholder": "ABCD-EFGH-IJKL-MNOP-…",
+    "secondDeviceWrongKey": "このバックアップのロックを解除するために復旧キーを入力してください。",
+    "secondDeviceEnrolled": "このデバイスは登録されました。バックアップと Sync は自動的に実行されます — それ以上の操作は必要ありません。"
+  },
+  "dataRemoval": {
+    "scopeTitle": "削除する内容を選択",
+    "scopeThisMachine": "このマシンのみ",
+    "scopeThisMachineDetail": "このデバイスのローカル トランスクリプト アーカイブとエクスポート バンドル キャッシュを削除します。",
+    "scopeAlsoCloud": "クラウド コピーも削除",
+    "scopeAlsoCloudDetail": "また、構成されたバックアップ場所からこのデバイスのシャードを削除します。",
+    "otherDevicesNote": "登録した他のデバイスには、それらも「保存されているすべてのデータを削除」をクラウド スコープで実行するまで、独自のコピーが保持されます。これが分散バックアップの仕組みです。単一デバイスは、別のデバイスが独立して書き込んだ内容を削除できません。",
+    "confirmTitle": "保存されているすべてのデータを完全に削除しますか？",
+    "orgPlaneNote": "チームの集計統計はあなたの組織に属しており、ここから削除することはできません。チーム管理者に問い合わせてください。"
   }
 }

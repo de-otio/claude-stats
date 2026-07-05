@@ -481,5 +481,41 @@
       "noBackendUrl": "Claude Stats: No backend URL configured. Connect first to use the team dashboard.",
       "backendError": "Backend returned {{status}}. Check the URL and try again."
     }
+  },
+  "onboarding": {
+    "nudgeMessage": "Sicherung Ihrer Claude-Statistiken, damit sie nicht verloren gehen?",
+    "nudgeAction": "Sicherung einrichten",
+    "nudgeDismiss": "Später",
+    "detectingProgress": "Suche nach einem Cloud-Ordner, den Sie bereits verwenden (Dropbox, iCloud, Google Drive, OneDrive)...",
+    "detectedPrompt": "Sicherung in Ihrem {{provider}}?",
+    "detectedYes": "Ja",
+    "chooseLocation": "Ordner wählen…",
+    "chooseLocationTitle": "Wählen Sie, wo Sie Ihre verschlüsselte Sicherung speichern möchten",
+    "noneDetected": "Wir haben keinen Cloud-Ordner gefunden, den Sie bereits verwenden. Wählen Sie einen aus, oder wählen Sie einen beliebigen Ordner — ein Netzlaufwerk oder eingehängtes Remote-Laufwerk funktioniert auch.",
+    "encryptionForkPrompt": "Verschlüsseln Sie es, damit nur Ihre Geräte es lesen können?",
+    "encryptChoiceEncrypted": "Verschlüsseln — empfohlen",
+    "encryptChoiceEncryptedDetail": "Nur Ihre Geräte können es lesen. Sie sparen einen Wiederherstellungsschlüssel.",
+    "encryptChoicePlaintext": "Klartext — am einfachsten",
+    "encryptChoicePlaintextDetail": "Kein Schlüssel erforderlich. Ihr Cloud-Anbieter kann Ihre Statistiken lesen.",
+    "recoveryKeyIntro": "Dieser Schlüssel ist die einzige Möglichkeit, Ihre verschlüsselte Sicherung wiederherzustellen. Wenn Sie ihn und alle Ihre Geräte verlieren, ist die Sicherung weg — wir können sie nicht zurückbekommen.",
+    "recoveryKeySavedButton": "Ich habe ihn gespeichert → Weiter",
+    "setupComplete": "Fertig. Sicherung und Synchronisierung laufen jetzt ohne Ihr Zutun — Sie müssen sich darum nicht mehr kümmern.",
+    "trustNote": "Das ist Ihre persönliche Sicherung — nur Ihre Geräte können sie lesen. Sie ist getrennt von jedem Team-/Organisations-Dashboard, das nur aggregierte Statistiken sieht, niemals Ihre Prompts oder Transkripte.",
+    "secondDeviceFoundMessage": "Sicherung gefunden — geben Sie Ihren Wiederherstellungsschlüssel ein, um dieses Gerät zu synchronisieren.",
+    "secondDeviceEnterKeyAction": "Wiederherstellungsschlüssel eingeben",
+    "secondDeviceKeyPrompt": "Geben Sie Ihren Wiederherstellungsschlüssel ein",
+    "secondDeviceKeyPlaceholder": "ABCD-EFGH-IJKL-MNOP-…",
+    "secondDeviceWrongKey": "Geben Sie Ihren Wiederherstellungsschlüssel ein, um diese Sicherung freizuschalten.",
+    "secondDeviceEnrolled": "Dieses Gerät ist jetzt registriert. Sicherung und Synchronisierung laufen automatisch — keine weiteren Maßnahmen erforderlich."
+  },
+  "dataRemoval": {
+    "scopeTitle": "Wählen Sie, was gelöscht werden soll",
+    "scopeThisMachine": "Nur dieser Rechner",
+    "scopeThisMachineDetail": "Löscht das lokale Transkript-Archiv und den Export-Bundle-Cache auf diesem Gerät.",
+    "scopeAlsoCloud": "Auch die Cloud-Kopie löschen",
+    "scopeAlsoCloudDetail": "Löscht auch die Shards dieses Geräts von Ihrem konfigurierten Sicherungsspeicherort.",
+    "otherDevicesNote": "Andere Geräte, die Sie registriert haben, behalten ihre eigenen Kopien, bis sie auch «Alle gespeicherten Daten löschen» mit Cloud-Umfang ausführen. Das ist das Prinzip einer verteilten Sicherung — kein einzelnes Gerät kann löschen, was ein anderes Gerät unabhängig geschrieben hat.",
+    "confirmTitle": "Alle gespeicherten Daten dauerhaft löschen?",
+    "orgPlaneNote": "Die aggregierten Statistiken Ihres Teams gehören Ihrer Organisation und können von hier aus nicht gelöscht werden — wenden Sie sich an Ihren Team-Administrator."
   }
 }

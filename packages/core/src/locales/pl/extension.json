@@ -497,5 +497,41 @@
       "noBackendUrl": "Claude Stats: No backend URL configured. Connect first to use the team dashboard.",
       "backendError": "Backend returned {{status}}. Check the URL and try again."
     }
+  },
+  "onboarding": {
+    "nudgeMessage": "Wykonać kopię zapasową Twoich statystyk Claude, aby nigdy nie zostały utracone?",
+    "nudgeAction": "Skonfiguruj kopię zapasową",
+    "nudgeDismiss": "Później",
+    "detectingProgress": "Szukamy folderu w chmurze, którego już używasz (Dropbox, iCloud, Google Drive, OneDrive)...",
+    "detectedPrompt": "Wykonać kopię zapasową w Twoim {{provider}}?",
+    "detectedYes": "Tak",
+    "chooseLocation": "Wybierz folder…",
+    "chooseLocationTitle": "Wybierz, gdzie przechowywać zaszyfrowaną kopię zapasową",
+    "noneDetected": "Nie znaleźliśmy folderu w chmurze, którego już używałeś. Wybierz jeden albo wybierz dowolny folder — dysk sieciowy lub zamontowane zdalne przechowywanie też zadziała.",
+    "encryptionForkPrompt": "Czy zaszyfrować go, aby tylko Twoje urządzenia mogły go czytać?",
+    "encryptChoiceEncrypted": "Zaszyfruj — rekomendowane",
+    "encryptChoiceEncryptedDetail": "Tylko Twoje urządzenia mogą go czytać. Zachowasz jeden klucz odzyskiwania.",
+    "encryptChoicePlaintext": "Tekst zwykły — najprostsze",
+    "encryptChoicePlaintextDetail": "Brak klucza do zarządzania. Twój dostawca chmury może czytać Twoje statystyki.",
+    "recoveryKeyIntro": "Ten klucz jest jedynym sposobem na odzyskanie zaszyfrowanej kopii zapasowej. Jeśli go stracisz i wszystkie urządzenia, kopia zapasowa jest stracona — nie możemy jej odzyskać.",
+    "recoveryKeySavedButton": "Zapisałem to → Kontynuuj",
+    "setupComplete": "Gotowe. Kopia zapasowa i synchronizacja działają teraz bezproblemowo — nie będziesz musiał o tym myśleć.",
+    "trustNote": "To jest Twoja prywatna kopia zapasowa — tylko Twoje urządzenia mogą ją czytać. Jest oddzielona od dowolnego pulpitu zespołu/organizacji, który widzi tylko statystyki zagregowane, nigdy Twoje prompty ani transkrypcje.",
+    "secondDeviceFoundMessage": "Znaleziono kopię zapasową — wprowadź klucz odzyskiwania, aby zsynchronizować to urządzenie.",
+    "secondDeviceEnterKeyAction": "Wprowadź klucz odzyskiwania",
+    "secondDeviceKeyPrompt": "Wklej swój klucz odzyskiwania",
+    "secondDeviceKeyPlaceholder": "ABCD-EFGH-IJKL-MNOP-…",
+    "secondDeviceWrongKey": "Wprowadź klucz odzyskiwania, aby odblokować tę kopię zapasową.",
+    "secondDeviceEnrolled": "To urządzenie jest teraz zarejestrowane. Kopia zapasowa i synchronizacja działają bezproblemowo — nie jest wymagane żadne dalsze działanie."
+  },
+  "dataRemoval": {
+    "scopeTitle": "Wybierz, co usunąć",
+    "scopeThisMachine": "Tylko ta maszyna",
+    "scopeThisMachineDetail": "Usuwa lokalny archiwum transkryptów i pamięć podręczną pakietu eksportu na tym urządzeniu.",
+    "scopeAlsoCloud": "Także usuń kopię w chmurze",
+    "scopeAlsoCloudDetail": "Usuwa także fragmenty tego urządzenia z Twojej skonfigurowanej lokalizacji kopii zapasowej.",
+    "otherDevicesNote": "Inne zarejestrowane urządzenia zachowują własne kopie, aż także wykonają \"Usuń wszystkie przechowywane dane\" z zakresem chmury. Tak działa rozproszona kopia zapasowa — żadne urządzenie nie może usunąć tego, co inne napisało niezależnie.",
+    "confirmTitle": "Trwale usunąć wszystkie przechowywane dane?",
+    "orgPlaneNote": "Zagregowane statystyki Twojego zespołu należą do Twojej organizacji i nie mogą być usunięte stąd — skontaktuj się z administratorem zespołu."
   }
 }
