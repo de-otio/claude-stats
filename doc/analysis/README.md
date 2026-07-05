@@ -35,6 +35,7 @@ Read in order for full context, or jump to 07 and 02 to start implementing.
 | [cost-per-successful-task/](cost-per-successful-task/) | "What does a correct result actually cost?" — outcome-cost metric per model, for the post-subsidy pricing era |
 | [value-per-cost/](value-per-cost/) | Reanalysis of the above: splits the one value-flavoured number into efficiency (machine-owned) + output/survival + value (user-owned), to answer "was the AI investment justified, was it efficient, what to change?" |
 | [account-attribution/](account-attribution/) | "Whose account ran this?" — reliably attributing usage to one of several accounts that share a machine, when transcripts carry no account id; observation-timeline + anchors + optional OTEL |
+| [data-planes/](data-planes/) | How backup, cross-device sync, and team features relate — one two-plane model (personal E2E plane vs org aggregate plane), the encrypted-bundle keystone, per-class optional encryption, and the effortless/dummy-proof UX; reconciles cross-device-sync/, team-dashboard/, and team-app/ |
 
 ## Architecture Summary
 
