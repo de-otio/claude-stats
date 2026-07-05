@@ -32,7 +32,6 @@ import {
   savePersistedConfig,
   removeSyncConfig,
   discoverConfig,
-  syncSessions,
   getSyncStatus,
   deriveAccountId,
   generateUserSalt,

@@ -9,6 +9,7 @@ import type { PlanType, PlanConfig } from "@claude-stats/core/types";
 import { lookupPlanFee } from "@claude-stats/core/pricing";
 import { createHttpJudgeProvider } from "./cost-per-task/judge-http.js";
 import type { JudgeProvider } from "./cost-per-task/judge.js";
+import { clampRetentionDays } from "./archive/retention.js";
 
 export interface Config {
   costThresholds?: {
@@ -152,6 +153,16 @@ export function validateArchiveConfig(input: unknown): NonNullable<Config["archi
     out.retentionDays = Math.floor(r.retentionDays);
   }
   return out;
+}
+
+/** True when the opt-in transcript archive (Phase A) is enabled. */
+export function isArchiveEnabled(config: Config): boolean {
+  return config.archive?.enabled === true;
+}
+
+/** Configured archive retention window (days), clamped to the valid range. */
+export function archiveRetentionDays(config: Config): number {
+  return clampRetentionDays(config.archive?.retentionDays);
 }
 
 /**

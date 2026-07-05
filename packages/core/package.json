@@ -62,6 +62,26 @@
       "types": "./dist/crypto/types.d.ts",
       "default": "./dist/crypto/types.js"
     },
+    "./crypto/keys": {
+      "types": "./dist/crypto/keys.d.ts",
+      "default": "./dist/crypto/keys.js"
+    },
+    "./crypto/aead": {
+      "types": "./dist/crypto/aead.d.ts",
+      "default": "./dist/crypto/aead.js"
+    },
+    "./crypto/sign": {
+      "types": "./dist/crypto/sign.d.ts",
+      "default": "./dist/crypto/sign.js"
+    },
+    "./crypto/keystore": {
+      "types": "./dist/crypto/keystore.d.ts",
+      "default": "./dist/crypto/keystore.js"
+    },
+    "./crypto/random": {
+      "types": "./dist/crypto/random.d.ts",
+      "default": "./dist/crypto/random.js"
+    },
     "./energy": {
       "types": "./dist/energy.d.ts",
       "default": "./dist/energy.js"
@@ -86,6 +106,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@noble/ciphers": "^2.2.0",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
     "age-encryption": "^0.3.0",
