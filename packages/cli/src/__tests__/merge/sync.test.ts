@@ -19,6 +19,7 @@ import { generateKdfSalt } from "@claude-stats/core/crypto/random";
 import type { Argon2idParams } from "@claude-stats/core/crypto/types";
 import { assertDeviceId, type DeviceId } from "@claude-stats/core/types/shard";
 import { utf8Encode } from "@claude-stats/core/bundle";
+import type { StorageTransport } from "@claude-stats/core/crypto/types";
 
 import {
   DirectoryStorageTransport,
@@ -33,9 +34,12 @@ import {
   attachAmbientSync,
   detectNewDevices,
   formatSyncStatus,
+  originDevicesOf,
+  rowToSessionRecord,
   syncOnce,
   type CollectSignal,
   type NewDeviceEvent,
+  type SyncStatus,
 } from "../../sync-merge/index.js";
 
 const TEST_ARGON: Argon2idParams = { memoryKiB: 256, iterations: 1, parallelism: 1, keyLengthBytes: 32 };
@@ -216,5 +220,103 @@ describe("ambient wiring off the collector", () => {
     expect(runs).toBe(1);
     handle.dispose();
     expect(disposed).toBe(true);
+  });
+
+  it("single-flight: a collect during an in-flight sync RE-schedules exactly one rerun", async () => {
+    const STATUS: SyncStatus = {
+      at: 1, ok: true, devicesSeen: 0, shardsAccepted: 0, shardsRejected: 0, shardsDeferred: 0,
+      sessionsMerged: 0, sessionsApplied: 0, messagesApplied: 0, newDevices: [],
+    };
+    // Manually-driven timer queue + deferred syncs → full control over interleaving.
+    let timers: Array<{ fn: () => void }> = [];
+    const setTimer = (fn: () => void) => { const h = { fn }; timers.push(h); return h as unknown as ReturnType<typeof setTimeout>; };
+    const clearTimer = (h: ReturnType<typeof setTimeout>) => { timers = timers.filter((t) => (t as unknown) !== h); };
+    const flush = () => { const t = timers.shift(); t?.fn(); };
+    const micro = () => new Promise<void>((r) => setImmediate(r));
+
+    let runs = 0;
+    const resolvers: Array<() => void> = [];
+    const runSync = () => { runs++; return new Promise<SyncStatus>((res) => { resolvers.push(() => res(STATUS)); }); };
+
+    const cbs: Array<() => void> = [];
+    const signal: CollectSignal = { onDidCollect: (cb) => { cbs.push(cb); return { dispose: () => {} }; } };
+    const handle = attachAmbientSync(signal, runSync, { setTimer, clearTimer, debounceMs: 100 });
+
+    cbs[0]!();            // schedule run #1
+    flush();              // timer fires → run #1 starts, awaits its deferred
+    expect(runs).toBe(1);
+
+    cbs[0]!();            // a collect DURING the in-flight run → schedule
+    flush();              // timer fires → run() sees syncing → pendingRerun, no new run
+    expect(runs).toBe(1);
+
+    resolvers[0]!();      // run #1 settles → finally sees pendingRerun → reschedules
+    await micro();
+    flush();              // that rescheduled timer fires → run #2
+    expect(runs).toBe(2);
+
+    resolvers[1]!();
+    await micro();
+    expect(handle.lastStatus()).toBe(STATUS);
+    handle.dispose();
+  });
+
+  it("dispose() cancels a still-pending debounce timer (no sync runs)", () => {
+    let timers: Array<{ fn: () => void }> = [];
+    const setTimer = (fn: () => void) => { const h = { fn }; timers.push(h); return h as unknown as ReturnType<typeof setTimeout>; };
+    const clearTimer = (h: ReturnType<typeof setTimeout>) => { timers = timers.filter((t) => (t as unknown) !== h); };
+
+    let runs = 0;
+    let disposed = false;
+    let cb: (() => void) | undefined;
+    const signal: CollectSignal = { onDidCollect: (c) => { cb = c; return { dispose: () => { disposed = true; } }; } };
+    const handle = attachAmbientSync(signal, async () => { runs++; return {} as SyncStatus; }, { setTimer, clearTimer, debounceMs: 100 });
+
+    cb!();                     // schedules a timer that has NOT fired yet
+    expect(timers.length).toBe(1);
+    handle.dispose();          // must clear that pending timer AND unsubscribe
+    expect(timers.length).toBe(0);
+    expect(disposed).toBe(true);
+    expect(runs).toBe(0);
+  });
+});
+
+describe("syncOnce is fail-safe on an unexpected error (non-ok status, never throws)", () => {
+  it("returns ok:false with the error and the injected timestamp when the transport blows up", async () => {
+    const boom: StorageTransport = {
+      list: async () => [],
+      get: async () => { throw new Error("kaboom opening manifest"); },
+      put: async () => {},
+      delete: async () => {},
+    };
+    const status = await syncOnce({
+      transport: boom, dek: new Uint8Array(32), store, self: assertDeviceId(SELF),
+      registry: new MemoryKnownDeviceRegistry(), now: () => 77,
+    });
+    expect(status.ok).toBe(false);
+    expect(status.error).toMatch(/kaboom/);
+    expect(status.at).toBe(77);
+    expect(status.sessionsApplied).toBe(0);
+  });
+});
+
+describe("originDevicesOf collects distinct authoring devices (diagnostics/F13)", () => {
+  it("returns the set of origin devices across a mixed record batch", () => {
+    const recs = [
+      ...recordsFor(assertDeviceId(OTHER), "x"),
+      ...recordsFor(assertDeviceId(SELF), "y"),
+      ...recordsFor(assertDeviceId(OTHER), "z"),
+    ];
+    expect([...originDevicesOf(recs)].sort()).toEqual([OTHER, SELF].sort());
+  });
+});
+
+describe("rowToSessionRecord tolerates malformed JSON-array columns (apply defensive parse)", () => {
+  it("degrades a corrupt models / tool_use_counts column to [] instead of throwing", () => {
+    const row = { ...sessionRow("s1"), models: "not-json", tool_use_counts: "{oops" } as SessionRow;
+    const rec = rowToSessionRecord(row);
+    expect(rec.models).toEqual([]);
+    expect(rec.toolUseCounts).toEqual([]);
+    expect(rec.sessionId).toBe("s1");
   });
 });
