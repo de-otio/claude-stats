@@ -35,6 +35,18 @@ export const paths = {
   /** ~/.claude-stats/quarantine/ */
   quarantineDir: path.join(home, ".claude-stats", "quarantine"),
 
+  /** ~/.claude-stats/archive/ — opt-in raw transcript mirror (Phase A). Holds
+   *  the byte-range copies of session JSONL files, `0700`/`0600`, pruned by real
+   *  last-activity (never mtime). Path components under here are validated with
+   *  the shared path-safety guard (see types/shard.ts). */
+  archiveDir: path.join(home, ".claude-stats", "archive"),
+
+  /** ~/.claude-stats/bundle/ — per-device append-only shard bundle staged for
+   *  backup/sync (Phase C). Contains `manifest.json` + one `<device-id>/` subtree
+   *  per enrolled device; each device writes only its own subtree so writers are
+   *  partitioned and the bundle is conflict-free by construction. */
+  bundleDir: path.join(home, ".claude-stats", "bundle"),
+
   /** ~/.claude-stats/config.json (config.ts is the authoritative loader) */
   configFile: path.join(home, ".claude-stats", "config.json"),
 

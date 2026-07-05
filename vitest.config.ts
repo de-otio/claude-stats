@@ -6,6 +6,10 @@ export default defineConfig({
     alias: {
       "@claude-stats/core/paths": path.resolve(__dirname, "packages/core/src/paths.ts"),
       "@claude-stats/core/sanitize": path.resolve(__dirname, "packages/core/src/sanitize.ts"),
+      // NOTE: subpath aliases under `@claude-stats/core/types/*` MUST precede the
+      // bare `@claude-stats/core/types` below — vite matches alias prefixes with a
+      // `/` boundary, so the bare alias would otherwise shadow the subpaths.
+      "@claude-stats/core/types/shard": path.resolve(__dirname, "packages/core/src/types/shard.ts"),
       "@claude-stats/core/types": path.resolve(__dirname, "packages/core/src/types.ts"),
       "@claude-stats/core/pricing": path.resolve(__dirname, "packages/core/src/pricing.ts"),
       "@claude-stats/core/planMechanics": path.resolve(__dirname, "packages/core/src/planMechanics.ts"),
@@ -17,6 +21,7 @@ export default defineConfig({
       "@claude-stats/core/types/auth": path.resolve(__dirname, "packages/core/src/types/auth.ts"),
       "@claude-stats/core/types/api": path.resolve(__dirname, "packages/core/src/types/api.ts"),
       "@claude-stats/core/types/config": path.resolve(__dirname, "packages/core/src/types/config.ts"),
+      "@claude-stats/core/crypto/types": path.resolve(__dirname, "packages/core/src/crypto/types.ts"),
       "@claude-stats/core": path.resolve(__dirname, "packages/core/src/index.ts"),
     },
   },

@@ -54,6 +54,14 @@
       "types": "./dist/types/config.d.ts",
       "default": "./dist/types/config.js"
     },
+    "./types/shard": {
+      "types": "./dist/types/shard.d.ts",
+      "default": "./dist/types/shard.js"
+    },
+    "./crypto/types": {
+      "types": "./dist/crypto/types.d.ts",
+      "default": "./dist/crypto/types.js"
+    },
     "./energy": {
       "types": "./dist/energy.d.ts",
       "default": "./dist/energy.js"
@@ -78,6 +86,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
+    "age-encryption": "^0.3.0",
     "i18next": "^25.8.18"
   }
 }
