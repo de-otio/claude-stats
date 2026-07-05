@@ -42,7 +42,8 @@ export default defineConfig({
     setupFiles: ["packages/cli/src/__tests__/setup.ts"],
     coverage: {
       provider: "v8",
-      reporter: ["text", "lcov"],
+      // json-summary feeds the per-directory coverage gate (scripts/check-coverage-dirs.mjs).
+      reporter: ["text", "lcov", "json-summary"],
       include: [
         "packages/cli/src/**/*.ts",
         "packages/core/src/**/*.ts",

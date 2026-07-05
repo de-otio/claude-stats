@@ -34,7 +34,8 @@ import {
   type DeviceIdentity,
 } from "../../backup/index.js";
 import type { MessageRow, SessionRow } from "../../store/index.js";
-import { loadTrustedDevices, pullShards } from "../../sync-merge/pull.js";
+import { loadTrustedDevices, pullShards, type TrustedDevice } from "../../sync-merge/pull.js";
+import type { StorageTransport } from "@claude-stats/core/crypto/types";
 
 const TEST_ARGON: Argon2idParams = { memoryKiB: 256, iterations: 1, parallelism: 1, keyLengthBytes: 32 };
 const DEV_A = "deadbeefcafe0a01";
@@ -192,5 +193,61 @@ describe("S8 — tolerates a truncated / half-synced shard", () => {
     const res = await pullShards({ transport, trustedDevices: trusted, dek: crypto.dek });
     expect(res.records).toEqual([]);
     expect(res.accepted).toEqual([]);
+  });
+
+  it("DEFERS a trusted-device shard whose read THROWS (transport hiccup mid-sync)", async () => {
+    // A device that IS in the trust root, so we pass the F1 gate and reach the read.
+    const trusted = new Map<DeviceId, TrustedDevice>([
+      [assertDeviceId(DEV_A), { signPublicKey: new Uint8Array(32), revoked: false }],
+    ]);
+    const key = `${DEV_A}/sessions-0.json`;
+    const failing: StorageTransport = {
+      list: async () => [key],
+      get: async () => {
+        throw new Error("EIO: transport read failed");
+      },
+      put: async () => {},
+      delete: async () => {},
+    };
+    const res = await pullShards({ transport: failing, trustedDevices: trusted });
+    expect(res.deferredTruncated).toEqual([key]);
+    expect(res.accepted).toEqual([]);
+    expect(res.records).toEqual([]);
+  });
+
+  it("DEFERS a trusted-device shard that list()s but reads back NULL (racing writer)", async () => {
+    const trusted = new Map<DeviceId, TrustedDevice>([
+      [assertDeviceId(DEV_A), { signPublicKey: new Uint8Array(32), revoked: false }],
+    ]);
+    const key = `${DEV_A}/sessions-0.json`;
+    const vanishing: StorageTransport = {
+      list: async () => [key],
+      get: async () => null, // present in the listing but gone on read
+      put: async () => {},
+      delete: async () => {},
+    };
+    const res = await pullShards({ transport: vanishing, trustedDevices: trusted });
+    expect(res.deferredTruncated).toEqual([key]);
+    expect(res.accepted).toEqual([]);
+  });
+
+  it("DEFERS a verified shard that fails to DECRYPT under the wrong DEK (not a signature failure)", async () => {
+    // Push an ENCRYPTED, correctly-signed shard, capture the real trust root, then
+    // pull with a DIFFERENT dek: the Ed25519 signature still verifies (it is over
+    // the body, dek-independent), but the age decrypt fails → deferred, NOT
+    // mis-categorized as a signature rejection.
+    const crypto = makeCrypto();
+    const a = makeIdentity(DEV_A);
+    await pushShard({ transport, identity: a, crypto, encryptSyncData: true, records: records(a.deviceId, "enc"), seq: 0, enrolledAt: 1 });
+
+    const trusted = await loadTrustedDevices(transport, crypto.dek);
+    const wrongDek = generateDek();
+    const res = await pullShards({ transport, trustedDevices: trusted, dek: wrongDek });
+
+    const key = `${DEV_A}/sessions-0.json.age`;
+    expect(res.deferredTruncated).toEqual([key]);
+    expect(res.rejectedBadSignature).toEqual([]);
+    expect(res.accepted).toEqual([]);
+    expect(res.records).toEqual([]);
   });
 });

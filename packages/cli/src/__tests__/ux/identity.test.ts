@@ -97,7 +97,9 @@ describe("bootstrapBackupCrypto", () => {
     const master = deriveMaster(secret, crypto.kdfSalt, crypto.kdfParams);
     const recovered = unwrapDek(crypto.passphraseWrappedDek, { kind: "passphrase", masterKey: master });
     expect(recovered).toEqual(crypto.dek);
-  });
+    // Argon2id is memory-hard by design; under v8 coverage instrumentation each
+    // derivation runs several× slower, so give these a generous timeout.
+  }, 30_000);
 
   it("a wrong recovery key fails to unwrap (never returns the wrong DEK silently)", () => {
     const secret = normalizeRecoverySecret(generateRecoveryKey().key);
@@ -105,7 +107,7 @@ describe("bootstrapBackupCrypto", () => {
     const crypto = bootstrapBackupCrypto(secret);
     const master = deriveMaster(wrongSecret, crypto.kdfSalt, crypto.kdfParams);
     expect(() => unwrapDek(crypto.passphraseWrappedDek, { kind: "passphrase", masterKey: master })).toThrow();
-  });
+  }, 30_000);
 
   it("two bootstraps produce different DEKs and different salts (no reuse)", () => {
     const secret = normalizeRecoverySecret(generateRecoveryKey().key);
@@ -113,5 +115,5 @@ describe("bootstrapBackupCrypto", () => {
     const b = bootstrapBackupCrypto(secret);
     expect(a.dek).not.toEqual(b.dek);
     expect(a.kdfSalt).not.toEqual(b.kdfSalt);
-  });
+  }, 30_000);
 });
