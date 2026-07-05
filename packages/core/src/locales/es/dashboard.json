@@ -2,17 +2,19 @@
   "pageTitle": "Claude Stats — {{period}} ({{date}})",
   "tabs": {
     "overview": "Resumen",
-    "models": "Modelos",
     "projects": "Proyectos",
     "sessions": "Sesiones",
     "plan": "Plan",
     "context": "Contexto",
     "efficiency": "Eficiencia",
     "energy": "Energía",
-    "settings": "Configuración"
+    "settings": "Configuración",
+    "classify": "Clasificar"
   },
   "toolbar": {
     "period": "Periodo:",
+    "since": "Desde:",
+    "until": "Hasta:",
     "refresh": "Actualizar",
     "autoOff": "Auto: desactivado",
     "autoOn": "Auto: activado ({{seconds}} s)",
@@ -21,6 +23,7 @@
     "accountCurrent": "(actual)"
   },
   "summary": {
+    "emptyPeriodHint": "Aún no hay sesiones en este periodo. Cambia Periodo a Semana o Todo para ver tus datos.",
     "sessions": "Sesiones",
     "prompts": "Prompts",
     "totalInput": "Entrada total",
@@ -46,8 +49,6 @@
     "tokenBreakdown": "Desglose de tokens",
     "cacheUsage": "Uso de caché",
     "cumulativeApiValue": "Valor API acumulado vs cuota del plan",
-    "tokensByModel": "Tokens por modelo",
-    "stopReasons": "Razones de parada",
     "topProjects": "Proyectos principales",
     "tokensByProject": "Cuota de tokens por proyecto",
     "energyByProject": "Consumo de energía por proyecto",
@@ -100,7 +101,16 @@
       "team_standard": "Team Std ($25)",
       "max_5x": "Max 5x ($100)",
       "team_premium": "Team Premium ($125)",
-      "max_20x": "Max 20x ($200)"
+      "max_20x": "Max 20x ($200)",
+      "enterprise": "Empresa (medido)"
+    },
+    "usageIntensity": {
+      "title": "Intensidad de uso",
+      "light": "Light",
+      "typical": "Typical",
+      "power": "Power",
+      "benchmark": "≈ ${{benchmark}}/mes de referencia Claude Code",
+      "hint": "Tu coste equivalente mensual vs. puntos de referencia de planificación por usuario de Anthropic."
     }
   },
   "context": {
@@ -119,7 +129,7 @@
       "compacted": "¿Compactada?",
       "cost": "Coste",
       "yes": "Sí",
-      "no": "No"
+      "no": "N.º"
     }
   },
   "efficiency": {
@@ -285,7 +295,27 @@
     "save": "Guardar",
     "savedReload": "¡Guardado! Recarga para ver el panel actualizado.",
     "networkError": "Error de red.",
-    "errorSaving": "Error al guardar."
+    "errorSaving": "Error al guardar.",
+    "subscriptions": "Suscripciones",
+    "subscriptionsHint": "Establece la cuota mensual que pagas por cada cuenta de Claude. Estas se distribuyen entre proyectos en la pestaña Proyectos.",
+    "subscriptionsAutoDetectHint": "Las cuentas nuevas aparecen aquí automáticamente en cuanto Claude Code registra una sesión para ellas — no es necesario añadirlas manualmente.",
+    "noAccounts": "Aún no se han encontrado cuentas — ejecuta algunas sesiones y recopila de nuevo.",
+    "unlinkedAccountHint": "Aún no vinculada a un correo electrónico — inicia sesión con esta cuenta una vez, y luego vuelve a cambiar, para revelar aquí su correo y su plan.",
+    "feePlaceholder": "Cuota",
+    "labelPlaceholder": "Etiqueta (p. ej. Trabajo, Personal)",
+    "autoRefreshInterval": "Intervalo de actualización automática (segundos)",
+    "autoRefreshHint": "Mínimo 60 segundos. Se aplica cuando la actualización automática se activa desde la barra de herramientas."
+  },
+  "fees": {
+    "title": "Cuota de suscripción por proyecto",
+    "notConfigured": "Establece tus cuotas de suscripción en Configuración para atribuirlas a los proyectos.",
+    "currencyHeader": "{{period}} este período · {{monthly}}/mes",
+    "idle": "{{label}} — sin uso este período",
+    "idleSliceLabel": "Inactiva (sin uso)",
+    "reconcile": "Atribuido {{attributed}}",
+    "bySubscriptionTitle": "Reparto de la cuota por suscripción",
+    "bySubscriptionDesc": "La cuota mensual de cada suscripción, repartida entre los proyectos en los que se usó en este periodo.",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "Precio de tokens (por 1M de tokens)",
@@ -298,5 +328,94 @@
   },
   "footer": {
     "generated": "Generado {{timestamp}} • Zona horaria: {{timezone}}"
+  },
+  "costPerTask": {
+    "summaryHint": "Desglose completo en la pestaña Spending",
+    "title": "Coste por tarea exitosa",
+    "headline": "por tarea exitosa",
+    "na": "n/d",
+    "lowCoverage": "Cobertura baja ({{coverage}}) — la tasa se basa en una muestra observable pequeña",
+    "decomp": "= {{mean}}/intento ÷ {{rate}} tasa de éxito",
+    "coverageBadge": "{{observable}}/{{total}} observables ({{coverage}})",
+    "labelledBadge": "{{labelled}}/{{observable}} etiquetadas",
+    "success": "con éxito",
+    "failed": "fallidas",
+    "inFlight": "en curso",
+    "unobservable": "no observables",
+    "model": "Modelo",
+    "perSuccess": "$/éxito",
+    "successRate": "Éxito",
+    "observableCol": "Obs.",
+    "insufficient": "n/d",
+    "proxyNote": "El resultado se infiere de la actividad de Git y la confianza, salvo que hayas etiquetado la tarea explícitamente; la tasa se calcula solo sobre las tareas observables.",
+    "period": {
+      "day": "hoy",
+      "week": "últimos 7 días",
+      "month": "este mes",
+      "all": "Todo el tiempo"
+    },
+    "labelTasksHeading": "Etiquetar resultados de tareas",
+    "labelledTag": "etiquetada",
+    "outcomeShort": {
+      "success": "con éxito",
+      "failed": "fallida",
+      "in_flight": "en curso",
+      "unobservable": "no observable"
+    },
+    "mark": {
+      "success": "Marcar como éxito",
+      "partial": "Marcar como parcial",
+      "fail": "Marcar como fallo",
+      "clear": "Quitar etiqueta"
+    }
+  },
+  "calibration": {
+    "title": "Precisión vs. tus etiquetas",
+    "noLabels": "Etiqueta los resultados de las tareas arriba (✓ / ~ / ✗) para calibrar. Hasta que haya algunas etiquetadas, la tasa de éxito es una estimación, no una evaluación.",
+    "colProxy": "estimación",
+    "colSignals": "+ señales",
+    "failedPrecision": "Precisión de fallo",
+    "accuracy": "Exactitud",
+    "brier": "Brier (menor = mejor)",
+    "ready": "✓ Las señales superan el umbral de precisión de fallo ({{floor}}) — es seguro activar.",
+    "notReady": "⚠ Por debajo del umbral de precisión de fallo ({{floor}}) — etiqueta más antes de confiar.",
+    "labelled": "{{n}} tarea(s) etiquetada(s) en este periodo",
+    "toggle": "Usar señales de precisión experimentales para la tasa en vivo",
+    "enabledNote": "Activado — la tasa de arriba incorpora las señales de precisión.",
+    "disabledNote": "Desactivado — la tasa de arriba es solo la estimación.",
+    "na": "n/d"
+  },
+  "costEfficiency": {
+    "title": "Frontera de Eficiencia de Costos",
+    "realised": "Costo realizado",
+    "frontier": "Costo frontera",
+    "recoverable": "Desperdicio recuperable",
+    "basisNote": "Basado en el proxy de finalización, no en supervivencia",
+    "insufficient": "Aún no hay suficiente diversidad de modelos para calcular una frontera: ningún arquetipo tiene una alternativa más barata comprobada.",
+    "leverKind": {
+      "route_by_archetype": "Enrutar tareas por arquetipo al modelo frontera",
+      "default_effort_down": "Reducir el nivel de esfuerzo predeterminado",
+      "cache_hygiene": "Mejorar la higiene de caché para reducir tokens repetidos",
+      "stop_after_repairs": "Detener sesiones tras completar las reparaciones"
+    }
+  },
+  "classify": {
+    "title": "Clasifica tus proyectos",
+    "intro": "Asigna cada proyecto a la suscripción que debe facturarse por él. Los proyectos se ordenan por coste, así que clasificar los primeros cubre la mayor parte de tu gasto.",
+    "vscodeOnly": "La clasificación de proyectos está disponible en el panel de VS Code.",
+    "empty": "Aún no hay proyectos que clasificar. Una vez que hayas usado Claude Code en algunos proyectos, aparecerán aquí.",
+    "noAccounts": "Aún no se han detectado suscripciones. Aparecerán aquí una vez que Claude Code haya registrado el uso de cada cuenta.",
+    "unlinkedHint": "Las cuentas que se muestran con un ID entre paréntesis aún no se han visto como tu sesión activa de Claude Code, por lo que no se puede mostrar aquí su correo ni su plan. Inicia sesión con esa cuenta una vez, y luego vuelve a cambiar, para vincularla.",
+    "coverage": "$__CLASSIFIED__ de $__TOTAL__ clasificados (__PERCENT__%)",
+    "pending": "__COUNT__ pendientes",
+    "sessions": "__COUNT__ sesiones",
+    "projects": "__COUNT__ proyectos",
+    "remoteBadge": "remoto",
+    "pathBadge": "carpeta",
+    "optionUnassigned": "Sin asignar",
+    "optionSplit": "Dividir según el uso",
+    "splitHint": "Dividir mantiene el coste de cada sesión con la cuenta que realmente la ejecutó. Úsalo para proyectos compartidos entre suscripciones (p. ej., cuando el límite de un plan no es suficiente).",
+    "apply": "Aplicar",
+    "applying": "Aplicando..."
   }
 }

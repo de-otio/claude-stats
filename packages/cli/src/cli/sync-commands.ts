@@ -9,7 +9,6 @@ import { Store } from "../store/index.js";
 import {
   type SyncConfig,
   type PersistedSyncConfig,
-  loadSyncConfig,
   loadPersistedConfig,
   savePersistedConfig,
   removeSyncConfig,
@@ -20,8 +19,8 @@ import {
   saveTokens,
   clearTokens,
   generateUserSalt,
-  deriveAccountId,
-  redactSecrets,
+  buildAggregatePayload,
+  syncAggregates,
 } from "../sync/index.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -39,9 +38,6 @@ async function prompt(question: string): Promise<string> {
     rl.close();
   }
 }
-
-/** Maximum sessions per sync batch (per API spec). */
-const BATCH_SIZE = 25;
 
 // ── Commands ────────────────────────────────────────────────────────────────
 
@@ -132,10 +128,10 @@ export function registerSyncCommands(program: Command): void {
 
   program
     .command("sync")
-    .description("Sync local sessions to the cloud backend")
+    .description("Sync minimized local aggregates to the cloud backend")
     .option("--dry-run", "Show what would be synced without sending")
     .action(async (opts: { dryRun?: boolean }) => {
-      // 1. Load persisted config (has userSalt for account ID derivation)
+      // 1. Load persisted config (has userSalt + linked-account mappings).
       const persistedConfig = loadPersistedConfig();
       if (!persistedConfig) {
         console.error("Not configured. Run 'claude-stats setup' first.");
@@ -149,7 +145,7 @@ export function registerSyncCommands(program: Command): void {
         region: persistedConfig.region,
       };
 
-      // 2. Ensure valid tokens
+      // 2. Ensure valid tokens.
       const tokens = await ensureValidTokens(syncConfig);
       if (!tokens) {
         console.error("Authentication expired. Run 'claude-stats setup' to re-authenticate.");
@@ -157,112 +153,44 @@ export function registerSyncCommands(program: Command): void {
         return;
       }
 
-      // 3. Read local sessions
+      // 3. Dry-run: project locally and report EXACTLY what would leave the
+      //    device — minimized aggregates only, never per-session/prompt data.
+      if (opts.dryRun) {
+        const store = new Store();
+        let aggregates;
+        try {
+          aggregates = buildAggregatePayload(store, persistedConfig);
+        } finally {
+          store.close();
+        }
+        if (aggregates.length === 0) {
+          console.log("Nothing to sync (no sessions for linked accounts).");
+          return;
+        }
+        console.log(
+          `Would sync ${aggregates.length} aggregate record(s) (period+cohort rollups; no per-session or prompt data).`,
+        );
+        return;
+      }
+
+      // 4. Sync minimized aggregates (the ONLY payload the client can build).
       const store = new Store();
-      let sessions;
+      let result;
       try {
-        sessions = store.getSessions({ includeCI: true });
+        result = await syncAggregates(store, syncConfig);
       } finally {
         store.close();
       }
 
-      if (sessions.length === 0) {
-        console.log("No sessions to sync.");
+      if (result.errors.length > 0) {
+        for (const msg of result.errors) console.error(`Sync error: ${msg}`);
+        process.exitCode = 1;
         return;
       }
 
-      if (opts.dryRun) {
-        console.log(`Would sync ${sessions.length} session(s).`);
-        return;
-      }
-
-      // 4. Batch and sync
-      let totalSynced = 0;
-      let totalConflicts = 0;
-
-      for (let i = 0; i < sessions.length; i += BATCH_SIZE) {
-        const batch = sessions.slice(i, i + BATCH_SIZE);
-
-        // Transform sessions for the API
-        const syncPayload = batch.map((s) => ({
-          sessionId: s.session_id,
-          accountId: s.account_uuid
-            ? deriveAccountId(s.account_uuid, persistedConfig.userSalt ?? "")
-            : null,
-          projectPath: redactSecrets(s.project_path),
-          firstTimestamp: s.first_timestamp,
-          lastTimestamp: s.last_timestamp,
-          claudeVersion: s.claude_version,
-          entrypoint: s.entrypoint,
-          promptCount: s.prompt_count,
-          inputTokens: s.input_tokens,
-          outputTokens: s.output_tokens,
-          cacheCreationTokens: s.cache_creation_tokens,
-          cacheReadTokens: s.cache_read_tokens,
-        }));
-
-        // 5. POST to AppSync graphqlEndpoint
-        try {
-          const response = await fetch(syncConfig.endpoint, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${tokens.accessToken}`,
-            },
-            body: JSON.stringify({
-              query: `mutation SyncSessions($input: SyncSessionsInput!) {
-                syncSessions(input: $input) {
-                  synced
-                  conflicts
-                }
-              }`,
-              variables: {
-                input: {
-                  sessions: syncPayload,
-                },
-              },
-            }),
-          });
-
-          if (!response.ok) {
-            const body = await response.text();
-            throw new Error(`Sync request failed (${response.status}): ${body}`);
-          }
-
-          const result = (await response.json()) as {
-            data?: {
-              syncSessions?: {
-                synced: number;
-                conflicts: number;
-              };
-            };
-            errors?: Array<{ message: string }>;
-          };
-
-          if (result.errors && result.errors.length > 0) {
-            const messages = result.errors.map((e) => e.message).join("; ");
-            throw new Error(`GraphQL errors: ${messages}`);
-          }
-
-          const syncResult = result.data?.syncSessions;
-          if (syncResult) {
-            totalSynced += syncResult.synced;
-            totalConflicts += syncResult.conflicts;
-          }
-        } catch (err) {
-          console.error(
-            `Failed to sync batch ${Math.floor(i / BATCH_SIZE) + 1}: ${(err as Error).message}`
-          );
-          process.exitCode = 1;
-          return;
-        }
-      }
-
-      // 6. Print summary
-      const batchCount = Math.ceil(sessions.length / BATCH_SIZE);
       console.log(
-        `Synced ${totalSynced} session(s) in ${batchCount} batch(es).` +
-          (totalConflicts > 0 ? ` ${totalConflicts} conflict(s).` : "")
+        `Synced ${result.aggregatesWritten} aggregate record(s).` +
+          (result.aggregatesSkipped > 0 ? ` ${result.aggregatesSkipped} unchanged.` : ""),
       );
     });
 

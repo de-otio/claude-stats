@@ -2,7 +2,7 @@
   "login": {
     "subtitle": "Faça login com seu e-mail de trabalho para acessar seu dashboard",
     "emailLabel": "Endereço de e-mail",
-    "emailPlaceholder": "you@company.com",
+    "emailPlaceholder": "voce@empresa.com",
     "sendButton": "Enviar link mágico",
     "sending": "Enviando...",
     "checkEmailHeading": "Verifique seu e-mail",

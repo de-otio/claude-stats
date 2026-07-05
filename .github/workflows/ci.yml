@@ -6,10 +6,15 @@ on:
   pull_request:
     branches: [master, main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     name: Typecheck & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -33,6 +38,9 @@ jobs:
       - name: Run tests
         run: npx vitest run --coverage
 
+      - name: Per-directory coverage gate (crypto / sync-merge / org >=90% lines)
+        run: node scripts/check-coverage-dirs.mjs
+
       - name: Upload coverage report
         uses: actions/upload-artifact@v7
         if: always()
@@ -44,6 +52,7 @@ jobs:
   build-extension:
     name: Build VS Code Extension
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: test
 
     steps:
@@ -74,6 +83,7 @@ jobs:
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: test
 
     steps:
@@ -102,6 +112,7 @@ jobs:
   synth-cdk:
     name: CDK Synth
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: test
 
     steps:
@@ -134,6 +145,7 @@ jobs:
   deploy-dev:
     name: Deploy to Dev
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [build-frontend, synth-cdk]
     if: github.ref == 'refs/heads/master'
     environment: dev
@@ -154,6 +166,7 @@ jobs:
   deploy-prod:
     name: Deploy to Production
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: deploy-dev
     if: github.ref == 'refs/heads/master'
     environment: production

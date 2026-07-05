@@ -46,6 +46,20 @@ describe("lookupPricing", () => {
     expect(lookupPricing("unknown-model")).toBeNull();
     expect(lookupPricing("gpt-4o")).toBeNull();
   });
+
+  it("matches claude-sonnet-5 with a versioned suffix", () => {
+    const p = lookupPricing("claude-sonnet-5-20260615");
+    expect(p).not.toBeNull();
+    expect(p!.inputPerMillion).toBe(2);
+    expect(p!.outputPerMillion).toBe(10);
+  });
+
+  it("matches claude-opus-4-8 with a versioned suffix", () => {
+    const p = lookupPricing("claude-opus-4-8-20260601");
+    expect(p).not.toBeNull();
+    expect(p!.inputPerMillion).toBe(5);
+    expect(p!.outputPerMillion).toBe(25);
+  });
 });
 
 // ── estimateCost ─────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
   "login": {
     "subtitle": "Inicia sesión con tu correo de trabajo para acceder a tu panel",
     "emailLabel": "Dirección de correo",
-    "emailPlaceholder": "you@company.com",
+    "emailPlaceholder": "tu@empresa.com",
     "sendButton": "Enviar enlace mágico",
     "sending": "Enviando...",
     "checkEmailHeading": "Revisa tu correo",

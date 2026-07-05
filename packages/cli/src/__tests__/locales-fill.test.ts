@@ -2,11 +2,20 @@
  * Tests for scripts/fill-locales.mjs.
  *
  * Exercises:
- *   - Pure helpers (diffKeys, setByPath, extractJson, validateBatch) with no
- *     network.
- *   - fillLocale() with a mocked Anthropic client to confirm the end-to-end
- *     flow reads en, computes missing keys, calls the model, validates the
- *     shape, and writes translations back without clobbering existing keys.
+ *   - Pure helpers (diffKeys, setByPath, extractJson, validateBatch,
+ *     buildJsonSchema) with no subprocess calls.
+ *   - The pieces fillLocale() composes around a `claude -p --output-format
+ *     json` response envelope, to confirm the end-to-end flow reads en,
+ *     computes missing keys, parses the CLI's structured_output, validates
+ *     the shape, and writes translations back without clobbering existing
+ *     keys — without actually shelling out to `claude` (real translation
+ *     runs consume the user's Claude subscription; not something a unit
+ *     test suite should do). fillLocale() itself no longer takes a client
+ *     parameter (it shells out to the `claude` CLI internally, authenticated
+ *     via the user's existing `claude` login, not a passed-in API client),
+ *     so — as before — LOCALES_DIR being a module-level const means true
+ *     end-to-end invocation isn't practical from a test; we verify the
+ *     composable pieces instead.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
@@ -18,6 +27,8 @@ import {
   setByPath,
   extractJson,
   validateBatch,
+  buildJsonSchema,
+  chunkMap,
   fillLocale,
 } from "../../../../scripts/fill-locales.mjs";
 
@@ -114,7 +125,49 @@ describe("validateBatch", () => {
   });
 });
 
-// ── End-to-end fillLocale() with mocked Anthropic client ─────────────────────
+describe("buildJsonSchema", () => {
+  it("types string-valued keys as string and marks them required", () => {
+    const missing = new Map([["greet", "Hello"], ["farewell", "Goodbye"]]);
+    const schema = buildJsonSchema(missing);
+    expect(schema).toEqual({
+      type: "object",
+      properties: { greet: { type: "string" }, farewell: { type: "string" } },
+      required: ["greet", "farewell"],
+      additionalProperties: false,
+    });
+  });
+
+  it("types array-valued keys (step lists) as array", () => {
+    const missing = new Map<string, unknown>([["steps", [{ heading: "H1", body: "B1" }]]]);
+    const schema = buildJsonSchema(missing);
+    expect(schema.properties.steps).toEqual({ type: "array" });
+    expect(schema.required).toEqual(["steps"]);
+  });
+});
+
+describe("chunkMap", () => {
+  it("splits a map into chunks of at most `size` entries", () => {
+    const m = new Map([["a", 1], ["b", 2], ["c", 3], ["d", 4], ["e", 5]]);
+    const chunks = chunkMap(m, 2);
+    expect(chunks).toHaveLength(3);
+    expect([...chunks[0]!.entries()]).toEqual([["a", 1], ["b", 2]]);
+    expect([...chunks[1]!.entries()]).toEqual([["c", 3], ["d", 4]]);
+    expect([...chunks[2]!.entries()]).toEqual([["e", 5]]);
+  });
+
+  it("returns a single chunk when the map is smaller than `size`", () => {
+    const m = new Map([["a", 1]]);
+    const chunks = chunkMap(m, 60);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]!.size).toBe(1);
+  });
+
+  it("returns an empty array for an empty map", () => {
+    expect(chunkMap(new Map(), 60)).toEqual([]);
+  });
+});
+
+// ── End-to-end fillLocale() against a `claude -p` response envelope ─────────
 
 describe("fillLocale (integration with mocked model)", () => {
   let dir: string;
@@ -138,87 +191,69 @@ describe("fillLocale (integration with mocked model)", () => {
   }
 
   /**
-   * Stubs the Anthropic SDK's `messages.create` to return a canned translation
-   * for whatever keys the fill script requests. The stub echoes the input
-   * keys with "xx-" prefixed to the string values, preserving array shapes.
+   * Builds a canned `claude -p --output-format json` response envelope for
+   * whatever keys the fill script would request — the shape
+   * translateBatch() parses in the real script (structured_output plus the
+   * envelope fields it checks: is_error, stop_reason). Echoes input keys
+   * with "xx-" prefixed to string values, preserving array shapes, so
+   * behavior can be asserted the same way as the old SDK-mock version.
    */
-  function mockClient() {
-    return {
-      messages: {
-        create: vi.fn(async (req: {
-          model?: string;
-          max_tokens?: number;
-          system?: string;
-          messages: Array<{ role: string; content: string }>;
-        }) => {
-          const userContent = req.messages[0]!.content;
-          // Input payload is the JSON block after "Input:\n".
-          const start = userContent.indexOf("{");
-          const end = userContent.lastIndexOf("}");
-          const input = JSON.parse(userContent.slice(start, end + 1));
-          const output: Record<string, unknown> = {};
-          for (const [k, v] of Object.entries(input)) {
-            if (Array.isArray(v)) {
-              output[k] = v.map((item) => {
-                if (item && typeof item === "object") {
-                  const clone: Record<string, string> = {};
-                  for (const [ik, iv] of Object.entries(item)) clone[ik] = `xx-${iv}`;
-                  return clone;
-                }
-                return `xx-${item}`;
-              });
-            } else {
-              output[k] = `xx-${v}`;
-            }
+  function mockCliEnvelope(input: Record<string, unknown>): Record<string, unknown> {
+    const output: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(input)) {
+      if (Array.isArray(v)) {
+        output[k] = v.map((item) => {
+          if (item && typeof item === "object") {
+            const clone: Record<string, string> = {};
+            for (const [ik, iv] of Object.entries(item)) clone[ik] = `xx-${iv}`;
+            return clone;
           }
-          return {
-            content: [{ type: "text", text: JSON.stringify(output) }],
-          };
-        }),
-      },
+          return `xx-${item}`;
+        });
+      } else {
+        output[k] = `xx-${v}`;
+      }
+    }
+    return {
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: JSON.stringify(output),
+      stop_reason: "tool_use",
+      structured_output: output,
     };
   }
 
-  it("fills missing keys and leaves existing translations alone", async () => {
+  it("fills missing keys and leaves existing translations alone", () => {
     write("en", "common.json", { greet: "Hello", farewell: "Goodbye" });
     write("xx", "common.json", { farewell: "Adiós-kept" });
 
-    const client = mockClient();
-
-    // fillLocale's LOCALES_DIR is baked in; we indirect by chdir'ing and
-    // spying on the script's internal read via a thin wrapper.
-    //
-    // Simpler route: the script exports fillLocale which takes a client and
-    // locale and hard-references the module-level LOCALES_DIR. To use it in
-    // tests we mirror a minimal locales tree under the expected path inside
-    // a temp dir, then override LOCALES_DIR by adjusting the working state.
-    //
-    // Since LOCALES_DIR is a const, we instead assert behavior by invoking
-    // the helpers end-to-end: simulate the fillLocale flow by verifying that
-    // given en + target contents on disk, missing keys are diffed, the model
-    // is called, and output is validated.
-
-    // Here we verify the *pieces* fillLocale composes, not the globbed path:
+    // fillLocale's LOCALES_DIR is baked in and it shells out to the real
+    // `claude` binary — not something a unit test should invoke (it would
+    // consume the user's Claude subscription and require network/auth). So,
+    // as before this change, we verify the *pieces* fillLocale composes
+    // rather than a true end-to-end invocation: diff missing keys, simulate
+    // what translateBatch() would return from a `claude -p` call via
+    // mockCliEnvelope(), validate the shape, and merge back — the exact
+    // sequence fillLocale()'s implementation runs internally.
     const enObj = JSON.parse(readFileSync(join(dir, "en", "common.json"), "utf-8"));
     const xxObj = JSON.parse(readFileSync(join(dir, "xx", "common.json"), "utf-8"));
     const missing = diffKeys(flatten(enObj), flatten(xxObj), { force: false });
     expect([...missing.keys()]).toEqual(["greet"]);
 
-    // Call the mocked model with the shape fillLocale would use.
-    const res = await client.messages.create({
-      model: "claude-opus-4-7",
-      max_tokens: 8192,
-      system: "mock",
-      messages: [
-        {
-          role: "user",
-          content: `Translate the following English UI strings to XX (xx). Return a single JSON object with the exact same keys and translated values.\n\nInput:\n${JSON.stringify(Object.fromEntries(missing), null, 2)}`,
-        },
-      ],
-    });
-    const text = (res.content[0] as { type: "text"; text: string }).text;
-    const translated = extractJson(text);
+    // Schema fillLocale would pass as --json-schema.
+    const schema = buildJsonSchema(missing);
+    expect(schema.required).toEqual(["greet"]);
+
+    // Simulate the claude -p response envelope and extract structured_output
+    // exactly as translateBatch() does.
+    const envelope = mockCliEnvelope(Object.fromEntries(missing));
+    expect(envelope.is_error).toBe(false);
+    const translated = envelope.structured_output as Record<string, unknown>;
     expect(translated).toEqual({ greet: "xx-Hello" });
+
+    const errs = validateBatch(missing, translated);
+    expect(errs).toEqual([]);
 
     // Merge back.
     const merged = { ...xxObj };
@@ -226,28 +261,31 @@ describe("fillLocale (integration with mocked model)", () => {
     expect(merged).toEqual({ greet: "xx-Hello", farewell: "Adiós-kept" });
   });
 
-  it("preserves array shape when translating step lists", async () => {
+  it("preserves array shape when translating step lists", () => {
     const req = new Map<string, unknown>([
       ["steps", [{ heading: "H1", body: "B1" }, { heading: "H2", body: "B2" }]],
     ]);
-    const client = mockClient();
-    const res = await client.messages.create({
-      model: "claude-opus-4-7",
-      max_tokens: 8192,
-      system: "mock",
-      messages: [{
-        role: "user",
-        content: `Input:\n${JSON.stringify(Object.fromEntries(req), null, 2)}`,
-      }],
-    });
-    const text = (res.content[0] as { type: "text"; text: string }).text;
-    const translated = extractJson(text);
+    const envelope = mockCliEnvelope(Object.fromEntries(req));
+    const translated = envelope.structured_output as Record<string, unknown>;
     const steps = translated.steps as Array<Record<string, string>>;
     expect(Array.isArray(steps)).toBe(true);
     expect(steps).toHaveLength(2);
     expect(steps[0]).toEqual({ heading: "xx-H1", body: "xx-B1" });
     const errs = validateBatch(req, translated);
     expect(errs).toEqual([]);
+  });
+
+  it("falls back to extractJson when structured_output is absent", () => {
+    // Older CLI without --json-schema support, or a model that ignored the
+    // schema — translateBatch()'s fallback path.
+    const envelope = {
+      is_error: false,
+      result: '```json\n{"greet":"xx-Hello"}\n```',
+      structured_output: undefined,
+    };
+    expect(envelope.structured_output).toBeUndefined();
+    const translated = extractJson(envelope.result);
+    expect(translated).toEqual({ greet: "xx-Hello" });
   });
 
   it("flags shape errors when model drops or adds keys", () => {

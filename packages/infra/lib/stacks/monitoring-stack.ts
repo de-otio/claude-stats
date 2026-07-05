@@ -19,6 +19,7 @@ const TABLE_NAMES = [
   "teamMemberships",
   "syncedSessions",
   "syncedMessages",
+  "userAggregates",
   "teamStats",
   "achievements",
   "challenges",

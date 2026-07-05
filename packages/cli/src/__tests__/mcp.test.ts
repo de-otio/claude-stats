@@ -166,6 +166,65 @@ beforeAll(async () => {
     promptText: "Refactor the auth module to use JWT",
   }]);
 
+  // ── Sonnet-5 pricing-consistency fixture ─────────────────────────────────
+  // Regression fixture for the bug where list_sessions hardcoded
+  // "claude-sonnet-4-20250514" as a cost approximation, so any session using
+  // a model missing from that guess (like claude-sonnet-5) priced
+  // inconsistently between list_sessions and get_session_detail.
+  store.upsertSession({
+    sessionId: "sonnet5-session-001",
+    projectPath: "/tmp/test-project-sonnet5",
+    sourceFile: "/tmp/test-project-sonnet5/.claude/conversation.jsonl",
+    firstTimestamp: Date.now() - 3600_000,
+    lastTimestamp: Date.now(),
+    claudeVersion: "2.1.186",
+    entrypoint: "cli",
+    gitBranch: "main",
+    permissionMode: "default",
+    isInteractive: true,
+    promptCount: 1,
+    assistantMessageCount: 1,
+    inputTokens: 1_000_000,
+    outputTokens: 100_000,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+    webSearchRequests: 0,
+    webFetchRequests: 0,
+    toolUseCounts: [],
+    models: ["claude-sonnet-5"],
+    repoUrl: null,
+    accountUuid: null,
+    organizationUuid: null,
+    subscriptionType: null,
+    thinkingBlocks: 0,
+    parentSessionId: null,
+    isSubagent: false,
+    throttleEvents: 0,
+    sourceDeleted: false,
+    activeDurationMs: null,
+    medianResponseTimeMs: null,
+  });
+
+  store.upsertMessages([{
+    uuid: "msg-sonnet5-001",
+    sessionId: "sonnet5-session-001",
+    timestamp: Date.now() - 1800_000,
+    claudeVersion: "2.1.186",
+    model: "claude-sonnet-5",
+    stopReason: "end_turn",
+    inputTokens: 1_000_000,
+    outputTokens: 100_000,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+    tools: [],
+    thinkingBlocks: 0,
+    serviceTier: null,
+    inferenceGeo: null,
+    ephemeral5mCacheTokens: 0,
+    ephemeral1hCacheTokens: 0,
+    promptText: "test prompt",
+  }]);
+
   // Create MCP server and connect via in-memory transport
   const server = createMcpServer(store);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -181,16 +240,20 @@ afterAll(() => {
 
 describe("MCP Server", () => {
   describe("tools/list", () => {
-    it("returns all 7 tools", async () => {
+    it("returns all 11 tools", async () => {
       const result = await client.listTools();
       const names = result.tools.map((t) => t.name).sort();
       expect(names).toEqual([
+        "get_account_info",
+        "get_cost_per_task",
+        "get_plan_mechanics_reference",
         "get_session_detail",
         "get_stats",
         "get_status",
         "list_projects",
         "list_sessions",
         "search_history",
+        "size_seats",
         "summarize_day",
       ]);
     });
@@ -225,6 +288,34 @@ describe("MCP Server", () => {
       const data = JSON.parse(content[0]!.text) as Record<string, unknown>;
       expect(data["period"]).toBe("week");
     });
+
+    it("accepts a custom since/until range and resolves it (not the period default)", async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const result = await client.callTool({
+        name: "get_stats",
+        arguments: { since: "2020-01-01", until: today },
+      });
+      const content = result.content as Array<{ type: string; text: string }>;
+      const data = JSON.parse(content[0]!.text) as Record<string, unknown>;
+      expect(data).toHaveProperty("sessions");
+      expect(data["period"]).toBe("custom");
+    });
+
+    it("rejects a mismatched since/until pair (only one of the two set)", async () => {
+      const result = await client.callTool({
+        name: "get_stats",
+        arguments: { since: "2020-01-01" },
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it("rejects since after until", async () => {
+      const result = await client.callTool({
+        name: "get_stats",
+        arguments: { since: "2026-01-10", until: "2026-01-01" },
+      });
+      expect(result.isError).toBe(true);
+    });
   });
 
   describe("list_sessions", () => {
@@ -253,6 +344,39 @@ describe("MCP Server", () => {
       const content = result.content as Array<{ type: string; text: string }>;
       const sessions = JSON.parse(content[0]!.text) as unknown[];
       expect(Array.isArray(sessions)).toBe(true);
+    });
+
+    // The pre-existing code path (via `periodStart`) never set an upper
+    // bound at all — a session outside a custom range's `until` would
+    // silently pass. This asserts the new `until` bound actually excludes it.
+    it("excludes sessions active after a custom range's until", async () => {
+      const result = await client.callTool({
+        name: "list_sessions",
+        arguments: { since: "2020-01-01", until: "2026-04-26", limit: 100 },
+      });
+      const content = result.content as Array<{ type: string; text: string }>;
+      const sessions = JSON.parse(content[0]!.text) as Array<Record<string, unknown>>;
+      const ids = sessions.map((s) => s["sessionId"]);
+      expect(ids).toContain("recap-session-apr25");
+      expect(ids).not.toContain("test-session-001");
+    });
+
+    it("prices a claude-sonnet-5 session as known and non-zero, matching get_session_detail", async () => {
+      const listResult = await client.callTool({ name: "list_sessions", arguments: { period: "all", limit: 100 } });
+      const listContent = listResult.content as Array<{ type: string; text: string }>;
+      const sessions = JSON.parse(listContent[0]!.text) as Array<Record<string, unknown>>;
+      const session = sessions.find((s) => s["sessionId"] === "sonnet5-session-001");
+      expect(session).toBeDefined();
+      const listCost = session!["estimatedCost"] as { cost: number; known: boolean };
+      expect(listCost.known).toBe(true);
+      expect(listCost.cost).toBeGreaterThan(0);
+
+      const detailResult = await client.callTool({ name: "get_session_detail", arguments: { sessionId: "sonnet5-session-001" } });
+      const detailContent = detailResult.content as Array<{ type: string; text: string }>;
+      const detail = JSON.parse(detailContent[0]!.text) as { messages: Array<{ estimatedCost: { cost: number; known: boolean } }> };
+      const detailCost = detail.messages.reduce((sum, m) => sum + m.estimatedCost.cost, 0);
+      expect(detail.messages.every((m) => m.estimatedCost.known)).toBe(true);
+      expect(listCost.cost).toBeCloseTo(detailCost);
     });
   });
 
@@ -543,6 +667,119 @@ describe("MCP Server", () => {
       const tool = result.tools.find((t) => t.name === "summarize_day");
       expect(tool).toBeDefined();
       expect(tool!.description).toContain("templates.ts");
+    });
+  });
+
+  // ── get_cost_per_task ─────────────────────────────────────────────────────
+  describe("get_cost_per_task", () => {
+    async function callCostPerTask(args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+      const result = await client.callTool({ name: "get_cost_per_task", arguments: args });
+      const content = result.content as Array<{ type: string; text: string }>;
+      expect(content).toHaveLength(1);
+      expect(content[0]!.type).toBe("text");
+      return JSON.parse(content[0]!.text) as Record<string, unknown>;
+    }
+
+    it("is registered in the server tool list", async () => {
+      const result = await client.listTools();
+      const names = result.tools.map((t) => t.name);
+      expect(names).toContain("get_cost_per_task");
+    });
+
+    it("returns a CostPerTaskReport-shaped object", async () => {
+      const report = await callCostPerTask({ period: "all" });
+      for (const key of [
+        "period", "windowStart", "windowEnd", "tasksTotal", "observable",
+        "coverage", "successCount", "failedCount", "inFlightCount",
+        "unobservableCount", "totalCostObservable", "labelledCount", "byModel",
+      ]) {
+        expect(report).toHaveProperty(key);
+      }
+      expect(Array.isArray(report["byModel"])).toBe(true);
+    });
+
+    // The whole point of the read-only invariant: the metric payload is numbers
+    // and model names only. The Apr-25 fixture carries the prompt text
+    // "Refactor the auth module to use JWT"; none of it may surface here.
+    it("returns NO stored prompt text in the payload", async () => {
+      const result = await client.callTool({ name: "get_cost_per_task", arguments: { period: "all" } });
+      const content = result.content as Array<{ type: string; text: string }>;
+      const raw = content[0]!.text;
+      expect(raw).not.toContain("Refactor");
+      expect(raw).not.toContain("auth module");
+      expect(raw).not.toContain("JWT");
+      // Defensive: no firstPrompt / promptText fields leaked into the report.
+      expect(raw).not.toMatch(/firstPrompt|promptText|untrusted-stored-content/i);
+      // The per-task labelling list (which carries prompt-derived titles +
+      // signatures) must NEVER be populated on the read-only MCP surface.
+      const report = JSON.parse(raw) as { tasks?: unknown };
+      expect(report.tasks).toBeUndefined();
+    });
+
+    it("advertises the read-only / no-prompt-text contract in its description", async () => {
+      const result = await client.listTools();
+      const tool = result.tools.find((t) => t.name === "get_cost_per_task");
+      expect(tool).toBeDefined();
+      expect(tool!.description!.toUpperCase()).toContain("READ-ONLY");
+      expect(tool!.description).toMatch(/cannot set an outcome label|no stored prompt text/i);
+    });
+
+    // ── efficiency block structural walk (T7) ─────────────────────────────
+    // The efficiency block rides the existing report (no new tool/param).
+    // This test:
+    //   1. Asserts the efficiency block is always present in the payload.
+    //   2. Performs a structural walk of every leaf — all must be numbers,
+    //      null, or fixed-enum strings. Specifically: no '/' character in any
+    //      leaf string (no file paths), and no stored prompt text.
+    // The walk verifies the A4/A5 privacy invariant on the MCP surface.
+    it("efficiency block is always present and every leaf is path-free and prompt-text-free", async () => {
+      const report = await callCostPerTask({ period: "all" });
+
+      // Always attached (plan H3 contract: efficiency is never undefined).
+      expect(report).toHaveProperty("efficiency");
+      const eff = report["efficiency"] as Record<string, unknown>;
+      expect(eff).toHaveProperty("basis", "completion_proxy");
+      expect(eff).toHaveProperty("realisedCost");
+      expect(eff).toHaveProperty("frontierCost");
+      expect(eff).toHaveProperty("recoverableWaste");
+      expect(Array.isArray(eff["byArchetype"])).toBe(true);
+      expect(Array.isArray(eff["levers"])).toBe(true);
+
+      // Structural walk: every leaf must be a number, null, or a string with
+      // no '/' character (no paths) and no prompt-derived text.
+      // We also assert no known prompt substrings appear anywhere in the
+      // serialized block.
+      const raw = JSON.stringify(eff);
+      // No file path separators — no paths leaked into the payload.
+      // Model names may contain hyphens but never forward slashes.
+      expect(raw).not.toMatch(/"[^"]*\/[^"]*"/);
+      // No stored prompt text fragments.
+      expect(raw).not.toContain("Refactor");
+      expect(raw).not.toContain("auth module");
+      expect(raw).not.toContain("JWT");
+      expect(raw).not.toContain("firstPrompt");
+      expect(raw).not.toContain("promptText");
+
+      // Walk all leaf values and assert they are numbers, booleans, null,
+      // or fixed-enum strings (no arbitrary user-derived text).
+      const ALLOWED_STRING_PATTERN =
+        /^(completion_proxy|research_qa|greenfield|mechanical_edit|debugging|multi_file_refactor|other|low|medium|high|route_by_archetype|default_effort_down|cache_hygiene|stop_after_repairs|claude[-a-z0-9.]+)$/;
+      function walkLeaves(node: unknown): void {
+        if (node === null || typeof node === "number" || typeof node === "boolean") return;
+        if (typeof node === "string") {
+          expect(node).toMatch(ALLOWED_STRING_PATTERN);
+          return;
+        }
+        if (Array.isArray(node)) {
+          for (const item of node) walkLeaves(item);
+          return;
+        }
+        if (typeof node === "object" && node !== null) {
+          for (const val of Object.values(node as Record<string, unknown>)) walkLeaves(val);
+          return;
+        }
+      }
+      walkLeaves(eff);
     });
   });
 

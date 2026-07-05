@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { parseSessionFile, hashFirstKb } from "@claude-stats/core/parser/session";
+import { parseSessionFile, hashFirstKb, extractCwdFromSessionFile } from "@claude-stats/core/parser/session";
 import os from "os";
 import path from "path";
 import fs from "fs";
@@ -92,6 +92,44 @@ describe("hashFirstKb", () => {
   });
 });
 
+// ── extractCwdFromSessionFile ───────────────────────────────────────────────────
+
+describe("extractCwdFromSessionFile", () => {
+  let filePath: string;
+
+  beforeEach(() => { filePath = tmpFile(); });
+  afterEach(() => { try { fs.unlinkSync(filePath); } catch { /* ok */ } });
+
+  it("returns the cwd from the first entry that has one", async () => {
+    writeLines(filePath, [
+      { type: "user", timestamp: 1 }, // no cwd
+      { type: "assistant", cwd: "/Users/alice/my-project", timestamp: 2 },
+      { type: "assistant", cwd: "/Users/alice/other", timestamp: 3 },
+    ]);
+    expect(await extractCwdFromSessionFile(filePath)).toBe("/Users/alice/my-project");
+  });
+
+  it("returns null when no entry has a cwd", async () => {
+    writeLines(filePath, [{ type: "user", timestamp: 1 }]);
+    expect(await extractCwdFromSessionFile(filePath)).toBeNull();
+  });
+
+  it("skips malformed lines instead of throwing", async () => {
+    fs.writeFileSync(
+      filePath,
+      "not json\n" + JSON.stringify({ type: "assistant", cwd: "/Users/alice/proj", timestamp: 2 }) + "\n"
+    );
+    expect(await extractCwdFromSessionFile(filePath)).toBe("/Users/alice/proj");
+  });
+
+  it("gives up after maxLines and returns null", async () => {
+    const lines = Array.from({ length: 10 }, (_, i) => ({ type: "user", timestamp: i }));
+    lines.push({ type: "assistant", cwd: "/too/late", timestamp: 99 } as unknown as { type: string; timestamp: number });
+    writeLines(filePath, lines);
+    expect(await extractCwdFromSessionFile(filePath, 5)).toBeNull();
+  });
+});
+
 // ── parseSessionFile ──────────────────────────────────────────────────────────
 
 describe("parseSessionFile", () => {
@@ -114,6 +152,34 @@ describe("parseSessionFile", () => {
     expect(result.session!.sessionId).toBe(BASE_SESSION);
     expect(result.session!.promptCount).toBe(1);
     expect(result.session!.assistantMessageCount).toBe(1);
+  });
+
+  it("prefers the session's own cwd over the caller-supplied decoded path", async () => {
+    // Regression for the directory-name decode bug: "-Users-alice-my-project"
+    // naively decodes to "/Users/alice/my/project" (the hyphen in
+    // "my-project" is indistinguishable from an encoded '/'), but the
+    // session's own cwd carries the real, unmangled path.
+    writeLines(filePath, [
+      userEntry(),
+      assistantEntry({ cwd: "/Users/alice/my-project" }),
+    ]);
+    const result = await parseSessionFile(filePath, "/Users/alice/my/project");
+    expect(result.session!.projectPath).toBe("/Users/alice/my-project");
+  });
+
+  it("falls back to the caller-supplied decoded path when no entry has a cwd", async () => {
+    writeLines(filePath, [userEntry(), assistantEntry()]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.session!.projectPath).toBe("/proj");
+  });
+
+  it("uses the first-seen cwd when multiple entries carry one", async () => {
+    writeLines(filePath, [
+      assistantEntry({ cwd: "/Users/alice/first" }),
+      assistantEntry({ cwd: "/Users/alice/second" }),
+    ]);
+    const result = await parseSessionFile(filePath, "/proj");
+    expect(result.session!.projectPath).toBe("/Users/alice/first");
   });
 
   it("accumulates token counts from multiple assistant messages", async () => {
@@ -167,6 +233,56 @@ describe("parseSessionFile", () => {
     const editCount = result.session!.toolUseCounts.find(t => t.name === "Edit")?.count;
     expect(readCount).toBe(2);
     expect(editCount).toBe(1);
+  });
+
+  it("counts tool_result blocks flagged is_error into toolErrorCount", async () => {
+    const entry = assistantEntry({});
+    (entry as Record<string, unknown>).message = {
+      ...((entry as Record<string, unknown>).message as Record<string, unknown>),
+      content: [
+        { type: "tool_result", tool_use_id: "t1", is_error: true, content: "boom" },
+        { type: "tool_result", tool_use_id: "t2", is_error: false, content: "ok" },
+        { type: "tool_result", tool_use_id: "t3", is_error: true, content: "nope" },
+        { type: "tool_use", name: "Read", id: "t4", input: {} },
+      ],
+    };
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    const msg = result.messages.find((m) => m.uuid === (entry as Record<string, unknown>).uuid);
+    expect(msg?.toolErrorCount).toBe(2);
+    // Additive: existing extraction (tool counts) is unchanged.
+    expect(msg?.tools).toContain("Read");
+  });
+
+  it("defaults toolErrorCount to 0 when there are no error results", async () => {
+    const entry = assistantEntry({});
+    writeLines(filePath, [entry]);
+    const result = await parseSessionFile(filePath, "/proj");
+    const msg = result.messages.find((m) => m.uuid === (entry as Record<string, unknown>).uuid);
+    expect(msg?.toolErrorCount).toBe(0);
+  });
+
+  it("attributes a user tool_result is_error to the preceding assistant message (real shape)", async () => {
+    // Real Claude Code shape: assistant issues a tool_use; the failing result
+    // comes back as the NEXT user turn with is_error.
+    const assistant = assistantEntry({});
+    (assistant as Record<string, unknown>).message = {
+      ...((assistant as Record<string, unknown>).message as Record<string, unknown>),
+      content: [{ type: "tool_use", name: "Bash", id: "t1", input: {} }],
+    };
+    const userResult = {
+      type: "user",
+      sessionId: BASE_SESSION,
+      version: BASE_VERSION,
+      timestamp: 1_002_000,
+      uuid: `u-result-${Math.random()}`,
+      isMeta: false,
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", is_error: true, content: "exit 1" }] },
+    };
+    writeLines(filePath, [assistant, userResult]);
+    const result = await parseSessionFile(filePath, "/proj");
+    const msg = result.messages.find((m) => m.uuid === (assistant as Record<string, unknown>).uuid);
+    expect(msg?.toolErrorCount).toBe(1);
   });
 
   it("collects distinct models used", async () => {

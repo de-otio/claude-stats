@@ -7,12 +7,18 @@
 import { discoverSessionFiles, getFileStats } from "../scanner/index.js";
 import { getGitRemoteUrl } from "../git.js";
 import { parseSessionFile, hashFirstKb } from "@claude-stats/core/parser/session";
-import { collectAccountMap } from "@claude-stats/core/parser/telemetry";
-import { readClaudeAccount } from "../account.js";
 import { checkSchema } from "../schema/monitor.js";
 import { estimateCost } from "@claude-stats/core/pricing";
+import { collectAccountMap } from "@claude-stats/core/parser/telemetry";
 import type { Store } from "../store/index.js";
 import type { RawSessionEntry, UsageWindow } from "@claude-stats/core/types";
+import { readClaudeAccount } from "../account.js";
+import { writeObservation } from "../attribution/observer.js";
+import { buildCliIntervals } from "../attribution/intervals.js";
+import { assignAccounts } from "../attribution/assign.js";
+import type { ExternalAccountInfo } from "../attribution/assign.js";
+import { collectLiveSessionPins } from "../attribution/anchors.js";
+import { resolveOwner } from "../attribution/ownership.js";
 
 export interface CollectOptions {
   verbose?: boolean;
@@ -25,13 +31,22 @@ export interface CollectResult {
   sessionsUpserted: number;
   messagesUpserted: number;
   accountsMatched: number;
+  /** Messages stamped with a straddle-split account this run (see assign.ts). */
+  messagesStamped: number;
+  /**
+   * Sessions stamped with account_source='override' from owner rules this run.
+   * Freshly-collected sessions under an owned project path or remote are
+   * overridden immediately so they appear attributed without a full reattribute.
+   */
+  ownerOverrides: number;
   parseErrors: number;
   schemaChanges: string[];
 }
 
 export async function collect(
   store: Store,
-  opts: CollectOptions = {}
+  opts: CollectOptions = {},
+  now: () => number = Date.now
 ): Promise<CollectResult> {
   const result: CollectResult = {
     filesProcessed: 0,
@@ -40,25 +55,54 @@ export async function collect(
     sessionsUpserted: 0,
     messagesUpserted: 0,
     accountsMatched: 0,
+    messagesStamped: 0,
+    ownerOverrides: 0,
     parseErrors: 0,
     schemaChanges: [],
   };
 
   const sessionFiles = discoverSessionFiles();
 
-  // Best-effort: build session → account mapping from telemetry
-  const accountMap = collectAccountMap();
-
-  // Fallback: current logged-in account from ~/.claude.json
-  // Only used when telemetry doesn't provide account info for a session.
-  // Safe for reparse: the store uses COALESCE(sessions.account_uuid, excluded.account_uuid)
-  // so an existing DB value is never overwritten.
+  // Phase-2 (A) seam 1 — observation writer (once per collect): record the
+  // current CLI account as an observation iff it changed since the last CLI
+  // sighting, and refresh the accounts metadata row. Surface-aware assignment
+  // happens after the file loop (seam 2). The injected `now` clock keeps the
+  // observation timestamp deterministic in tests.
   const currentAccount = readClaudeAccount();
+  writeObservation(store, currentAccount, now);
+
+  // Phase-2 (B) seam 1b — live-session anchor pins (doc 03 §B). For each
+  // CLI-surface session currently active under the read account, persist a pin
+  // so reattribute can apply it at `anchor` precedence after the (ephemeral)
+  // session file is gone. currentIntervalStart = start of the current account's
+  // open interval (the recency guard against stale session files).
+  if (currentAccount) {
+    const nowMs = now();
+    const intervals = buildCliIntervals(store.getAccountObservations());
+    const currentIntervalStart = intervals.length > 0 ? intervals[intervals.length - 1]!.start : nowMs;
+    for (const pin of collectLiveSessionPins(currentAccount.accountUuid, currentIntervalStart, nowMs)) {
+      store.recordAnchorPin(pin);
+    }
+  }
+
+  // Track the session ids upserted in THIS collect run so seam 2 only assigns
+  // accounts to sessions we just touched (the incremental path).
+  const upsertedSessionIds = new Set<string>();
 
   // Accumulate entries per version for schema fingerprinting
   const entriesByVersion = new Map<string, RawSessionEntry[]>();
   // Cache repo URLs per project path to avoid re-reading .git/config for each session file
   const repoUrlCache = new Map<string, string | null>();
+
+  // Accumulate the set of message_hourly hour buckets touched by this collect, so
+  // we can incrementally recompute only those partitions (DELETE+INSERT) instead
+  // of rebuilding the whole rollup. The bucket expression mirrors the store's
+  // recomputeMessageHourly: COALESCE(floor(timestamp/3600000), -1). For positive
+  // timestamps floor() matches SQLite's CAST(... AS INTEGER) truncation exactly.
+  // This covers both append (parsed.messages = new lines only) and rewrite
+  // (parsed.messages = the whole file from offset 0): every upserted message's
+  // bucket is added, so any partition that could have changed is recomputed.
+  const touchedHours = new Set<number>();
 
   for (const sf of sessionFiles) {
     const fileStats = getFileStats(sf.filePath);
@@ -114,12 +158,16 @@ export async function collect(
     result.parseErrors += parsed.errors.length;
 
     // Store everything in a single transaction for crash safety
-    // Resolve repo URL once per project path
-    if (parsed.session && !repoUrlCache.has(sf.projectPath)) {
-      repoUrlCache.set(sf.projectPath, getGitRemoteUrl(sf.projectPath));
-    }
+    // Resolve repo URL once per project path. Use the parser's corrected
+    // path (preferring the session's own `cwd`) — not the scanner's
+    // directory-decoded `sf.projectPath`, which is lossy for hyphenated
+    // directory names and would point getGitRemoteUrl at a nonexistent path.
     if (parsed.session) {
-      parsed.session.repoUrl = repoUrlCache.get(sf.projectPath) ?? null;
+      const resolvedProjectPath = parsed.session.projectPath;
+      if (!repoUrlCache.has(resolvedProjectPath)) {
+        repoUrlCache.set(resolvedProjectPath, getGitRemoteUrl(resolvedProjectPath));
+      }
+      parsed.session.repoUrl = repoUrlCache.get(resolvedProjectPath) ?? null;
 
       // Set subagent flag from scanner; resolve parentUuid → parentSessionId
       parsed.session.isSubagent = sf.isSubagent;
@@ -127,19 +175,10 @@ export async function collect(
         parsed.session.parentSessionId = store.resolveParentSessionId(parsed.parentUuid);
       }
 
-      // Best-effort account enrichment from telemetry
-      const acct = accountMap.get(parsed.session.sessionId);
-      if (acct) {
-        parsed.session.accountUuid = acct.accountUuid;
-        parsed.session.organizationUuid = acct.organizationUuid;
-        parsed.session.subscriptionType = acct.subscriptionType;
-      } else if (currentAccount) {
-        // Fallback to currently logged-in account from ~/.claude.json.
-        // The store's COALESCE preserves existing DB values, so this
-        // won't overwrite accounts stamped by a previous parse.
-        parsed.session.accountUuid = currentAccount.accountUuid;
-        parsed.session.organizationUuid = currentAccount.organizationUuid;
-      }
+      // Surface-aware assignment runs once after the file loop (seam 2); no
+      // per-session account stamping here. Record the id so seam 2 only
+      // considers sessions touched by this run.
+      upsertedSessionIds.add(parsed.session.sessionId);
     }
 
     store.transaction(() => {
@@ -155,6 +194,13 @@ export async function collect(
       if (parsed.messages.length > 0) {
         store.upsertMessages(parsed.messages);
         result.messagesUpserted += parsed.messages.length;
+        // Record the hour bucket of every upserted message for incremental
+        // message_hourly maintenance (recomputed once after the file loop).
+        for (const m of parsed.messages) {
+          touchedHours.add(
+            m.timestamp == null ? -1 : Math.floor(m.timestamp / 3600000)
+          );
+        }
       }
 
       if (parsed.errors.length > 0) {
@@ -198,16 +244,113 @@ export async function collect(
     }
   }
 
-  // Best-effort: backfill account info for previously-collected sessions
-  if (accountMap.size > 0) {
-    result.accountsMatched = store.updateSessionAccounts(accountMap);
+  // Phase-2 (A) seam 2 — surface-aware assignment for this run's sessions.
+  // Build the CLI observation timeline + telemetry map, assign accounts
+  // surface-aware (CLI surfaces → observation interval; otel/telemetry any
+  // surface; everything else → unknown), and apply monotonically. Only the
+  // sessions upserted in THIS run are considered; `applyAttribution`'s guard
+  // ensures a stronger source is never overwritten by a weaker one. Uses the
+  // injected `now` clock so attribution writes are deterministic in tests.
+  if (upsertedSessionIds.size > 0) {
+    const allSessions = store.getSessions({
+      includeCI: true,
+      includeDeleted: true,
+      includeSubagents: true,
+    });
+    const runSessions = allSessions.filter((s) => upsertedSessionIds.has(s.session_id));
+
+    const intervals = buildCliIntervals(store.getAccountObservations());
+
+    const rawTelemetry = collectAccountMap();
+    const telemetryMap = new Map<string, ExternalAccountInfo>();
+    for (const [sessionId, info] of rawTelemetry) {
+      telemetryMap.set(sessionId, {
+        accountUuid: info.accountUuid,
+        organizationUuid: info.organizationUuid,
+        subscriptionType: info.subscriptionType,
+      });
+    }
+
+    // Anchor pins (doc 03 §B) — sessionId → account, applied above observation.
+    const anchorMap = new Map<string, { accountUuid: string }>();
+    for (const [sid, p] of store.getAnchorPins()) {
+      anchorMap.set(sid, { accountUuid: p.accountUuid });
+    }
+
+    const { assignments, messageOverrides } = assignAccounts({
+      sessions: runSessions,
+      intervals,
+      telemetryMap,
+      anchorMap,
+    });
+
+    const applyMap = new Map<
+      string,
+      { accountUuid: string; organizationUuid: string | null; subscriptionType: string | null; source: string; confidence: string }
+    >();
+    for (const [sessionId, a] of assignments) {
+      if (a.source === "unknown" || a.accountUuid === "") continue;
+      applyMap.set(sessionId, {
+        accountUuid: a.accountUuid,
+        organizationUuid: a.organizationUuid,
+        subscriptionType: a.subscriptionType,
+        source: a.source,
+        confidence: a.confidence,
+      });
+    }
+
+    result.accountsMatched = store.applyAttribution(applyMap, now);
+    // Persist per-message straddle splits for this run's sessions. The
+    // incremental path does not reset (reattribute is the authoritative full
+    // recompute); the bounded ranges make re-applying on a later collect
+    // idempotent for unchanged intervals.
+    result.messagesStamped = store.applyMessageOverrides(messageOverrides);
+
+    // Phase-3 (F) seam 2 — apply owner overrides for freshly-collected sessions.
+    // Load the current owner rules and stamp each run session whose project path
+    // or remote matches an account-target rule. applyOwnerOverride is
+    // unconditional (override outranks otel/telemetry/anchor), so it runs after
+    // applyAttribution. split-target and unmatched sessions keep their inferred
+    // source. applyOwnerOverride opens its own transaction internally.
+    const ownerRules = store.listOwnerRules();
+    if (ownerRules.length > 0) {
+      const ownerOverrideMap = new Map<string, string>(); // sessionId → accountUuid
+      for (const s of runSessions) {
+        const target = resolveOwner(
+          { projectPath: s.project_path, repoUrl: s.repo_url ?? null },
+          ownerRules,
+        );
+        if (target !== null && target.kind === "account") {
+          ownerOverrideMap.set(s.session_id, target.accountUuid);
+        }
+      }
+      if (ownerOverrideMap.size > 0) {
+        result.ownerOverrides = store.applyOwnerOverride(ownerOverrideMap, now);
+      }
+    }
   }
 
   // Schema check: sample stored sessions per version
   // (skipped for brevity in initial implementation — triggered by diagnose command)
 
-  // Recompute usage windows for the past 2 days to catch any in-progress windows
-  const windowSince = Date.now() - 2 * 24 * 60 * 60 * 1000;
+  // Incrementally maintain the message_hourly rollup: recompute exactly the hour
+  // partitions touched by the messages upserted above. Must run AFTER all message
+  // upserts are committed, since recomputeMessageHourly reads the messages table.
+  // One call per collect (not per file). Empty set → no-op (nothing changed).
+  //
+  // markSourceDeleted is deliberately NOT a trigger here: the raw reads (and the
+  // rollup's EXISTS predicate) don't filter on source_deleted, and markSourceDeleted
+  // leaves the message rows and the session row in place — so EXISTS stays true and
+  // the rollup value for those hours is unchanged. Recomputing on deletion would be
+  // wasted work that produces a byte-identical table.
+  if (touchedHours.size > 0) {
+    store.recomputeMessageHourly([...touchedHours]);
+  }
+
+  // Recompute usage windows for the past 2 days to catch any in-progress
+  // windows. Uses the injected `now` clock (threaded through collect) for
+  // determinism in tests.
+  const windowSince = now() - 2 * 24 * 60 * 60 * 1000;
   computeAndUpsertWindows(store, windowSince);
 
   return result;

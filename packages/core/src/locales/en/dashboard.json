@@ -1,18 +1,39 @@
 {
-  "pageTitle": "Claude Stats \u2014 {{period}} ({{date}})",
+  "pageTitle": "Claude Stats — {{period}} ({{date}})",
   "tabs": {
     "overview": "Overview",
-    "models": "Models",
     "projects": "Projects",
     "sessions": "Sessions",
     "plan": "Plan",
     "context": "Context",
     "efficiency": "Efficiency",
     "energy": "Energy",
-    "settings": "Settings"
+    "settings": "Settings",
+    "classify": "Classify"
+  },
+  "classify": {
+    "title": "Classify your projects",
+    "intro": "Assign each project to the subscription that should be billed for it. Projects are ranked by cost, so classifying the top few covers most of your spend.",
+    "vscodeOnly": "Project classification is available in the VS Code panel.",
+    "empty": "No projects to classify yet. Once you have used Claude Code in a few projects, they will appear here.",
+    "noAccounts": "No subscriptions detected yet. They appear here once Claude Code has recorded usage for each account.",
+    "unlinkedHint": "Accounts shown with an ID in parentheses haven't been seen as your active Claude Code login yet, so their email and plan can't be shown here. Log in as that account once, then switch back, to link it.",
+    "coverage": "$__CLASSIFIED__ of $__TOTAL__ classified (__PERCENT__%)",
+    "pending": "__COUNT__ pending",
+    "sessions": "__COUNT__ sessions",
+    "projects": "__COUNT__ projects",
+    "remoteBadge": "remote",
+    "pathBadge": "folder",
+    "optionUnassigned": "Unassigned",
+    "optionSplit": "Split across usage",
+    "splitHint": "Split keeps each session's cost with the account that actually ran it. Use it for projects shared across subscriptions (e.g. when one plan's limit is not enough).",
+    "apply": "Apply",
+    "applying": "Applying..."
   },
   "toolbar": {
     "period": "Period:",
+    "since": "Since:",
+    "until": "Until:",
     "refresh": "Refresh",
     "autoOff": "Auto: off",
     "autoOn": "Auto: on ({{seconds}}s)",
@@ -21,6 +42,7 @@
     "accountCurrent": "(current)"
   },
   "summary": {
+    "emptyPeriodHint": "No sessions in this period yet — switch Period to Week or All to see your data.",
     "sessions": "Sessions",
     "prompts": "Prompts",
     "totalInput": "Total Input",
@@ -37,7 +59,7 @@
     "costPerPrompt": "Cost / Prompt",
     "tokPerMin": "Tok / Min",
     "truncatedOutputs": "Truncated Outputs",
-    "periodRange": "{{start}} \u2192 today",
+    "periodRange": "{{start}} → today",
     "allTime": "All time"
   },
   "charts": {
@@ -46,8 +68,6 @@
     "tokenBreakdown": "Token Breakdown",
     "cacheUsage": "Cache Usage",
     "cumulativeApiValue": "Cumulative API Value vs Plan Fee",
-    "tokensByModel": "Tokens by Model",
-    "stopReasons": "Stop Reasons",
     "topProjects": "Top Projects",
     "tokensByProject": "Token Share by Project",
     "energyByProject": "Energy Usage by Project",
@@ -63,7 +83,7 @@
     "contextGrowthCurve": "Context Growth Curve",
     "cacheEfficiencyByLength": "Cache Efficiency by Conversation Length",
     "compactionEvents": "Compaction Events",
-    "longSessions": "Long Sessions \u2014 Context Management Opportunities",
+    "longSessions": "Long Sessions — Context Management Opportunities",
     "modelUsageByTier": "Model Usage by Complexity Tier",
     "opusScoreDist": "Opus Complexity Score Distribution",
     "topOveruse": "Top Overuse: Expensive Model on Simple Tasks"
@@ -100,7 +120,16 @@
       "team_standard": "Team Std ($25)",
       "max_5x": "Max 5x ($100)",
       "team_premium": "Team Premium ($125)",
-      "max_20x": "Max 20x ($200)"
+      "max_20x": "Max 20x ($200)",
+      "enterprise": "Enterprise (metered)"
+    },
+    "usageIntensity": {
+      "title": "Usage Intensity",
+      "light": "Light",
+      "typical": "Typical",
+      "power": "Power",
+      "benchmark": "≈ ${{benchmark}}/mo Claude Code benchmark",
+      "hint": "Your monthly-equivalent cost vs Anthropic's per-user planning benchmarks."
     }
   },
   "context": {
@@ -282,10 +311,30 @@
     "daily": "Daily",
     "weekly": "Weekly",
     "monthly": "Monthly",
+    "autoRefreshInterval": "Auto-Refresh Interval (seconds)",
+    "autoRefreshHint": "Minimum 60 seconds. Applies when auto-refresh is turned on from the toolbar.",
     "save": "Save",
     "savedReload": "Saved! Reload to see updated dashboard.",
     "networkError": "Network error.",
-    "errorSaving": "Error saving."
+    "errorSaving": "Error saving.",
+    "subscriptions": "Subscriptions",
+    "subscriptionsHint": "Set the monthly fee you pay for each Claude account. These are distributed across projects on the Projects tab.",
+    "subscriptionsAutoDetectHint": "New accounts appear here automatically once Claude Code records a session for them — there's no need to add one manually.",
+    "noAccounts": "No accounts found yet — run some sessions and re-collect.",
+    "unlinkedAccountHint": "Not linked to an email yet — log in as this account once, then switch back, to reveal its email and plan here.",
+    "feePlaceholder": "Fee",
+    "labelPlaceholder": "Label (e.g. Work, Personal)"
+  },
+  "fees": {
+    "title": "Subscription Fee by Project",
+    "notConfigured": "Set your subscription fees in Settings to attribute them to projects.",
+    "currencyHeader": "{{period}} this period · {{monthly}}/mo",
+    "idle": "{{label}} — no usage this period",
+    "idleSliceLabel": "Idle (no usage)",
+    "reconcile": "Attributed {{attributed}}",
+    "bySubscriptionTitle": "Fee Share by Subscription",
+    "bySubscriptionDesc": "Each subscription's monthly fee, split across the projects it was used on this period.",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "Token Pricing (per 1M tokens)",
@@ -294,9 +343,79 @@
     "output": "Output",
     "cacheRead": "Cache Read",
     "cacheWrite": "Cache Write",
-    "source": "Source: Anthropic API pricing \u2014 last updated {{date}} (auto-refreshed weekly). Costs shown are equivalent API rates, not subscription charges."
+    "source": "Source: Anthropic API pricing — last updated {{date}} (auto-refreshed weekly). Costs shown are equivalent API rates, not subscription charges."
   },
   "footer": {
-    "generated": "Generated {{timestamp}} \u2022 Timezone: {{timezone}}"
+    "generated": "Generated {{timestamp}} • Timezone: {{timezone}}"
+  },
+  "costPerTask": {
+    "summaryHint": "Full breakdown on the Spending tab",
+    "title": "Cost per Successful Task",
+    "headline": "per successful task",
+    "na": "n/a",
+    "lowCoverage": "Low coverage ({{coverage}}) — rate rests on a small observable slice",
+    "decomp": "= {{mean}}/attempt ÷ {{rate}} success rate",
+    "coverageBadge": "{{observable}}/{{total}} observable ({{coverage}})",
+    "labelledBadge": "{{labelled}}/{{observable}} labelled",
+    "success": "success",
+    "failed": "failed",
+    "inFlight": "in-flight",
+    "unobservable": "unobservable",
+    "model": "Model",
+    "perSuccess": "$/success",
+    "successRate": "Success",
+    "observableCol": "Obs.",
+    "insufficient": "n/a",
+    "proxyNote": "Outcome is proxied from git activity and confidence unless you've explicitly labelled the task; the rate is computed over observable tasks only.",
+    "period": {
+      "day": "today",
+      "week": "last 7 days",
+      "month": "this month",
+      "all": "all time"
+    },
+    "labelTasksHeading": "Label task outcomes",
+    "labelledTag": "labelled",
+    "outcomeShort": {
+      "success": "success",
+      "failed": "failed",
+      "in_flight": "in-flight",
+      "unobservable": "unobservable"
+    },
+    "mark": {
+      "success": "Mark success",
+      "partial": "Mark partial",
+      "fail": "Mark fail",
+      "clear": "Clear label"
+    }
+  },
+  "calibration": {
+    "title": "Accuracy vs your labels",
+    "noLabels": "Label task outcomes above (✓ / ~ / ✗) to calibrate. Until a few are labelled, the success rate is a proxy, not an eval.",
+    "colProxy": "proxy",
+    "colSignals": "+ signals",
+    "failedPrecision": "Failed precision",
+    "accuracy": "Accuracy",
+    "brier": "Brier (lower = better)",
+    "ready": "✓ Signals clear the failed-precision floor ({{floor}}) — safe to enable.",
+    "notReady": "⚠ Below the failed-precision floor ({{floor}}) — label more before trusting.",
+    "labelled": "{{n}} labelled task(s) in this window",
+    "toggle": "Use experimental accuracy signals for the live rate",
+    "enabledNote": "Enabled — the rate above folds in the accuracy signals.",
+    "disabledNote": "Disabled — the rate above is the proxy only.",
+    "na": "n/a"
+  },
+  "costEfficiency": {
+    "title": "Cost-Efficiency Frontier",
+    "realised": "Realised cost",
+    "frontier": "Frontier cost",
+    "recoverable": "Recoverable waste",
+    "basisNote": "Based on the completion proxy, not survival",
+    "insufficient": "Not enough model diversity yet to compute a frontier — no cheaper proven alternative for any archetype.",
+    "leverKind": {
+      "route_by_archetype": "Route tasks by archetype to the frontier model",
+      "default_effort_down": "Reduce the default effort tier",
+      "cache_hygiene": "Improve cache hygiene to cut repeated tokens",
+      "stop_after_repairs": "Stop sessions after repairs complete"
+    }
   }
 }

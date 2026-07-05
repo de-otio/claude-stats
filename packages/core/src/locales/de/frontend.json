@@ -2,7 +2,7 @@
   "login": {
     "subtitle": "Melden Sie sich mit Ihrer geschäftlichen E-Mail-Adresse an, um auf Ihr Dashboard zuzugreifen",
     "emailLabel": "E-Mail-Adresse",
-    "emailPlaceholder": "you@company.com",
+    "emailPlaceholder": "sie@firma.de",
     "sendButton": "Magic Link senden",
     "sending": "Wird gesendet...",
     "checkEmailHeading": "Prüfen Sie Ihr Postfach",
@@ -28,7 +28,7 @@
     "recentAchievements": "Neueste Achievements"
   },
   "achievements": {
-    "heading": "Achievements",
+    "heading": "Erfolge",
     "description": "Verdienen Sie Abzeichen, indem Sie Nutzungsmeilensteine erreichen. Achievements sind in Ihrem Team-Profil sichtbar.",
     "earnedBadge": "Erreicht",
     "cacheMaster": {
@@ -384,7 +384,7 @@
     "compare": "Vergleich",
     "profile": "Profil",
     "accounts": "Konten",
-    "achievements": "Achievements",
+    "achievements": "Erfolge",
     "admin": "Admin",
     "interChallenges": "Teamübergreifende Challenges"
   }

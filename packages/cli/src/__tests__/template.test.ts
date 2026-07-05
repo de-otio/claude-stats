@@ -109,10 +109,14 @@ const mockData: DashboardData = {
   byConversationCost: [],
   byWeek: [],
   planUtilization: null,
+  feeAttribution: null,
   modelEfficiency: null,
   contextAnalysis: null,
   spending: null,
   energy: null,
+  costPerTask: null,
+  calibration: null,
+  experimentalSignalsEnabled: false,
   recommendations: [],
   availableAccounts: [],
   selectedAccountUuid: null,
@@ -145,13 +149,11 @@ describe("renderDashboard", () => {
     expect(parsed.byModel).toHaveLength(2);
   });
 
-  it("contains all 6 canvas IDs", () => {
+  it("contains all 4 canvas IDs", () => {
     const html = renderDashboard(mockData, t);
     expect(html).toContain('id="chart-daily"');
-    expect(html).toContain('id="chart-model"');
     expect(html).toContain('id="chart-project"');
     expect(html).toContain('id="chart-entrypoint"');
-    expect(html).toContain('id="chart-stops"');
     expect(html).toContain('id="chart-cache"');
   });
 
@@ -557,6 +559,66 @@ describe("renderDashboard", () => {
     expect(html).toContain("Max 5x ($100/mo)");
   });
 
+  it("renders Usage Intensity card when usageIntensityTier is set", () => {
+    const withIntensity: DashboardData = {
+      ...mockData,
+      summary: { ...mockData.summary, planFee: 100, planMultiplier: 2.5 },
+      byWeek: [
+        { week: "2026-01-13", sessions: 10, prompts: 50, estimatedCost: 25.0, activeHoursEstimate: 5.0, windowCount: 3, windowsWithTruncatedOutput: 0 },
+      ],
+      planUtilization: {
+        weeklyPlanBudget: 23.09,
+        avgWeeklyCost: 25.0,
+        peakWeeklyCost: 25.0,
+        weeksBelowPlan: 0,
+        weeksAbovePlan: 1,
+        totalWeeks: 1,
+        avgWindowCost: 8.33,
+        medianWindowCost: 8.33,
+        windowsPerWeek: 3.0,
+        truncatedOutputWindowPercent: 0,
+        totalWindows: 3,
+        recommendedPlan: "max_5x",
+        currentPlanVerdict: "good-value",
+        byAccount: [],
+        usageIntensityTier: { tier: "typical", benchmarkUsd: 62.5, source: "anthropic-benchmark" },
+      },
+    };
+    const html = renderDashboard(withIntensity, t);
+    expect(html).toContain("Usage Intensity");
+    expect(html).toContain("Typical");
+    expect(html).toContain("63/mo");
+  });
+
+  it("omits Usage Intensity card when usageIntensityTier is null", () => {
+    const withoutIntensity: DashboardData = {
+      ...mockData,
+      summary: { ...mockData.summary, planFee: 100, planMultiplier: 2.5 },
+      byWeek: [
+        { week: "2026-01-13", sessions: 10, prompts: 50, estimatedCost: 25.0, activeHoursEstimate: 5.0, windowCount: 3, windowsWithTruncatedOutput: 0 },
+      ],
+      planUtilization: {
+        weeklyPlanBudget: 23.09,
+        avgWeeklyCost: 25.0,
+        peakWeeklyCost: 25.0,
+        weeksBelowPlan: 0,
+        weeksAbovePlan: 1,
+        totalWeeks: 1,
+        avgWindowCost: 8.33,
+        medianWindowCost: 8.33,
+        windowsPerWeek: 3.0,
+        truncatedOutputWindowPercent: 0,
+        totalWindows: 3,
+        recommendedPlan: "max_5x",
+        currentPlanVerdict: "good-value",
+        byAccount: [],
+        usageIntensityTier: null,
+      },
+    };
+    const html = renderDashboard(withoutIntensity, t);
+    expect(html).not.toContain("Usage Intensity");
+  });
+
   it("renders Window Limit Usage chart when byWindow is non-empty", () => {
     const withWindows: DashboardData = {
       ...mockData,
@@ -664,15 +726,22 @@ describe("renderDashboard", () => {
     expect(html).toContain("Potential Savings");
   });
 
-  it("includes Settings tab with plan type select and monthly fee input", () => {
+  it("includes Settings tab with per-account subscriptions and cost thresholds", () => {
     const html = renderDashboard(mockData, t);
     expect(html).toContain('data-tab="settings"');
     expect(html).toContain('id="tab-settings"');
-    expect(html).toContain('id="cfg-plan-type"');
-    expect(html).toContain('id="cfg-monthly-fee"');
+    // Per-account subscription rows (plan type + fee) replace the old single
+    // global plan-type/monthly-fee fields.
+    expect(html).toContain('id="account-fees-rows"');
+    expect(html).toContain('acct-fee-type');
+    expect(html).toContain('PLAN_FEE_DEFAULTS');
+    expect(html).not.toContain('id="cfg-plan-type"');
+    expect(html).not.toContain('id="cfg-monthly-fee"');
     expect(html).toContain('id="cfg-threshold-day"');
     expect(html).toContain('id="settings-form"');
     expect(html).toContain('/api/config');
+    expect(html).toContain('id="cfg-auto-refresh"');
+    expect(html).toContain('min="60"');
   });
 
   it("settings config I/O uses webview postMessage bridge when __vscodeApi is present", () => {
@@ -848,6 +917,198 @@ describe("renderDashboard", () => {
       expect(body).not.toContain("<script>alert(1)</script>");
       expect(body).not.toContain("<b>evil</b>");
       expect(body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    });
+  });
+
+  describe("cost-per-task card", () => {
+    const baseReport: NonNullable<DashboardData["costPerTask"]> = {
+      period: "month",
+      windowStart: 0,
+      windowEnd: 0,
+      tasksTotal: 100,
+      observable: 40,
+      coverage: 0.4,
+      successCount: 12,
+      failedCount: 28,
+      inFlightCount: 30,
+      unobservableCount: 30,
+      successRate: 0.3,
+      totalCostObservable: 420,
+      meanCostPerAttempt: 10.5,
+      costPerSuccessfulTask: 35,
+      labelledCount: 5,
+      byModel: [
+        {
+          model: "claude-opus-4-6", tasksObservable: 40, successCount: 12, successRate: 0.3,
+          costObservable: 420, costByModelExact: 420, meanCostPerAttempt: 10.5, costPerSuccessfulTask: 35,
+        },
+      ],
+    };
+
+    // The detailed cost-per-task card lives in the Spending tab, which only
+    // renders when data.spending is present (in production it always is when
+    // there's data). These tests supply a minimal spending object so the card
+    // is exercised; the overview tab shows only a summary box for the average.
+    const emptySpending: NonNullable<DashboardData["spending"]> = {
+      topSessionsByCost: [],
+      topToolsByCost: [],
+      costByModel: [],
+      expensivePrompts: [],
+      cacheEfficiency: { overallHitRate: 0, estimatedSavings: 0 },
+      mcpServers: [],
+      mcpServerUsage: [],
+      subagentOverhead: { totalCost: 0, agentCount: 0 },
+    };
+
+    it("does not render the card when costPerTask is null", () => {
+      const html = renderDashboard(mockData, t);
+      expect(html).not.toContain("Cost per Successful Task");
+    });
+
+    it("renders the headline, decomposition, badges and per-model row when present", () => {
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: baseReport }, t);
+      expect(html).toContain("Cost per Successful Task");
+      expect(html).toContain("$35.00");          // headline
+      expect(html).toContain("$10.50");          // mean cost per attempt
+      expect(html).toContain("40/100 observable"); // coverage badge
+      expect(html).toContain("5/40 labelled");   // labelled badge
+      expect(html).toContain("opus-4-6");        // per-model row (claude- stripped)
+    });
+
+    it("shows the low-coverage warning below the floor", () => {
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: { ...baseReport, coverage: 0.1 } }, t);
+      expect(html).toContain("Low coverage");
+    });
+
+    it("omits the card entirely for an empty window", () => {
+      const empty = { ...baseReport, tasksTotal: 0, observable: 0 };
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: empty }, t);
+      expect(html).not.toContain("Cost per Successful Task");
+    });
+
+    it("renders no labelling controls when tasks is absent (read-only / serve)", () => {
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: baseReport }, t);
+      expect(html).not.toContain("data-cpt-index");
+      expect(html).not.toContain("Label task outcomes");
+    });
+
+    it("renders per-task labelling controls when tasks is present (webview)", () => {
+      const withTasks = {
+        ...baseReport,
+        tasks: [
+          {
+            id: "task-1",
+            title: "fix the auth flow",
+            project: "/home/me/repos/app",
+            outcome: "in_flight" as const,
+            labelled: false,
+            confidence: "medium" as const,
+            signature: { projectPath: "/home/me/repos/app", filePaths: ["src/a.ts"], promptPrefix: "fix the auth flow" },
+          },
+        ],
+      };
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: withTasks }, t);
+      expect(html).toContain("Label task outcomes");
+      expect(html).toContain('data-cpt-index="0"');
+      expect(html).toContain('data-cpt-value="success"');
+      expect(html).toContain('data-cpt-value="clear"');
+      expect(html).toContain("fix the auth flow");
+    });
+
+    it("HTML-escapes the prompt-derived task title", () => {
+      const evil = {
+        ...baseReport,
+        tasks: [{
+          id: "x", title: "<img src=x onerror=alert(1)>", project: "/p",
+          outcome: "unobservable" as const, labelled: false, confidence: "low" as const,
+          signature: { projectPath: "/p", filePaths: [], promptPrefix: "x" },
+        }],
+      };
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: evil }, t);
+      expect(html).not.toContain("<img src=x onerror=alert(1)>");
+      expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    });
+
+    it("shows the average as a summary box on the overview, pointing to the Spending tab", () => {
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: baseReport }, t);
+      expect(html).toContain("$35.00");                          // average headline
+      expect(html).toContain("Full breakdown on the Spending tab"); // overview pointer
+    });
+
+    it("does not show the overview summary box when the average is null", () => {
+      const noAvg = { ...baseReport, costPerSuccessfulTask: null };
+      const html = renderDashboard({ ...mockData, spending: emptySpending, costPerTask: noAvg }, t);
+      expect(html).not.toContain("Full breakdown on the Spending tab");
+    });
+
+    // ── Calibration view + activation toggle (webview only) ──
+    const emptyMetrics = {
+      n: 0, accuracy: null, observableN: 0,
+      perClass: {
+        success: { support: 0, predicted: 0, truePositives: 0, precision: null, recall: null, f1: null },
+        failed: { support: 0, predicted: 0, truePositives: 0, precision: null, recall: null, f1: null },
+        in_flight: { support: 0, predicted: 0, truePositives: 0, precision: null, recall: null, f1: null },
+        unobservable: { support: 0, predicted: 0, truePositives: 0, precision: null, recall: null, f1: null },
+      },
+      brier: null, failedPrecision: null, meetsFailedFloor: false,
+    };
+    const calibration: NonNullable<DashboardData["calibration"]> = { n: 0, floor: 0.7, proxyOnly: emptyMetrics, withSignals: emptyMetrics };
+
+    it("renders the calibration view and activation toggle when calibration is present", () => {
+      const html = renderDashboard({ ...mockData, spending: emptySpending, calibration }, t);
+      expect(html).toContain('id="signals-toggle"');       // the toggle the bridge wires
+      expect(html).toContain("Accuracy vs your labels");    // calibration.title
+      expect(html).toContain("Label task outcomes");        // n===0 guidance
+      expect(html).toContain("the proxy only");             // disabledNote (signals off)
+    });
+
+    it("checks the toggle and shows the enabled note when signals are on", () => {
+      const html = renderDashboard({ ...mockData, spending: emptySpending, calibration, experimentalSignalsEnabled: true }, t);
+      expect(html).toContain('id="signals-toggle" checked');
+      expect(html).toContain("folds in the accuracy signals"); // enabledNote
+    });
+
+    it("omits the calibration view entirely when calibration is null (serve/CLI)", () => {
+      const html = renderDashboard({ ...mockData, spending: emptySpending, calibration: null }, t);
+      expect(html).not.toContain('id="signals-toggle"');
+    });
+  });
+
+  // The dashboard's client-side scripts live inside a template literal, so a
+  // stray backtick or `${` silently breaks them at runtime with nothing in the
+  // Node test suite exercising the browser code. Parse every inline <script>
+  // with `new Function` (compiles without executing) so a syntax error fails
+  // here rather than in a user's webview.
+  describe("client script integrity", () => {
+    function inlineScripts(html: string): string[] {
+      const out: string[] = [];
+      const re = /<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(html)) !== null) {
+        const body = m[1] ?? "";
+        if (body.trim().length > 0) out.push(body);
+      }
+      return out;
+    }
+
+    it("every inline <script> parses as valid JavaScript", () => {
+      const html = renderDashboard(mockData, t);
+      const scripts = inlineScripts(html);
+      expect(scripts.length).toBeGreaterThan(0);
+      for (const body of scripts) {
+        // Throws on a syntax error; does not execute (no DOM needed).
+        expect(() => new Function(body)).not.toThrow();
+      }
+    });
+
+    it("renders the Classify tab button and panel", () => {
+      const html = renderDashboard(mockData, t);
+      expect(html).toContain('data-tab="classify"');
+      expect(html).toContain('id="tab-classify"');
+      expect(html).toContain('id="classify-list"');
+      expect(html).toContain('id="classify-apply"');
+      // initClassify must be wired into the tab dispatch.
+      expect(html).toContain("initClassify()");
     });
   });
 });

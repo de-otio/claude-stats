@@ -27,7 +27,7 @@ vi.mock("vscode", () => ({
 }));
 
 import { formatTokens } from "../extension/statusBar.js";
-import { patchForWebview, renderWelcome } from "../extension/panel.js";
+import { patchForWebview, renderWelcome, renderLoading } from "../extension/panel.js";
 import { AutoCollector } from "../extension/collector.js";
 import { promptReloadIfUpgraded } from "../extension/extension.js";
 import * as vscode from "vscode";
@@ -84,6 +84,15 @@ describe("patchForWebview", () => {
     expect(result).toContain("'unsafe-inline'");
     // Should NOT use unsafe-inline for scripts
     expect(result).not.toMatch(/script-src[^;]*'unsafe-inline'/);
+  });
+
+  it("wires the cost-per-task outcome-labelling bridge (setOutcome postMessage)", () => {
+    const result = patchForWebview(sampleHtml, CSP_SOURCE, LOCAL_CHART_URI);
+    // The injected bridge must read the per-task signature from __DASHBOARD__
+    // and post a setOutcome message — the VS-Code-only write path.
+    expect(result).toContain("data-cpt-index");
+    expect(result).toContain("command: 'setOutcome'");
+    expect(result).toContain("costPerTask.tasks");
   });
 
   it("adds nonce attribute to all script tags", () => {
@@ -215,6 +224,42 @@ describe("renderWelcome", () => {
   it("includes a privacy note so the user understands nothing is uploaded", () => {
     const html = renderWelcome(CSP_SOURCE);
     expect(html.toLowerCase()).toMatch(/local|leaves your machine|never leaves/);
+  });
+});
+
+// ── renderLoading ─────────────────────────────────────────────────────────────
+
+describe("renderLoading", () => {
+  const CSP_SOURCE = "https://file+.vscode-resource.vscode-cdn.net";
+
+  it("produces a self-contained HTML page", () => {
+    const html = renderLoading(CSP_SOURCE);
+    expect(html.startsWith("<!DOCTYPE html>")).toBe(true);
+    expect(html).toContain('http-equiv="Content-Security-Policy"');
+  });
+
+  it("runs no scripts (CSP has no script-src; default-src 'none' blocks them)", () => {
+    const html = renderLoading(CSP_SOURCE);
+    expect(html).not.toContain("<script");
+    expect(html).toContain("default-src 'none'");
+    expect(html).not.toMatch(/script-src/);
+  });
+
+  it("scopes style-src to the webview CSP source", () => {
+    const html = renderLoading(CSP_SOURCE);
+    expect(html).toContain(`style-src ${CSP_SOURCE} 'unsafe-inline'`);
+  });
+
+  it("shows a spinner and an accessible live-region status", () => {
+    const html = renderLoading(CSP_SOURCE);
+    expect(html).toContain('class="spinner"');
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
+  });
+
+  it("respects reduced-motion by disabling the spin animation", () => {
+    const html = renderLoading(CSP_SOURCE);
+    expect(html).toContain("prefers-reduced-motion: reduce");
   });
 });
 

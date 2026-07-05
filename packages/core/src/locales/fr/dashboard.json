@@ -2,17 +2,19 @@
   "pageTitle": "Claude Stats — {{period}} ({{date}})",
   "tabs": {
     "overview": "Vue d'ensemble",
-    "models": "Modèles",
     "projects": "Projets",
     "sessions": "Sessions",
     "plan": "Forfait",
     "context": "Contexte",
     "efficiency": "Efficacité",
     "energy": "Énergie",
-    "settings": "Paramètres"
+    "settings": "Paramètres",
+    "classify": "Classer"
   },
   "toolbar": {
     "period": "Période :",
+    "since": "Depuis :",
+    "until": "Jusqu'au :",
     "refresh": "Actualiser",
     "autoOff": "Auto : désactivé",
     "autoOn": "Auto : activé ({{seconds}} s)",
@@ -21,6 +23,7 @@
     "accountCurrent": "(actuel)"
   },
   "summary": {
+    "emptyPeriodHint": "Aucune session sur cette période pour le moment — réglez la période sur Semaine ou Tout pour voir vos données.",
     "sessions": "Sessions",
     "prompts": "Prompts",
     "totalInput": "Entrée totale",
@@ -35,7 +38,7 @@
     "ofPlanFee": "sur ${{fee}}/mois",
     "activeHours": "Heures actives",
     "costPerPrompt": "Coût / Prompt",
-    "tokPerMin": "Tok / Min",
+    "tokPerMin": "Tok / min",
     "truncatedOutputs": "Sorties tronquées",
     "periodRange": "{{start}} → aujourd'hui",
     "allTime": "Toute la période"
@@ -46,8 +49,6 @@
     "tokenBreakdown": "Répartition des tokens",
     "cacheUsage": "Utilisation du cache",
     "cumulativeApiValue": "Valeur API cumulée vs frais du forfait",
-    "tokensByModel": "Tokens par modèle",
-    "stopReasons": "Raisons d'arrêt",
     "topProjects": "Projets principaux",
     "tokensByProject": "Part de tokens par projet",
     "energyByProject": "Consommation d'énergie par projet",
@@ -96,11 +97,20 @@
     "noPlan": "Aucun forfait",
     "noPlanDetected": "Aucun forfait détecté",
     "planNames": {
-      "pro": "Pro ($20)",
-      "team_standard": "Team Std ($25)",
-      "max_5x": "Max 5x ($100)",
-      "team_premium": "Team Premium ($125)",
-      "max_20x": "Max 20x ($200)"
+      "pro": "Pro (20 $)",
+      "team_standard": "Team Std (25 $)",
+      "max_5x": "Max 5x (100 $)",
+      "team_premium": "Team Premium (125 $)",
+      "max_20x": "Max 20x (200 $)",
+      "enterprise": "Entreprise (mesuré)"
+    },
+    "usageIntensity": {
+      "title": "Intensité d'utilisation",
+      "light": "Light",
+      "typical": "Typical",
+      "power": "Power",
+      "benchmark": "≈ {{benchmark}} $/mo référence Claude Code",
+      "hint": "Votre coût mensuel équivalent par rapport aux références de planification par utilisateur d'Anthropic."
     }
   },
   "context": {
@@ -285,7 +295,27 @@
     "save": "Enregistrer",
     "savedReload": "Enregistré ! Rechargez pour voir le tableau de bord mis à jour.",
     "networkError": "Erreur réseau.",
-    "errorSaving": "Erreur lors de l'enregistrement."
+    "errorSaving": "Erreur lors de l'enregistrement.",
+    "subscriptions": "Abonnements",
+    "subscriptionsHint": "Définissez les frais mensuels que vous payez pour chaque compte Claude. Ils sont distribués entre les projets dans l'onglet Projets.",
+    "subscriptionsAutoDetectHint": "Les nouveaux comptes apparaissent ici automatiquement dès que Claude Code enregistre une session pour eux — inutile d'en ajouter un manuellement.",
+    "noAccounts": "Aucun compte trouvé pour le moment — exécutez quelques sessions et recollectez.",
+    "unlinkedAccountHint": "Pas encore lié à une adresse e-mail — connectez-vous une fois avec ce compte, puis reconnectez-vous à l'autre, pour afficher ici son e-mail et son forfait.",
+    "feePlaceholder": "Frais",
+    "labelPlaceholder": "Libellé (ex. Travail, Personnel)",
+    "autoRefreshInterval": "Intervalle d'actualisation automatique (secondes)",
+    "autoRefreshHint": "Minimum 60 secondes. S'applique lorsque l'actualisation automatique est activée depuis la barre d'outils."
+  },
+  "fees": {
+    "title": "Frais d'abonnement par projet",
+    "notConfigured": "Définissez vos frais d'abonnement dans Paramètres pour les attribuer aux projets.",
+    "currencyHeader": "{{period}} cette période · {{monthly}}/mois",
+    "idle": "{{label}} — pas d'utilisation cette période",
+    "idleSliceLabel": "Inutilisé (aucune utilisation)",
+    "reconcile": "Attribué {{attributed}}",
+    "bySubscriptionTitle": "Répartition des frais par abonnement",
+    "bySubscriptionDesc": "Les frais mensuels de chaque abonnement, répartis entre les projets sur lesquels il a été utilisé pendant la période.",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "Tarification des tokens (par 1M de tokens)",
@@ -298,5 +328,94 @@
   },
   "footer": {
     "generated": "Généré le {{timestamp}} • Fuseau horaire : {{timezone}}"
+  },
+  "costPerTask": {
+    "summaryHint": "Détail complet dans l'onglet Spending",
+    "title": "Coût par tâche réussie",
+    "headline": "par tâche réussie",
+    "na": "n/d",
+    "lowCoverage": "Couverture faible ({{coverage}}) — le taux repose sur un faible échantillon observable",
+    "decomp": "= {{mean}}/tentative ÷ {{rate}} taux de réussite",
+    "coverageBadge": "{{observable}}/{{total}} observables ({{coverage}})",
+    "labelledBadge": "{{labelled}}/{{observable}} étiquetées",
+    "success": "réussies",
+    "failed": "échouées",
+    "inFlight": "en cours",
+    "unobservable": "non observables",
+    "model": "Modèle",
+    "perSuccess": "$/réussite",
+    "successRate": "Réussite",
+    "observableCol": "Obs.",
+    "insufficient": "n/d",
+    "proxyNote": "Le résultat est déduit de l'activité Git et de la confiance, sauf si vous avez étiqueté la tâche explicitement ; le taux est calculé uniquement sur les tâches observables.",
+    "period": {
+      "day": "aujourd'hui",
+      "week": "7 derniers jours",
+      "month": "ce mois-ci",
+      "all": "Toute la période"
+    },
+    "labelTasksHeading": "Étiqueter les résultats des tâches",
+    "labelledTag": "étiquetée",
+    "outcomeShort": {
+      "success": "réussie",
+      "failed": "échouée",
+      "in_flight": "en cours",
+      "unobservable": "non observable"
+    },
+    "mark": {
+      "success": "Marquer comme réussie",
+      "partial": "Marquer comme partielle",
+      "fail": "Marquer comme échec",
+      "clear": "Retirer l'étiquette"
+    }
+  },
+  "calibration": {
+    "title": "Précision vs. vos labels",
+    "noLabels": "Étiquetez les résultats des tâches ci-dessus (✓ / ~ / ✗) pour calibrer. Tant que peu sont étiquetées, le taux de réussite est une estimation, pas une évaluation.",
+    "colProxy": "estimation",
+    "colSignals": "+ signaux",
+    "failedPrecision": "Précision des échecs",
+    "accuracy": "Exactitude",
+    "brier": "Brier (plus bas = mieux)",
+    "ready": "✓ Les signaux dépassent le seuil de précision des échecs ({{floor}}) — activation sûre.",
+    "notReady": "⚠ Sous le seuil de précision des échecs ({{floor}}) — étiquetez davantage avant de vous y fier.",
+    "labelled": "{{n}} tâche(s) étiquetée(s) dans cette période",
+    "toggle": "Utiliser les signaux de précision expérimentaux pour le taux en direct",
+    "enabledNote": "Activé — le taux ci-dessus intègre les signaux de précision.",
+    "disabledNote": "Désactivé — le taux ci-dessus est uniquement l'estimation.",
+    "na": "n/d"
+  },
+  "costEfficiency": {
+    "title": "Frontière d'efficacité des coûts",
+    "realised": "Coût réalisé",
+    "frontier": "Coût frontière",
+    "recoverable": "Gaspillage récupérable",
+    "basisNote": "Basé sur le proxy de complétion, pas sur la survie",
+    "insufficient": "Pas encore assez de diversité de modèles pour calculer une frontière — aucun archétype n'a d'alternative moins chère éprouvée.",
+    "leverKind": {
+      "route_by_archetype": "Acheminer les tâches par archétype vers le modèle frontière",
+      "default_effort_down": "Réduire le niveau d'effort par défaut",
+      "cache_hygiene": "Améliorer l'hygiène du cache pour réduire les tokens répétés",
+      "stop_after_repairs": "Arrêter les sessions après les réparations terminées"
+    }
+  },
+  "classify": {
+    "title": "Classer vos projets",
+    "intro": "Attribuez chaque projet à l'abonnement qui doit en être facturé. Les projets sont classés par coût, donc classer les premiers couvre la majeure partie de vos dépenses.",
+    "vscodeOnly": "Le classement des projets est disponible dans le panneau VS Code.",
+    "empty": "Aucun projet à classer pour le moment. Une fois que vous aurez utilisé Claude Code dans quelques projets, ils apparaîtront ici.",
+    "noAccounts": "Aucun abonnement détecté pour le moment. Ils apparaissent ici une fois que Claude Code a enregistré l'utilisation de chaque compte.",
+    "unlinkedHint": "Les comptes affichés avec un ID entre parenthèses n'ont pas encore été vus comme votre connexion Claude Code active, donc leur e-mail et leur forfait ne peuvent pas être affichés ici. Connectez-vous une fois avec ce compte, puis reconnectez-vous à l'autre, pour le lier.",
+    "coverage": "$__CLASSIFIED__ sur $__TOTAL__ classés (__PERCENT__ %)",
+    "pending": "__COUNT__ en attente",
+    "sessions": "__COUNT__ sessions",
+    "projects": "__COUNT__ projets",
+    "remoteBadge": "distant",
+    "pathBadge": "dossier",
+    "optionUnassigned": "Non attribué",
+    "optionSplit": "Réparti selon l'utilisation",
+    "splitHint": "La répartition attribue le coût de chaque session au compte qui l'a réellement exécutée. Utilisez-la pour les projets partagés entre abonnements (p. ex. lorsque la limite d'un forfait ne suffit pas).",
+    "apply": "Appliquer",
+    "applying": "Application..."
   }
 }

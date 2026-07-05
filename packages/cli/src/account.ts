@@ -12,6 +12,22 @@ export interface ClaudeAccount {
   accountUuid: string;
   emailAddress: string | null;
   organizationUuid: string | null;
+  organizationType: string | null;
+  organizationRateLimitTier: string | null;
+  userRateLimitTier: string | null;
+  seatTier: string | null;
+  billingType: string | null;
+  hasExtraUsageEnabled: boolean | null;
+}
+
+/** Narrow an untrusted JSON value to `string | null` (drops non-strings). */
+function asString(v: unknown): string | null {
+  return typeof v === "string" ? v : null;
+}
+
+/** Narrow an untrusted JSON value to `boolean | null` (drops non-booleans). */
+function asBoolean(v: unknown): boolean | null {
+  return typeof v === "boolean" ? v : null;
 }
 
 export function readClaudeAccount(): ClaudeAccount | null {
@@ -20,10 +36,31 @@ export function readClaudeAccount(): ClaudeAccount | null {
     const data = JSON.parse(raw) as Record<string, unknown>;
     const acct = data.oauthAccount as Record<string, unknown> | undefined;
     if (acct && typeof acct.accountUuid === "string") {
-      return {
+      // Harden against prototype pollution (plan §7 sec#6): copy only the
+      // fields we need off the untrusted JSON.parse result into a
+      // null-prototype object before reading them. We deliberately do NOT
+      // capture organizationName / displayName (identifying).
+      const src: Record<string, unknown> = Object.assign(Object.create(null), {
         accountUuid: acct.accountUuid,
-        emailAddress: typeof acct.emailAddress === "string" ? acct.emailAddress : null,
-        organizationUuid: typeof acct.organizationUuid === "string" ? acct.organizationUuid : null,
+        emailAddress: acct.emailAddress,
+        organizationUuid: acct.organizationUuid,
+        organizationType: acct.organizationType,
+        organizationRateLimitTier: acct.organizationRateLimitTier,
+        userRateLimitTier: acct.userRateLimitTier,
+        seatTier: acct.seatTier,
+        billingType: acct.billingType,
+        hasExtraUsageEnabled: acct.hasExtraUsageEnabled,
+      });
+      return {
+        accountUuid: src.accountUuid as string,
+        emailAddress: asString(src.emailAddress),
+        organizationUuid: asString(src.organizationUuid),
+        organizationType: asString(src.organizationType),
+        organizationRateLimitTier: asString(src.organizationRateLimitTier),
+        userRateLimitTier: asString(src.userRateLimitTier),
+        seatTier: asString(src.seatTier),
+        billingType: asString(src.billingType),
+        hasExtraUsageEnabled: asBoolean(src.hasExtraUsageEnabled),
       };
     }
   } catch {

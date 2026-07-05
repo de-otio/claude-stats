@@ -1,30 +1,35 @@
 /**
- * Backend sync module.
+ * Backend sync module — ORG AGGREGATE PLANE (client side).
  *
- * Syncs local SQLite sessions to the cloud AppSync API.
- * Uses Node 18+ built-in fetch for GraphQL calls --- no external dependencies.
+ * Syncs MINIMIZED local aggregates to the cloud AppSync API. Uses the built-in
+ * `fetch` for GraphQL calls — no external dependencies.
+ *
+ * ‼️  Plane-separation invariant (non-negotiable): the ONLY payload this client
+ *     can build is the {@link AggregateProjection} — per-`(period, cohort)`
+ *     counts/totals computed LOCALLY (see `../org/aggregate.ts`). There is NO
+ *     per-session path here: no `prompt_text`, `file_paths`, transcript content,
+ *     session ids/paths, or key material can reach the org backend. The legacy
+ *     `sessionToSyncInput` / `SyncSessionInput` per-session path and the prompt
+ *     scan/redact export path were DELETED (not left dormant — reviews S6/F9),
+ *     so aggregate-only is STRUCTURAL, not a runtime check.
  *
  * Sync flow:
- *   1. Get sessions from local SQLite newer than last sync timestamp
- *   2. Map to SyncSessionInput format (HMAC-derived accountId, secret-scanned prompts)
- *   3. Batch in groups of 25
- *   4. Send each batch via GraphQL mutation
- *   5. Handle conflicts (re-fetch, merge, retry)
- *   6. Update local sync state
+ *   1. Read local sessions for linked accounts.
+ *   2. Project them into minimized aggregates.
+ *   3. Batch and send each batch via the aggregate GraphQL mutation.
+ *   4. Update local sync state.
  *
- * See doc/analysis/team-app/06-sync-strategy.md
+ * See doc/analysis/team-app/06-sync-strategy.md and doc/analysis/data-planes/.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import crypto from "node:crypto";
 
-import type { Store, SessionRow } from "../store/index.js";
-import type { SyncSessionInput } from "@claude-stats/core/types/api";
-import { estimateCost } from "@claude-stats/core/pricing";
+import type { Store } from "../store/index.js";
+import type { AggregateProjection } from "@claude-stats/core/types/shard";
 import { ensureValidTokens } from "./auth.js";
 import { deriveAccountId, generateUserSalt } from "./hmac.js";
-import { scanPrompt, containsSecrets, redactSecrets, addCustomPatterns, resetPatterns } from "./secret-scan.js";
+import { projectAggregates, AGGREGATE_SCHEMA_VERSION } from "../org/aggregate.js";
 
 // Re-export submodules for convenience
 export { deriveAccountId, generateUserSalt } from "./hmac.js";
@@ -40,15 +45,6 @@ export {
   refreshTokens,
   ensureValidTokens,
 } from "./auth.js";
-export {
-  type SecretPattern,
-  type ScanResult,
-  addCustomPatterns,
-  resetPatterns,
-  containsSecrets,
-  scanPrompt,
-  redactSecrets,
-} from "./secret-scan.js";
 
 // ── Config types ────────────────────────────────────────────────────────────
 
@@ -64,9 +60,10 @@ export interface SyncConfig {
 }
 
 export interface SyncResult {
-  sessionsWritten: number;
-  sessionsSkipped: number;
-  conflicts: number;
+  /** Number of aggregate records written to the backend. */
+  aggregatesWritten: number;
+  /** Number of aggregate records the backend reported as skipped/unchanged. */
+  aggregatesSkipped: number;
   errors: string[];
 }
 
@@ -88,7 +85,8 @@ export interface PersistedSyncConfig {
     accountId: string;
     label: string;
     shareWithTeams: boolean;
-    sharePrompts: boolean;
+    // NOTE: no `sharePrompts` — the org plane is aggregate-only; there is no
+    // prompt-sharing opt-in on the client (reviews S6/F9).
   }>;
   lastPushAt?: number | null;
   lastPullAt?: number | null;
@@ -268,16 +266,17 @@ async function graphql<T>(
 
 // ── GraphQL mutations ───────────────────────────────────────────────────────
 
-const SYNC_SESSIONS_MUTATION = `
-  mutation SyncSessions($input: [SyncSessionInput!]!) {
-    syncSessions(input: $input) {
+/**
+ * The ONLY write mutation this client issues for session-derived data. It
+ * accepts an array of minimized aggregates — never a per-session payload. The
+ * server-side schema (Phase F server task) likewise accepts ONLY this shape and
+ * rejects any per-session input (review F9).
+ */
+const SYNC_AGGREGATES_MUTATION = `
+  mutation SyncAggregates($input: [AggregateInput!]!) {
+    syncAggregates(input: $input) {
       itemsWritten
       itemsSkipped
-      conflicts {
-        key
-        serverVersion
-        serverItem
-      }
     }
   }
 `;
@@ -300,247 +299,126 @@ const UPDATE_PROFILE_MUTATION = `
   }
 `;
 
-// ── Session mapping ─────────────────────────────────────────────────────────
-
-/**
- * Convert a local SessionRow to SyncSessionInput.
- */
-function sessionToSyncInput(
-  row: SessionRow,
-  accountId: string,
-  version: number,
-): SyncSessionInput {
-  let toolUseCounts: Record<string, number> | undefined;
-  try {
-    const parsed = JSON.parse(row.tool_use_counts) as Array<{ name: string; count: number }>;
-    if (parsed.length > 0) {
-      toolUseCounts = {};
-      for (const { name, count } of parsed) {
-        toolUseCounts[name] = count;
-      }
-    }
-  } catch {
-    // Malformed tool_use_counts -- skip
-  }
-
-  let models: string[] = [];
-  try {
-    models = JSON.parse(row.models) as string[];
-  } catch {
-    // Malformed models -- default to empty
-  }
-
-  // Compute projectPathHash from project_path (privacy-preserving, not reversible)
-  const projectPathHash = crypto
-    .createHash("sha256")
-    .update(row.project_path)
-    .digest("hex");
-
-  // Derive projectId from repo_url if available
-  let projectId: string | undefined;
-  if (row.repo_url) {
-    projectId = parseProjectId(row.repo_url) ?? undefined;
-  }
-
-  // Estimate cost from token counts
-  const primaryModel = models[0] ?? "claude-sonnet-4-20250514";
-  const cost = estimateCost(
-    primaryModel,
-    row.input_tokens,
-    row.output_tokens,
-    row.cache_read_tokens,
-    row.cache_creation_tokens,
-  );
-
-  return {
-    sessionId: row.session_id,
-    projectId,
-    projectPathHash,
-    firstTimestamp: row.first_timestamp ?? 0,
-    lastTimestamp: row.last_timestamp ?? 0,
-    claudeVersion: row.claude_version ?? "unknown",
-    entrypoint: row.entrypoint ?? "unknown",
-    promptCount: row.prompt_count,
-    assistantMessageCount: row.assistant_message_count,
-    inputTokens: row.input_tokens,
-    outputTokens: row.output_tokens,
-    cacheCreationTokens: row.cache_creation_tokens || undefined,
-    cacheReadTokens: row.cache_read_tokens || undefined,
-    toolUseCounts,
-    models,
-    accountId,
-    isSubagent: row.is_subagent === 1,
-    parentSessionId: row.parent_session_id ?? undefined,
-    thinkingBlocks: row.thinking_blocks || undefined,
-    estimatedCost: cost.cost,
-    _version: version,
-  };
-}
-
-/**
- * Extract "owner/repo" from a git remote URL.
- */
-function parseProjectId(remoteUrl: string): string | null {
-  // SSH: git@github.com:owner/repo.git
-  const ssh = remoteUrl.match(/git@github\.com:(.+?)(?:\.git)?$/);
-  if (ssh) return ssh[1] ?? null;
-
-  // HTTPS: https://github.com/owner/repo.git
-  const https = remoteUrl.match(/github\.com\/(.+?)(?:\.git)?$/);
-  if (https) return https[1] ?? null;
-
-  return null;
-}
-
-// ── Sync engine ─────────────────────────────────────────────────────────────
+// ── Aggregate sync engine ─────────────────────────────────────────────────────
 
 const BATCH_SIZE = 25;
 const MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 100;
 
+/** Cohort id for sessions with no linked account (should not occur — see filter below). */
+const UNATTRIBUTED_COHORT = "unattributed";
+
 /**
- * Sync local sessions to the cloud.
+ * Build the aggregate-only payload for the given sessions.
  *
- * Pushes sessions updated since the last sync timestamp. Each session
- * is mapped to a SyncSessionInput with an HMAC-derived accountId.
- * Batches are sent in groups of 25. Conflicts are retried with
- * exponential backoff up to MAX_RETRIES times.
+ * Sessions are filtered to LINKED accounts only (matching the prior privacy
+ * posture: data for accounts the user has not linked is never sent), then
+ * projected LOCALLY into minimized {@link AggregateProjection} records. This is
+ * the whole client→server payload surface for session data — structurally
+ * incapable of carrying prompt/transcript/path/key material.
+ *
+ * Exported so `--dry-run` and tests can inspect EXACTLY what would be sent
+ * without hitting the network. Deterministic: bucketing uses each session's own
+ * timestamp, never a wall clock.
  */
-export async function syncSessions(
+export function buildAggregatePayload(
+  store: Store,
+  persisted: PersistedSyncConfig,
+  periodKind: AggregateProjection["periodKind"] = "day",
+): AggregateProjection[] {
+  const userSalt = persisted.userSalt;
+  const mappings = persisted.accountMappings ?? [];
+  if (!userSalt || mappings.length === 0) return [];
+
+  const linkedUuids = new Set(mappings.map((m) => m.accountUuid));
+  const cohortCache = new Map<string, string>();
+  for (const m of mappings) cohortCache.set(m.accountUuid, m.accountId);
+
+  const sessions = store
+    .getSessions({ includeCI: true, includeDeleted: false })
+    // Only sessions whose account the user has explicitly linked.
+    .filter((s) => s.account_uuid !== null && s.account_uuid !== undefined && linkedUuids.has(s.account_uuid));
+
+  return projectAggregates(sessions, {
+    periodKind,
+    cohortIdFor: (accountUuid) => {
+      let cohort = cohortCache.get(accountUuid);
+      if (!cohort) {
+        cohort = deriveAccountId(accountUuid, userSalt);
+        cohortCache.set(accountUuid, cohort);
+      }
+      return cohort;
+    },
+    unattributedCohortId: UNATTRIBUTED_COHORT,
+    schemaVersion: AGGREGATE_SCHEMA_VERSION,
+  });
+}
+
+/**
+ * Sync minimized local aggregates to the cloud.
+ *
+ * Aggregates are idempotent upserts keyed by `(period, cohort)`, so — unlike the
+ * removed per-session path — there is no version/conflict dance: a batch either
+ * writes or is retried on transient transport failure. No per-session,
+ * prompt, transcript, path, or key material is ever transmitted.
+ */
+export async function syncAggregates(
   store: Store,
   config: SyncConfig,
 ): Promise<SyncResult> {
-  // Ensure we have valid auth tokens
   const tokens = await ensureValidTokens(config);
   if (!tokens) {
     return {
-      sessionsWritten: 0,
-      sessionsSkipped: 0,
-      conflicts: 0,
+      aggregatesWritten: 0,
+      aggregatesSkipped: 0,
       errors: ["Not authenticated. Run 'claude-stats setup' first."],
     };
   }
 
-  // Load persisted config for userId/salt/account mappings
   const persisted = loadPersistedConfig();
   if (!persisted?.userSalt || !persisted?.accountMappings?.length) {
     return {
-      sessionsWritten: 0,
-      sessionsSkipped: 0,
-      conflicts: 0,
+      aggregatesWritten: 0,
+      aggregatesSkipped: 0,
       errors: ["No linked accounts. Run 'claude-stats setup' first."],
     };
   }
 
-  // Build accountUuid -> accountId lookup
-  const accountIdMap = new Map<string, string>();
-  for (const mapping of persisted.accountMappings) {
-    accountIdMap.set(mapping.accountUuid, mapping.accountId);
+  const aggregates = buildAggregatePayload(store, persisted);
+  if (aggregates.length === 0) {
+    return { aggregatesWritten: 0, aggregatesSkipped: 0, errors: [] };
   }
 
-  // Get sessions updated since last sync
-  const lastPushAt = persisted.lastPushAt ?? 0;
-  const sessions = store.getSessions({
-    since: lastPushAt > 0 ? lastPushAt : undefined,
-    includeCI: true,
-    includeDeleted: false,
-  });
-
-  if (sessions.length === 0) {
-    return { sessionsWritten: 0, sessionsSkipped: 0, conflicts: 0, errors: [] };
-  }
-
-  // Map sessions to sync inputs, skipping those without a linked account
-  const syncInputs: SyncSessionInput[] = [];
-  let skipped = 0;
-
-  for (const session of sessions) {
-    const accountUuid = session.account_uuid;
-    if (!accountUuid) {
-      skipped++;
-      continue;
-    }
-
-    // Derive accountId (use cached mapping or compute on the fly)
-    let accountId = accountIdMap.get(accountUuid);
-    if (!accountId) {
-      accountId = deriveAccountId(accountUuid, persisted.userSalt);
-      accountIdMap.set(accountUuid, accountId);
-    }
-
-    syncInputs.push(sessionToSyncInput(session, accountId, 1));
-  }
-
-  if (syncInputs.length === 0) {
-    return { sessionsWritten: 0, sessionsSkipped: skipped, conflicts: 0, errors: [] };
-  }
-
-  // Split into batches of BATCH_SIZE
   const result: SyncResult = {
-    sessionsWritten: 0,
-    sessionsSkipped: skipped,
-    conflicts: 0,
+    aggregatesWritten: 0,
+    aggregatesSkipped: 0,
     errors: [],
   };
 
-  const batches: SyncSessionInput[][] = [];
-  for (let i = 0; i < syncInputs.length; i += BATCH_SIZE) {
-    batches.push(syncInputs.slice(i, i + BATCH_SIZE));
+  const batches: AggregateProjection[][] = [];
+  for (let i = 0; i < aggregates.length; i += BATCH_SIZE) {
+    batches.push(aggregates.slice(i, i + BATCH_SIZE));
   }
 
   for (const batch of batches) {
     let retries = 0;
-    let currentBatch = batch;
-
-    while (retries <= MAX_RETRIES && currentBatch.length > 0) {
+    while (retries <= MAX_RETRIES) {
       try {
         const response = await graphql<{
-          syncSessions: {
-            itemsWritten: number;
-            itemsSkipped: number;
-            conflicts: Array<{
-              key: string;
-              serverVersion: number;
-              serverItem: unknown;
-            }>;
-          };
-        }>(config, tokens.accessToken, SYNC_SESSIONS_MUTATION, {
-          input: currentBatch,
-        });
+          syncAggregates: { itemsWritten: number; itemsSkipped: number };
+        }>(config, tokens.accessToken, SYNC_AGGREGATES_MUTATION, { input: batch });
 
         if (response.errors?.length) {
           result.errors.push(...response.errors.map((e) => e.message));
           break;
         }
 
-        const syncResult = response.data?.syncSessions;
-        if (syncResult) {
-          result.sessionsWritten += syncResult.itemsWritten;
-          result.sessionsSkipped += syncResult.itemsSkipped;
-
-          if (syncResult.conflicts.length > 0) {
-            result.conflicts += syncResult.conflicts.length;
-
-            // Merge conflicts: bump _version to server's version + 1 and retry
-            currentBatch = syncResult.conflicts
-              .map((conflict) => {
-                const original = currentBatch.find((s) => s.sessionId === conflict.key);
-                if (!original) return null;
-                return { ...original, _version: conflict.serverVersion + 1 };
-              })
-              .filter((s): s is SyncSessionInput => s !== null);
-
-            retries++;
-            if (retries <= MAX_RETRIES) {
-              await new Promise((r) =>
-                setTimeout(r, BASE_BACKOFF_MS * Math.pow(2, retries - 1)),
-              );
-              continue;
-            }
-          }
+        const synced = response.data?.syncAggregates;
+        if (synced) {
+          result.aggregatesWritten += synced.itemsWritten;
+          result.aggregatesSkipped += synced.itemsSkipped;
         }
-
-        break; // Success or no remaining conflicts
+        break; // batch done
       } catch (err) {
         retries++;
         if (retries > MAX_RETRIES) {
@@ -549,7 +427,6 @@ export async function syncSessions(
           );
           break;
         }
-        // Exponential backoff on transient failures
         await new Promise((r) =>
           setTimeout(r, BASE_BACKOFF_MS * Math.pow(2, retries - 1)),
         );
@@ -557,8 +434,8 @@ export async function syncSessions(
     }
   }
 
-  // Update last push timestamp on success
-  if (result.errors.length === 0 && result.sessionsWritten > 0) {
+  // Update last push timestamp on success.
+  if (result.errors.length === 0 && result.aggregatesWritten > 0) {
     const updated = loadPersistedConfig();
     if (updated) {
       updated.lastPushAt = Date.now();

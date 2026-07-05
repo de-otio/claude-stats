@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Store } from "../store/index.js";
-import { buildDashboard } from "../dashboard/index.js";
+import { buildDashboard, PLAN_LADDER_THRESHOLDS } from "../dashboard/index.js";
 import type { SessionRecord, MessageRecord } from "@claude-stats/core/types";
 import os from "os";
 import path from "path";
@@ -69,6 +69,108 @@ function makeMessage(overrides: Partial<MessageRecord> = {}): MessageRecord {
     ...overrides,
   };
 }
+
+describe("getSessions activeSince — period-boundary overlap", () => {
+  let store: Store;
+  let dbPath: string;
+  const T0 = 1_700_000_000_000;
+  const HOUR = 3_600_000;
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+  });
+  afterEach(() => {
+    store.close();
+    fs.rmSync(dbPath, { force: true });
+  });
+
+  it("counts a session ACTIVE in the period even though it STARTED before it", () => {
+    // Straddles the T0+1h boundary: started T0, still active at T0+2h.
+    store.upsertSession(makeSession({ sessionId: "straddle", firstTimestamp: T0, lastTimestamp: T0 + 2 * HOUR }));
+    // `since` (start-in-period) excludes it; `activeSince` (active-in-period) includes it.
+    expect(store.getSessions({ since: T0 + HOUR }).map((s) => s.session_id)).not.toContain("straddle");
+    expect(store.getSessions({ activeSince: T0 + HOUR }).map((s) => s.session_id)).toContain("straddle");
+  });
+
+  it("excludes a session whose last activity is before the period start", () => {
+    store.upsertSession(makeSession({ sessionId: "old", firstTimestamp: T0, lastTimestamp: T0 + HOUR }));
+    expect(store.getSessions({ activeSince: T0 + 2 * HOUR }).map((s) => s.session_id)).not.toContain("old");
+  });
+
+  it("falls back to first_timestamp when last_timestamp is null", () => {
+    store.upsertSession(makeSession({ sessionId: "nolast", firstTimestamp: T0 + 3 * HOUR, lastTimestamp: null }));
+    expect(store.getSessions({ activeSince: T0 + HOUR }).map((s) => s.session_id)).toContain("nolast");
+    expect(store.getSessions({ activeSince: T0 + 5 * HOUR }).map((s) => s.session_id)).not.toContain("nolast");
+  });
+});
+
+describe("buildDashboard — custom since/until range", () => {
+  let store: Store;
+  let dbPath: string;
+  const T0 = 1_700_000_000_000; // 2023-11-14T22:13:20.000Z
+  const DAY = 24 * 60 * 60 * 1000;
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+  });
+  afterEach(() => {
+    store.close();
+    fs.rmSync(dbPath, { force: true });
+  });
+
+  function ymd(ms: number): string {
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+
+  it("passes both activeSince and until to getSessions, excluding a session active only after until", () => {
+    store.upsertSession(makeSession({
+      sessionId: "in-range",
+      firstTimestamp: T0 + DAY,
+      lastTimestamp: T0 + DAY + 3_600_000,
+    }));
+    // Active only well after the requested `until` boundary — this is the case
+    // that would silently pass today since there's no upper bound at all
+    // without this task's change.
+    store.upsertSession(makeSession({
+      sessionId: "after-until",
+      firstTimestamp: T0 + 5 * DAY,
+      lastTimestamp: T0 + 5 * DAY + 3_600_000,
+    }));
+
+    const getSessionsSpy = vi.spyOn(store, "getSessions");
+
+    const data = buildDashboard(store, {
+      since: ymd(T0),
+      until: ymd(T0 + 2 * DAY),
+      timezone: "UTC",
+    });
+
+    expect(getSessionsSpy).toHaveBeenCalledTimes(1);
+    const callArgs = getSessionsSpy.mock.calls[0]![0]!;
+    expect(callArgs.activeSince).toBeDefined();
+    expect(callArgs.until).toBeDefined();
+    expect(callArgs.until!).toBeGreaterThan(callArgs.activeSince!);
+
+    expect(data.summary.sessions).toBe(1);
+    expect(data.byConversationCost.map((c) => c.sessionId)).not.toContain("after-until");
+  });
+
+  it('sets summary period to "custom" when since/until are both present', () => {
+    const data = buildDashboard(store, {
+      since: ymd(T0),
+      until: ymd(T0 + 2 * DAY),
+      timezone: "UTC",
+    });
+    expect(data.period).toBe("custom");
+  });
+
+  it("does not set period to custom for a plain preset", () => {
+    const data = buildDashboard(store, { period: "week", timezone: "UTC" });
+    expect(data.period).toBe("week");
+  });
+});
 
 describe("buildDashboard — empty store", () => {
   let store: Store;
@@ -550,6 +652,107 @@ describe("buildDashboard — with sessions", () => {
     expect(data.planUtilization!.weeklyPlanBudget).toBeCloseTo(200 / 4.33, 1);
   });
 
+  it("PLAN_LADDER_THRESHOLDS midpoints match the previously hand-coded constants", () => {
+    // Derived from PLAN_FEES (pro 20, team_standard 25, max_5x 100,
+    // team_premium 125, max_20x 200) via the explicit price-ordered ladder —
+    // NOT Object.entries(PLAN_FEES), which would include the `team: 25` alias
+    // out of price order and corrupt these midpoints (plan §"planUtilization
+    // extensions").
+    expect(PLAN_LADDER_THRESHOLDS).toEqual([22.5, 62.5, 112.5, 162.5]);
+  });
+
+  it("planUtilization recommends max_20x just under the $200 ceiling", () => {
+    store.upsertSession(makeSession({
+      sessionId: "s1",
+      firstTimestamp: 1_700_000_000_000,
+      lastTimestamp: 1_700_000_300_000,
+    }));
+    // outputTokens tuned so the single week's rounded cost is $46.18/week
+    // (claude-sonnet-4 @ $15/M output) → monthlyEquiv = 46.18 * 4.33 = 199.9594,
+    // just below PLAN_FEES.max_20x ($200).
+    store.upsertMessages([
+      makeMessage({ uuid: "m1", sessionId: "s1", model: "claude-sonnet-4", inputTokens: 0, outputTokens: 3_078_667 }),
+    ]);
+
+    const data = buildDashboard(store, { timezone: "UTC" });
+    expect(data.planUtilization).not.toBeNull();
+    expect(data.planUtilization!.avgWeeklyCost * 4.33).toBeLessThan(200);
+    expect(data.planUtilization!.recommendedPlan).toBe("max_20x");
+    expect(data.planUtilization!.usageIntensityTier).not.toBeNull();
+  });
+
+  it("planUtilization recommends enterprise just over the $200 ceiling", () => {
+    store.upsertSession(makeSession({
+      sessionId: "s1",
+      firstTimestamp: 1_700_000_000_000,
+      lastTimestamp: 1_700_000_300_000,
+    }));
+    // outputTokens tuned so the single week's rounded cost is $46.19/week →
+    // monthlyEquiv = 46.19 * 4.33 = 200.0027, just above PLAN_FEES.max_20x
+    // ($200): the range 162.5-200 stays max_20x, only strictly-above tips to
+    // enterprise (plan acceptance criterion 5).
+    store.upsertMessages([
+      makeMessage({ uuid: "m1", sessionId: "s1", model: "claude-sonnet-4", inputTokens: 0, outputTokens: 3_079_333 }),
+    ]);
+
+    const data = buildDashboard(store, { timezone: "UTC" });
+    expect(data.planUtilization).not.toBeNull();
+    expect(data.planUtilization!.avgWeeklyCost * 4.33).toBeGreaterThan(200);
+    expect(data.planUtilization!.recommendedPlan).toBe("enterprise");
+    expect(data.planUtilization!.usageIntensityTier).not.toBeNull();
+    expect(data.planUtilization!.usageIntensityTier!.tier).toBe("typical");
+    expect(data.planUtilization!.usageIntensityTier!.source).toBe("anthropic-benchmark");
+  });
+
+  it("planUtilization.usageIntensityTier is null only when planUtilization itself is null", () => {
+    const empty = buildDashboard(store, { timezone: "UTC" });
+    expect(empty.planUtilization).toBeNull();
+
+    store.upsertSession(makeSession({
+      sessionId: "s1",
+      firstTimestamp: 1_700_000_000_000,
+      lastTimestamp: 1_700_000_300_000,
+    }));
+    store.upsertMessages([
+      makeMessage({ uuid: "m1", sessionId: "s1", model: "claude-haiku-4", inputTokens: 1_000, outputTokens: 100 }),
+    ]);
+    const populated = buildDashboard(store, { timezone: "UTC" });
+    expect(populated.planUtilization).not.toBeNull();
+    expect(populated.planUtilization!.usageIntensityTier).not.toBeNull();
+  });
+
+  it("does not recommend downgrading to Enterprise when underusing but over the $200 ceiling", () => {
+    // Four distinct ISO weeks (Mondays, UTC), one session each, each costing
+    // ~$50/week (monthlyEquiv ≈ $216.5 → recommendedPlan "enterprise").
+    // A large explicit planFee ($1000) keeps currentPlanVerdict "underusing"
+    // (totalCost well below the fee) while still exceeding the $200 ceiling —
+    // exactly the combination that must NOT produce a bogus "downgrade to
+    // Enterprise" recommendation (PLAN_LABELS.enterprise has no `$<digits>`
+    // token, and recommendedPlan === "enterprise" is explicitly excluded from
+    // the plan-underusing branch).
+    const week0 = 1_699_833_600_000; // Monday 2023-11-13T00:00:00Z
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    for (let i = 0; i < 4; i++) {
+      const sessionId = `wk-${i}`;
+      store.upsertSession(makeSession({
+        sessionId,
+        firstTimestamp: week0 + i * weekMs,
+        lastTimestamp: week0 + i * weekMs + 300_000,
+      }));
+      store.upsertMessages([
+        makeMessage({ uuid: `wk-${i}-m1`, sessionId, model: "claude-sonnet-4", inputTokens: 0, outputTokens: 3_333_333 }),
+      ]);
+    }
+
+    const data = buildDashboard(store, { timezone: "UTC", planFee: 1000 });
+    expect(data.planUtilization).not.toBeNull();
+    expect(data.planUtilization!.totalWeeks).toBeGreaterThanOrEqual(4);
+    expect(data.planUtilization!.currentPlanVerdict).toBe("underusing");
+    expect(data.planUtilization!.recommendedPlan).toBe("enterprise");
+    const downgrade = data.recommendations.find(r => r.id === "plan-underusing");
+    expect(downgrade).toBeUndefined();
+  });
+
   it("truncatedOutputWindowPercent reflects share of windows that contained a truncation", () => {
     const now = Date.now();
     store.upsertSession(makeSession({
@@ -798,6 +1001,44 @@ describe("buildDashboard — context analysis", () => {
     expect(data.contextAnalysis!.longSessions[0]!.compacted).toBe(false);
   });
 
+  it("does not count out-of-scope sessions in compactionRate (regression: >100%)", () => {
+    // One interactive session in scope, with no compaction.
+    store.upsertSession(makeSession({ sessionId: "ctx-int", promptCount: 5, isInteractive: true }));
+    store.upsertMessages(
+      Array.from({ length: 5 }, (_, i) =>
+        makeMessage({
+          uuid: `ctx-int-${i}`,
+          sessionId: "ctx-int",
+          inputTokens: 5_000 * (i + 1),
+          timestamp: 1_700_000_000_000 + i * 1000,
+        })
+      )
+    );
+
+    // Two CI (non-interactive) sessions, each with a compaction event. These
+    // are excluded from `rows` (includeCI defaults to false → is_interactive=1)
+    // but their messages still come back from getMessagesForContext. Before the
+    // fix the numerator counted them while the denominator did not, yielding
+    // compactionRate = 2/1 * 100 = 200%.
+    for (const s of ["ci-1", "ci-2"]) {
+      store.upsertSession(makeSession({ sessionId: s, promptCount: 3, isInteractive: false }));
+      store.upsertMessages([
+        makeMessage({ uuid: `${s}-m0`, sessionId: s, inputTokens: 80_000, timestamp: 1_700_000_000_000 }),
+        // 80K → 20K: a 75% drop, detected as compaction.
+        makeMessage({ uuid: `${s}-m1`, sessionId: s, inputTokens: 20_000, timestamp: 1_700_000_001_000 }),
+        makeMessage({ uuid: `${s}-m2`, sessionId: s, inputTokens: 30_000, timestamp: 1_700_000_002_000 }),
+      ]);
+    }
+
+    const data = buildDashboard(store, { timezone: "UTC" });
+    expect(data.contextAnalysis).not.toBeNull();
+    // Rate is a percentage of in-scope sessions; it can never exceed 100%.
+    expect(data.contextAnalysis!.compactionRate).toBeLessThanOrEqual(100);
+    // The only in-scope session had no compaction, and CI sessions must not leak in.
+    expect(data.contextAnalysis!.compactionRate).toBe(0);
+    expect(data.contextAnalysis!.compactionEvents.length).toBe(0);
+  });
+
   it("computes cache efficiency by conversation length", () => {
     // Short session (3 prompts)
     store.upsertSession(makeSession({
@@ -814,5 +1055,66 @@ describe("buildDashboard — context analysis", () => {
     const shortBucket = data.contextAnalysis!.cacheByLength.find(b => b.bucket === "1-5 prompts");
     expect(shortBucket).toBeDefined();
     expect(shortBucket!.cacheEfficiency).toBeGreaterThan(0);
+  });
+});
+
+describe("buildDashboard — per-account subscriptions", () => {
+  let store: Store;
+  let dbPath: string;
+  const ACCT_A = "11111111-aaaa-bbbb-cccc-000000000001";
+  const ACCT_B = "22222222-aaaa-bbbb-cccc-000000000002";
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+  });
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  it("sums two different per-account fees into the headline plan fee", () => {
+    store.upsertSession(makeSession({ sessionId: "a1", accountUuid: ACCT_A }));
+    store.upsertSession(makeSession({ sessionId: "b1", accountUuid: ACCT_B }));
+
+    const data = buildDashboard(store, {
+      timezone: "UTC",
+      accountFees: {
+        [ACCT_A]: { type: "max_20x", monthlyFee: 200 },
+        [ACCT_B]: { type: "team_premium", monthlyFee: 125 },
+      },
+    });
+    // Personal Max 20x ($200) + work Team Premium ($125) = $325, not one shared plan.
+    expect(data.summary.planFee).toBe(325);
+  });
+
+  it("derives each account's fee from its plan type alone (no explicit amount)", () => {
+    store.upsertSession(makeSession({ sessionId: "a1", accountUuid: ACCT_A }));
+    store.upsertSession(makeSession({ sessionId: "b1", accountUuid: ACCT_B }));
+
+    const data = buildDashboard(store, {
+      timezone: "UTC",
+      accountFees: {
+        [ACCT_A]: { type: "max_20x" } as never, // validateAccountFees fills the fee upstream
+        [ACCT_B]: { type: "team_standard" } as never,
+      },
+    });
+    expect(data.summary.planFee).toBe(225); // 200 + 25
+  });
+
+  it("falls back to telemetry subscription type per account when unconfigured", () => {
+    store.upsertSession(makeSession({ sessionId: "a1", accountUuid: ACCT_A, subscriptionType: "max_20x" }));
+    store.upsertSession(makeSession({ sessionId: "b1", accountUuid: ACCT_B, subscriptionType: "team_premium" }));
+
+    const data = buildDashboard(store, { timezone: "UTC" });
+    expect(data.summary.planFee).toBe(325);
+  });
+
+  it("an explicit --plan-fee still overrides the per-account sum", () => {
+    store.upsertSession(makeSession({ sessionId: "a1", accountUuid: ACCT_A, subscriptionType: "max_20x" }));
+    store.upsertSession(makeSession({ sessionId: "b1", accountUuid: ACCT_B, subscriptionType: "team_premium" }));
+
+    const data = buildDashboard(store, { timezone: "UTC", planFee: 150 });
+    expect(data.summary.planFee).toBe(150);
   });
 });
