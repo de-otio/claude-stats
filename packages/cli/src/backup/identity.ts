@@ -11,15 +11,13 @@
  * {@link IDENTITY_KEYSTORE_KEY}. Losing this store means the device must be
  * re-enrolled (a fresh identity — the old one can be revoked from a survivor).
  *
- * SCOPE NOTE: this covers first-enrollment (this device MINTS the DEK) and
- * caching this device's OWN identity. It does NOT solve cross-device
- * "recovery-key-only" enrollment onto an EXISTING bundle — that requires the
- * KDF salt/params/passphrase-wrapped-DEK to be reachable before the manifest
- * body can be decrypted, and today those live only inside the DEK-encrypted
- * body (see `core/bundle/manifest.ts`'s bootstrap note). Resolving that is a
- * Phase B/C wire-format question, out of scope for the UX layer; the
- * second-device state machine in `ux/onboarding.ts` is deliberately agnostic
- * of the mechanism so it isn't blocked on that fix.
+ * SCOPE: this covers first-enrollment (this device MINTS the DEK, caching its
+ * OWN identity) AND — via {@link recoverBackupCrypto} — recovery-key-only
+ * bootstrap onto an EXISTING bundle. The latter is possible because the KDF
+ * salt/params + passphrase-wrapped DEK now live in the manifest's PLAINTEXT key
+ * envelope (`core/bundle/manifest.ts`, format v2), so a fresh device holding
+ * only the recovery key can derive the DEK before opening the sealed body
+ * (review B3). The second-device state machine in `ux/onboarding.ts` drives this.
  */
 
 import { randomUUID } from "node:crypto";
@@ -31,11 +29,12 @@ import {
   generateDek,
   generateSignKeyPair,
   generateWrapKeyPair,
+  unwrapDek,
   wrapDek,
 } from "@claude-stats/core/crypto/keys";
 import { generateKdfSalt } from "@claude-stats/core/crypto/random";
 import { serializeJson, deserializeJson, toBase64, fromBase64 } from "@claude-stats/core/bundle";
-import { assertDeviceId, type DeviceId } from "@claude-stats/core/types/shard";
+import { assertDeviceId, type DeviceId, type Manifest } from "@claude-stats/core/types/shard";
 
 import type { BackupCrypto, DeviceIdentity } from "./backup.js";
 
@@ -139,4 +138,23 @@ export function bootstrapBackupCrypto(
   const master = deriveMaster(recoverySecret, kdfSalt, argon2Params);
   const passphraseWrappedDek = wrapDek(dek, [{ kind: "passphrase", masterKey: master }]);
   return { dek, passphraseWrappedDek, kdfSalt, kdfParams: argon2Params };
+}
+
+/**
+ * Recover the bundle's {@link BackupCrypto} from an EXISTING manifest using only
+ * the recovery key (review B3). This is the second-device / disaster-recovery
+ * bootstrap: it reads the KDF salt/params + passphrase-wrapped DEK from the
+ * manifest's PLAINTEXT key envelope, derives the master key, and unwraps the
+ * DEK — no prior device access required. The returned envelope is the bundle's
+ * CANONICAL one (read straight from the manifest), preserving the invariant on
+ * {@link BackupCrypto}. Throws cleanly (no key material) on a wrong recovery key.
+ *
+ * After this returns, the caller opens the sealed body with the recovered DEK
+ * (`openManifest`) and enrolls THIS device (`ensureDevice` + `writeManifest`).
+ */
+export function recoverBackupCrypto(manifest: Manifest, recoverySecret: Uint8Array): BackupCrypto {
+  const { passphraseWrappedDek, kdfSalt, kdfParams } = manifest.keyEnvelope;
+  const master = deriveMaster(recoverySecret, kdfSalt, kdfParams);
+  const dek = unwrapDek(passphraseWrappedDek, { kind: "passphrase", masterKey: master });
+  return { dek, passphraseWrappedDek, kdfSalt, kdfParams };
 }
