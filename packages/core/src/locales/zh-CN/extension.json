@@ -497,5 +497,41 @@
       "noBackendUrl": "Claude Stats: No backend URL configured. Connect first to use the team dashboard.",
       "backendError": "Backend returned {{status}}. Check the URL and try again."
     }
+  },
+  "onboarding": {
+    "nudgeMessage": "备份您的 Claude Stats，这样就不会丢失？",
+    "nudgeAction": "设置备份",
+    "nudgeDismiss": "稍后",
+    "detectingProgress": "正在查找您已经使用的云文件夹（Dropbox、iCloud、Google Drive、OneDrive）...",
+    "detectedPrompt": "备份到您的 {{provider}}？",
+    "detectedYes": "是的",
+    "chooseLocation": "选择一个文件夹…",
+    "chooseLocationTitle": "选择存储加密备份的位置",
+    "noneDetected": "我们没有找到您已经使用的云文件夹。选择一个，或选择任何文件夹 — 网络驱动器或挂载的远程存储也可以。",
+    "encryptionForkPrompt": "对其进行加密，使只有您的设备可以读取？",
+    "encryptChoiceEncrypted": "加密 — 推荐",
+    "encryptChoiceEncryptedDetail": "只有您的设备可以读取它。您将保存一个恢复密钥。",
+    "encryptChoicePlaintext": "纯文本 — 最简单",
+    "encryptChoicePlaintextDetail": "没有密钥要管理。您的云提供商可以读取您的统计数据。",
+    "recoveryKeyIntro": "此密钥是恢复加密备份的唯一方式。如果您丢失它和所有设备，备份就会消失 — 我们无法恢复它。",
+    "recoveryKeySavedButton": "我已保存它 → 继续",
+    "setupComplete": "完成。备份和同步现在是无感的 — 您以后不需要再想这件事。",
+    "trustNote": "这是您的个人备份 — 只有您的设备可以读取它。它与任何团队/组织仪表板分开，该仪表板只能看到汇总统计数据，永远看不到您的提示或成绩单。",
+    "secondDeviceFoundMessage": "找到备份 — 输入您的恢复密钥以同步此设备。",
+    "secondDeviceEnterKeyAction": "输入恢复密钥",
+    "secondDeviceKeyPrompt": "粘贴您的恢复密钥",
+    "secondDeviceKeyPlaceholder": "ABCD-EFGH-IJKL-MNOP-…",
+    "secondDeviceWrongKey": "输入您的恢复密钥来解锁此备份。",
+    "secondDeviceEnrolled": "此设备现已注册。备份和同步是无感的 — 无需进一步操作。"
+  },
+  "dataRemoval": {
+    "scopeTitle": "选择要删除的内容",
+    "scopeThisMachine": "仅此机器",
+    "scopeThisMachineDetail": "删除此设备上的本地成绩单存档和导出包缓存。",
+    "scopeAlsoCloud": "也删除云副本",
+    "scopeAlsoCloudDetail": "也删除此设备的分片内容，来自您配置的备份位置。",
+    "otherDevicesNote": "您注册的其他设备仍保有其自身的副本，直到它们也执行「删除所有存储的数据」且范围为云。这就是分布式备份的工作原理 — 没有单个设备可以删除另一个设备独立写入的内容。",
+    "confirmTitle": "永久删除所有存储的数据？",
+    "orgPlaneNote": "您团队的汇总统计数据由您的组织拥有，无法从此处删除 — 请联系您的团队管理员。"
   }
 }

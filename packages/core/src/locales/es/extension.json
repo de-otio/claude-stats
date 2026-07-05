@@ -497,5 +497,41 @@
       "noBackendUrl": "Claude Stats: No backend URL configured. Connect first to use the team dashboard.",
       "backendError": "Backend returned {{status}}. Check the URL and try again."
     }
+  },
+  "onboarding": {
+    "nudgeMessage": "¿Hacer una copia de seguridad de tus estadísticas de Claude para que nunca se pierdan?",
+    "nudgeAction": "Configurar copia de seguridad",
+    "nudgeDismiss": "Más tarde",
+    "detectingProgress": "Buscando una carpeta en la nube que ya uses (Dropbox, iCloud, Google Drive, OneDrive)...",
+    "detectedPrompt": "¿Hacer una copia de seguridad en tu {{provider}}?",
+    "detectedYes": "Sí",
+    "chooseLocation": "Elige una carpeta…",
+    "chooseLocationTitle": "Elige dónde guardar tu copia de seguridad cifrada",
+    "noneDetected": "No encontramos una carpeta en la nube que ya usaras. Elige una, o selecciona cualquier carpeta — una unidad de red o un almacenamiento remoto montado también funcionan.",
+    "encryptionForkPrompt": "¿Cifrarlo para que solo tus dispositivos puedan leerlo?",
+    "encryptChoiceEncrypted": "Cifrar — recomendado",
+    "encryptChoiceEncryptedDetail": "Solo tus dispositivos pueden leerlo. Guardarás una clave de recuperación.",
+    "encryptChoicePlaintext": "Texto plano — más simple",
+    "encryptChoicePlaintextDetail": "Sin clave para gestionar. Tu proveedor de nube puede leer tus estadísticas.",
+    "recoveryKeyIntro": "Esta clave es la única forma de recuperar tu copia de seguridad cifrada. Si la pierdes y todos tus dispositivos, la copia de seguridad se ha ido — no podemos recuperarla.",
+    "recoveryKeySavedButton": "La he guardado → Continuar",
+    "setupComplete": "Listo. La copia de seguridad y sincronización son ahora ambientales — no tendrás que volver a pensar en esto.",
+    "trustNote": "Esta es tu copia de seguridad personal — solo tus dispositivos pueden leerla. Está separada de cualquier panel de equipo/organización, que solo ve estadísticas agregadas, nunca tus prompts o transcripciones.",
+    "secondDeviceFoundMessage": "Copia de seguridad encontrada — ingresa tu clave de recuperación para sincronizar este dispositivo.",
+    "secondDeviceEnterKeyAction": "Ingresa la clave de recuperación",
+    "secondDeviceKeyPrompt": "Pega tu clave de recuperación",
+    "secondDeviceKeyPlaceholder": "ABCD-EFGH-IJKL-MNOP-…",
+    "secondDeviceWrongKey": "Ingresa tu clave de recuperación para desbloquear esta copia de seguridad.",
+    "secondDeviceEnrolled": "Este dispositivo está ahora inscrito. La copia de seguridad y sincronización son ambientales — sin más acciones requeridas."
+  },
+  "dataRemoval": {
+    "scopeTitle": "Elige qué eliminar",
+    "scopeThisMachine": "Solo esta máquina",
+    "scopeThisMachineDetail": "Elimina el archivo de transcripción local y el caché de paquetes de exportación en este dispositivo.",
+    "scopeAlsoCloud": "También elimina la copia en la nube",
+    "scopeAlsoCloudDetail": "También elimina los fragmentos de este dispositivo de tu ubicación de copia de seguridad configurada.",
+    "otherDevicesNote": "Los otros dispositivos que has inscrito aún tienen sus propias copias hasta que también ejecuten «Eliminar todos los datos almacenados» con el alcance de nube. Así es como funciona una copia de seguridad distribuida — ningún dispositivo puede borrar lo que otro escribió independientemente.",
+    "confirmTitle": "¿Eliminar permanentemente todos los datos almacenados?",
+    "orgPlaneNote": "Las estadísticas agregadas de tu equipo pertenecen a tu organización y no pueden eliminarse desde aquí — comunícate con tu administrador de equipo."
   }
 }

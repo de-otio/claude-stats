@@ -497,5 +497,41 @@
       "noBackendUrl": "Claude Stats: No backend URL configured. Connect first to use the team dashboard.",
       "backendError": "Backend returned {{status}}. Check the URL and try again."
     }
+  },
+  "onboarding": {
+    "nudgeMessage": "Sauvegarder vos statistiques Claude afin qu'elles ne soient jamais perdues ?",
+    "nudgeAction": "Configurer la sauvegarde",
+    "nudgeDismiss": "Plus tard",
+    "detectingProgress": "Recherche d'un dossier cloud que vous utilisez déjà (Dropbox, iCloud, Google Drive, OneDrive)...",
+    "detectedPrompt": "Sauvegarder sur votre {{provider}} ?",
+    "detectedYes": "Oui",
+    "chooseLocation": "Choisir un dossier…",
+    "chooseLocationTitle": "Choisissez où stocker votre sauvegarde chiffrée",
+    "noneDetected": "Nous n'avons pas trouvé de dossier cloud que vous utilisiez déjà. Choisissez-en un, ou sélectionnez n'importe quel dossier — un lecteur réseau ou un stockage distant monté fonctionne aussi.",
+    "encryptionForkPrompt": "Le chiffrer afin que seuls vos appareils puissent le lire ?",
+    "encryptChoiceEncrypted": "Chiffrer — recommandé",
+    "encryptChoiceEncryptedDetail": "Seuls vos appareils peuvent le lire. Vous sauvegarderez une clé de récupération.",
+    "encryptChoicePlaintext": "Texte brut — plus simple",
+    "encryptChoicePlaintextDetail": "Aucune clé à gérer. Votre fournisseur cloud peut lire vos statistiques.",
+    "recoveryKeyIntro": "Cette clé est le seul moyen de récupérer votre sauvegarde chiffrée. Si vous la perdez ainsi que tous vos appareils, la sauvegarde disparaît — nous ne pouvons pas la récupérer.",
+    "recoveryKeySavedButton": "Je l'ai sauvegardée → Continuer",
+    "setupComplete": "Terminé. La sauvegarde et la synchronisation fonctionnent maintenant de manière passive — vous n'aurez plus à y penser.",
+    "trustNote": "C'est votre sauvegarde personnelle — seuls vos appareils peuvent la lire. Elle est séparée de tout tableau de bord d'équipe/organisation, qui ne voit jamais que les statistiques agrégées, jamais vos invites ou transcriptions.",
+    "secondDeviceFoundMessage": "Sauvegarde trouvée — entrez votre clé de récupération pour synchroniser cet appareil.",
+    "secondDeviceEnterKeyAction": "Entrer la clé de récupération",
+    "secondDeviceKeyPrompt": "Collez votre clé de récupération",
+    "secondDeviceKeyPlaceholder": "ABCD-EFGH-IJKL-MNOP-…",
+    "secondDeviceWrongKey": "Entrez votre clé de récupération pour déverrouiller cette sauvegarde.",
+    "secondDeviceEnrolled": "Cet appareil est maintenant inscrit. La sauvegarde et la synchronisation sont passives — aucune autre action requise."
+  },
+  "dataRemoval": {
+    "scopeTitle": "Choisissez ce qu'il faut supprimer",
+    "scopeThisMachine": "Cet ordinateur seulement",
+    "scopeThisMachineDetail": "Supprime l'archive de transcriptions locale et le cache du bundle d'export sur cet appareil.",
+    "scopeAlsoCloud": "Supprimer aussi la copie cloud",
+    "scopeAlsoCloudDetail": "Supprime également les fragments de cet appareil de votre emplacement de sauvegarde configuré.",
+    "otherDevicesNote": "Les autres appareils que vous avez inscrits conservent leurs propres copies jusqu'à ce qu'ils exécutent également « Supprimer toutes les données stockées » avec la portée cloud. C'est ainsi qu'une sauvegarde distribuée fonctionne — aucun appareil ne peut effacer ce qu'un autre a écrit indépendamment.",
+    "confirmTitle": "Supprimer définitivement toutes les données stockées ?",
+    "orgPlaneNote": "Les statistiques agrégées de votre équipe appartiennent à votre organisation et ne peuvent pas être supprimées à partir d'ici — contactez votre administrateur d'équipe."
   }
 }

@@ -497,5 +497,41 @@
       "noBackendUrl": "Claude Stats: No backend URL configured. Connect first to use the team dashboard.",
       "backendError": "Backend returned {{status}}. Check the URL and try again."
     }
+  },
+  "onboarding": {
+    "nudgeMessage": "Fazer backup dos seus Claude Stats para que nunca se perca?",
+    "nudgeAction": "Configurar backup",
+    "nudgeDismiss": "Mais tarde",
+    "detectingProgress": "Procurando uma pasta em nuvem que você já usa (Dropbox, iCloud, Google Drive, OneDrive)...",
+    "detectedPrompt": "Fazer backup no seu {{provider}}?",
+    "detectedYes": "Sim",
+    "chooseLocation": "Escolha uma pasta…",
+    "chooseLocationTitle": "Escolha onde armazenar seu backup criptografado",
+    "noneDetected": "Não encontramos uma pasta em nuvem que você já usasse. Escolha uma, ou selecione qualquer pasta — uma unidade de rede ou armazenamento remoto montado também funciona.",
+    "encryptionForkPrompt": "Criptografar para que apenas seus dispositivos possam lê-lo?",
+    "encryptChoiceEncrypted": "Criptografar — recomendado",
+    "encryptChoiceEncryptedDetail": "Apenas seus dispositivos podem lê-lo. Você salvará uma chave de recuperação.",
+    "encryptChoicePlaintext": "Texto simples — mais simples",
+    "encryptChoicePlaintextDetail": "Nenhuma chave para gerenciar. Seu provedor de nuvem pode ler seus stats.",
+    "recoveryKeyIntro": "Esta chave é a única forma de recuperar seu backup criptografado. Se você perdê-la e todos os seus dispositivos, o backup desaparecerá — não podemos recuperá-lo.",
+    "recoveryKeySavedButton": "Salvei → Continuar",
+    "setupComplete": "Pronto. Backup e sincronização são agora automáticos — você não precisará pensar sobre isso novamente.",
+    "trustNote": "Este é seu backup pessoal — apenas seus dispositivos podem lê-lo. É separado de qualquer dashboard de equipe/organização, que só vê stats agregados, nunca seus prompts ou transcrições.",
+    "secondDeviceFoundMessage": "Backup encontrado — insira sua chave de recuperação para sincronizar este dispositivo.",
+    "secondDeviceEnterKeyAction": "Inserir chave de recuperação",
+    "secondDeviceKeyPrompt": "Cole sua chave de recuperação",
+    "secondDeviceKeyPlaceholder": "ABCD-EFGH-IJKL-MNOP-…",
+    "secondDeviceWrongKey": "Insira sua chave de recuperação para desbloquear este backup.",
+    "secondDeviceEnrolled": "Este dispositivo está agora registrado. Backup e sincronização são automáticos — nenhuma ação adicional necessária."
+  },
+  "dataRemoval": {
+    "scopeTitle": "Escolha o que deletar",
+    "scopeThisMachine": "Apenas esta máquina",
+    "scopeThisMachineDetail": "Deleta o arquivo de transcrição local e o cache do pacote de exportação neste dispositivo.",
+    "scopeAlsoCloud": "Também deletar a cópia em nuvem",
+    "scopeAlsoCloudDetail": "Também deleta os shards deste dispositivo do seu local de backup configurado.",
+    "otherDevicesNote": "Outros dispositivos que você registrou ainda mantêm suas próprias cópias até que também executem «Deletar todos os dados armazenados» com escopo de nuvem. É assim que funciona um backup distribuído — nenhum dispositivo pode apagar o que outro escreveu independentemente.",
+    "confirmTitle": "Deletar permanentemente todos os dados armazenados?",
+    "orgPlaneNote": "Os stats agregados da sua equipe pertencem à sua organização e não podem ser deletados daqui — contate seu administrador de equipe."
   }
 }
