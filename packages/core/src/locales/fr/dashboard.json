@@ -312,7 +312,10 @@
     "currencyHeader": "{{period}} cette période · {{monthly}}/mois",
     "idle": "{{label}} — pas d'utilisation cette période",
     "idleSliceLabel": "Inutilisé (aucune utilisation)",
-    "reconcile": "Attribué {{attributed}}"
+    "reconcile": "Attribué {{attributed}}",
+    "bySubscriptionTitle": "Répartition des frais par abonnement",
+    "bySubscriptionDesc": "Les frais mensuels de chaque abonnement, répartis entre les projets sur lesquels il a été utilisé pendant la période.",
+    "subscriptionHeader": "{{label}} — {{pool}}"
   },
   "pricing": {
     "title": "Tarification des tokens (par 1M de tokens)",
