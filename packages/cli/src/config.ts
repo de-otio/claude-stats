@@ -79,6 +79,19 @@ export interface Config {
       /** Encrypt the raw transcript archive class. */
       archive: boolean;
     };
+    /**
+     * True once the user clicked "I've saved my recovery key" during the
+     * onboarding fork (doc 02 §3). Never set automatically — drives whether
+     * the standing, dismissible reminder (doc 02 §8) is shown.
+     */
+    recoveryKeyConfirmed?: boolean;
+    /**
+     * Epoch ms the user dismissed the one-time "Back up your Claude stats?"
+     * nudge (doc 02 §9 step 2), or completed onboarding. Presence alone
+     * suppresses the nudge on future activations — it must never re-prompt
+     * aggressively once the user has made a choice either way.
+     */
+    onboardingDismissedAt?: number;
   };
 }
 
@@ -133,6 +146,8 @@ const MAX_BACKUP_TARGET_LEN = 4096;
 interface BackupConfigPatch {
   target?: string;
   encryption?: { syncData?: boolean; archive?: boolean };
+  recoveryKeyConfirmed?: boolean;
+  onboardingDismissedAt?: number;
 }
 
 /**
@@ -189,6 +204,12 @@ export function validateBackupConfig(input: unknown): BackupConfigPatch {
     if (typeof e.syncData === "boolean") enc.syncData = e.syncData;
     if (typeof e.archive === "boolean") enc.archive = e.archive;
     out.encryption = enc;
+  }
+  if (typeof r.recoveryKeyConfirmed === "boolean") {
+    out.recoveryKeyConfirmed = r.recoveryKeyConfirmed;
+  }
+  if (typeof r.onboardingDismissedAt === "number" && Number.isFinite(r.onboardingDismissedAt)) {
+    out.onboardingDismissedAt = r.onboardingDismissedAt;
   }
   return out;
 }
@@ -279,6 +300,8 @@ export function mergeConfig(current: Config, incoming: unknown): Config {
           ...patch.encryption,
         } as { syncData: boolean; archive: boolean };
       }
+      if (patch.recoveryKeyConfirmed !== undefined) next.recoveryKeyConfirmed = patch.recoveryKeyConfirmed;
+      if (patch.onboardingDismissedAt !== undefined) next.onboardingDismissedAt = patch.onboardingDismissedAt;
       merged.backup = next;
     }
   }
