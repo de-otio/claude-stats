@@ -11,22 +11,21 @@
  * (`ux/onboarding.ts`, `ux/cloud-detect.ts`, `ux/purge-scope.ts`,
  * `backup/identity.ts`).
  *
- * KNOWN LIMITATION (documented, not hidden): "second device = one paste" onto
- * an EXISTING backup requires unwrapping the DEK from the recovery key before
- * the manifest body can be decrypted — but today the KDF salt/params and the
- * passphrase-wrapped DEK live only INSIDE that DEK-encrypted body (see the
- * bootstrap note in `core/bundle/manifest.ts`). That's a Phase B/C wire-format
- * gap, out of scope for this UX layer to fix. This module still detects an
- * existing bundle and surfaces the "found your backup" notification (real,
- * useful signal), but the recovery-key entry step honestly reports the
- * limitation instead of pretending to enroll.
+ * SECOND DEVICE = ONE PASTE: enrolling onto an EXISTING backup works. The
+ * manifest's PLAINTEXT key envelope (format v2) carries the KDF salt/params +
+ * passphrase-wrapped DEK, so `recoverBackupCrypto` derives the DEK from the
+ * pasted recovery key alone (review B3); this module then opens the sealed body,
+ * enrolls THIS device, and writes the manifest. A wrong key fails cleanly with
+ * the "that key didn't work" message — no fake success.
  */
 import * as vscode from "vscode";
 
 import { paths } from "@claude-stats/core/paths";
 import { generateRecoveryKey, normalizeRecoverySecret } from "@claude-stats/core/crypto/keys";
+import { decodeManifest } from "@claude-stats/core/bundle";
 import {
   bootstrapBackupCrypto,
+  recoverBackupCrypto,
   DirectoryStorageTransport,
   generateDeviceId,
   loadOrCreateDeviceIdentity,
@@ -37,13 +36,17 @@ import {
 } from "../backup/index.js";
 import { detectCloudRoots, providerLabelKey, type CloudRootCandidate } from "../ux/cloud-detect.js";
 import {
+  beginRecoveryKeyEntry,
   declineOnboarding,
+  enrollmentFailed,
+  enrollmentSucceeded,
   INITIAL_ONBOARDING_STATE,
   onBackupFound,
   onDetected,
   onEncryptionChosen,
   onTargetChosen,
   startOnboarding,
+  submitRecoveryKey,
   type EncryptionChoice,
 } from "../ux/onboarding.js";
 import { describePurgeScope, type PurgeScope } from "../ux/purge-scope.js";
@@ -197,11 +200,11 @@ function persistBackupConfig(target: string, encryption: { syncData: boolean; ar
 /**
  * On activation, glance at the configured (or a detected) cloud root for an
  * existing `manifest.json` this device hasn't set up yet — the "second
- * device" moment (doc 02 §2/§9 step 7). Fires at most the informational
- * notification; does NOT attempt to enroll (see the module doc's known
- * limitation).
+ * device" moment (doc 02 §2/§9 step 7). On finding one it offers a one-paste
+ * enrollment: recover the DEK from the pasted recovery key (B3), enroll THIS
+ * device into the manifest, and persist the local backup config.
  */
-export async function checkForExistingBackup(): Promise<void> {
+export async function checkForExistingBackup(context: vscode.ExtensionContext): Promise<void> {
   const config = loadConfig();
   if (config.backup?.target) return; // already set up on this device
 
@@ -211,13 +214,14 @@ export async function checkForExistingBackup(): Promise<void> {
     const raw = await transport.get(MANIFEST_KEY).catch(() => null);
     if (!raw) continue;
 
-    const state = onBackupFound({ step: "idle", manifestTarget: null, error: null }, candidate.path);
+    let state = onBackupFound({ step: "idle", manifestTarget: null, error: null }, candidate.path);
     const action = t("extension:onboarding.secondDeviceEnterKeyAction");
     const choice = await vscode.window.showInformationMessage(
       t("extension:onboarding.secondDeviceFoundMessage"),
       action,
     );
     if (choice !== action) return;
+    state = beginRecoveryKeyEntry(state);
 
     const pasted = await vscode.window.showInputBox({
       prompt: t("extension:onboarding.secondDeviceKeyPrompt"),
@@ -226,11 +230,31 @@ export async function checkForExistingBackup(): Promise<void> {
       ignoreFocusOut: true,
     });
     if (!pasted) return;
+    state = submitRecoveryKey(state);
 
-    // Known limitation (module doc): real DEK-unwrap-from-body enrollment onto
-    // an EXISTING bundle isn't wired yet. Report honestly rather than fake success.
-    void state; // recorded for future wiring; not yet actionable
-    void vscode.window.showWarningMessage(t("extension:onboarding.secondDeviceWrongKey"));
+    try {
+      // Recover the bundle DEK from the pasted recovery key alone (B3), then
+      // enroll THIS device into the manifest so its future pushes are trusted.
+      const manifest = decodeManifest(raw);
+      const crypto = recoverBackupCrypto(manifest, normalizeRecoverySecret(pasted));
+      const keystore = createSecretStorageKeyStore(context);
+      const identityMaterial = await loadOrCreateDeviceIdentity(keystore, generateDeviceId());
+      let body = await loadOrSeedBody(transport, crypto);
+      body = ensureDevice(body, identityMaterial.identity, crypto, Date.now());
+      await writeManifest(transport, body, identityMaterial.identity, crypto);
+
+      state = enrollmentSucceeded(state);
+      void state; // step machine advanced; config below is the durable record
+      persistBackupConfig(candidate.path, { syncData: true, archive: true });
+      saveConfig(mergeConfig(loadConfig(), { backup: { recoveryKeyConfirmed: true } }));
+      void vscode.window.showInformationMessage(t("extension:onboarding.secondDeviceEnrolled"));
+    } catch {
+      // Wrong/mistyped key (unwrap failed) or a malformed manifest — report
+      // honestly; never fake success, never surface key material in the error.
+      state = enrollmentFailed(state, "wrong-key");
+      void state;
+      void vscode.window.showWarningMessage(t("extension:onboarding.secondDeviceWrongKey"));
+    }
     return;
   }
 }

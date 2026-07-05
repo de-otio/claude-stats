@@ -13,6 +13,7 @@ export {
   loadOrSeedBody,
   ensureDevice,
   writeManifest,
+  keyEnvelopeOf,
   pushShard,
 } from "./backup.js";
 export type { DeviceIdentity, BackupCrypto, PushOptions, PushResult } from "./backup.js";
@@ -39,5 +40,6 @@ export {
   loadOrCreateDeviceIdentity,
   destroyDeviceIdentity,
   bootstrapBackupCrypto,
+  recoverBackupCrypto,
 } from "./identity.js";
 export type { DeviceIdentityMaterial } from "./identity.js";

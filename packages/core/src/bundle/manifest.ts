@@ -1,25 +1,37 @@
 /**
- * Manifest: a small PLAINTEXT header + an ENCRYPTED, SIGNED body (F1/F4).
+ * Manifest: a small PLAINTEXT header + a plaintext bootstrap KEY ENVELOPE + an
+ * ENCRYPTED, SIGNED body (F1/F4/B3).
  *
- * The header carries only what a reader needs to dispatch (format version + the
- * pinned AEAD label). Everything trust- or metadata-bearing — the device list
- * with public keys, the wrapped DEKs, the KDF salt/params, and the per-file
- * encryption-state index — lives in the body, which is:
- *   1. serialized canonically,
- *   2. SEALED with the DEK (so the device list and file paths never leak — F4),
- *   3. SIGNED (Ed25519) over the sealed bytes by the writing device (F1).
+ * Three sections:
+ *   1. HEADER — plaintext dispatch info (format version + pinned AEAD label).
+ *   2. KEY ENVELOPE — plaintext bootstrap material (KDF salt/params + the DEK
+ *      wrapped to the passphrase recipient). This MUST be plaintext: a device
+ *      holding only the recovery key needs it to derive the DEK, and a chicken-
+ *      and-egg loop results if it is sealed under that very DEK (review B3). It
+ *      is safe in the clear — the passphrase-wrapped DEK is an AEAD ciphertext
+ *      keyed by `Argon2id(recoverySecret, salt)`, self-protecting against an
+ *      attacker who lacks the recovery secret — and it is covered by the body
+ *      signature so it cannot be substituted.
+ *   3. BODY — the SENSITIVE metadata (device list with public keys + the per-file
+ *      encryption-state index). Serialized canonically, SEALED with the DEK (so
+ *      device/project/session names never leak — F4), and covered by the
+ *      signature (F1).
+ *
+ * The signature (Ed25519, by the writing device) is over the header + the key
+ * envelope + the sealed body TOGETHER, so tampering with ANY section is caught.
  * A reader verifies the signature and decrypts BEFORE trusting any field.
  *
  * Archive PATH COMPONENTS are encrypted too ({@link encryptPathComponents}) so a
  * project/session name never appears as a store key even in the file index.
  *
- * BOOTSTRAP NOTE (Phase C scope): possession of the DEK is the read
- * authorization. The common case reads the DEK from the OS keychain; recovery /
- * new-device enrollment (unwrapping a DEK from the body via the passphrase
- * recipient) is layered in Phase D, which supplies an EXTERNAL trusted-device
- * key set to {@link openManifest}. Here, when no external key is supplied, the
- * body self-authenticates against the signer's own embedded entry — an attacker
- * without the DEK cannot produce a body that both decrypts and verifies.
+ * BOOTSTRAP / TRUST: possession of the DEK is the read authorization. The common
+ * case reads the DEK from the OS keychain; recovery / new-device enrollment
+ * derives it from the plaintext key envelope via the recovery key
+ * (`recoverBackupCrypto` in the CLI backup layer), THEN opens the sealed body.
+ * {@link openManifest} accepts an OPTIONAL external trusted-device key; when
+ * omitted the body self-authenticates against the signer's own embedded entry —
+ * an attacker without the DEK cannot produce a body that both decrypts and
+ * verifies.
  */
 
 import type {
@@ -30,6 +42,7 @@ import type {
   Manifest,
   ManifestBody,
   ManifestHeader,
+  ManifestKeyEnvelope,
 } from "../types/shard.js";
 import type { Argon2idParams } from "../crypto/types.js";
 import { AEAD_ALGORITHM } from "../crypto/types.js";
@@ -46,12 +59,41 @@ import {
   utf8Encode,
 } from "./serialize.js";
 
-/** Manifest wire-format version (bump on a breaking layout change). */
-export const MANIFEST_FORMAT_VERSION = 1;
+/**
+ * Manifest wire-format version. Bumped 1→2 when the bootstrap material (KDF
+ * salt/params + passphrase-wrapped DEK) moved OUT of the DEK-sealed body into
+ * the plaintext {@link ManifestKeyEnvelope}, so a recovery-key-only device can
+ * bootstrap the DEK (review B3). v1 manifests are not forward-readable.
+ */
+export const MANIFEST_FORMAT_VERSION = 2;
 
 /** The default plaintext header (format version + pinned AEAD label). */
 export function manifestHeader(): ManifestHeader {
   return { formatVersion: MANIFEST_FORMAT_VERSION, aead: AEAD_ALGORITHM };
+}
+
+// ─── ManifestKeyEnvelope ⇄ canonical bytes (plaintext bootstrap material) ─────
+
+interface ManifestKeyEnvelopeWire {
+  readonly passphraseWrappedDek: string;
+  readonly kdfSalt: string;
+  readonly kdfParams: Argon2idParams;
+}
+
+function keyEnvelopeToWire(env: ManifestKeyEnvelope): ManifestKeyEnvelopeWire {
+  return {
+    passphraseWrappedDek: toBase64(env.passphraseWrappedDek),
+    kdfSalt: toBase64(env.kdfSalt),
+    kdfParams: env.kdfParams,
+  };
+}
+
+function keyEnvelopeFromWire(w: ManifestKeyEnvelopeWire): ManifestKeyEnvelope {
+  return {
+    passphraseWrappedDek: fromBase64(w.passphraseWrappedDek),
+    kdfSalt: fromBase64(w.kdfSalt),
+    kdfParams: w.kdfParams,
+  };
 }
 
 // ─── ManifestBody ⇄ canonical bytes (base64 for the Uint8Array fields) ────────
@@ -67,9 +109,6 @@ interface DeviceEntryWire {
 
 interface ManifestBodyWire {
   readonly devices: readonly DeviceEntryWire[];
-  readonly passphraseWrappedDek: string;
-  readonly kdfSalt: string;
-  readonly kdfParams: Argon2idParams;
   readonly files: readonly FileIndexEntry[];
 }
 
@@ -99,9 +138,6 @@ function deviceFromWire(w: DeviceEntryWire): DeviceEntry {
 export function serializeManifestBody(body: ManifestBody): Uint8Array {
   const wire: ManifestBodyWire = {
     devices: body.devices.map(deviceToWire),
-    passphraseWrappedDek: toBase64(body.passphraseWrappedDek),
-    kdfSalt: toBase64(body.kdfSalt),
-    kdfParams: body.kdfParams,
     files: body.files,
   };
   return serializeJson(wire);
@@ -112,17 +148,38 @@ export function deserializeManifestBody(bytes: Uint8Array): ManifestBody {
   const w = deserializeJson<ManifestBodyWire>(bytes);
   return {
     devices: w.devices.map(deviceFromWire),
-    passphraseWrappedDek: fromBase64(w.passphraseWrappedDek),
-    kdfSalt: fromBase64(w.kdfSalt),
-    kdfParams: w.kdfParams,
     files: w.files,
   };
+}
+
+// ─── the signed representation (header + key envelope + sealed body) ──────────
+
+/**
+ * The exact bytes the manifest signature is computed over: a canonical JSON of
+ * the header, the plaintext key envelope, and the base64 of the sealed body —
+ * so a tamper to ANY of the three sections (including a substituted plaintext
+ * key envelope) breaks the signature. Canonical JSON is unambiguous, so no
+ * separate length-prefixing is needed.
+ */
+function manifestSigningInput(
+  header: ManifestHeader,
+  keyEnvelope: ManifestKeyEnvelope,
+  sealedBody: Uint8Array,
+): Uint8Array {
+  return serializeJson({
+    header,
+    keyEnvelope: keyEnvelopeToWire(keyEnvelope),
+    sealedBody: toBase64(sealedBody),
+  });
 }
 
 // ─── seal + sign / verify + open ──────────────────────────────────────────────
 
 export interface SealManifestOptions {
   readonly dek: Uint8Array;
+  /** Plaintext bootstrap material carried in the clear so a keyless device can
+   *  derive the DEK before opening the body (review B3). */
+  readonly keyEnvelope: ManifestKeyEnvelope;
   /** Ed25519 signing secret key of `signedBy`. */
   readonly signingSecretKey: Uint8Array;
   /** The device signing the manifest body. MUST have an entry in `body.devices`. */
@@ -132,13 +189,19 @@ export interface SealManifestOptions {
 
 /**
  * Seal + sign a {@link ManifestBody} into the on-store {@link Manifest}. The body
- * is sealed with the DEK, then the SEALED bytes are Ed25519-signed by `signedBy`.
+ * is sealed with the DEK; the signature covers the header + the plaintext key
+ * envelope + the sealed body together, so the envelope can't be substituted.
  */
 export function sealManifest(body: ManifestBody, options: SealManifestOptions): Manifest {
+  const header = options.header ?? manifestHeader();
   const sealedBody = seal(serializeManifestBody(body), options.dek);
-  const bodySignature = sign(sealedBody, options.signingSecretKey);
+  const bodySignature = sign(
+    manifestSigningInput(header, options.keyEnvelope, sealedBody),
+    options.signingSecretKey,
+  );
   return {
-    header: options.header ?? manifestHeader(),
+    header,
+    keyEnvelope: options.keyEnvelope,
     sealedBody,
     bodySignature,
     signedBy: options.signedBy,
@@ -157,24 +220,27 @@ export interface OpenManifestOptions {
 }
 
 /**
- * Verify a {@link Manifest}'s body signature and decrypt the body. Throws on a
- * signature or decrypt failure — never returns an untrusted body.
+ * Verify a {@link Manifest}'s signature and decrypt the body. Throws on a
+ * signature or decrypt failure — never returns an untrusted body. The signature
+ * is verified over the header + key envelope + sealed body, so a tampered
+ * plaintext key envelope is rejected too.
  */
 export function openManifest(manifest: Manifest, options: OpenManifestOptions): ManifestBody {
+  const signingInput = manifestSigningInput(manifest.header, manifest.keyEnvelope, manifest.sealedBody);
   if (options.signPublicKey) {
-    if (!verify(manifest.sealedBody, manifest.bodySignature, options.signPublicKey)) {
+    if (!verify(signingInput, manifest.bodySignature, options.signPublicKey)) {
       throw new Error("openManifest: manifest signature did not verify against the trusted key");
     }
   }
-  // Decrypt first (possession of the DEK authorizes the read); throws cleanly on
-  // a wrong DEK or a tampered body.
+  // Decrypt (possession of the DEK authorizes the read); throws cleanly on a
+  // wrong DEK or a tampered body.
   const body = deserializeManifestBody(open(manifest.sealedBody, options.dek));
   if (!options.signPublicKey) {
     const signer = body.devices.find((d) => d.deviceId === manifest.signedBy);
     if (!signer) {
       throw new Error("openManifest: signing device is not present in the manifest device list");
     }
-    if (!verify(manifest.sealedBody, manifest.bodySignature, signer.signPublicKey)) {
+    if (!verify(signingInput, manifest.bodySignature, signer.signPublicKey)) {
       throw new Error("openManifest: manifest signature did not verify against the embedded key");
     }
   }
@@ -185,6 +251,7 @@ export function openManifest(manifest: Manifest, options: OpenManifestOptions): 
 
 interface ManifestWire {
   readonly header: ManifestHeader;
+  readonly keyEnvelope: ManifestKeyEnvelopeWire;
   readonly sealedBody: string;
   readonly bodySignature: string;
   readonly signedBy: string;
@@ -194,6 +261,7 @@ interface ManifestWire {
 export function encodeManifest(manifest: Manifest): Uint8Array {
   const wire: ManifestWire = {
     header: manifest.header,
+    keyEnvelope: keyEnvelopeToWire(manifest.keyEnvelope),
     sealedBody: toBase64(manifest.sealedBody),
     bodySignature: toBase64(manifest.bodySignature),
     signedBy: manifest.signedBy,
@@ -206,6 +274,7 @@ export function decodeManifest(bytes: Uint8Array): Manifest {
   const w = deserializeJson<ManifestWire>(bytes);
   return {
     header: w.header,
+    keyEnvelope: keyEnvelopeFromWire(w.keyEnvelope),
     sealedBody: fromBase64(w.sealedBody),
     bodySignature: fromBase64(w.bodySignature),
     signedBy: w.signedBy as DeviceId,
@@ -243,19 +312,13 @@ export function decryptPathComponents(storedPath: string, dek: Uint8Array): stri
 
 // ─── Body mutation helpers (immutable — return a new body) ────────────────────
 
-/** An empty manifest body seeded with the passphrase-wrapped DEK + KDF params. */
-export function emptyManifestBody(seed: {
-  readonly passphraseWrappedDek: Uint8Array;
-  readonly kdfSalt: Uint8Array;
-  readonly kdfParams: Argon2idParams;
-}): ManifestBody {
-  return {
-    devices: [],
-    passphraseWrappedDek: seed.passphraseWrappedDek,
-    kdfSalt: seed.kdfSalt,
-    kdfParams: seed.kdfParams,
-    files: [],
-  };
+/**
+ * An empty manifest body (no devices, no files). Bootstrap material (salt /
+ * params / passphrase-wrapped DEK) is NOT part of the body any more — it travels
+ * in the plaintext {@link ManifestKeyEnvelope} passed to {@link sealManifest}.
+ */
+export function emptyManifestBody(): ManifestBody {
+  return { devices: [], files: [] };
 }
 
 /** Insert or replace a device entry (matched by `deviceId`). Returns a new body. */

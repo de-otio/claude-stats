@@ -90,7 +90,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // "second device" moment. Both are best-effort and must never break
     // activation.
     void maybeShowOnboardingNudge(context).catch(() => {});
-    void checkForExistingBackup().catch(() => {});
+    void checkForExistingBackup(context).catch(() => {});
   });
 
   // Load cached pricing (sync) and refresh in background if stale

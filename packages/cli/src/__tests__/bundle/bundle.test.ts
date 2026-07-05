@@ -54,6 +54,7 @@ import {
   switchMode,
   compact,
   loadOrSeedBody,
+  keyEnvelopeOf,
   type BackupCrypto,
   type DeviceIdentity,
   type SessionExportPayload,
@@ -206,10 +207,10 @@ describe("shard sign + verify round-trip (F1)", () => {
   it("signs + verifies the manifest body and rejects tampering", () => {
     const id = makeIdentity(DEVICE_ID);
     const crypto = makeCrypto();
-    let body = emptyManifestBody(crypto);
+    let body = emptyManifestBody();
     body = upsertFileIndex(body, { path: `${id.deviceId}/sessions-0.json`, state: "plaintext", originDevice: id.deviceId, seq: 0 });
     body = { ...body, devices: [{ deviceId: id.deviceId, wrapPublicKey: id.wrapPublicKey, signPublicKey: id.signPublicKey, wrappedDek: crypto.passphraseWrappedDek, enrolledAt: 1 }] };
-    const manifest = sealManifest(body, { dek: crypto.dek, signingSecretKey: id.signingSecretKey, signedBy: id.deviceId });
+    const manifest = sealManifest(body, { dek: crypto.dek, keyEnvelope: keyEnvelopeOf(crypto), signingSecretKey: id.signingSecretKey, signedBy: id.deviceId });
     // Round-trips through the store wire form (encode → decode → verify+open).
     const reopened = openManifest(decodeManifest(encodeManifest(manifest)), { dek: crypto.dek, signPublicKey: id.signPublicKey });
     expect(reopened.files[0]!.path).toBe(`${id.deviceId}/sessions-0.json`);
@@ -252,12 +253,12 @@ describe("manifest index is encrypted at rest (F4)", () => {
     const id = makeIdentity(DEVICE_ID);
     const crypto = makeCrypto();
     const SECRET = "top-secret-project-name";
-    let body = emptyManifestBody(crypto);
+    let body = emptyManifestBody();
     // An archive file whose sensitive components are encrypted for the store key.
     const encryptedPath = `${id.deviceId}/archive/${encryptPathComponents(`${SECRET}/session-xyz.jsonl`, crypto.dek)}`;
     body = upsertFileIndex(body, { path: encryptedPath, state: "encrypted", originDevice: id.deviceId, seq: 0 });
     body = { ...body, devices: [{ deviceId: id.deviceId, wrapPublicKey: id.wrapPublicKey, signPublicKey: id.signPublicKey, wrappedDek: crypto.passphraseWrappedDek, enrolledAt: 1 }] };
-    const manifest = sealManifest(body, { dek: crypto.dek, signingSecretKey: id.signingSecretKey, signedBy: id.deviceId });
+    const manifest = sealManifest(body, { dek: crypto.dek, keyEnvelope: keyEnvelopeOf(crypto), signingSecretKey: id.signingSecretKey, signedBy: id.deviceId });
 
     const wireBytes = encodeManifest(manifest);
     const asText = Buffer.from(wireBytes).toString("latin1");

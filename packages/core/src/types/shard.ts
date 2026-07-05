@@ -133,15 +133,36 @@ export type FileEncryptionState = "plaintext" | "encrypted";
 
 /**
  * The SMALL plaintext, UNAUTHENTICATED manifest header. Carries ONLY what a
- * reader needs to dispatch/parse — never anything trust-bearing. Everything that
- * matters (device list, wrapped DEKs, salt, file index) lives in the signed +
- * encrypted body (reviews B3/F4).
+ * reader needs to dispatch/parse — never anything trust-bearing. The device
+ * list and file index (the sensitive metadata) live in the signed + encrypted
+ * body; the BOOTSTRAP material a keyless device needs first lives in the
+ * plaintext {@link ManifestKeyEnvelope} (reviews B3/F4).
  */
 export interface ManifestHeader {
   /** Manifest wire-format version. */
   readonly formatVersion: number;
   /** AEAD pinning so an incompatible reader fails loudly, not silently. */
   readonly aead: AeadAlgorithm;
+}
+
+/**
+ * PLAINTEXT bootstrap material (review B3). A device holding ONLY the recovery
+ * key must reach `kdfSalt`/`kdfParams` (to derive the master key) and
+ * `passphraseWrappedDek` (to unwrap the DEK) BEFORE it can decrypt anything —
+ * so these CANNOT live in the DEK-sealed body (chicken-and-egg). They sit here,
+ * in the clear, exactly as an age recipient stanza does: the passphrase-wrapped
+ * DEK is an AEAD ciphertext keyed by `Argon2id(recoverySecret, kdfSalt)`, so it
+ * is inherently self-protecting — a folder-write attacker who lacks the recovery
+ * secret cannot forge one that opens. The envelope is ALSO covered by the
+ * manifest signature (defence-in-depth against substitution/downgrade).
+ */
+export interface ManifestKeyEnvelope {
+  /** DEK wrapped to the passphrase (recovery) recipient — enables recovery +
+   *  new-device enrollment by unwrapping the DEK WITHOUT the sealed body (B3). */
+  readonly passphraseWrappedDek: WrappedDek;
+  /** Random 128-bit KDF salt (non-secret). */
+  readonly kdfSalt: Uint8Array;
+  readonly kdfParams: Argon2idParams;
 }
 
 /** One enrolled device, as recorded in the (encrypted) manifest body. */
@@ -170,31 +191,32 @@ export interface FileIndexEntry {
 }
 
 /**
- * The manifest BODY: encrypted with the DEK and signed by the writing device.
- * Readers MUST verify the signature (against an already-trusted device
- * `signPublicKey`) and decrypt BEFORE trusting any field here.
+ * The manifest BODY: the SENSITIVE metadata (device list + per-file index),
+ * encrypted with the DEK and signed by the writing device. Readers MUST verify
+ * the signature (against an already-trusted device `signPublicKey`) and decrypt
+ * BEFORE trusting any field here. Bootstrap material (salt / params /
+ * passphrase-wrapped DEK) does NOT live here — it is in the plaintext
+ * {@link ManifestKeyEnvelope} so a keyless device can derive the DEK first (B3).
  */
 export interface ManifestBody {
   readonly devices: readonly DeviceEntry[];
-  /** DEK wrapped to the passphrase (recovery) recipient — enables recovery +
-   *  new-device enrollment by unwrapping the DEK from the manifest (review B3). */
-  readonly passphraseWrappedDek: WrappedDek;
-  /** Random 128-bit KDF salt (non-secret). */
-  readonly kdfSalt: Uint8Array;
-  readonly kdfParams: Argon2idParams;
   /** Per-file encryption-state index. */
   readonly files: readonly FileIndexEntry[];
 }
 
 /**
- * The on-store manifest wire form: a small plaintext header + a SEALED body +
- * the body's signature + which device signed it. `sealedBody` is
- * `serialize(ManifestBody)` → `seal(DEK)`; `bodySignature` is that sealed blob
- * signed by `signedBy`'s Ed25519 key. Never trust `sealedBody` until its
- * signature verifies against a device already known/trusted (reviews F1/F4).
+ * The on-store manifest wire form: a small plaintext header + the plaintext
+ * bootstrap {@link ManifestKeyEnvelope} + a SEALED body + a signature + which
+ * device signed it. `sealedBody` is `serialize(ManifestBody)` → `seal(DEK)`;
+ * `bodySignature` is an Ed25519 signature by `signedBy` over the header + the
+ * key envelope + the sealed body TOGETHER (so the plaintext envelope can't be
+ * substituted). Never trust any field until the signature verifies against a
+ * device already known/trusted (reviews F1/F4/B3).
  */
 export interface Manifest {
   readonly header: ManifestHeader;
+  /** Plaintext bootstrap material (salt/params/passphrase-wrapped DEK) — B3. */
+  readonly keyEnvelope: ManifestKeyEnvelope;
   readonly sealedBody: Uint8Array;
   readonly bodySignature: Uint8Array;
   readonly signedBy: DeviceId;

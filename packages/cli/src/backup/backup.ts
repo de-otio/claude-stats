@@ -20,6 +20,7 @@ import type {
   FileEncryptionState,
   Manifest,
   ManifestBody,
+  ManifestKeyEnvelope,
   Shard,
   StampedRecord,
 } from "@claude-stats/core/types/shard";
@@ -49,13 +50,31 @@ export interface DeviceIdentity {
   readonly signingSecretKey: Uint8Array;
 }
 
-/** The envelope-crypto material a push needs (from Phase B; keys stay on-device). */
+/**
+ * The envelope-crypto material a push needs (from Phase B; keys stay on-device).
+ *
+ * INVARIANT: the `passphraseWrappedDek`/`kdfSalt`/`kdfParams` here are the
+ * bundle's CANONICAL key envelope — produced once by `bootstrapBackupCrypto`
+ * (fresh bundle) or read back by `recoverBackupCrypto` (existing bundle). They,
+ * like `dek`, identify this specific bundle; `writeManifest` publishes them as
+ * the plaintext {@link ManifestKeyEnvelope} so a recovery-key-only device can
+ * bootstrap the DEK (review B3).
+ */
 export interface BackupCrypto {
   readonly dek: Uint8Array;
   /** DEK wrapped to the passphrase (recovery) recipient — enrollment/recovery (B3). */
   readonly passphraseWrappedDek: Uint8Array;
   readonly kdfSalt: Uint8Array;
   readonly kdfParams: Argon2idParams;
+}
+
+/** The plaintext bootstrap envelope carried by a {@link BackupCrypto}. */
+export function keyEnvelopeOf(crypto: BackupCrypto): ManifestKeyEnvelope {
+  return {
+    passphraseWrappedDek: crypto.passphraseWrappedDek,
+    kdfSalt: crypto.kdfSalt,
+    kdfParams: crypto.kdfParams,
+  };
 }
 
 /** Logical bundle key for a sync-data shard. `.age` suffix ⇔ encrypted body. */
@@ -97,11 +116,7 @@ export async function loadOrSeedBody(
   if (raw) {
     return openManifest(decodeManifest(raw), { dek: crypto.dek });
   }
-  return emptyManifestBody({
-    passphraseWrappedDek: crypto.passphraseWrappedDek,
-    kdfSalt: crypto.kdfSalt,
-    kdfParams: crypto.kdfParams,
-  });
+  return emptyManifestBody();
 }
 
 /** Ensure this device has an up-to-date entry (fresh DEK wrap) in the body. */
@@ -131,6 +146,7 @@ export async function writeManifest(
 ): Promise<Manifest> {
   const manifest = sealManifest(body, {
     dek: crypto.dek,
+    keyEnvelope: keyEnvelopeOf(crypto),
     signingSecretKey: identity.signingSecretKey,
     signedBy: identity.deviceId,
   });
