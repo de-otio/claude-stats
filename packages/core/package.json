@@ -58,6 +58,10 @@
       "types": "./dist/types/shard.d.ts",
       "default": "./dist/types/shard.js"
     },
+    "./bundle": {
+      "types": "./dist/bundle/index.d.ts",
+      "default": "./dist/bundle/index.js"
+    },
     "./crypto/types": {
       "types": "./dist/crypto/types.d.ts",
       "default": "./dist/crypto/types.js"

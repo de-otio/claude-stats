@@ -10,6 +10,7 @@ export default defineConfig({
       // bare `@claude-stats/core/types` below — vite matches alias prefixes with a
       // `/` boundary, so the bare alias would otherwise shadow the subpaths.
       "@claude-stats/core/types/shard": path.resolve(__dirname, "packages/core/src/types/shard.ts"),
+      "@claude-stats/core/bundle": path.resolve(__dirname, "packages/core/src/bundle/index.ts"),
       "@claude-stats/core/types": path.resolve(__dirname, "packages/core/src/types.ts"),
       "@claude-stats/core/pricing": path.resolve(__dirname, "packages/core/src/pricing.ts"),
       "@claude-stats/core/planMechanics": path.resolve(__dirname, "packages/core/src/planMechanics.ts"),
