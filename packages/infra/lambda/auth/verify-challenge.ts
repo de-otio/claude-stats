@@ -7,7 +7,7 @@ import {
   GetItemCommand,
   UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
-import { KMSClient, GenerateMacCommand } from "@aws-sdk/client-kms";
+import { KMSClient, VerifyMacCommand } from "@aws-sdk/client-kms";
 
 const ddb = new DynamoDBClient({});
 const kmsClient = new KMSClient({});
@@ -22,10 +22,15 @@ const CLOCK_TOLERANCE_SECONDS = 30;
  * Cognito VerifyAuthChallengeResponse trigger.
  *
  * Validates the magic link token by:
- * 1. Computing HMAC-SHA-256 of the submitted token
- * 2. Looking up the stored hash in DynamoDB
+ * 1. Looking up the stored HMAC in DynamoDB
+ * 2. Verifying the submitted token against it via KMS `VerifyMac`
  * 3. Checking token is not expired and not already used
  * 4. Marking the token as used with a conditional write (replay prevention)
+ *
+ * `VerifyMac` (not `GenerateMac` + compare) is deliberate: it is the only KMS
+ * action this function's role is granted (auth-stack grants `kms:VerifyMac`
+ * — least privilege for a verifier), and the comparison happens inside KMS.
+ * Keep the API call and that grant in lockstep.
  */
 export const handler: VerifyAuthChallengeResponseTriggerHandler = async (
   event: VerifyAuthChallengeResponseTriggerEvent,
@@ -39,10 +44,6 @@ export const handler: VerifyAuthChallengeResponseTriggerHandler = async (
   }
 
   try {
-    // Compute HMAC of the submitted token
-    const tokenHashBuffer = await computeHmac(submittedToken);
-    const tokenHash = Buffer.from(tokenHashBuffer).toString("base64");
-
     // Look up the stored token
     const result = await ddb.send(
       new GetItemCommand({
@@ -65,8 +66,8 @@ export const handler: VerifyAuthChallengeResponseTriggerHandler = async (
     const used = item.used?.BOOL ?? true;
     const now = Math.floor(Date.now() / 1000);
 
-    // Validate: hash matches, not expired, not already used
-    if (storedHash !== tokenHash) {
+    // Validate: MAC verifies, not expired, not already used
+    if (!storedHash || !(await verifyHmac(submittedToken, storedHash))) {
       event.response.answerCorrect = false;
       return event;
     }
@@ -121,20 +122,26 @@ export const handler: VerifyAuthChallengeResponseTriggerHandler = async (
 };
 
 /**
- * Compute HMAC-SHA-256 of the token using the KMS key.
+ * Verify the submitted token against the stored HMAC (base64, as written by
+ * CreateAuthChallenge) inside KMS. A mismatched MAC surfaces as
+ * `KMSInvalidMacException`, NOT as `MacValid: false` — map it to a clean
+ * `false` so a wrong token is an ordinary rejection, not an error path.
  */
-async function computeHmac(token: string): Promise<Uint8Array> {
-  const result = await kmsClient.send(
-    new GenerateMacCommand({
-      KeyId: KMS_KEY_ID,
-      MacAlgorithm: "HMAC_SHA_256",
-      Message: Buffer.from(token, "utf-8"),
-    }),
-  );
-
-  if (!result.Mac) {
-    throw new Error("KMS GenerateMac returned no Mac");
+async function verifyHmac(token: string, storedMacBase64: string): Promise<boolean> {
+  try {
+    const result = await kmsClient.send(
+      new VerifyMacCommand({
+        KeyId: KMS_KEY_ID,
+        MacAlgorithm: "HMAC_SHA_256",
+        Message: Buffer.from(token, "utf-8"),
+        Mac: Buffer.from(storedMacBase64, "base64"),
+      }),
+    );
+    return result.MacValid === true;
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === "KMSInvalidMacException") {
+      return false;
+    }
+    throw err;
   }
-
-  return result.Mac;
 }
