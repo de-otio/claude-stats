@@ -23,8 +23,9 @@ import type {
   OwnerTarget,
 } from "@claude-stats/core/types";
 import { estimateCost } from "@claude-stats/core/pricing";
+import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
-const SCHEMA_VERSION = 15;
+const SCHEMA_VERSION = 16;
 
 export class Store {
   private db: DatabaseSync;
@@ -72,6 +73,7 @@ export class Store {
     if (current < 13) this.migrateToV13();
     if (current < 14) this.migrateToV14();
     if (current < 15) this.migrateToV15();
+    if (current < 16) this.migrateToV16();
 
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
@@ -408,6 +410,45 @@ export class Store {
       );
       CREATE INDEX IF NOT EXISTS idx_owner_rules_created ON account_owner_rules (created_at);
     `);
+  }
+
+  /**
+   * V16 — re-sanitize stored `prompt_text` in place.
+   *
+   * Rows ingested before the `<task-notification>` strip (and the earlier
+   * escape-based sanitizer) landed carry raw system-injected tag blocks as their
+   * "prompt". The `upsertMessages` UPSERT guards prompt_text with
+   * `COALESCE(excluded.prompt_text, messages.prompt_text)` so that continuation /
+   * privacy-stripped re-ingests don't wipe a good value — but that same COALESCE
+   * means a re-parse producing the now-correct NULL can never clear a stale value,
+   * and unchanged files are skipped by the collection checkpoint entirely. So the
+   * fix has to reach the stored data directly. These polluted rows surfaced as the
+   * junk labels ("<task-notification> <task-id>…") on the model-efficiency
+   * "top overuse" chart and in prompt previews.
+   *
+   * Normalizes every non-null row to the canonical current form via
+   * `sanitizePromptText(decodeHtmlEntities(stored))`: the decode undoes any prior
+   * escaping (single pass), the sanitizer strips known blocks — now including a
+   * truncated unclosed opener whose close tag fell past an old length-cap — then
+   * re-escapes and re-caps. Idempotent, so a crash-retry is safe. Only rows whose
+   * value actually changes are written.
+   */
+  private migrateToV16(): void {
+    const rows = this.db
+      .prepare("SELECT uuid, prompt_text FROM messages WHERE prompt_text IS NOT NULL")
+      .all() as Array<{ uuid: string; prompt_text: string }>;
+    const update = this.db.prepare("UPDATE messages SET prompt_text = ? WHERE uuid = ?");
+    this.db.exec("BEGIN");
+    try {
+      for (const r of rows) {
+        const cleaned = sanitizePromptText(decodeHtmlEntities(r.prompt_text));
+        if (cleaned !== r.prompt_text) update.run(cleaned, r.uuid);
+      }
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
   }
 
   /**

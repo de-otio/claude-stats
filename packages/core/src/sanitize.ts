@@ -37,6 +37,19 @@ const KNOWN_SELF_CLOSING =
   /<(?:ide_opened_file|ide_selection|local-command-stdout)[^>]*\/>/g;
 
 /**
+ * Unclosed opener of a known system-injected tag, matched through end of input.
+ * Applied AFTER the block strip, so any known opener still present here has no
+ * matching close tag — it is truncated system content (e.g. a `<task-notification>`
+ * block whose close tag fell past an earlier storage length-cap, or a run of
+ * concatenated notifications cut mid-block). These tags are exclusively
+ * system-injected and are never followed by meaningful user prose, so dropping
+ * from the opener to the end is safe display polish. Any human text preceding the
+ * opener is preserved. Not global: strips from the first surviving opener onward.
+ */
+const KNOWN_UNCLOSED_OPENER =
+  /<(?:system-reminder|local-command-caveat|ide_opened_file|ide_selection|ide_diagnostics|command-name|command-message|command-args|local-command-stdout|available-deferred-tools|task-notification)(?:\s[^>]*)?>[\s\S]*$/;
+
+/**
  * Sanitize free-form prompt text that will be persisted and later surfaced to
  * downstream agents, the MCP caller, or rendered in the frontend.
  *
@@ -45,10 +58,13 @@ const KNOWN_SELF_CLOSING =
 export function sanitizePromptText(input: string | null | undefined): string | null {
   if (input == null) return null;
 
-  // 1. Drop known system-injected blocks for display cleanliness.
+  // 1. Drop known system-injected blocks for display cleanliness. First remove
+  //    complete blocks and self-closing forms, then drop any lingering *unclosed*
+  //    known opener (truncated system content) from the opener to end of input.
   const stripped = input
     .replace(KNOWN_TAG_BLOCKS, "")
-    .replace(KNOWN_SELF_CLOSING, "");
+    .replace(KNOWN_SELF_CLOSING, "")
+    .replace(KNOWN_UNCLOSED_OPENER, "");
 
   // 2. Escape ALL remaining `<` and `>` — the security boundary.
   //    This neutralises function-call tags, control tokens, invented XML,
