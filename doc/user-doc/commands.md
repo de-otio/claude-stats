@@ -667,7 +667,7 @@ The optional VS Code extension embeds the dashboard directly inside the editor. 
 - **Automatic collection** — watches `~/.claude/projects/` for file changes and runs incremental collection automatically. No need to run `claude-stats collect` manually.
 - **Dashboard panel** — the same interactive Chart.js dashboard as `serve`, displayed in a VS Code webview tab (opened via the Command Palette: **Claude Stats: Open Dashboard**). Updates automatically after each collection.
 - **Status bar item** — shows today's token count and estimated cost in the bottom bar; click to open the dashboard. Updates automatically after each collection.
-- **Optional backup & sync** — **Claude Stats: Set Up Backup & Sync…** turns on optional, end-to-end-encrypted backup and cross-device sync via a cloud folder you already use; **Claude Stats: Delete All Stored Data…** removes it. See [backup-and-sync.md](backup-and-sync.md).
+- **Optional backup & sync** — **Claude Stats: Set Up Backup & Sync…** (or the dashboard's **Settings tab → Backup & Sync**, which also shows status and can turn it off again) turns on optional, end-to-end-encrypted backup and cross-device sync via a cloud folder you already use; **Claude Stats: Delete All Stored Data…** removes it. See [backup-and-sync.md](backup-and-sync.md).
 
 ### Installation
 
