@@ -172,7 +172,7 @@ The delete is implemented as a Lambda resolver that processes each table sequent
 | DynamoDB (dev) | None | Disposable — redeploy + re-sync |
 | S3 (SPA assets) | Rebuilt from source | Redeploy from git |
 | Cognito users | No automated backup | Users re-register via magic link |
-| Secrets Manager | Versioned | AWS-managed versioning |
+| KMS HMAC key | RETAIN removal policy (prod) | Key survives stack deletion; recreate + re-alias if lost |
 
 ### PITR Restore Procedure
 
@@ -207,9 +207,9 @@ This is a single-region (us-east-1) deployment with no cross-region replication.
 |------|-----------|-----|
 | Review AWS bill | Monthly | Cost Explorer, compare to budget |
 | Check DLQ | Weekly (or on alarm) | SQS console or CLI |
-| Review WAF logs | Monthly | Check for patterns, adjust rules |
+| Review WAF logs | Monthly (only if the optional WAF is deployed) | Check for patterns, adjust rules |
 | Update CDK dependencies | Monthly | `npm update`, test in dev first |
-| Rotate magic link secret | Automatic (90 days) | Secrets Manager auto-rotation |
+| Rotate magic link key | Not scheduled | KMS HMAC key is non-extractable; rotate by key swap + alias repoint if ever needed |
 | Check Cognito Advanced Security reports | Monthly | Cognito console → Analytics |
 
 ### CDK Dependency Updates
