@@ -8,6 +8,17 @@
   </head>
   <body class="min-h-screen bg-gray-50 text-gray-900 antialiased">
     <div id="root"></div>
+    <!--
+      Classic (non-module) script, deliberately NOT type="module": module
+      scripts are deferred and execute after the DOM is parsed but with no
+      ordering guarantee relative to other deferred scripts beyond document
+      order — in practice this is fine, but the classic tag here guarantees
+      config.js runs, synchronously, strictly before the app bundle below
+      parses, so window.__CONFIG__ is always populated by the time
+      src/config.ts reads it. In local dev there is no deployed config.js;
+      src/config.ts falls back to defaults when window.__CONFIG__ is unset.
+    -->
+    <script src="/config.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
