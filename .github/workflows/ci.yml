@@ -41,6 +41,9 @@ jobs:
       - name: Per-directory coverage gate (crypto / sync-merge / org >=90% lines)
         run: node scripts/check-coverage-dirs.mjs
 
+      - name: Infra stack synth tests
+        run: npm test -w @de-otio/claude-stats-infra
+
       - name: Upload coverage report
         uses: actions/upload-artifact@v7
         if: always()
