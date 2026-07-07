@@ -40,7 +40,4 @@ export const prodConfig: EnvironmentConfig = {
   monthlyBudgetUsd: 50,
   lambdaReservedConcurrency: { aggregateStats: 10 },
 
-  // Secrets
-  magicLinkHmacSecretArn:
-    "arn:aws:secretsmanager:us-east-1:987654321098:secret:claude-stats/magic-link-hmac",
 };

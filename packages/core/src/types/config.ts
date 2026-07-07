@@ -46,7 +46,4 @@ export interface EnvironmentConfig {
   lambdaReservedConcurrency: {
     aggregateStats: number;
   };
-
-  // Secrets
-  magicLinkHmacSecretArn: string | null;
 }

@@ -41,7 +41,7 @@ Passwordless authentication using Cognito Custom Auth Challenge.
 ### Token Security
 
 - Tokens are UUID v4 (122 bits of entropy)
-- Stored as HMAC-SHA-256 hash (keyed with per-environment secret from Secrets Manager — not plain SHA-256, which is vulnerable to rainbow tables if the DB leaks)
+- Stored as HMAC-SHA-256 hash, keyed per environment — not plain SHA-256, which is vulnerable to rainbow tables if the DB leaks. **As implemented**, the HMAC uses a KMS HMAC-256 key (`GenerateMac`/`VerifyMac`; key material never leaves KMS) rather than the Secrets-Manager secret this design originally called for
 - TTL: 15 minutes in prod, configurable per environment (see [12-environments.md](12-environments.md))
 - Single use: DynamoDB conditional write (`attribute_exists(tokenHash) AND used = false`) prevents replay
 - One active link per email: new request overwrites previous token (PK=email, SK="TOKEN")
@@ -147,7 +147,17 @@ TTL attribute on `expiresAt` ensures automatic cleanup of expired tokens. Used t
 
 ## HMAC Secret Rotation
 
-The magic link HMAC secret is auto-rotated every 90 days via Secrets Manager. To avoid rejecting valid tokens during rotation:
+> **Status:** superseded by the implementation. The stacks use a **KMS
+> HMAC-256 key** (non-extractable; the Lambdas call `GenerateMac`/`VerifyMac`
+> and never see key material), not a Secrets-Manager secret, so
+> Secrets-Manager auto-rotation does not apply. Rotation is not configured —
+> the key never leaves KMS and the tokens it signs live 15 minutes, so
+> scheduled rotation buys little; rotating means creating a new key and
+> swapping the alias (in-flight links during the swap minute would need
+> re-request).
+
+The original Secrets-Manager design, kept for reference if the secret ever
+moves out of KMS — auto-rotation every 90 days without rejecting valid tokens:
 
 1. Secrets Manager maintains a **current** and **previous** secret version (`AWSCURRENT` and `AWSPREVIOUS`)
 2. The `VerifyAuthChallengeResponse` Lambda loads both versions at cold start (cached for 5 minutes)
