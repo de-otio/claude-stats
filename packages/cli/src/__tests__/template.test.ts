@@ -215,6 +215,22 @@ describe("renderDashboard", () => {
     expect(html).toContain("refresh");
   });
 
+  it("auto-refresh never reloads while the Settings tab is active (recovery key is shown once)", () => {
+    const html = renderDashboard(mockData, t);
+    // The reload must sit behind the settings-tab guard: skip + re-arm
+    // instead of reloading, so one-shot state (backup recovery key,
+    // enroll form, disable-confirm) is never wiped mid-flow.
+    expect(html).toContain(
+      "if (active && active.id === 'tab-settings') { scheduleAutoRefresh(); return; }",
+    );
+    // Guard precedes the reload inside the scheduler.
+    const scheduler = html.slice(html.indexOf("var scheduleAutoRefresh"));
+    const guardIdx = scheduler.indexOf("'tab-settings'");
+    const reloadIdx = scheduler.indexOf("location.reload()");
+    expect(guardIdx).toBeGreaterThan(-1);
+    expect(reloadIdx).toBeGreaterThan(guardIdx);
+  });
+
   it("window.__DASHBOARD__ JSON contains full data structure", () => {
     const html = renderDashboard(mockData, t);
     const match = html.match(/window\.__DASHBOARD__\s*=\s*(\{[\s\S]*?\});\s*<\/script>/);
