@@ -2,6 +2,36 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.17.0 — 2026-07-07
+
+### Added — Backup & Sync on the dashboard Settings tab
+
+Backup and cross-device sync can now be set up, inspected, and turned off from
+the dashboard itself — in the VS Code panel *and* the locally served dashboard
+(`claude-stats serve`). Previously the Command Palette wizard was the only way
+to configure it.
+
+- **Guided setup in the Settings tab.** Detected cloud folders (Dropbox, iCloud
+  Drive, Google Drive, OneDrive) are offered one-click, or point it at any
+  folder. The encrypted-vs-plaintext choice carries the same plain-spoken
+  warning copy as the wizard; encrypted setup shows the recovery key once, with
+  copy-to-clipboard and an explicit "I've saved my recovery key" confirmation.
+- **One-paste second device, now in the GUI.** A folder that already contains a
+  backup is flagged, and pasting the recovery key connects the device — a wrong
+  key fails cleanly, never silently.
+- **Status at a glance.** Folder, encryption mode, and last backup write; a
+  standing reminder appears until the recovery key is confirmed as saved.
+  Turning backup off leaves the backup folder and your other devices untouched.
+
+### Fixed
+
+- A recovery-key confirmation no longer survives turning backup off or a fresh
+  encrypted setup — a stale confirmation could suppress the save-your-key
+  reminder for a brand-new key.
+- The Marketplace description and README now correctly say **local by
+  default** with opt-in, end-to-end-encrypted backup — the previous blanket
+  "nothing leaves your machine" wording predated the backup feature.
+
 ## 0.16.0 — 2026-07-05
 
 ### Added — Optional end-to-end-encrypted backup & cross-device sync
