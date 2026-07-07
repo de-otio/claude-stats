@@ -1,6 +1,6 @@
 # Claude Stats
 
-View your Claude Code usage statistics directly inside VS Code. Local-only — no API key, no network access, nothing leaves your machine.
+View your Claude Code usage statistics directly inside VS Code. Local by default — no API key, no account, no network access. Optional end-to-end-encrypted backup & sync to a cloud folder you already control.
 
 ![claude-stats dashboard](https://raw.githubusercontent.com/de-otio/claude-stats/master/doc/screenshot.png)
 
@@ -14,6 +14,7 @@ View your Claude Code usage statistics directly inside VS Code. Local-only — n
 - **Auto-registers a local MCP server** so your AI agent can query stats directly ("how many tokens did I use this week?")
 - **Daily-recap digests** with on-device semantic clustering — bundled MiniLM-L6-v2 model runs locally, no data leaves your machine
 - **Cost per successful task** — outcome-cost per model (dollars per shipped/confirmed task, not per token), with per-task `success`/`partial`/`fail` labelling right in the dashboard
+- **Optional backup & cross-device sync** — end-to-end encrypted, via a cloud folder you already use (Dropbox, iCloud Drive, Google Drive, OneDrive); set up from the dashboard's Settings tab or the command palette, no new account and no claude-stats server
 
 ## Requirements
 
@@ -58,7 +59,7 @@ Once installed, ask your AI agent things like:
 
 ## Privacy
 
-- **Nothing leaves your machine.** All data stays under `~/.claude-stats/`.
+- **Local by default.** All data stays under `~/.claude-stats/`; nothing leaves your machine unless you explicitly enable [backup & sync](https://github.com/de-otio/claude-stats/blob/master/doc/user-doc/backup-and-sync.md) — and that copy is end-to-end encrypted, so your cloud provider only ever stores opaque ciphertext.
 - **Incremental.** Only new JSONL lines are read on each refresh.
 - **Non-destructive.** The extension never modifies Claude Code's own files.
 - **No API scraping.** Reads only the local JSONL files Claude Code already writes to disk.

@@ -22,6 +22,16 @@ import type { DashboardData } from "../dashboard/index.js";
 import type { ReportOptions } from "../reporter/index.js";
 import { loadConfig, saveConfig, mergeConfig, buildAccountsForConfig, redactConfigForHttp } from "../config.js";
 import { readClaudeAccount } from "../account.js";
+import {
+  BackupActionError,
+  confirmRecoveryKeySaved,
+  disableBackup,
+  enrollExistingBackup,
+  getBackupStatus,
+  setupBackup,
+  type MakeKeyStore,
+} from "../ux/backup-settings.js";
+import { createFileKeyStore } from "../crypto/keystore-file.js";
 import { t } from "../i18n.js";
 import { escapeHtml } from "./utils.js";
 
@@ -217,6 +227,97 @@ function extractToken(req: http.IncomingMessage): string | null {
 }
 
 /**
+ * The served dashboard's keystore: the headless `0600`-file fallback, sealed
+ * under the recovery secret in play for the action (see `crypto/keystore-file.ts`
+ * for the security trade-off vs an OS keychain — F6).
+ */
+const makeServerKeyStore: MakeKeyStore = (recoverySecret) => createFileKeyStore({ recoverySecret });
+
+/**
+ * `/api/backup/*` — the Settings tab's Backup & Sync section (browser host).
+ * Thin JSON adapters over `ux/backup-settings.ts`; the VS Code panel drives
+ * the SAME actions over webview messages. Caller has already authenticated.
+ */
+async function handleBackupRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+): Promise<void> {
+  const action = pathname.slice("/api/backup/".length);
+
+  if (req.method === "GET" && action === "status") {
+    sendJson(res, 200, getBackupStatus());
+    return;
+  }
+
+  if (req.method !== "POST") {
+    sendJson(res, 404, { error: "not found" });
+    return;
+  }
+
+  let raw: string;
+  try {
+    raw = await readBody(req);
+  } catch {
+    sendJson(res, 413, { error: "payload too large" });
+    return;
+  }
+  let body: Record<string, unknown> = {};
+  try {
+    if (raw.length > 0) body = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    sendJson(res, 400, { error: "invalid json" });
+    return;
+  }
+
+  try {
+    switch (action) {
+      case "setup": {
+        const mode = body.mode === "plaintext" ? "plaintext" : "encrypted";
+        const result = await setupBackup({
+          target: body.target as string,
+          mode,
+          makeKeyStore: makeServerKeyStore,
+        });
+        // The recovery key crosses loopback ONCE here (same trust plane as the
+        // auth token) and is never persisted or logged server-side.
+        sendJson(res, 200, { ok: true, ...result });
+        return;
+      }
+      case "enroll": {
+        await enrollExistingBackup({
+          target: body.target as string,
+          recoveryKey: typeof body.recoveryKey === "string" ? body.recoveryKey : "",
+          makeKeyStore: makeServerKeyStore,
+        });
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+      case "confirm-key": {
+        confirmRecoveryKeySaved();
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+      case "disable": {
+        disableBackup();
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+      default:
+        sendJson(res, 404, { error: "not found" });
+        return;
+    }
+  } catch (err) {
+    if (err instanceof BackupActionError) {
+      // The code is the contract; the client maps it to localized copy.
+      sendJson(res, 400, { error: err.code });
+      return;
+    }
+    throw err;
+  }
+}
+
+/**
  * Create the dashboard HTTP server. The returned server is NOT listening; the
  * caller must invoke `server.listen(port, "127.0.0.1", ...)`. This keeps the
  * bind address correct-by-construction at the call site.
@@ -309,6 +410,20 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
           const merged = mergeConfig(loadConfig(), JSON.parse(body));
           saveConfig(merged);
           sendJson(res, 200, { ok: true, config: redactConfigForHttp(merged) });
+          return;
+        }
+
+        if (pathname.startsWith("/api/backup/")) {
+          // Every backup route — including the GET — is token-gated: status
+          // reveals filesystem layout (cloud roots under $HOME), setup returns
+          // a recovery key, and the rest mutate config/manifest. The SPA holds
+          // the token via the SameSite=Strict cookie set on GET /.
+          const supplied = extractToken(req);
+          if (supplied === null || !safeEqual(supplied, token)) {
+            sendJson(res, 401, { error: "unauthorized" });
+            return;
+          }
+          await handleBackupRoute(req, res, pathname);
           return;
         }
 

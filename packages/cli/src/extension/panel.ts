@@ -22,6 +22,15 @@ import type { ReportOptions } from "../reporter/index.js";
 import type { SidebarProvider } from "./sidebar.js";
 import { t } from "./i18n.js";
 import { paths } from "@claude-stats/core/paths";
+import {
+  BackupActionError,
+  confirmRecoveryKeySaved,
+  disableBackup,
+  enrollExistingBackup,
+  getBackupStatus,
+  setupBackup,
+} from "../ux/backup-settings.js";
+import { createSecretStorageKeyStore } from "./keystore-secretstorage.js";
 
 export class DashboardPanel {
   private static instance: DashboardPanel | undefined;
@@ -43,6 +52,8 @@ export class DashboardPanel {
   private activeTab: string = "overview";
   private readonly chartJsUri: vscode.Uri;
   private readonly sidebar: SidebarProvider | undefined;
+  /** Kept for the backup actions' SecretStorage keystore (Backup & Sync section). */
+  private readonly context: vscode.ExtensionContext;
 
   /**
    * Refresh the currently visible dashboard panel (if any).
@@ -71,6 +82,7 @@ export class DashboardPanel {
 
   private constructor(panel: vscode.WebviewPanel, context: vscode.ExtensionContext, sidebar?: SidebarProvider) {
     this.panel = panel;
+    this.context = context;
     this.sidebar = sidebar;
     this.chartJsUri = panel.webview.asWebviewUri(
       vscode.Uri.joinPath(context.extensionUri, "media", "chart.min.js"),
@@ -141,7 +153,7 @@ export class DashboardPanel {
     }
   }
 
-  private handleMessage(msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean; assignments?: unknown }): void {
+  private handleMessage(msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean; assignments?: unknown; action?: string; payload?: unknown }): void {
     if (msg.command === "changePeriod" && msg.period) {
       this.period = msg.period as ReportOptions["period"];
       // Mutual exclusivity per the toolbar contract: a preset pick clears any
@@ -211,6 +223,11 @@ export class DashboardPanel {
       } catch {
         void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, error: t("extension:panel.errors.failedToSaveConfig") });
       }
+    } else if (msg.command === "backupAction" && typeof msg.action === "string" && msg.callbackId) {
+      // Backup & Sync section (Settings tab) — same actions the served
+      // dashboard exposes as /api/backup/*, here over the webview channel with
+      // the SecretStorage (OS keychain) keystore instead of the file fallback.
+      void this.handleBackupAction(msg.action, msg.payload, msg.callbackId);
     } else if (msg.command === "getClusters" && msg.callbackId) {
       this.getClusters(msg.callbackId);
     } else if (msg.command === "applyClassification") {
@@ -218,6 +235,60 @@ export class DashboardPanel {
       // re-renders every tab with the new attribution (and re-fetches the
       // Classify list). Errors surface as a native notification.
       this.applyClassification(msg.assignments);
+    }
+  }
+
+  /**
+   * Backup & Sync actions for the Settings tab (webview host). Mirrors the
+   * served dashboard's `/api/backup/*` contract: same action names, same
+   * payloads, same error CODES — so the template's client JS is host-agnostic.
+   * Responds on `backupResult` with the awaited callbackId.
+   */
+  private async handleBackupAction(action: string, payload: unknown, callbackId: number): Promise<void> {
+    const reply = (data?: unknown, error?: string): void => {
+      void this.panel.webview.postMessage({ command: "backupResult", callbackId, data, error });
+    };
+    const p = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
+    const makeKeyStore = (): ReturnType<typeof createSecretStorageKeyStore> =>
+      createSecretStorageKeyStore(this.context);
+    try {
+      switch (action) {
+        case "status":
+          reply(getBackupStatus());
+          return;
+        case "setup": {
+          const result = await setupBackup({
+            target: p.target as string,
+            mode: p.mode === "plaintext" ? "plaintext" : "encrypted",
+            makeKeyStore,
+          });
+          reply({ ok: true, ...result });
+          return;
+        }
+        case "enroll":
+          await enrollExistingBackup({
+            target: p.target as string,
+            recoveryKey: typeof p.recoveryKey === "string" ? p.recoveryKey : "",
+            makeKeyStore,
+          });
+          reply({ ok: true });
+          return;
+        case "confirm-key":
+          confirmRecoveryKeySaved();
+          reply({ ok: true });
+          return;
+        case "disable":
+          disableBackup();
+          reply({ ok: true });
+          return;
+        default:
+          reply(undefined, "unknown-action");
+          return;
+      }
+    } catch (err) {
+      // Error CODES only — never the raw message (it could echo path details),
+      // and never key material. Matches the HTTP route's contract.
+      reply(undefined, err instanceof BackupActionError ? err.code : "internal");
     }
   }
 
