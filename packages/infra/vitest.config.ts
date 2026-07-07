@@ -1,4 +1,8 @@
 import { defineConfig } from "vitest/config";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // CDK stacks under `lib/**` are verified by synth **template assertions**
 // (behavioural, not line-counted) — the house pattern (see dot-curia's
@@ -12,6 +16,7 @@ import { defineConfig } from "vitest/config";
 // here — it hits real deployed AWS resources and is not part of the offline
 // unit/synth suite.
 export default defineConfig({
+  root: dirname,
   test: {
     environment: "node",
     globals: false,
