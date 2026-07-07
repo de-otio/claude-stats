@@ -213,6 +213,10 @@ export class AuthStack extends cdk.Stack {
     );
 
     magicLinkTokensTable.grantReadWriteData(verifyChallengeFn);
+    // Least privilege: the verifier may only VERIFY MACs, never mint them.
+    // verify-challenge.ts must call VerifyMac (not GenerateMac-and-compare)
+    // or it AccessDenieds at runtime — keep the API call and this grant in
+    // lockstep (regression-pinned in lambda/auth/__tests__/verify-challenge.test.ts).
     hmacKey.grant(verifyChallengeFn, "kms:VerifyMac");
 
     // ---------- PreSignUp Lambda ----------

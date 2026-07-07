@@ -204,7 +204,7 @@ not per-session writes — usage costs are cents):
 
 | Service | Estimate | Notes |
 |---------|----------|-------|
-| KMS | $1.00 | Magic-link HMAC key — $1/key/month (the only real fixed cost) |
+| KMS | $1.00–2.00 | Magic-link HMAC key ($1, both envs); prod adds the customer-managed DynamoDB table-encryption key ($1). The only real fixed dollars |
 | DynamoDB | $0.30 | On-demand; aggregate upserts + dashboard reads |
 | AppSync | $0.10 | ~25K queries/month, ~5K mutations/month |
 | Lambda | $0.20 | ~5K invocations/month, mostly short-running |
@@ -212,7 +212,7 @@ not per-session writes — usage costs are cents):
 | SES | $0.01 | ~100 magic link emails/month |
 | S3 + CloudFront | $0.50 | Minimal traffic, mostly cached |
 | CloudWatch | $0.20 | Alarms/logs beyond the free tier |
-| **Total** | **~$2.50/month** | Per environment; dev + prod ≈ double |
+| **Total** | **~$2.50/month dev, ~$3.50/month prod** | Prod carries the second KMS key; dev + prod together ≈ $6 |
 
 Optional add-ons change the picture:
 

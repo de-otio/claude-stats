@@ -23,7 +23,10 @@ vi.mock("@aws-sdk/client-dynamodb", () => ({
 
 vi.mock("@aws-sdk/client-kms", () => ({
   KMSClient: vi.fn(function () { return { send: mockKmsSend }; }),
+  // create-challenge mints MACs (GenerateMac); verify-challenge verifies them
+  // in KMS (VerifyMac) — matching its kms:VerifyMac-only grant.
   GenerateMacCommand: vi.fn(function(input: any) { return { _type: "GenerateMac", ...input }; }),
+  VerifyMacCommand: vi.fn(function(input: any) { return { _type: "VerifyMac", ...input }; }),
 }));
 
 vi.mock("@aws-sdk/client-ses", () => ({
@@ -318,8 +321,8 @@ describe("auth-flow integration: verify-challenge", () => {
 
     const now = Math.floor(Date.now() / 1000);
 
-    // KMS GenerateMac: return the mock HMAC
-    mockKmsSend.mockResolvedValueOnce({ Mac: MOCK_HMAC });
+    // KMS VerifyMac: the stored MAC verifies
+    mockKmsSend.mockResolvedValueOnce({ MacValid: true });
 
     // DDB GetItem: return the stored token record
     mockDdbSend.mockResolvedValueOnce({
@@ -348,8 +351,8 @@ describe("auth-flow integration: verify-challenge", () => {
 
     const now = Math.floor(Date.now() / 1000);
 
-    // KMS GenerateMac: return the mock HMAC
-    mockKmsSend.mockResolvedValueOnce({ Mac: MOCK_HMAC });
+    // KMS VerifyMac: the MAC itself verifies (expiry is what must reject)
+    mockKmsSend.mockResolvedValueOnce({ MacValid: true });
 
     // DDB GetItem: token is expired
     mockDdbSend.mockResolvedValueOnce({
@@ -375,7 +378,7 @@ describe("auth-flow integration: verify-challenge", () => {
 
     const now = Math.floor(Date.now() / 1000);
 
-    mockKmsSend.mockResolvedValueOnce({ Mac: MOCK_HMAC });
+    mockKmsSend.mockResolvedValueOnce({ MacValid: true });
 
     // DDB GetItem: token already used
     mockDdbSend.mockResolvedValueOnce({
@@ -400,9 +403,10 @@ describe("auth-flow integration: verify-challenge", () => {
 
     const now = Math.floor(Date.now() / 1000);
 
-    // KMS returns a different HMAC (simulating a different token input)
-    const differentHmac = Buffer.from("different-hmac-bytes-for-testing", "utf-8");
-    mockKmsSend.mockResolvedValueOnce({ Mac: differentHmac });
+    // KMS signals a mismatched MAC as KMSInvalidMacException, not MacValid=false
+    const invalidMac = new Error("mac invalid");
+    invalidMac.name = "KMSInvalidMacException";
+    mockKmsSend.mockRejectedValueOnce(invalidMac);
 
     // DDB GetItem: stored hash doesn't match
     mockDdbSend.mockResolvedValueOnce({
@@ -428,7 +432,7 @@ describe("auth-flow integration: verify-challenge", () => {
 
     const now = Math.floor(Date.now() / 1000);
 
-    mockKmsSend.mockResolvedValueOnce({ Mac: MOCK_HMAC });
+    mockKmsSend.mockResolvedValueOnce({ MacValid: true });
 
     mockDdbSend.mockResolvedValueOnce({
       Item: {
