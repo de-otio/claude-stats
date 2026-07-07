@@ -525,43 +525,59 @@ export class MonitoringStack extends cdk.Stack {
       lambdaErrorAlarm.addAlarmAction(alarmAction);
       lambdaErrorAlarm.addOkAction(alarmAction);
 
-      // DynamoDB throttled requests > 0 for 5 min
-      // Use a math expression to sum throttles across all tables
-      const throttleUsingMetrics: Record<string, cloudwatch.IMetric> = {};
-      const throttleExpressionParts: string[] = [];
-      for (let i = 0; i < TABLE_NAMES.length; i++) {
-        const metricId = `t${i}`;
-        throttleExpressionParts.push(metricId);
-        throttleUsingMetrics[metricId] = new cloudwatch.Metric({
-          namespace: dynamoNamespace,
-          metricName: "ThrottledRequests",
-          dimensionsMap: { TableName: tableNames[TABLE_NAMES[i]] },
-          statistic: "Sum",
-          period: cdk.Duration.minutes(5),
-        });
-      }
-
-      const dynamoThrottleAlarm = new cloudwatch.Alarm(
-        this,
-        "DynamoDBThrottleAlarm",
-        {
-          alarmName: `${prefix}-DynamoDB-Throttled`,
-          alarmDescription:
-            "DynamoDB throttled requests detected for 5 minutes",
-          metric: new cloudwatch.MathExpression({
-            expression: throttleExpressionParts.join(" + "),
-            usingMetrics: throttleUsingMetrics,
+      // DynamoDB throttled requests > 0 for 5 min.
+      // CloudWatch caps an alarm's math expression at 10 individual metrics,
+      // and there are more tables than that — so the tables are chunked into
+      // groups of ≤10 with one summed alarm per chunk. The first alarm keeps
+      // the historical name; later chunks get a -2/-3 suffix.
+      const THROTTLE_ALARM_CHUNK = 10;
+      for (
+        let chunkStart = 0, chunkNo = 1;
+        chunkStart < TABLE_NAMES.length;
+        chunkStart += THROTTLE_ALARM_CHUNK, chunkNo++
+      ) {
+        const chunk = TABLE_NAMES.slice(
+          chunkStart,
+          chunkStart + THROTTLE_ALARM_CHUNK,
+        );
+        const throttleUsingMetrics: Record<string, cloudwatch.IMetric> = {};
+        const throttleExpressionParts: string[] = [];
+        for (let i = 0; i < chunk.length; i++) {
+          const metricId = `t${i}`;
+          throttleExpressionParts.push(metricId);
+          throttleUsingMetrics[metricId] = new cloudwatch.Metric({
+            namespace: dynamoNamespace,
+            metricName: "ThrottledRequests",
+            dimensionsMap: { TableName: tableNames[chunk[i]] },
+            statistic: "Sum",
             period: cdk.Duration.minutes(5),
-          }),
-          threshold: 0,
-          evaluationPeriods: 1,
-          comparisonOperator:
-            cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
-          treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-        },
-      );
-      dynamoThrottleAlarm.addAlarmAction(alarmAction);
-      dynamoThrottleAlarm.addOkAction(alarmAction);
+          });
+        }
+
+        const suffix = chunkNo === 1 ? "" : `-${chunkNo}`;
+        const dynamoThrottleAlarm = new cloudwatch.Alarm(
+          this,
+          `DynamoDBThrottleAlarm${suffix}`,
+          {
+            alarmName: `${prefix}-DynamoDB-Throttled${suffix}`,
+            alarmDescription:
+              "DynamoDB throttled requests detected for 5 minutes" +
+              (suffix ? ` (table group ${chunkNo})` : ""),
+            metric: new cloudwatch.MathExpression({
+              expression: throttleExpressionParts.join(" + "),
+              usingMetrics: throttleUsingMetrics,
+              period: cdk.Duration.minutes(5),
+            }),
+            threshold: 0,
+            evaluationPeriods: 1,
+            comparisonOperator:
+              cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+          },
+        );
+        dynamoThrottleAlarm.addAlarmAction(alarmAction);
+        dynamoThrottleAlarm.addOkAction(alarmAction);
+      }
 
       // DynamoDB Streams iterator age > 5 min (300,000 ms)
       const iteratorAgeAlarm = new cloudwatch.Alarm(

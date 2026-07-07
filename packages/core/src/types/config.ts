@@ -33,6 +33,23 @@ export interface EnvironmentConfig {
   domainName: string | null;
   parentZoneName: string | null;
   parentZoneId: string | null;
+  /**
+   * Absolute path to a prebuilt SPA `dist/` directory. Default (unset): the
+   * in-monorepo `packages/frontend/dist` (current behavior).
+   */
+  frontendDistPath?: string;
+  /**
+   * IAM role ARN in the parent-zone account granting
+   * `route53:ChangeResourceRecordSets` for NS delegation. When set, DnsStack
+   * must not assume the parent zone is in-account. Default `null`.
+   */
+  parentZoneDelegationRoleArn?: string | null;
+  /**
+   * SES identity mode: `"email"` (default, current behavior) verifies a
+   * single sender address; `"domain"` creates an SES domain identity on the
+   * app hosted zone with Route53 DKIM auto-created.
+   */
+  sesIdentityMode?: "email" | "domain";
 
   // Branding
   branding: BrandingConfig;
