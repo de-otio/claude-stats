@@ -7,6 +7,7 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as ses from "aws-cdk-lib/aws-ses";
 import * as sns from "aws-cdk-lib/aws-sns";
+import * as route53 from "aws-cdk-lib/aws-route53";
 import { Construct } from "constructs";
 import type { EnvironmentConfig } from "../config/types.js";
 import { putParam, getParam } from "../ssm-params.js";
@@ -17,6 +18,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface AuthStackProps extends cdk.StackProps {
   config: EnvironmentConfig;
+  /**
+   * App hosted zone from DnsStack. Required when `config.sesIdentityMode` is
+   * `"domain"` — the SES domain identity is created on this zone and DKIM /
+   * MAIL FROM records are auto-created in it. Ignored in `"email"` mode.
+   */
+  hostedZone?: route53.IPublicHostedZone;
 }
 
 export class AuthStack extends cdk.Stack {
@@ -74,18 +81,36 @@ export class AuthStack extends cdk.Stack {
       sendingEnabled: true,
     });
 
-    // ---------- SES Email Identity ----------
+    // ---------- SES Email / Domain Identity ----------
 
     const sesFromEmail = config.senderEmail;
+    const sesIdentityMode = config.sesIdentityMode ?? "email";
 
-    // Always create an email identity. If it doesn't exist in SES yet, SES will
-    // automatically send a verification email to the address. The identity must
-    // be verified (by clicking the link in that email) before magic-link emails
-    // can be sent.
-    const emailIdentity = new ses.EmailIdentity(this, "SesEmailIdentity", {
-      identity: ses.Identity.email(sesFromEmail),
-      configurationSet: configSet,
-    });
+    // Two identity modes:
+    //  - "email" (default): verify the single sender address. SES sends a
+    //    verification email to it; magic-link mail can't be sent until it's
+    //    clicked. Byte-identical to the original behavior.
+    //  - "domain": create an SES domain identity on the app hosted zone, with
+    //    Easy DKIM + MAIL FROM records auto-created in Route53. Requires the
+    //    hosted zone to be passed in (from DnsStack). No manual verification
+    //    email step — verification is via the auto-created DNS records.
+    let emailIdentity: ses.EmailIdentity;
+    if (sesIdentityMode === "domain") {
+      if (!props.hostedZone) {
+        throw new Error(
+          'sesIdentityMode "domain" requires a hosted zone — set config.domainName/parentZone* so DnsStack creates one, and it is passed into AuthStack.',
+        );
+      }
+      emailIdentity = new ses.EmailIdentity(this, "SesEmailIdentity", {
+        identity: ses.Identity.publicHostedZone(props.hostedZone),
+        configurationSet: configSet,
+      });
+    } else {
+      emailIdentity = new ses.EmailIdentity(this, "SesEmailIdentity", {
+        identity: ses.Identity.email(sesFromEmail),
+        configurationSet: configSet,
+      });
+    }
 
     // ---------- SES Bounce & Complaint SNS Topic (prod) ----------
 
@@ -182,7 +207,12 @@ export class AuthStack extends cdk.Stack {
     // Grant KMS sign
     hmacKey.grant(createChallengeFn, "kms:GenerateMac");
 
-    // Grant SES send — scoped to the verified identity and configuration set
+    // Grant SES send — scoped to the verified identity and configuration set.
+    // In "domain" mode the identity ARN covers the whole domain, so also pin
+    // `ses:FromAddress` to the configured sender: a compromised Lambda then
+    // can't send as arbitrary `@<domain>` senders. In "email" mode the ARN is
+    // already the single address, so no condition is added (byte-identical to
+    // the original policy).
     createChallengeFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["ses:SendEmail", "ses:SendRawEmail"],
@@ -190,6 +220,13 @@ export class AuthStack extends cdk.Stack {
           emailIdentity.emailIdentityArn,
           `arn:aws:ses:${this.region}:${this.account}:configuration-set/${configSet.configurationSetName}`,
         ],
+        ...(sesIdentityMode === "domain"
+          ? {
+              conditions: {
+                StringEquals: { "ses:FromAddress": sesFromEmail },
+              },
+            }
+          : {}),
       }),
     );
 
