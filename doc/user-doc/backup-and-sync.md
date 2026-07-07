@@ -28,9 +28,17 @@ You do **not** create a new account or point at a claude-stats server. The
 
 ## Turning it on
 
-In VS Code, run **Command Palette → Claude Stats: Set Up Backup & Sync…**
-(the extension also shows a one-time, dismissible nudge on activation). The
-wizard:
+Two equivalent surfaces:
+
+- **Dashboard → Settings tab → Backup & Sync** — works in the VS Code panel
+  *and* the locally served dashboard (`claude-stats serve`). Shows the current
+  status (folder, encryption mode, last backup write) once configured, and
+  hosts the same setup flow described below. This is also where you turn
+  backup off again (the backup folder and other devices are left untouched).
+- **VS Code Command Palette → Claude Stats: Set Up Backup & Sync…** (the
+  extension also shows a one-time, dismissible nudge on activation).
+
+Either way, the setup flow:
 
 1. **Detects** cloud folders you already have (or lets you choose any folder).
 2. Lets you pick **encrypted (recommended)** or **plaintext**.
@@ -55,7 +63,9 @@ devices — is the *only* way to decrypt the backup.
 ## Adding a second device ("one paste")
 
 On a new machine that can see the same cloud folder, claude-stats notices the
-existing backup and offers **Enter recovery key**. Paste your recovery key once:
+existing backup and offers **Enter recovery key** (the Settings tab's
+Backup & Sync section marks such folders with "existing backup found" and asks
+for the key there too). Paste your recovery key once:
 the device derives the decryption key, enrolls itself into the backup, and joins
 the sync group. From then on both machines back up and merge automatically.
 

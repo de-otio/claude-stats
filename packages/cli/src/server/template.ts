@@ -1382,6 +1382,15 @@ CO₂_grams = total_kWh × grid_intensity</div>
         </form>
       </div>
     </div>
+
+    <!-- Backup & Sync (personal plane) — content rendered by initBackupSection() -->
+    <div class="summary-bar" style="margin-bottom:1rem;">
+      <div class="summary-card" style="grid-column: 1 / -1; text-align: left; padding: 1rem;">
+        <h2 style="margin:0 0 0.35rem 0; font-size:1rem; color:#a0c4ff;">${t("dashboard:settings.backup.title")}</h2>
+        <p style="font-size:0.75rem; color:#aaa; margin:0 0 0.75rem 0;">${t("dashboard:settings.backup.intro")}</p>
+        <div id="backup-body" style="font-size:0.8rem; color:#ccc;"></div>
+      </div>
+    </div>
   </div>
 
   <div class="pricing-panel" id="pricing-panel">
@@ -2316,11 +2325,11 @@ CO₂_grams = total_kWh × grid_intensity</div>
         }
       }
 
-      // Handle responses from VS Code extension (config + cluster I/O share the
-      // callbackId map — both resolve a pending request by its id).
+      // Handle responses from VS Code extension (config + cluster + backup I/O
+      // share the callbackId map — each resolves a pending request by its id).
       window.addEventListener('message', function (event) {
         var msg = event.data;
-        if (msg && (msg.command === 'configResult' || msg.command === 'clustersResult') && msg.callbackId) {
+        if (msg && (msg.command === 'configResult' || msg.command === 'clustersResult' || msg.command === 'backupResult') && msg.callbackId) {
           var cb = _configCallbacks[msg.callbackId];
           delete _configCallbacks[msg.callbackId];
           if (cb) cb(msg.error || null, msg.data);
@@ -2889,6 +2898,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
       }
 
       function initSettings() {
+        initBackupSection();
         loadConfigAsync(function (err, cfg) {
           if (!err && cfg) populateSettingsForm(cfg);
         });
@@ -2927,6 +2937,386 @@ CO₂_grams = total_kWh × grid_intensity</div>
             setTimeout(function () { statusEl.style.opacity = '0'; }, 3000);
           });
         });
+      }
+
+      // ═══════════════ BACKUP & SYNC (Settings tab) ═══════════════
+
+      // Localized copy, injected server-side. Error CODES from the host map to
+      // entries in BK.errors; anything unknown falls back to BK.errors.internal.
+      var BK = {
+        loading: '${jsStr(t("dashboard:settings.backup.loading"))}',
+        notConfigured: '${jsStr(t("dashboard:settings.backup.notConfigured"))}',
+        selectTarget: '${jsStr(t("dashboard:settings.backup.selectTarget"))}',
+        noneDetected: '${jsStr(t("dashboard:settings.backup.noneDetected"))}',
+        customLabel: '${jsStr(t("dashboard:settings.backup.customLabel"))}',
+        customPlaceholder: '${jsStr(t("dashboard:settings.backup.customPlaceholder"))}',
+        existingBackupNote: '${jsStr(t("dashboard:settings.backup.existingBackupNote"))}',
+        encryptionLabel: '${jsStr(t("dashboard:settings.backup.encryptionLabel"))}',
+        encrypted: '${jsStr(t("dashboard:settings.backup.encrypted"))}',
+        encryptedHint: '${jsStr(t("dashboard:settings.backup.encryptedHint"))}',
+        plaintext: '${jsStr(t("dashboard:settings.backup.plaintext"))}',
+        plaintextWarning: '${jsStr(t("dashboard:settings.backup.plaintextWarning"))}',
+        enable: '${jsStr(t("dashboard:settings.backup.enable"))}',
+        working: '${jsStr(t("dashboard:settings.backup.working"))}',
+        connectDevice: '${jsStr(t("dashboard:settings.backup.connectDevice"))}',
+        recoveryKeyPrompt: '${jsStr(t("dashboard:settings.backup.recoveryKeyPrompt"))}',
+        recoveryKeyPlaceholder: '${jsStr(t("dashboard:settings.backup.recoveryKeyPlaceholder"))}',
+        recoveryKeyTitle: '${jsStr(t("dashboard:settings.backup.recoveryKeyTitle"))}',
+        recoveryKeyInstructions: '${jsStr(t("dashboard:settings.backup.recoveryKeyInstructions"))}',
+        copyKey: '${jsStr(t("dashboard:settings.backup.copyKey"))}',
+        copied: '${jsStr(t("dashboard:settings.backup.copied"))}',
+        keySaved: '${jsStr(t("dashboard:settings.backup.keySaved"))}',
+        statusConfigured: '${jsStr(t("dashboard:settings.backup.statusConfigured"))}',
+        statusTarget: '${jsStr(t("dashboard:settings.backup.statusTarget"))}',
+        statusMode: '${jsStr(t("dashboard:settings.backup.statusMode"))}',
+        modeEncrypted: '${jsStr(t("dashboard:settings.backup.modeEncrypted"))}',
+        modePlaintext: '${jsStr(t("dashboard:settings.backup.modePlaintext"))}',
+        statusLastBackup: '${jsStr(t("dashboard:settings.backup.statusLastBackup"))}',
+        never: '${jsStr(t("dashboard:settings.backup.never"))}',
+        keyNotConfirmedReminder: '${jsStr(t("dashboard:settings.backup.keyNotConfirmedReminder"))}',
+        disable: '${jsStr(t("dashboard:settings.backup.disable"))}',
+        disableConfirm: '${jsStr(t("dashboard:settings.backup.disableConfirm"))}',
+        providers: {
+          dropbox: '${jsStr(t("dashboard:settings.backup.providers.dropbox"))}',
+          icloud: '${jsStr(t("dashboard:settings.backup.providers.icloud"))}',
+          googleDrive: '${jsStr(t("dashboard:settings.backup.providers.googleDrive"))}',
+          oneDrive: '${jsStr(t("dashboard:settings.backup.providers.oneDrive"))}'
+        },
+        errors: {
+          'invalid-target': '${jsStr(t("dashboard:settings.backup.errors.invalidTarget"))}',
+          'existing-backup': '${jsStr(t("dashboard:settings.backup.errors.existingBackup"))}',
+          'no-backup-found': '${jsStr(t("dashboard:settings.backup.errors.noBackupFound"))}',
+          'wrong-key': '${jsStr(t("dashboard:settings.backup.errors.wrongKey"))}',
+          'unauthorized': '${jsStr(t("dashboard:settings.backup.errors.unauthorized"))}',
+          'internal': '${jsStr(t("dashboard:settings.backup.errors.internal"))}'
+        }
+      };
+
+      // Same host bridge as loadConfigAsync: postMessage in the VS Code
+      // webview (responses arrive as 'backupResult' on the shared callbackId
+      // map), fetch against /api/backup/* in the browser. Either way the
+      // callback receives (errorCode|null, data).
+      function backupActionAsync(action, payload, callback) {
+        if (typeof window.__vscodeApi !== 'undefined') {
+          var id = ++_configCallbackId;
+          _configCallbacks[id] = callback;
+          window.__vscodeApi.postMessage({ command: 'backupAction', action: action, payload: payload || {}, callbackId: id });
+          return;
+        }
+        var req = action === 'status'
+          ? fetch('/api/backup/status')
+          : fetch('/api/backup/' + action, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload || {})
+            });
+        req.then(function (r) {
+          return r.json().then(function (json) {
+            if (r.status === 401) callback('unauthorized');
+            else if (r.status >= 400) callback((json && json.error) || 'internal');
+            else callback(null, json);
+          });
+        }).catch(function () { callback('internal'); });
+      }
+
+      function bkErrText(code) {
+        return BK.errors[String(code)] || BK.errors['internal'];
+      }
+
+      // DOM helper: createElement with inline style + text (never innerHTML —
+      // status payloads carry filesystem paths).
+      function bkEl(tag, style, text) {
+        var el = document.createElement(tag);
+        if (style) el.style.cssText = style;
+        if (text != null) el.textContent = text;
+        return el;
+      }
+
+      function bkButton(label, primary) {
+        var b = bkEl('button', 'padding:0.4rem 1.2rem; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; background:' + (primary ? '#4e79a7' : '#2a2a4a') + '; color:#fff;', label);
+        b.type = 'button';
+        return b;
+      }
+
+      function initBackupSection() {
+        bkRefresh();
+      }
+
+      function bkRefresh() {
+        var body = document.getElementById('backup-body');
+        if (!body) return;
+        body.textContent = BK.loading;
+        backupActionAsync('status', null, function (err, status) {
+          if (err) {
+            body.textContent = bkErrText(err);
+            body.style.color = '#e15759';
+            return;
+          }
+          body.style.color = '#ccc';
+          renderBackupSection(body, status);
+        });
+      }
+
+      function renderBackupSection(body, status) {
+        body.textContent = '';
+        if (status.configured) renderBackupConfigured(body, status);
+        else renderBackupSetup(body, status);
+      }
+
+      // ── Configured view: status rows + key reminder + disable ─────────────
+      function renderBackupConfigured(body, status) {
+        var head = bkEl('div', 'color:#59a14f; font-weight:bold; margin-bottom:0.6rem;', '\\u25CF ' + BK.statusConfigured);
+        body.appendChild(head);
+
+        function row(label, value, mono) {
+          var r = bkEl('div', 'display:flex; gap:0.6rem; margin-bottom:0.35rem; align-items:baseline;');
+          r.appendChild(bkEl('span', 'color:#888; min-width:9rem; font-size:0.7rem;', label));
+          var v = bkEl('span', 'font-size:0.75rem;' + (mono ? ' font-family:monospace; word-break:break-all; background:#0f3460; padding:0.1rem 0.35rem; border-radius:3px;' : ''), value);
+          r.appendChild(v);
+          return r;
+        }
+
+        body.appendChild(row(BK.statusTarget, status.target, true));
+        var encrypted = status.encryption && (status.encryption.syncData || status.encryption.archive);
+        body.appendChild(row(BK.statusMode, encrypted ? BK.modeEncrypted : BK.modePlaintext, false));
+        if (status.manifest) {
+          body.appendChild(row(
+            BK.statusLastBackup,
+            status.manifest.lastModifiedMs ? new Date(status.manifest.lastModifiedMs).toLocaleString() : BK.never,
+            false
+          ));
+        }
+
+        var msgEl = bkEl('div', 'font-size:0.7rem; margin-top:0.5rem; min-height:1em;');
+        var actions = bkEl('div', 'display:flex; gap:0.75rem; margin-top:0.75rem; align-items:center; flex-wrap:wrap;');
+
+        if (encrypted && !status.recoveryKeyConfirmed) {
+          body.appendChild(bkEl('div', 'color:#e0af68; font-size:0.7rem; margin-top:0.6rem; line-height:1.4;', BK.keyNotConfirmedReminder));
+          var confirmBtn = bkButton(BK.keySaved, true);
+          confirmBtn.addEventListener('click', function () {
+            confirmBtn.disabled = true;
+            backupActionAsync('confirm-key', null, function (err) {
+              if (err) { confirmBtn.disabled = false; msgEl.textContent = bkErrText(err); msgEl.style.color = '#e15759'; return; }
+              bkRefresh();
+            });
+          });
+          actions.appendChild(confirmBtn);
+        }
+
+        // Two-step inline confirm: window.confirm() is a no-op inside VS Code
+        // webviews, so the first click arms the button and shows the
+        // consequences; the second click (within 10s) executes.
+        var disableBtn = bkButton(BK.disable, false);
+        var disableArmed = false;
+        var disarmTimer = null;
+        disableBtn.addEventListener('click', function () {
+          if (!disableArmed) {
+            disableArmed = true;
+            msgEl.textContent = BK.disableConfirm;
+            msgEl.style.color = '#e0af68';
+            disableBtn.style.background = '#e15759';
+            disarmTimer = setTimeout(function () {
+              disableArmed = false;
+              msgEl.textContent = '';
+              disableBtn.style.background = '#2a2a4a';
+            }, 10000);
+            return;
+          }
+          clearTimeout(disarmTimer);
+          disableBtn.disabled = true;
+          backupActionAsync('disable', null, function (err) {
+            if (err) { disableBtn.disabled = false; msgEl.textContent = bkErrText(err); msgEl.style.color = '#e15759'; return; }
+            bkRefresh();
+          });
+        });
+        actions.appendChild(disableBtn);
+        body.appendChild(actions);
+        body.appendChild(msgEl);
+      }
+
+      // ── Setup view: target pick → encryption fork → enable / enroll ───────
+      function renderBackupSetup(body, status) {
+        body.appendChild(bkEl('div', 'color:#888; font-size:0.75rem; margin-bottom:0.75rem;', BK.notConfigured));
+        body.appendChild(bkEl('div', 'font-size:0.75rem; color:#ccc; margin-bottom:0.4rem;', BK.selectTarget));
+
+        var detected = status.detected || [];
+        if (detected.length === 0) {
+          body.appendChild(bkEl('div', 'color:#888; font-size:0.7rem; margin-bottom:0.4rem;', BK.noneDetected));
+        }
+
+        var targetWrap = bkEl('div', 'display:flex; flex-direction:column; gap:0.3rem; margin-bottom:0.75rem;');
+        var customInput = bkEl('input', 'flex:1; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; font-family:monospace;');
+        customInput.type = 'text';
+        customInput.placeholder = BK.customPlaceholder;
+
+        function radioRow(value, labelText, pathText, hasManifest, checked) {
+          var lbl = bkEl('label', 'display:flex; gap:0.5rem; align-items:baseline; cursor:pointer; font-size:0.75rem;');
+          var radio = bkEl('input');
+          radio.type = 'radio';
+          radio.name = 'bk-target';
+          radio.value = value;
+          radio.checked = !!checked;
+          radio.addEventListener('change', syncTargetUi);
+          lbl.appendChild(radio);
+          lbl.appendChild(bkEl('span', 'color:#eee;', labelText));
+          if (pathText) lbl.appendChild(bkEl('code', 'color:#888; font-size:0.65rem; word-break:break-all;', pathText));
+          if (hasManifest) lbl.appendChild(bkEl('span', 'color:#e0af68; font-size:0.65rem;', BK.existingBackupNote));
+          return lbl;
+        }
+
+        detected.forEach(function (root, i) {
+          targetWrap.appendChild(radioRow(String(i), BK.providers[root.provider] || root.provider, root.path, root.hasManifest, i === 0));
+        });
+        var customRow = radioRow('custom', BK.customLabel, null, false, detected.length === 0);
+        customRow.appendChild(customInput);
+        customInput.addEventListener('focus', function () {
+          customRow.querySelector('input[type=radio]').checked = true;
+          syncTargetUi();
+        });
+        targetWrap.appendChild(customRow);
+        body.appendChild(targetWrap);
+
+        // Encryption fork
+        body.appendChild(bkEl('div', 'font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;', BK.encryptionLabel));
+        var encWrap = bkEl('div', 'display:flex; flex-direction:column; gap:0.3rem; margin-bottom:0.5rem;');
+        function encRow(value, labelText, checked) {
+          var lbl = bkEl('label', 'display:flex; gap:0.5rem; align-items:baseline; cursor:pointer; font-size:0.75rem;');
+          var radio = bkEl('input');
+          radio.type = 'radio';
+          radio.name = 'bk-enc';
+          radio.value = value;
+          radio.checked = !!checked;
+          radio.addEventListener('change', syncTargetUi);
+          lbl.appendChild(radio);
+          lbl.appendChild(bkEl('span', 'color:#eee;', labelText));
+          return lbl;
+        }
+        encWrap.appendChild(encRow('encrypted', BK.encrypted, true));
+        encWrap.appendChild(encRow('plaintext', BK.plaintext, false));
+        body.appendChild(encWrap);
+        var encHint = bkEl('div', 'font-size:0.65rem; color:#888; margin-bottom:0.75rem; line-height:1.4;', BK.encryptedHint);
+        body.appendChild(encHint);
+
+        // Enrollment (existing backup at the selected target): key paste field
+        var enrollWrap = bkEl('div', 'display:none; flex-direction:column; gap:0.4rem; margin-bottom:0.75rem;');
+        enrollWrap.appendChild(bkEl('div', 'font-size:0.7rem; color:#e0af68; line-height:1.4;', BK.recoveryKeyPrompt));
+        var keyInput = bkEl('input', 'max-width:26rem; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; font-family:monospace;');
+        keyInput.type = 'password';
+        keyInput.placeholder = BK.recoveryKeyPlaceholder;
+        enrollWrap.appendChild(keyInput);
+        body.appendChild(enrollWrap);
+
+        var msgEl = bkEl('div', 'font-size:0.7rem; margin-top:0.5rem; min-height:1em;');
+        var goBtn = bkButton(BK.enable, true);
+        body.appendChild(goBtn);
+        body.appendChild(msgEl);
+
+        function selectedTarget() {
+          var checked = targetWrap.querySelector('input[name=bk-target]:checked');
+          if (!checked) return null;
+          if (checked.value === 'custom') {
+            var v = customInput.value.trim();
+            return v.length > 0 ? { path: v, hasManifest: false } : null;
+          }
+          var root = detected[parseInt(checked.value, 10)];
+          return root ? { path: root.path, hasManifest: root.hasManifest } : null;
+        }
+
+        function syncTargetUi() {
+          var sel = selectedTarget();
+          var enrolling = !!(sel && sel.hasManifest);
+          enrollWrap.style.display = enrolling ? 'flex' : 'none';
+          encWrap.style.display = enrolling ? 'none' : 'flex';
+          var encChecked = encWrap.querySelector('input[name=bk-enc]:checked');
+          var plainSelected = !!(encChecked && encChecked.value === 'plaintext');
+          encHint.textContent = plainSelected ? BK.plaintextWarning : BK.encryptedHint;
+          encHint.style.color = plainSelected ? '#e0af68' : '#888';
+          encHint.style.display = enrolling ? 'none' : 'block';
+          goBtn.textContent = enrolling ? BK.connectDevice : BK.enable;
+        }
+        syncTargetUi();
+
+        goBtn.addEventListener('click', function () {
+          var sel = selectedTarget();
+          if (!sel) { msgEl.textContent = bkErrText('invalid-target'); msgEl.style.color = '#e15759'; return; }
+          msgEl.textContent = BK.working;
+          msgEl.style.color = '#888';
+          goBtn.disabled = true;
+
+          function fail(code) {
+            goBtn.disabled = false;
+            msgEl.textContent = bkErrText(code);
+            msgEl.style.color = '#e15759';
+            // A custom path can hold a backup we didn't detect — flip to enroll.
+            if (code === 'existing-backup') {
+              sel.hasManifest = true;
+              enrollWrap.style.display = 'flex';
+              encWrap.style.display = 'none';
+              encHint.style.display = 'none';
+              goBtn.textContent = BK.connectDevice;
+            }
+          }
+
+          if (sel.hasManifest || enrollWrap.style.display === 'flex') {
+            backupActionAsync('enroll', { target: sel.path, recoveryKey: keyInput.value }, function (err) {
+              if (err) return fail(err);
+              bkRefresh();
+            });
+            return;
+          }
+
+          var encChecked = encWrap.querySelector('input[name=bk-enc]:checked');
+          var mode = encChecked && encChecked.value === 'plaintext' ? 'plaintext' : 'encrypted';
+          backupActionAsync('setup', { target: sel.path, mode: mode }, function (err, result) {
+            if (err) return fail(err);
+            if (mode === 'encrypted' && result && result.recoveryKey) {
+              renderRecoveryKey(body, result.recoveryKey);
+            } else {
+              bkRefresh();
+            }
+          });
+        });
+      }
+
+      // ── One-time recovery-key display: copy + explicit "I've saved it" ─────
+      function renderRecoveryKey(body, key) {
+        body.textContent = '';
+        body.appendChild(bkEl('div', 'color:#e0af68; font-weight:bold; margin-bottom:0.4rem;', BK.recoveryKeyTitle));
+        body.appendChild(bkEl('div', 'font-size:0.7rem; color:#ccc; margin-bottom:0.6rem; line-height:1.5;', BK.recoveryKeyInstructions));
+        var keyEl = bkEl('code', 'display:block; font-family:monospace; font-size:0.85rem; background:#0f3460; color:#eee; padding:0.6rem; border-radius:4px; word-break:break-all; user-select:all; margin-bottom:0.6rem;', key);
+        body.appendChild(keyEl);
+
+        var actions = bkEl('div', 'display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;');
+        var copyBtn = bkButton(BK.copyKey, false);
+        copyBtn.addEventListener('click', function () {
+          function done() { copyBtn.textContent = BK.copied; setTimeout(function () { copyBtn.textContent = BK.copyKey; }, 2000); }
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(key).then(done, function () { selectKeyText(); });
+          } else {
+            selectKeyText();
+          }
+          function selectKeyText() {
+            var range = document.createRange();
+            range.selectNodeContents(keyEl);
+            var s = window.getSelection();
+            s.removeAllRanges();
+            s.addRange(range);
+          }
+        });
+        actions.appendChild(copyBtn);
+
+        var savedBtn = bkButton(BK.keySaved, true);
+        var msgEl = bkEl('div', 'font-size:0.7rem; margin-top:0.5rem; min-height:1em;');
+        savedBtn.addEventListener('click', function () {
+          savedBtn.disabled = true;
+          backupActionAsync('confirm-key', null, function (err) {
+            if (err) { savedBtn.disabled = false; msgEl.textContent = bkErrText(err); msgEl.style.color = '#e15759'; return; }
+            bkRefresh();
+          });
+        });
+        actions.appendChild(savedBtn);
+        body.appendChild(actions);
+        body.appendChild(msgEl);
       }
 
       // ── Initialize first tab + restore from hash ──────────────────────────
