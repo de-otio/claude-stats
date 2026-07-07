@@ -16,6 +16,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface FrontendStackProps extends cdk.StackProps {
   config: EnvironmentConfig;
+  /**
+   * ACM certificate for the custom domain, created in CertificateStack
+   * (us-east-1) and passed as a construct via cross-region references. Passed
+   * directly (not via SSM) because a param written in us-east-1 is not readable
+   * from the app region. Present iff `config.domainName` is set.
+   */
+  certificate?: acm.ICertificate;
 }
 
 export class FrontendStack extends cdk.Stack {
@@ -66,13 +73,10 @@ export class FrontendStack extends cdk.Stack {
 
     if (config.domainName) {
       const hostedZoneId = getParam(this, prefix, "dns/hosted-zone-id");
-      const certificateArn = getParam(this, prefix, "dns/certificate-arn");
 
-      certificate = acm.Certificate.fromCertificateArn(
-        this,
-        "Certificate",
-        certificateArn,
-      );
+      // Cross-region certificate construct from CertificateStack (us-east-1),
+      // passed in by ClaudeStatsApp rather than re-imported from an SSM ARN.
+      certificate = props.certificate;
       domainNames = [config.domainName];
 
       hostedZone = route53.HostedZone.fromHostedZoneAttributes(
