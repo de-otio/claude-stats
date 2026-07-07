@@ -58,8 +58,6 @@ export interface EnvironmentConfig {
     aggregateStats: number;
   };
 
-  // Secrets
-  magicLinkHmacSecretArn: string | null;  // Secrets Manager ARN (created out-of-band)
 }
 ```
 
@@ -179,9 +177,6 @@ export const prodConfig: EnvironmentConfig = {
   // Cost protection
   monthlyBudgetUsd: 50,
   lambdaReservedConcurrency: { aggregateStats: 10 },
-
-  // Secrets
-  magicLinkHmacSecretArn: "arn:aws:secretsmanager:us-east-1:987654321098:secret:claude-stats/magic-link-hmac",
 };
 ```
 
@@ -189,14 +184,14 @@ export const prodConfig: EnvironmentConfig = {
 
 | Secret | Storage | Rotation |
 |--------|---------|----------|
-| Magic link HMAC key | Secrets Manager | Auto-rotation every 90 days |
+| Magic link HMAC key | KMS HMAC-256 key (created by AuthStack; non-extractable) | Not configured — rotate by key swap + alias repoint (see [02-authentication.md](02-authentication.md)) |
 | Cognito client secrets | Cognito (managed) | N/A (auto-managed) |
 | ACM certificate | Created by DnsStack (DNS-validated) | Auto-renewed by ACM |
 | Alarm email | SSM Parameter Store | N/A (static reference) |
 | Allowed email domains | SSM Parameter Store | Updated via admin API |
 | KMS key for DynamoDB | KMS (customer-managed) | Auto-rotation enabled |
 
-Secrets are never hardcoded in config files. The config references SSM paths or Secrets Manager ARNs. CDK stacks resolve them at deploy time or runtime (Lambda cold start).
+Secrets are never hardcoded in config files. The config references SSM paths; the magic-link HMAC key is a CDK-managed KMS key (no ARN in config). Stacks resolve references at deploy time or runtime (Lambda cold start).
 
 ## CDK App Entry Point
 
