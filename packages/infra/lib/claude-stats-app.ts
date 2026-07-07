@@ -15,7 +15,7 @@ import { MonitoringStack } from "./stacks/monitoring-stack.js";
  * Usage:
  * ```ts
  * import * as cdk from "aws-cdk-lib";
- * import { ClaudeStatsApp } from "@deotio/claude-stats-infra";
+ * import { ClaudeStatsApp } from "@de-otio/claude-stats-infra";
  *
  * const app = new cdk.App();
  * new ClaudeStatsApp(app, "MyCompanyStats", {

@@ -24,6 +24,8 @@ export const defaultConfig: Omit<EnvironmentConfig, "account" | "region" | "send
   domainName: null,
   parentZoneName: null,
   parentZoneId: null,
+  parentZoneDelegationRoleArn: null,
+  sesIdentityMode: "email",
 
   // Branding
   branding: {

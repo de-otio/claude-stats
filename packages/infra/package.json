@@ -1,5 +1,5 @@
 {
-  "name": "@deotio/claude-stats-infra",
+  "name": "@de-otio/claude-stats-infra",
   "version": "0.1.0",
   "description": "AWS CDK infrastructure for claude-stats — deploy your own instance",
   "type": "module",
@@ -22,6 +22,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "cdk": "cdk",
+    "pretest": "npm run build",
+    "test": "vitest run",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
