@@ -1480,7 +1480,18 @@ CO₂_grams = total_kWh × grid_intensity</div>
       var autoBtn = document.getElementById('autorefresh-btn');
       if (refreshSecs > 0) {
         if (autoBtn) autoBtn.textContent = '${jsStr(t("dashboard:toolbar.autoOn", { seconds: "__SECS__" }))}'.replace('__SECS__', refreshSecs);
-        setTimeout(function () { location.reload(); }, refreshSecs * 1000);
+        // Never reload while the Settings tab is active: it holds unsaved,
+        // unrecoverable state (a just-generated backup recovery key is shown
+        // exactly once; the enroll form and disable-confirm are DOM-only).
+        // Re-arm instead — refresh resumes after the user leaves the tab.
+        var scheduleAutoRefresh = function () {
+          setTimeout(function () {
+            var active = document.querySelector('.tab-panel.active');
+            if (active && active.id === 'tab-settings') { scheduleAutoRefresh(); return; }
+            location.reload();
+          }, refreshSecs * 1000);
+        };
+        scheduleAutoRefresh();
       }
       window.toggleRefresh = function () {
         window.location.href = refreshSecs > 0 ? setUrlParam('refresh', null) : setUrlParam('refresh', String(configuredAutoRefreshSecs));
