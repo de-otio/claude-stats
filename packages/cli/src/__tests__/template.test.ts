@@ -1110,5 +1110,18 @@ describe("renderDashboard", () => {
       // initClassify must be wired into the tab dispatch.
       expect(html).toContain("initClassify()");
     });
+
+    it("renders the Backup & Sync section on the Settings tab", () => {
+      const html = renderDashboard(mockData, t);
+      // The card container the client JS renders into…
+      expect(html).toContain('id="backup-body"');
+      // …its localized copy (interpolated raw, like the other headings)…
+      expect(html).toContain("Backup & Sync");
+      // …and the section init wired into the Settings tab init.
+      expect(html).toContain("initBackupSection()");
+      // Host bridge present for both hosts (fetch + postMessage).
+      expect(html).toContain("/api/backup/");
+      expect(html).toContain("backupAction");
+    });
   });
 });

@@ -295,3 +295,76 @@ describe("POST /api/config", () => {
     });
   });
 });
+
+describe("/api/backup/* (Settings tab — Backup & Sync)", () => {
+  // Only non-mutating paths are exercised here (auth wiring, validation, and
+  // the read-only status shape): setup/enroll/disable against real targets
+  // would touch the developer's real ~/.claude-stats config and filesystem.
+  // The full action matrix lives in __tests__/ux/backup-settings.test.ts
+  // against injected config paths + temp dirs.
+
+  it("rejects GET /api/backup/status without a token (it reveals $HOME layout)", async () => {
+    const res = await fetch(`${baseUrl}/api/backup/status`);
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects POST /api/backup/setup without a token", async () => {
+    const res = await fetch(`${baseUrl}/api/backup/setup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target: "/tmp/x", mode: "encrypted" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns the status shape with a valid token", async () => {
+    const res = await fetch(`${baseUrl}/api/backup/status`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(typeof body.configured).toBe("boolean");
+    expect(Array.isArray(body.detected)).toBe(true);
+  });
+
+  it("maps a BackupActionError to 400 with its code (invalid-target)", async () => {
+    const res = await fetch(`${baseUrl}/api/backup/setup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({ target: "", mode: "encrypted" }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body).toHaveProperty("error", "invalid-target");
+  });
+
+  it("reports no-backup-found when enrolling against an empty folder", async () => {
+    const emptyDir = mkdtempSync(join(tmpdir(), "cs-backup-route-"));
+    const res = await fetch(`${baseUrl}/api/backup/enroll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({ target: emptyDir, recoveryKey: "not-a-key" }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body).toHaveProperty("error", "no-backup-found");
+  });
+
+  it("404s an unknown backup action", async () => {
+    const res = await fetch(`${baseUrl}/api/backup/nope`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+      body: "{}",
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("400s malformed JSON", async () => {
+    const res = await fetch(`${baseUrl}/api/backup/setup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+      body: "{not json",
+    });
+    expect(res.status).toBe(400);
+  });
+});
