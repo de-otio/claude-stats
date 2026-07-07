@@ -45,3 +45,5 @@ tmp/
 # Bundled embedding model — fetched in CI before vsce package, never committed.
 # See scripts/fetch-embedding-model.mjs.
 extension/media/embed-model/
+# CDK synth output (smoke script / ad-hoc synth runs)
+cdk.out/
