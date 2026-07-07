@@ -144,9 +144,19 @@ All access patterns use key conditions or GSI lookups — no table scans anywher
 
 AppSync pricing: $4/million queries, $2/million mutations, $0.08/million real-time connection minutes.
 
-### WAF Rate Limiting
+### WAF Rate Limiting (optional hardening — NOT deployed by default)
 
-Two WAF WebACLs provide layered protection:
+> **Status:** WAF is designed but **not implemented in the CDK stacks** and is
+> deliberately optional. At ~$5/WebACL + $1/rule per month it would be the
+> single largest fixed cost of the whole deployment — more than everything
+> else combined at small-team scale. The controls that ARE deployed (Cognito
+> auth on every request, per-user write throttling, magic-link rate limits,
+> Lambda reserved-concurrency caps, budget alarms, the emergency shutoff
+> below) cover the runaway-cost scenarios for a domain-restricted, small-team
+> deployment. Add WAF when the deployment is exposed to real abuse pressure
+> (public signup, large user base, or compliance requirements).
+
+If/when enabled, two WAF WebACLs provide layered protection:
 
 1. **Cognito WAF** — per-mutation limits on auth operations (see [02-authentication.md](02-authentication.md))
 2. **AppSync WAF** — blanket 100 mutations per IP per 5 min, plus AWS managed rules
@@ -173,7 +183,7 @@ The MCP server is a passthrough to AppSync — it does not invoke LLMs.
 
 Cost is based on AgentCore compute (container runtime):
 - Container is idle when no requests are active (scale-to-zero if supported)
-- All data fetching goes through AppSync, which is WAF-protected
+- All data fetching goes through AppSync (WAF-protectable — see above; optional)
 - The MCP gateway inherits Cognito auth — unauthenticated requests are rejected before reaching the container
 - If AgentCore costs become significant, the MCP stack can be disabled via `config.mcpEnabled = false`
 
@@ -182,28 +192,52 @@ Cost is based on AgentCore compute (container runtime):
 SES pricing: $0.10 per 1,000 emails.
 
 - Magic link rate limit: 3 per email per hour (prod)
-- WAF rate limit: 10 `InitiateAuth` per IP per 5 min
+- WAF rate limit (only with the optional WAF): 10 `InitiateAuth` per IP per 5 min
 - SES sending quota: AWS default is 200/day for new accounts; request increase only as needed
 - SES bounce/complaint rate monitored (high rates can trigger AWS suspension)
 
 ## Cost Estimation
 
-Expected monthly costs for a team of 10 active users:
+Expected monthly costs for a team of 10 active users, **as implemented** (the
+aggregate-only API means clients push a handful of aggregate buckets per day,
+not per-session writes — usage costs are cents):
 
 | Service | Estimate | Notes |
 |---------|----------|-------|
-| DynamoDB | $0.50 | On-demand, ~500 sessions/day total, reads for dashboard |
+| KMS | $1.00 | Magic-link HMAC key — $1/key/month (the only real fixed cost) |
+| DynamoDB | $0.30 | On-demand; aggregate upserts + dashboard reads |
 | AppSync | $0.10 | ~25K queries/month, ~5K mutations/month |
 | Lambda | $0.20 | ~5K invocations/month, mostly short-running |
-| Cognito | $0.50 | $0.0055/MAU after 50K free tier |
+| Cognito | $0.00 | Free under the 50K-MAU free tier |
 | SES | $0.01 | ~100 magic link emails/month |
 | S3 + CloudFront | $0.50 | Minimal traffic, mostly cached |
-| WAF | $6.00 | $5 WebACL + $1/rule (2 WebACLs) |
-| KMS | $1.00 | $1/key/month |
-| Secrets Manager | $0.40 | $0.40/secret/month |
-| **Total** | **~$9/month** | Well within $50 budget |
+| CloudWatch | $0.20 | Alarms/logs beyond the free tier |
+| **Total** | **~$2.50/month** | Per environment; dev + prod ≈ double |
 
-At 100 users: ~$25/month. At 500 users: ~$60/month (may need budget increase).
+Optional add-ons change the picture:
+
+| Add-on | Cost | When |
+|--------|------|------|
+| WAF (2 WebACLs + rules) | ~$8–14/month | Public exposure / abuse pressure — see above |
+| Custom domain (Route 53 hosted zone) | $0.50/month | `domainName` configured |
+| Bedrock AgentCore MCP stack | usage-based | `mcpEnabled: true` |
+
+At 100 users: ~$5–10/month. At 500 users: ~$20–30/month. (Older revisions of
+this table assumed per-session sync, WAF, and a Secrets Manager secret; the
+implementation is aggregate-only, WAF-less by default, and uses a KMS HMAC
+key instead of Secrets Manager.)
+
+### Why KMS and not an SSM SecureString?
+
+The magic-link HMAC could instead be a random secret stored in an SSM
+SecureString parameter (free under the AWS-managed key), with the Lambda
+computing the HMAC in-process — saving the last $1/month of fixed cost. The
+KMS HMAC key was chosen deliberately: the key material is **non-extractable**
+(the Lambda can request `GenerateMac`/`VerifyMac` but can never read the key,
+so a leaked Lambda environment or a too-broad `ssm:GetParameter` grant cannot
+exfiltrate it), and CloudFormation cannot create SecureString parameters
+anyway (they would have to be created out-of-band and referenced). $1/month
+is the price of that containment; swap only if it matters.
 
 ## Emergency Cost Shutoff
 

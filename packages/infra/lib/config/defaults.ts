@@ -41,6 +41,4 @@ export const defaultConfig: Omit<EnvironmentConfig, "account" | "region" | "send
   monthlyBudgetUsd: 50,
   lambdaReservedConcurrency: { aggregateStats: 5 },
 
-  // Secrets
-  magicLinkHmacSecretArn: null,
 };

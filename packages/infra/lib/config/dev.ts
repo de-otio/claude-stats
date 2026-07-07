@@ -40,6 +40,4 @@ export const devConfig: EnvironmentConfig = {
   monthlyBudgetUsd: 20,
   lambdaReservedConcurrency: { aggregateStats: 5 },
 
-  // Secrets
-  magicLinkHmacSecretArn: null, // Auto-generated in dev
 };
