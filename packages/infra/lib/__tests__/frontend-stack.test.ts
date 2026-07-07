@@ -151,13 +151,25 @@ describe("FrontendStack — /config.js cache behavior", () => {
       }),
     });
 
-    template.hasResourceProperties("AWS::CloudFront::CachePolicy", {
-      CachePolicyConfig: Match.objectLike({
-        DefaultTTL: 0,
-        MinTTL: 0,
-        MaxTTL: 0,
+    // The /config.js behavior must use the AWS-MANAGED CachingDisabled
+    // policy (id 4135ea2d-6df8-44a3-9df3-4b5a84be39ad). A custom zero-TTL
+    // policy is rejected by the live CloudFront API when the accept-encoding
+    // flags are set ("EnableAcceptEncodingGzip is invalid for policy with
+    // caching disabled") — this broke the first prod deploy, so pin the
+    // managed-policy id and assert no custom zero-TTL policy sneaks back in.
+    template.hasResourceProperties("AWS::CloudFront::Distribution", {
+      DistributionConfig: Match.objectLike({
+        CacheBehaviors: Match.arrayWith([
+          Match.objectLike({
+            PathPattern: "/config.js",
+            CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+          }),
+        ]),
       }),
     });
+    expect(
+      Object.keys(template.findResources("AWS::CloudFront::CachePolicy")),
+    ).toHaveLength(0);
 
     template.hasResourceProperties("AWS::CloudFront::ResponseHeadersPolicy", {
       ResponseHeadersPolicyConfig: Match.objectLike({

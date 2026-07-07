@@ -50,6 +50,13 @@ export class DashboardPanel {
   private until: string | undefined;
   private accountUuid: string | undefined;
   private activeTab: string = "overview";
+  // The AutoCollector fires refreshIfVisible() on every ~/.claude/projects/
+  // write, which is constant during an active session. A full webview.html
+  // replacement wipes DOM-only state on the Settings tab (recovery key shown
+  // once, in-progress enroll/disable forms) — see f329fae's browser-side fix
+  // for the same failure mode. Defer instead of dropping: catch up once the
+  // user leaves the Settings tab.
+  private pendingAutoRefresh = false;
   private readonly chartJsUri: vscode.Uri;
   private readonly sidebar: SidebarProvider | undefined;
   /** Kept for the backup actions' SecretStorage keystore (Backup & Sync section). */
@@ -60,7 +67,13 @@ export class DashboardPanel {
    * Called by the AutoCollector after each successful collection.
    */
   static refreshIfVisible(): void {
-    DashboardPanel.instance?.refresh().catch(() => {});
+    const instance = DashboardPanel.instance;
+    if (!instance) return;
+    if (instance.activeTab === "settings") {
+      instance.pendingAutoRefresh = true;
+      return;
+    }
+    instance.refresh().catch(() => {});
   }
 
   static createOrShow(context: vscode.ExtensionContext, sidebar?: SidebarProvider): void {
@@ -193,6 +206,10 @@ export class DashboardPanel {
     } else if (msg.command === "tabChanged" && msg.tab) {
       this.activeTab = msg.tab;
       this.sidebar?.setActiveTab(msg.tab);
+      if (msg.tab !== "settings" && this.pendingAutoRefresh) {
+        this.pendingAutoRefresh = false;
+        void this.refresh();
+      }
     } else if (msg.command === "getConfig" && msg.callbackId) {
       try {
         const cfg = loadConfig();

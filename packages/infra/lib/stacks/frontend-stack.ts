@@ -155,21 +155,14 @@ export class FrontendStack extends cdk.Stack {
       },
     );
 
-    // Dedicated CloudFront cache policy for /config.js: TTLs pinned to zero
-    // so CloudFront always revalidates with the S3 origin instead of
-    // serving a cached copy from a prior deployment.
-    const configJsCachePolicy = new cloudfront.CachePolicy(
-      this,
-      "ConfigJsCachePolicy",
-      {
-        cachePolicyName: `${prefix}-config-js-no-cache`,
-        defaultTtl: cdk.Duration.seconds(0),
-        minTtl: cdk.Duration.seconds(0),
-        maxTtl: cdk.Duration.seconds(0),
-        enableAcceptEncodingGzip: true,
-        enableAcceptEncodingBrotli: true,
-      },
-    );
+    // Dedicated no-cache behavior for /config.js so CloudFront always
+    // revalidates with the S3 origin instead of serving a copy from a prior
+    // deployment. Uses the AWS-managed CachingDisabled policy: a custom
+    // zero-TTL policy may NOT enable the accept-encoding flags — CloudFront
+    // rejects it at deploy time ("EnableAcceptEncodingGzip is invalid for
+    // policy with caching disabled"), a live-API rule template assertions
+    // cannot catch.
+    const configJsCachePolicy = cloudfront.CachePolicy.CACHING_DISABLED;
 
     // ----------------------------------------------------------------
     // CloudFront distribution
