@@ -145,6 +145,35 @@ jobs:
         env:
           CDK_DEFAULT_REGION: us-east-1
 
+  smoke-consumer-synth:
+    name: Consumer-Synth Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Packs @claude-stats/core + the infra package as npm would publish
+      # them, installs the tarballs offline into a throwaway consumer app,
+      # and runs a real `cdk synth` (incl. NodejsFunction/esbuild bundling)
+      # against them — catches "works in the monorepo, breaks once
+      # tarballed" bugs that tsc/vitest cannot see. Offline by design (see
+      # script header) so this stays deterministic even though CI has
+      # network.
+      - name: Consumer-synth smoke test
+        run: node scripts/smoke-consumer-synth.mjs
+
   deploy-dev:
     name: Deploy to Dev
     runs-on: ubuntu-latest
