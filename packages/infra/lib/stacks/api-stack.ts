@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import * as cdk from "aws-cdk-lib";
@@ -111,6 +112,68 @@ export class ApiStack extends cdk.Stack {
         `${name}DS`,
         table,
       );
+    }
+
+    // ── Resolvers ────────────────────────────────────────────────────
+    //
+    // AppSync JS (APPSYNC_JS) resolvers live in graphql/resolvers/js/*.js.
+    // They are attached here, table-driven so later phases add spec rows.
+    //
+    // Batch/transact resolvers hardcode PascalCase logical table-name strings
+    // in their source (e.g. `table: "UserAggregates"`); AppSync addresses
+    // tables by their *physical* name, so those strings are rewritten to the
+    // env-prefixed physical name — a deterministic synth-time string,
+    // `${prefix}-<key>` (config.envName is a plain string, not a token).
+
+    const resolverDir = path.join(__dirname, "../../../graphql/resolvers/js");
+    const physicalName = (key: string) => `${prefix}-${key}`;
+    const jsRuntime = appsync.FunctionRuntime.JS_1_0_0;
+
+    /** Read a resolver file, applying logical→physical table-name subs. */
+    const loadCode = (
+      file: string,
+      subs: Record<string, string> = {},
+    ): appsync.Code => {
+      let src = fs.readFileSync(path.join(resolverDir, file), "utf-8");
+      for (const [logical, physical] of Object.entries(subs)) {
+        src = src.split(`"${logical}"`).join(`"${physical}"`);
+      }
+      return appsync.Code.fromInline(src);
+    };
+
+    const noneDs = api.addNoneDataSource("NoneDS");
+
+    interface UnitResolverSpec {
+      typeName: "Query" | "Mutation";
+      field: string;
+      dataSource: appsync.BaseDataSource;
+      /** logical→physical table-name substitutions for batch/transact ops */
+      subs?: Record<string, string>;
+    }
+
+    // ── P0: personal-dashboard critical path + the aggregate sync write ──
+    const unitResolvers: UnitResolverSpec[] = [
+      { typeName: "Query", field: "me", dataSource: dataSources.userProfiles },
+      { typeName: "Query", field: "myStats", dataSource: dataSources.userAggregates },
+      { typeName: "Query", field: "myProjects", dataSource: dataSources.userAggregates },
+      { typeName: "Query", field: "myAggregates", dataSource: dataSources.userAggregates },
+      { typeName: "Query", field: "myAchievements", dataSource: dataSources.achievements },
+      { typeName: "Query", field: "availableAchievements", dataSource: noneDs },
+      {
+        typeName: "Mutation",
+        field: "syncAggregate",
+        dataSource: dataSources.userAggregates,
+        subs: { UserAggregates: physicalName("userAggregates") },
+      },
+    ];
+
+    for (const r of unitResolvers) {
+      r.dataSource.createResolver(`${r.field}Resolver`, {
+        typeName: r.typeName,
+        fieldName: r.field,
+        runtime: jsRuntime,
+        code: loadCode(`${r.field}.js`, r.subs),
+      });
     }
 
     // ── Aggregate-stats DLQ (SQS) ────────────────────────────────────
