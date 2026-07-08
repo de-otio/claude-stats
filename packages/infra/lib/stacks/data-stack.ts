@@ -345,6 +345,16 @@ export class DataStack extends cdk.Stack {
       putParam(this, prefix, `data/table-names/${name}`, table.tableName);
     }
 
+    // Export the DynamoDB CMK ARN so consumer stacks (e.g. AuthStack) can grant
+    // their Lambda roles KMS access to it. A table imported by ARN alone does
+    // NOT carry its encryption key, so `grantReadWriteData` on the import only
+    // grants DynamoDB actions — writers then AccessDenied on kms:Decrypt /
+    // GenerateDataKey against a CUSTOMER_MANAGED table. Only present when a CMK
+    // exists (CUSTOMER_MANAGED); AWS-owned encryption needs no grant.
+    if (tableEncryptionKey) {
+      putParam(this, prefix, "data/encryption-key-arn", tableEncryptionKey.keyArn);
+    }
+
     putParam(
       this,
       prefix,

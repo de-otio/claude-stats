@@ -1,10 +1,24 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { signIn, confirmSignIn } from "aws-amplify/auth";
+import { signIn, signUp, confirmSignIn } from "aws-amplify/auth";
 import { Card, Text } from "@tremor/react";
 import { useTranslation } from "react-i18next";
 import { config } from "../config";
 import { onMagicLinkToken } from "../magicLinkRelay";
+
+/**
+ * A long random password for auto-provisioning. It is never used to sign in
+ * (auth is via magic link) — but Cognito requires a password on signUp, and the
+ * pool sets a 99-character minimum specifically to keep password auth
+ * unusable, so this must clear that bar. 96 random bytes → ~128 base64 chars.
+ */
+function generateUnusedPassword(): string {
+  const bytes = new Uint8Array(96);
+  crypto.getRandomValues(bytes);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
 
 export function Login() {
   const { t } = useTranslation('frontend');
@@ -41,27 +55,37 @@ export function Login() {
     const username = email.trim().toLowerCase();
 
     try {
-      // Kick off the custom-auth magic-link flow. Cognito runs
-      // DefineAuthChallenge → CreateAuthChallenge, which is what sends the
-      // email; the promise resolves with a CONFIRM_SIGN_IN_WITH_CUSTOM_CHALLENGE
-      // next step (we never surface it — the user completes sign-in by clicking
-      // the emailed link, which lands on /auth/verify). `email` also rides in
-      // clientMetadata because a first-time user's Cognito record has no email
-      // attribute yet, so CreateAuthChallenge reads it from there.
+      // 1. Provision the user. Cognito custom-auth signIn never creates users,
+      //    and CreateAuthChallenge needs the account's `email` attribute to send
+      //    the link — a first-time user has no account, so signIn against a
+      //    phantom user fails. signUp carries the email attribute and fires
+      //    PreSignUp (domain allow-list + auto-confirm + auto-verify), so the
+      //    user is immediately usable. Ignore "already exists" on return visits.
+      try {
+        await signUp({
+          username,
+          password: generateUnusedPassword(),
+          options: { userAttributes: { email: username } },
+        });
+      } catch (err) {
+        if ((err as { name?: string }).name !== "UsernameExistsException") throw err;
+      }
+
+      // 2. Start the magic-link challenge. Cognito runs DefineAuthChallenge →
+      //    CreateAuthChallenge (which reads the now-present email attribute and
+      //    sends the email). The promise resolves with a
+      //    CONFIRM_SIGN_IN_WITH_CUSTOM_CHALLENGE next step; the user completes
+      //    sign-in by clicking the emailed link (→ /auth/verify).
       await signIn({
         username,
-        options: {
-          authFlowType: "CUSTOM_WITHOUT_SRP",
-          clientMetadata: { email: username },
-        },
+        options: { authFlowType: "CUSTOM_WITHOUT_SRP" },
       });
       setSubmitted(true);
     } catch (err) {
-      // Normal magic-link requests RESOLVE (with a challenge next step); a
-      // throw is a genuine failure (rate limit, disallowed domain, network).
-      // The backend deliberately returns opaque messages, so show the generic
-      // copy and keep the detail in the console.
-      console.error("[Login] signIn failed:", err);
+      // A throw here is a genuine failure (disallowed domain, rate limit,
+      // network). The backend returns opaque messages, so show the generic copy
+      // and keep the detail in the console.
+      console.error("[Login] magic-link request failed:", err);
       setError(t('login.errorDefault'));
     } finally {
       setSending(false);

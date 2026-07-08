@@ -61,6 +61,20 @@ export class AuthStack extends cdk.Stack {
       "data/table-arns/teamMemberships",
     );
 
+    // DynamoDB CMK (CUSTOMER_MANAGED envs only). Imported so that the table
+    // imports below can carry it as `encryptionKey` — that is what makes
+    // `grantReadWriteData` / `grantReadData` also grant the KMS actions
+    // (Decrypt / GenerateDataKey / …) the Lambdas need to read & write a
+    // CMK-encrypted table. Without it they AccessDeny on kms:Decrypt at runtime.
+    const dataEncryptionKey =
+      config.dynamoDbEncryption === "CUSTOMER_MANAGED"
+        ? kms.Key.fromKeyArn(
+            this,
+            "DataEncryptionKey",
+            getParam(this, prefix, "data/encryption-key-arn"),
+          )
+        : undefined;
+
     // ---------- KMS key for magic link HMAC signing ----------
 
     const hmacKey = new kms.Key(this, "MagicLinkHmacKey", {
@@ -219,6 +233,7 @@ export class AuthStack extends cdk.Stack {
       "MagicLinkTokensTable",
       {
         tableArn: magicLinkTokensTableArn,
+        encryptionKey: dataEncryptionKey,
       },
     );
     magicLinkTokensTable.grantReadWriteData(createChallengeFn);
@@ -330,6 +345,7 @@ export class AuthStack extends cdk.Stack {
       "TeamMembershipsTable",
       {
         tableArn: teamMembershipsTableArn,
+        encryptionKey: dataEncryptionKey,
       },
     );
     teamMembershipsTable.grantReadData(preTokenGenerationFn);

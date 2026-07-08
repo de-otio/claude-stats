@@ -8,13 +8,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // Amplify auth — stubbed so the Login flow exercises the real call path
 // (signIn) without hitting Cognito. Hoisted so the mock factory can reference
 // the spies.
-const { signInMock, confirmSignInMock, getCurrentUserMock } = vi.hoisted(() => ({
+const { signInMock, signUpMock, confirmSignInMock, getCurrentUserMock } = vi.hoisted(() => ({
   signInMock: vi.fn(),
+  signUpMock: vi.fn(),
   confirmSignInMock: vi.fn(),
   getCurrentUserMock: vi.fn(),
 }));
 vi.mock("aws-amplify/auth", () => ({
   signIn: signInMock,
+  signUp: signUpMock,
   confirmSignIn: confirmSignInMock,
   getCurrentUser: getCurrentUserMock,
 }));
@@ -90,8 +92,11 @@ describe("Login Page", () => {
 
   beforeEach(async () => {
     signInMock.mockReset();
+    signUpMock.mockReset();
     confirmSignInMock.mockReset();
     relay.handler = null;
+    // Provisioning succeeds (auto-confirmed via PreSignUp).
+    signUpMock.mockResolvedValue({ isSignUpComplete: true, nextStep: { signUpStep: "DONE" } });
     // Magic-link requests resolve with a custom-challenge next step.
     signInMock.mockResolvedValue({
       isSignedIn: false,
@@ -166,7 +171,7 @@ describe("Login Page", () => {
     expect(screen.getByText(/expires in 10 minutes/)).toBeDefined();
   });
 
-  it("requests the magic link via Amplify custom-auth signIn", async () => {
+  it("provisions the user then requests the magic link via custom-auth signIn", async () => {
     render(
       <MemoryRouter>
         <Login />
@@ -174,19 +179,48 @@ describe("Login Page", () => {
     );
 
     fireEvent.change(screen.getByLabelText("Email address"), {
-      // Mixed case + whitespace → normalised before the call.
+      // Mixed case + whitespace → normalised before the calls.
       target: { value: "  Alice@Company.com " },
     });
     fireEvent.click(screen.getByText("Send Magic Link"));
 
     await waitFor(() => {
+      // signUp carries the email attribute + a long throwaway password.
+      expect(signUpMock).toHaveBeenCalledTimes(1);
+      const arg = signUpMock.mock.calls[0][0];
+      expect(arg.username).toBe("alice@company.com");
+      expect(arg.options.userAttributes.email).toBe("alice@company.com");
+      expect(arg.password.length).toBeGreaterThanOrEqual(99);
+      // signIn starts the custom-auth challenge (no clientMetadata needed now
+      // that the user exists and carries the email attribute).
       expect(signInMock).toHaveBeenCalledWith({
         username: "alice@company.com",
-        options: {
-          authFlowType: "CUSTOM_WITHOUT_SRP",
-          clientMetadata: { email: "alice@company.com" },
-        },
+        options: { authFlowType: "CUSTOM_WITHOUT_SRP" },
       });
+    });
+  });
+
+  it("still signs in when the user already exists (UsernameExistsException)", async () => {
+    const existing = Object.assign(new Error("already exists"), { name: "UsernameExistsException" });
+    signUpMock.mockRejectedValueOnce(existing);
+
+    render(
+      <MemoryRouter>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "bob@company.com" },
+    });
+    fireEvent.click(screen.getByText("Send Magic Link"));
+
+    await waitFor(() => {
+      expect(signInMock).toHaveBeenCalledWith({
+        username: "bob@company.com",
+        options: { authFlowType: "CUSTOM_WITHOUT_SRP" },
+      });
+      expect(screen.getByText("Check your email")).toBeDefined();
     });
   });
 
