@@ -12,15 +12,14 @@ import { util } from "@aws-appsync/utils";
 import * as ddb from "@aws-appsync/utils/dynamodb";
 
 function periodStart(period) {
-  const now = util.time.nowISO8601();
   const days = period === "week" ? 7 : period === "month" ? 30 : null;
   if (days === null) {
     util.error('Period must be "week" or "month"', "ValidationError");
     return null;
   }
-  const nowMs = Date.parse(now);
-  const fromMs = nowMs - days * 24 * 60 * 60 * 1000;
-  return new Date(fromMs).toISOString().slice(0, 10);
+  // APPSYNC_JS provides no Date object — compute the window with util.time.
+  const fromMs = util.time.nowEpochMilliSeconds() - days * 24 * 60 * 60 * 1000;
+  return util.time.epochMilliSecondsToFormatted(fromMs, "yyyy-MM-dd");
 }
 
 export function request(ctx) {
@@ -46,7 +45,8 @@ export function response(ctx) {
   const buckets = ctx.result.items ?? [];
   const projectMap = {};
 
-  for (const b of buckets) {
+  // APPSYNC_JS bans `for` loops and `++`; use forEach.
+  buckets.forEach((b) => {
     const pid = b.projectId ?? "(unlinked)";
     if (!projectMap[pid]) {
       projectMap[pid] = {
@@ -59,11 +59,9 @@ export function response(ctx) {
     projectMap[pid].sessions += b.sessionCount ?? 0;
     projectMap[pid].prompts += b.promptCount ?? 0;
     projectMap[pid].estimatedCost += b.estimatedCost ?? 0;
-  }
+  });
 
-  // Sort by session count descending
-  const projects = Object.values(projectMap);
-  projects.sort((a, b) => b.sessions - a.sessions);
-
-  return projects;
+  // Ranking is done client-side (useTopProjects sorts by prompts, top 5);
+  // APPSYNC_JS bans sort-with-comparator, so return the buckets unsorted.
+  return Object.values(projectMap);
 }

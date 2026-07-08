@@ -19,15 +19,14 @@ import * as ddb from "@aws-appsync/utils/dynamodb";
  * sorts correctly.
  */
 function periodStart(period) {
-  const now = util.time.nowISO8601();
   const days = period === "week" ? 7 : period === "month" ? 30 : null;
   if (days === null) {
     util.error('Period must be "week" or "month"', "ValidationError");
     return null;
   }
-  const nowMs = Date.parse(now);
-  const fromMs = nowMs - days * 24 * 60 * 60 * 1000;
-  return new Date(fromMs).toISOString().slice(0, 10);
+  // APPSYNC_JS provides no Date object — compute the window with util.time.
+  const fromMs = util.time.nowEpochMilliSeconds() - days * 24 * 60 * 60 * 1000;
+  return util.time.epochMilliSecondsToFormatted(fromMs, "yyyy-MM-dd");
 }
 
 export function request(ctx) {
@@ -64,7 +63,8 @@ export function response(ctx) {
   const toolsMap = {};
   const projectMap = {};
 
-  for (const b of buckets) {
+  // APPSYNC_JS bans `for` loops and `++`; use forEach (closure `+=` is fine).
+  buckets.forEach((b) => {
     sessions += b.sessionCount ?? 0;
     subagentSessions += b.subagentSessionCount ?? 0;
     prompts += b.promptCount ?? 0;
@@ -75,9 +75,9 @@ export function response(ctx) {
 
     // Track unique models
     if (b.models) {
-      for (const m of b.models) {
+      b.models.forEach((m) => {
         modelsSet[m] = (modelsSet[m] ?? 0) + 1;
-      }
+      });
     }
 
     // Track tool usage from toolUseCounts (stored as AWSJSON)
@@ -86,9 +86,9 @@ export function response(ctx) {
         typeof b.toolUseCounts === "string"
           ? JSON.parse(b.toolUseCounts)
           : b.toolUseCounts;
-      for (const tool of Object.keys(tools)) {
+      Object.keys(tools).forEach((tool) => {
         toolsMap[tool] = (toolsMap[tool] ?? 0) + tools[tool];
-      }
+      });
     }
 
     // Track project breakdown
@@ -99,13 +99,11 @@ export function response(ctx) {
     projectMap[pid].sessions += b.sessionCount ?? 0;
     projectMap[pid].prompts += b.promptCount ?? 0;
     projectMap[pid].estimatedCost += b.estimatedCost ?? 0;
-  }
+  });
 
-  // Derive top tools (sorted by usage count, top 10)
-  const topTools = Object.entries(toolsMap)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map((entry) => entry[0]);
+  // Tool names used. Ranking (top-N by count) is deferred to the client —
+  // APPSYNC_JS bans comparator sort, and the dashboard does not rank tools.
+  const topTools = Object.keys(toolsMap);
 
   // Velocity: total output tokens / active minutes
   const velocityTokensPerMin =

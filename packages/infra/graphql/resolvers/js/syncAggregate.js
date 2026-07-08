@@ -137,8 +137,8 @@ export function response(ctx) {
     let itemsSkipped = 0;
 
     if (cancellationReasons.length > 0) {
-      for (let i = 0; i < cancellationReasons.length; i++) {
-        const reason = cancellationReasons[i];
+      // APPSYNC_JS bans `for` and `++`; use forEach with the index arg.
+      cancellationReasons.forEach((reason, i) => {
         if (reason.type === "None") {
           // This item would have succeeded
           itemsSkipped += 1;
@@ -149,7 +149,7 @@ export function response(ctx) {
             serverItem: reason.item ? JSON.stringify(reason.item) : null,
           });
         }
-      }
+      });
     } else {
       // Non-conditional error — propagate
       util.error(ctx.error.message, ctx.error.type);
