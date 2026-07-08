@@ -5,15 +5,17 @@
  *
  * TeamStats items have PK = teamId, SK = "stats#{period}".
  */
-import { util } from "@aws-appsync/utils";
+import { util, runtime } from "@aws-appsync/utils";
 
 export function request(ctx) {
   const visibleTeams = ctx.stash.visibleTeams || [];
   const period = ctx.stash.period;
 
   if (visibleTeams.length === 0) {
-    // Nothing to fetch — short circuit
-    return { payload: [] };
+    // Nothing to fetch. This step is bound to a DynamoDB data source, so a
+    // `{payload}` return is invalid ("$[operation] not found"); earlyReturn
+    // skips the BatchGetItem and returns [] as the final result.
+    runtime.earlyReturn([]);
   }
 
   // Build BatchGetItem request for TeamStats table
