@@ -21,13 +21,14 @@ export function response(ctx) {
   const publicDashboardTeams = ctx.result.items || [];
   const publicStatsTeams = ctx.stash.publicStatsTeams || [];
 
-  // Merge and deduplicate by teamId
-  const seen = new Set();
+  // Merge and deduplicate by teamId. APPSYNC_JS bans `new` (no Set/Map), so
+  // use a plain object as the seen-set.
+  const seen = {};
   const allTeams = [];
 
   [...publicStatsTeams, ...publicDashboardTeams].forEach((team) => {
-    if (!seen.has(team.teamId)) {
-      seen.add(team.teamId);
+    if (!seen[team.teamId]) {
+      seen[team.teamId] = true;
       allTeams.push(team);
     }
   });
