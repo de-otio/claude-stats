@@ -9,6 +9,7 @@ import { Construct } from "constructs";
 import type { EnvironmentConfig } from "../config/types.js";
 import { putParam, getParam } from "../ssm-params.js";
 import { TeamLogos } from "../constructs/team-logos.js";
+import { toRetentionDays } from "../log-retention.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -77,7 +78,7 @@ export class ApiStack extends cdk.Stack {
       },
       logConfig: {
         fieldLogLevel: appsync.FieldLogLevel.ERROR,
-        retention: config.logRetentionDays,
+        retention: toRetentionDays(config.logRetentionDays),
       },
       xrayEnabled: true,
     });

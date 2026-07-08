@@ -8,9 +8,11 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as ses from "aws-cdk-lib/aws-ses";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as route53 from "aws-cdk-lib/aws-route53";
+import * as logs from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
 import type { EnvironmentConfig } from "../config/types.js";
 import { putParam, getParam } from "../ssm-params.js";
+import { toRetentionDays } from "../log-retention.js";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -152,6 +154,21 @@ export class AuthStack extends cdk.Stack {
       },
     };
 
+    // Explicit, retention-bounded log group per function. Without this a
+    // NodejsFunction auto-creates its `/aws/lambda/<name>` group on first
+    // invocation with NEVER-EXPIRE retention — logs would accumulate forever.
+    // Pre-creating the group with the same name makes the function adopt it.
+    // Logs are operational telemetry, not protected data (the DynamoDB tables
+    // are), so DESTROY in every env — RETAIN would orphan groups and block
+    // stack recreation on a name collision.
+    const logRetention = toRetentionDays(config.logRetentionDays);
+    const makeLogGroup = (functionName: string): logs.LogGroup =>
+      new logs.LogGroup(this, `${functionName}LogGroup`, {
+        logGroupName: `/aws/lambda/${functionName}`,
+        retention: logRetention,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      });
+
     // ---------- DefineAuthChallenge Lambda ----------
 
     const defineChallengeFn = new lambda.NodejsFunction(
@@ -163,6 +180,7 @@ export class AuthStack extends cdk.Stack {
         handler: "handler",
         functionName: `${prefix}-DefineAuthChallenge`,
         description: "Orchestrates Cognito custom auth challenge sequence",
+        logGroup: makeLogGroup(`${prefix}-DefineAuthChallenge`),
       },
     );
 
@@ -182,6 +200,7 @@ export class AuthStack extends cdk.Stack {
         functionName: `${prefix}-CreateAuthChallenge`,
         description:
           "Generates magic link token, rate-limits, sends email via SES",
+        logGroup: makeLogGroup(`${prefix}-CreateAuthChallenge`),
         environment: {
           TABLE_NAME: magicLinkTokensTableName,
           KMS_KEY_ID: hmacKey.keyId,
@@ -242,6 +261,7 @@ export class AuthStack extends cdk.Stack {
         functionName: `${prefix}-VerifyAuthChallenge`,
         description:
           "Validates magic link token via HMAC, checks expiry, marks used",
+        logGroup: makeLogGroup(`${prefix}-VerifyAuthChallenge`),
         environment: {
           TABLE_NAME: magicLinkTokensTableName,
           KMS_KEY_ID: hmacKey.keyId,
@@ -264,6 +284,7 @@ export class AuthStack extends cdk.Stack {
       handler: "handler",
       functionName: `${prefix}-PreSignUp`,
       description: "Enforces allowed email domain restriction on signup",
+      logGroup: makeLogGroup(`${prefix}-PreSignUp`),
       environment: {
         SSM_ALLOWED_DOMAINS_PATH: `/${prefix}/auth/allowed-domains`,
       },
@@ -297,6 +318,7 @@ export class AuthStack extends cdk.Stack {
         handler: "handler",
         functionName: `${prefix}-PreTokenGeneration`,
         description: "Injects team membership group claims into JWT",
+        logGroup: makeLogGroup(`${prefix}-PreTokenGeneration`),
         environment: {
           TABLE_NAME: teamMembershipsTableName,
         },
