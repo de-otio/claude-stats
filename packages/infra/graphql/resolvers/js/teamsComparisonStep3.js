@@ -22,13 +22,14 @@ export function request(ctx) {
     sk: `stats#${period}`,
   }));
 
+  // The physical TeamStats table name is env-scoped; CDK substitutes the
+  // "__TABLE_TEAMSTATS__" placeholder at synth. BatchGetItem addresses tables
+  // by physical name, and the result is keyed by that same name (below).
   return {
     operation: "BatchGetItem",
     tables: {
-      TeamStats: {
-        keys: keys.map((k) =>
-          util.dynamodb.toMapValues(k)
-        ),
+      ["__TABLE_TEAMSTATS__"]: {
+        keys: keys.map((k) => util.dynamodb.toMapValues(k)),
       },
     },
   };
@@ -44,8 +45,9 @@ export function response(ctx) {
   // Build a lookup map from teamId → aggregate stats
   const statsMap = {};
   const statsItems =
-    (ctx.result && ctx.result.data && ctx.result.data.TeamStats) || [];
-  for (const stat of statsItems) {
+    (ctx.result && ctx.result.data && ctx.result.data["__TABLE_TEAMSTATS__"]) ||
+    [];
+  statsItems.forEach((stat) => {
     statsMap[stat.teamId] = {
       totalSessions: stat.totalSessions || 0,
       totalPrompts: stat.totalPrompts || 0,
@@ -56,7 +58,7 @@ export function response(ctx) {
       avgSessionsPerMember: stat.avgSessionsPerMember || 0,
       avgCostPerMember: stat.avgCostPerMember || 0,
     };
-  }
+  });
 
   // Assemble TeamComparisonEntry for each visible team
   return visibleTeams.map((team) => ({

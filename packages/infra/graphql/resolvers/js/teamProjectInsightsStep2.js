@@ -47,15 +47,15 @@ export function response(ctx) {
   const modelsMap = {};
   const trendMap = {}; // date string → { sessions, prompts, estimatedCost }
 
-  for (const entry of memberEntries) {
+  memberEntries.forEach((entry) => {
     // Skip members with "minimal" share level — they have no projectBreakdown
     if (entry.shareLevel === "minimal") {
-      continue;
+      return;
     }
 
     const stats = entry.stats;
     if (!stats || !stats.projectBreakdown) {
-      continue;
+      return;
     }
 
     // Find matching project entries for this member
@@ -64,18 +64,18 @@ export function response(ctx) {
     );
 
     if (projectEntries.length === 0) {
-      continue;
+      return;
     }
 
     // Aggregate this member's contribution to the project
     let memberSessions = 0;
     let memberPrompts = 0;
 
-    for (const p of projectEntries) {
+    projectEntries.forEach((p) => {
       memberSessions += p.sessions ?? 0;
       memberPrompts += p.prompts ?? 0;
       estimatedCost += p.estimatedCost ?? 0;
-    }
+    });
 
     totalSessions += memberSessions;
     totalPrompts += memberPrompts;
@@ -104,9 +104,9 @@ export function response(ctx) {
         typeof stats.modelsUsed === "string"
           ? JSON.parse(stats.modelsUsed)
           : stats.modelsUsed;
-      for (const model of Object.keys(models)) {
+      Object.keys(models).forEach((model) => {
         modelsMap[model] = (modelsMap[model] ?? 0) + models[model];
-      }
+      });
     }
 
     // Build trend data — use computedAt date as a data point per member.
@@ -125,24 +125,23 @@ export function response(ctx) {
       }
       trendMap[date].sessions += memberSessions;
       trendMap[date].prompts += memberPrompts;
-      for (const p of projectEntries) {
+      projectEntries.forEach((p) => {
         trendMap[date].estimatedCost += p.estimatedCost ?? 0;
-      }
+      });
     }
-  }
+  });
 
-  // Sort contributors by sessions descending
-  contributors.sort((a, b) => b.sessions - a.sessions);
-
-  // Sort trend data by date ascending
+  // Ordering left to the client: the APPSYNC_JS runtime bans comparator
+  // sorts (no-function-passing), and the full contributor/trend lists are
+  // returned intact, so the client sorts contributors by sessions desc and
+  // trend by date asc.
   const trend = Object.values(trendMap);
-  trend.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   // Round cost values for cleanliness
   estimatedCost = Math.round(estimatedCost * 100) / 100;
-  for (const t of trend) {
+  trend.forEach((t) => {
     t.estimatedCost = Math.round(t.estimatedCost * 100) / 100;
-  }
+  });
 
   return {
     projectId,
