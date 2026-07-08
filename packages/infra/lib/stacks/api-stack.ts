@@ -33,6 +33,21 @@ const TABLE_NAMES = [
   "interTeamChallenges",
 ] as const;
 
+/**
+ * GSI names per table (must mirror DataStack). Passed to
+ * `fromTableAttributes` so the data-source grants include `arn/index/*` —
+ * without this an imported table reports `hasIndex=false` and resolvers
+ * that Query a GSI get AccessDenied at runtime.
+ */
+const TABLE_INDEXES: Record<string, string[]> = {
+  teams: ["TeamsBySlug", "TeamsByVisibility"],
+  teamMemberships: ["MembershipsByUser"],
+  syncedSessions: ["SessionsByTimestamp", "SessionsByAccount", "SessionsByProject"],
+  userAggregates: ["AggregatesByAccount", "AggregatesByProject"],
+  teamStats: ["StatsByPeriod"],
+  interTeamChallenges: ["InterTeamChallengesByStatus"],
+};
+
 export class ApiStack extends cdk.Stack {
   public readonly graphqlApi: appsync.GraphqlApi;
   public readonly dlq: sqs.Queue;
@@ -107,6 +122,7 @@ export class ApiStack extends cdk.Stack {
       const table = dynamodb.Table.fromTableAttributes(this, `${name}Table`, {
         tableArn: tableArns[name],
         encryptionKey: dataEncryptionKey,
+        globalIndexes: TABLE_INDEXES[name] ?? [],
       });
       dataSources[name] = api.addDynamoDbDataSource(
         `${name}DS`,
