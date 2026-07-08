@@ -4,6 +4,7 @@ import * as cdk from "aws-cdk-lib";
 import * as appsync from "aws-cdk-lib/aws-appsync";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as kms from "aws-cdk-lib/aws-kms";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import type { EnvironmentConfig } from "../config/types.js";
@@ -54,6 +55,20 @@ export class ApiStack extends cdk.Stack {
       tableArns[name] = getParam(this, prefix, `data/table-arns/${name}`);
     }
 
+    // DynamoDB CMK (CUSTOMER_MANAGED envs). Imported so the table imports below
+    // carry it as `encryptionKey` — that is what makes the AppSync data-source
+    // role grant also include the KMS actions (Decrypt / GenerateDataKey) that
+    // reading & writing a CMK-encrypted table requires. Without it every
+    // resolver AccessDenies on kms:Decrypt at runtime.
+    const dataEncryptionKey =
+      config.dynamoDbEncryption === "CUSTOMER_MANAGED"
+        ? kms.Key.fromKeyArn(
+            this,
+            "DataEncryptionKey",
+            getParam(this, prefix, "data/encryption-key-arn"),
+          )
+        : undefined;
+
     // ── AppSync GraphQL API ──────────────────────────────────────────
 
     const userPool = cognito.UserPool.fromUserPoolId(
@@ -88,11 +103,10 @@ export class ApiStack extends cdk.Stack {
     const dataSources: Record<string, appsync.DynamoDbDataSource> = {};
 
     for (const name of TABLE_NAMES) {
-      const table = dynamodb.Table.fromTableArn(
-        this,
-        `${name}Table`,
-        tableArns[name],
-      );
+      const table = dynamodb.Table.fromTableAttributes(this, `${name}Table`, {
+        tableArn: tableArns[name],
+        encryptionKey: dataEncryptionKey,
+      });
       dataSources[name] = api.addDynamoDbDataSource(
         `${name}DS`,
         table,
