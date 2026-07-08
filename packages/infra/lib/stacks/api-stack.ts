@@ -151,8 +151,8 @@ export class ApiStack extends cdk.Stack {
       subs?: Record<string, string>;
     }
 
-    // ── P0: personal-dashboard critical path + the aggregate sync write ──
     const unitResolvers: UnitResolverSpec[] = [
+      // ── P0: personal-dashboard critical path + the aggregate sync write ──
       { typeName: "Query", field: "me", dataSource: dataSources.userProfiles },
       { typeName: "Query", field: "myStats", dataSource: dataSources.userAggregates },
       { typeName: "Query", field: "myProjects", dataSource: dataSources.userAggregates },
@@ -165,6 +165,9 @@ export class ApiStack extends cdk.Stack {
         dataSource: dataSources.userAggregates,
         subs: { UserAggregates: physicalName("userAggregates") },
       },
+      // ── P1a: team read path (complete + clean unit resolvers) ──
+      { typeName: "Query", field: "team", dataSource: dataSources.teams },
+      { typeName: "Query", field: "teamMembers", dataSource: dataSources.teamMemberships },
     ];
 
     for (const r of unitResolvers) {
@@ -173,6 +176,82 @@ export class ApiStack extends cdk.Stack {
         fieldName: r.field,
         runtime: jsRuntime,
         code: loadCode(`${r.field}.js`, r.subs),
+      });
+    }
+
+    // ── Pipeline resolvers ───────────────────────────────────────────
+    // Each step is an AppSync function bound to its own data source; the
+    // resolver itself is a thin before/after pass-through.
+    const pipelinePassthrough = appsync.Code.fromInline(
+      "export function request() { return {}; }\n" +
+        "export function response(ctx) { return ctx.prev.result; }\n",
+    );
+
+    interface PipelineStep {
+      file: string;
+      dataSource: appsync.BaseDataSource;
+      subs?: Record<string, string>;
+    }
+    interface PipelineResolverSpec {
+      typeName: "Query" | "Mutation";
+      field: string;
+      steps: PipelineStep[];
+    }
+
+    const pipelineResolvers: PipelineResolverSpec[] = [
+      {
+        typeName: "Query",
+        field: "teamProjectInsights",
+        steps: [
+          { file: "teamProjectInsights.js", dataSource: dataSources.teamMemberships },
+          { file: "teamProjectInsightsStep2.js", dataSource: dataSources.teamStats },
+        ],
+      },
+      {
+        typeName: "Query",
+        field: "teamProjects",
+        steps: [
+          { file: "teamProjects.js", dataSource: dataSources.teamMemberships },
+          { file: "teamProjectsStep2.js", dataSource: dataSources.teamStats },
+        ],
+      },
+      {
+        typeName: "Query",
+        field: "teamDashboardAsReader",
+        steps: [
+          { file: "teamDashboardAsReader.js", dataSource: dataSources.teams },
+          { file: "teamDashboardAsReaderStep2.js", dataSource: dataSources.teamStats },
+        ],
+      },
+      {
+        typeName: "Query",
+        field: "teamsComparison",
+        steps: [
+          { file: "teamsComparison.js", dataSource: dataSources.teams },
+          { file: "teamsComparisonStep2.js", dataSource: dataSources.teams },
+          {
+            file: "teamsComparisonStep3.js",
+            dataSource: dataSources.teamStats,
+            subs: { __TABLE_TEAMSTATS__: physicalName("teamStats") },
+          },
+        ],
+      },
+    ];
+
+    for (const r of pipelineResolvers) {
+      const fns = r.steps.map((s, i) =>
+        s.dataSource.createFunction(`${r.field}Fn${i + 1}`, {
+          name: `${r.field}Fn${i + 1}`,
+          runtime: jsRuntime,
+          code: loadCode(s.file, s.subs),
+        }),
+      );
+      api.createResolver(`${r.field}Resolver`, {
+        typeName: r.typeName,
+        fieldName: r.field,
+        runtime: jsRuntime,
+        code: pipelinePassthrough,
+        pipelineConfig: fns,
       });
     }
 

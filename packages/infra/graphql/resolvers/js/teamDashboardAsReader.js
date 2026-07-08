@@ -38,13 +38,20 @@ export function request(ctx) {
   // Extract caller's team memberships from JWT groups
   const groups = ctx.identity.claims["cognito:groups"] || [];
   const callerTeamIds = [];
-  for (const group of groups) {
-    // Groups follow pattern: team:{teamId}:member or team:{teamId}:admin
-    const match = group.match(/^team:([^:]+):(member|admin)$/);
-    if (match) {
-      callerTeamIds.push(match[1]);
+  groups.forEach((group) => {
+    // Groups follow pattern: team:{teamId}:member or team:{teamId}:admin.
+    // Parsed via split rather than a regex literal — the APPSYNC_JS runtime
+    // bans regex literals (no-regex). teamId contains no ":", so a 3-part
+    // split is equivalent to the original /^team:([^:]+):(member|admin)$/.
+    const parts = group.split(":");
+    if (
+      parts.length === 3 &&
+      parts[0] === "team" &&
+      (parts[2] === "member" || parts[2] === "admin")
+    ) {
+      callerTeamIds.push(parts[1]);
     }
-  }
+  });
   ctx.stash.callerTeamIds = callerTeamIds;
 
   // Fetch the target team to check dashboardReaders

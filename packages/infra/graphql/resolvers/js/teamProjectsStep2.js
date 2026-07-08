@@ -36,19 +36,19 @@ export function response(ctx) {
   const memberEntries = ctx.result.items ?? [];
   const projectMap = {};
 
-  for (const entry of memberEntries) {
+  memberEntries.forEach((entry) => {
     // Skip members with "minimal" share level — they have no projectBreakdown
     if (entry.shareLevel === "minimal") {
-      continue;
+      return;
     }
 
     const stats = entry.stats;
     if (!stats || !stats.projectBreakdown) {
-      continue;
+      return;
     }
 
     // Aggregate each project entry from this member
-    for (const p of stats.projectBreakdown) {
+    stats.projectBreakdown.forEach((p) => {
       const pid = p.projectId ?? "(unlinked)";
       if (!projectMap[pid]) {
         projectMap[pid] = {
@@ -61,17 +61,17 @@ export function response(ctx) {
       projectMap[pid].sessions += p.sessions ?? 0;
       projectMap[pid].prompts += p.prompts ?? 0;
       projectMap[pid].estimatedCost += p.estimatedCost ?? 0;
-    }
-  }
+    });
+  });
 
   // Round cost values
   const projects = Object.values(projectMap);
-  for (const p of projects) {
+  projects.forEach((p) => {
     p.estimatedCost = Math.round(p.estimatedCost * 100) / 100;
-  }
+  });
 
-  // Sort by session count descending
-  projects.sort((a, b) => b.sessions - a.sessions);
-
+  // Ordering left to the client: the APPSYNC_JS runtime bans comparator
+  // sorts (no-function-passing). The full deduplicated project list is
+  // returned intact, so the client sorts by session count descending.
   return projects;
 }

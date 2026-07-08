@@ -25,12 +25,12 @@ export function response(ctx) {
   const seen = new Set();
   const allTeams = [];
 
-  for (const team of [...publicStatsTeams, ...publicDashboardTeams]) {
+  [...publicStatsTeams, ...publicDashboardTeams].forEach((team) => {
     if (!seen.has(team.teamId)) {
       seen.add(team.teamId);
       allTeams.push(team);
     }
-  }
+  });
 
   ctx.stash.visibleTeams = allTeams;
   return allTeams;
