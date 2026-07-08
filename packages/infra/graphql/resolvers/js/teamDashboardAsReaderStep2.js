@@ -5,13 +5,15 @@
  *
  * If the previous step returned null (not authorized), short-circuit.
  */
-import { util } from "@aws-appsync/utils";
+import { util, runtime } from "@aws-appsync/utils";
 import * as ddb from "@aws-appsync/utils/dynamodb";
 
 export function request(ctx) {
-  // If authorization failed, short-circuit
+  // If authorization failed, short-circuit. This step is bound to a DynamoDB
+  // data source, so a `{payload}` return is invalid ("$[operation] not found");
+  // runtime.earlyReturn skips the data-source call and returns the value.
   if (!ctx.stash.targetTeam) {
-    return { payload: null };
+    runtime.earlyReturn(null);
   }
 
   const teamId = ctx.stash.targetTeamId;
