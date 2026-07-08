@@ -1,9 +1,25 @@
 /**
  * TanStack Query hooks for data fetching.
  * Each hook defines the query key and fetcher function.
- * Currently uses mock data; swap fetchers for real API calls later.
+ *
+ * Personal-dashboard hooks (useMe, useMyStats, useTopProjects, useAchievements,
+ * useUsageTrend, useModelMix) call the real AppSync API. The remaining
+ * team/challenge/admin hooks still return mock data pending P1–P4 wiring.
  */
 import { useQuery } from "@tanstack/react-query";
+import {
+  gql,
+  ME,
+  MY_STATS,
+  MY_PROJECTS,
+  MY_ACHIEVEMENTS,
+  MY_AGGREGATES,
+  type GqlUser,
+  type GqlMemberStats,
+  type GqlProjectStats,
+  type GqlAchievement,
+  type GqlUserAggregate,
+} from "../graphql/operations";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -20,9 +36,7 @@ export interface KPIData {
 
 export interface UsageTrendPoint {
   date: string;
-  "Opus 4": number;
-  "Sonnet 4": number;
-  "Haiku 4": number;
+  tokens: number;
 }
 
 export interface ModelMixEntry {
@@ -102,49 +116,6 @@ export interface InterTeamChallenge {
 
 // ─── Mock Data ───────────────────────────────────────────────────────
 
-const MOCK_KPI: KPIData = {
-  sessions: 47,
-  prompts: 312,
-  cost: 18.42,
-  velocity: 1423,
-  sessionsDelta: 12,
-  promptsDelta: 8,
-  costDelta: -3,
-  velocityDelta: 5,
-};
-
-const MOCK_USAGE_TREND: UsageTrendPoint[] = [
-  { date: "Mar 7", "Opus 4": 12400, "Sonnet 4": 8200, "Haiku 4": 3100 },
-  { date: "Mar 8", "Opus 4": 15100, "Sonnet 4": 9400, "Haiku 4": 2800 },
-  { date: "Mar 9", "Opus 4": 8900, "Sonnet 4": 7100, "Haiku 4": 4200 },
-  { date: "Mar 10", "Opus 4": 17200, "Sonnet 4": 11300, "Haiku 4": 3600 },
-  { date: "Mar 11", "Opus 4": 14800, "Sonnet 4": 10200, "Haiku 4": 2900 },
-  { date: "Mar 12", "Opus 4": 19300, "Sonnet 4": 12100, "Haiku 4": 4500 },
-  { date: "Mar 13", "Opus 4": 16700, "Sonnet 4": 9800, "Haiku 4": 3800 },
-];
-
-const MOCK_MODEL_MIX: ModelMixEntry[] = [
-  { model: "Opus 4", tokens: 104400 },
-  { model: "Sonnet 4", tokens: 68100 },
-  { model: "Haiku 4", tokens: 24900 },
-];
-
-const MOCK_PROJECTS: ProjectEntry[] = [
-  { project: "claude-stats", prompts: 87 },
-  { project: "api-gateway", prompts: 64 },
-  { project: "web-client", prompts: 52 },
-  { project: "auth-service", prompts: 41 },
-  { project: "infra-cdk", prompts: 38 },
-];
-
-const MOCK_ACHIEVEMENTS: Achievement[] = [
-  { id: "1", name: "Cache Master", icon: "trophy", description: "Achieved 90%+ cache hit rate", earnedAt: "2026-03-10" },
-  { id: "2", name: "Speed Demon", icon: "zap", description: "Over 2,000 tokens/min average velocity", earnedAt: "2026-03-08" },
-  { id: "3", name: "10K Club", icon: "bar-chart", description: "10,000+ prompts lifetime", earnedAt: "2026-03-05" },
-  { id: "4", name: "Night Owl", icon: "moon", description: "Active coding session past midnight", earnedAt: "2026-03-03" },
-  { id: "5", name: "Streak Champion", icon: "flame", description: "12-day active streak", earnedAt: "2026-03-01" },
-];
-
 const MOCK_TEAM_MEMBERS: TeamMember[] = [
   { id: "1", name: "Alice Chen", avatarUrl: null, streakDays: 12, prompts: 312, cost: 18.42, velocity: 2341, cacheRate: 87 },
   { id: "2", name: "Bob Park", avatarUrl: null, streakDays: 5, prompts: 428, cost: 24.10, velocity: 1890, cacheRate: 91 },
@@ -205,42 +176,109 @@ const MOCK_CHALLENGES: InterTeamChallenge[] = [
 
 // ─── Hooks ───────────────────────────────────────────────────────────
 
-export function useMyStats(_period: string = "week") {
+export interface MeData {
+  userId: string;
+  email: string;
+  displayName: string;
+  currentStreak: number;
+}
+
+export function useMe() {
   return useQuery({
-    queryKey: ["my-stats", _period],
+    queryKey: ["me"],
+    queryFn: async (): Promise<MeData> => {
+      const { me } = await gql<{ me: GqlUser }>(ME);
+      return {
+        userId: me.userId,
+        email: me.email,
+        displayName: me.displayName,
+        currentStreak: me.streak?.currentStreak ?? 0,
+      };
+    },
+    staleTime: 300_000,
+  });
+}
+
+export function useMyStats(period: string = "week") {
+  return useQuery({
+    queryKey: ["my-stats", period],
     queryFn: async (): Promise<KPIData> => {
-      // TODO: Replace with real API call
-      return MOCK_KPI;
+      const { myStats } = await gql<{ myStats: GqlMemberStats }>(MY_STATS, {
+        period,
+      });
+      // Period-over-period deltas have no schema field yet; a second
+      // (prior-period) query or a schema addition is needed to populate them.
+      return {
+        sessions: myStats.sessions,
+        prompts: myStats.prompts,
+        cost: myStats.estimatedCost ?? 0,
+        velocity: myStats.velocityTokensPerMin ?? 0,
+        sessionsDelta: 0,
+        promptsDelta: 0,
+        costDelta: 0,
+        velocityDelta: 0,
+      };
     },
     staleTime: 60_000,
   });
 }
 
-export function useUsageTrend(_period: string = "week") {
+export function useUsageTrend(period: string = "week") {
   return useQuery({
-    queryKey: ["usage-trend", _period],
+    queryKey: ["usage-trend", period],
     queryFn: async (): Promise<UsageTrendPoint[]> => {
-      return MOCK_USAGE_TREND;
+      const { myAggregates } = await gql<{ myAggregates: GqlUserAggregate[] }>(
+        MY_AGGREGATES,
+        { limit: 10000 },
+      );
+      // Total tokens per period. UserAggregate carries only a model *name*
+      // list and total token counts — no per-model token split — so the
+      // trend is a single "tokens" series, not a per-model stack.
+      const byPeriod: Record<string, number> = {};
+      for (const a of myAggregates) {
+        byPeriod[a.period] =
+          (byPeriod[a.period] ?? 0) + (a.inputTokens ?? 0) + (a.outputTokens ?? 0);
+      }
+      return Object.entries(byPeriod)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([date, tokens]) => ({ date, tokens }));
     },
     staleTime: 60_000,
   });
 }
 
-export function useModelMix(_period: string = "week") {
+export function useModelMix(period: string = "week") {
   return useQuery({
-    queryKey: ["model-mix", _period],
+    queryKey: ["model-mix", period],
     queryFn: async (): Promise<ModelMixEntry[]> => {
-      return MOCK_MODEL_MIX;
+      const { myStats } = await gql<{ myStats: GqlMemberStats }>(MY_STATS, {
+        period,
+      });
+      // modelsUsed is AWSJSON {modelName: activityCount}; per-model *token*
+      // counts are not in the schema, so the mix reflects activity share.
+      const raw = myStats.modelsUsed
+        ? (JSON.parse(myStats.modelsUsed) as Record<string, number>)
+        : {};
+      return Object.entries(raw)
+        .map(([model, tokens]) => ({ model, tokens }))
+        .sort((a, b) => b.tokens - a.tokens);
     },
     staleTime: 60_000,
   });
 }
 
-export function useTopProjects(_period: string = "week") {
+export function useTopProjects(period: string = "week") {
   return useQuery({
-    queryKey: ["top-projects", _period],
+    queryKey: ["top-projects", period],
     queryFn: async (): Promise<ProjectEntry[]> => {
-      return MOCK_PROJECTS;
+      const { myProjects } = await gql<{ myProjects: GqlProjectStats[] }>(
+        MY_PROJECTS,
+        { period },
+      );
+      return myProjects
+        .map((p) => ({ project: p.projectId, prompts: p.prompts }))
+        .sort((a, b) => b.prompts - a.prompts)
+        .slice(0, 5);
     },
     staleTime: 60_000,
   });
@@ -250,7 +288,17 @@ export function useAchievements() {
   return useQuery({
     queryKey: ["achievements"],
     queryFn: async (): Promise<Achievement[]> => {
-      return MOCK_ACHIEVEMENTS;
+      const { myAchievements } = await gql<{ myAchievements: GqlAchievement[] }>(
+        MY_ACHIEVEMENTS,
+      );
+      return myAchievements.map((a) => ({
+        id: a.achievementId,
+        name: a.name,
+        icon: a.icon,
+        description: a.description,
+        // AWSTimestamp is epoch seconds → ISO date
+        earnedAt: new Date(a.unlockedAt * 1000).toISOString().slice(0, 10),
+      }));
     },
     staleTime: 300_000,
   });

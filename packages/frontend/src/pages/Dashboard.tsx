@@ -1,7 +1,7 @@
 import { Card, Text, AreaChart, DonutChart, BarChart } from "@tremor/react";
 import { useTranslation } from "react-i18next";
 import { KPICard } from "../components/KPICard";
-import { useMyStats, useUsageTrend, useModelMix, useTopProjects, useAchievements } from "../hooks/useApi";
+import { useMe, useMyStats, useUsageTrend, useModelMix, useTopProjects, useAchievements } from "../hooks/useApi";
 
 const ACHIEVEMENT_ICONS: Record<string, string> = {
   trophy: "\u{1F3C6}",
@@ -13,6 +13,7 @@ const ACHIEVEMENT_ICONS: Record<string, string> = {
 
 export function Dashboard() {
   const { t } = useTranslation('frontend');
+  const { data: me } = useMe();
   const { data: stats, isLoading: statsLoading } = useMyStats("week");
   const { data: trend, isLoading: trendLoading } = useUsageTrend("week");
   const { data: modelMix, isLoading: mixLoading } = useModelMix("week");
@@ -24,13 +25,13 @@ export function Dashboard() {
       {/* Header */}
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('dashboard.welcome', { name: 'Alice' })}</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('dashboard.welcome', { name: me?.displayName ?? '…' })}</h1>
           <Text className="mt-1">{t('dashboard.subtitle')}</Text>
         </div>
         <div className="flex items-center gap-2 rounded-lg bg-orange-50 px-4 py-2">
           <span className="text-xl">{"\u{1F525}"}</span>
           <div>
-            <Text className="font-semibold text-orange-700">{t('dashboard.streak', { count: 12 })}</Text>
+            <Text className="font-semibold text-orange-700">{t('dashboard.streak', { count: me?.currentStreak ?? 0 })}</Text>
           </div>
         </div>
       </div>
@@ -77,11 +78,10 @@ export function Dashboard() {
             className="h-72"
             data={trend ?? []}
             index="date"
-            categories={["Opus 4", "Sonnet 4", "Haiku 4"]}
-            colors={["indigo", "cyan", "amber"]}
+            categories={["tokens"]}
+            colors={["indigo"]}
             valueFormatter={(v: number) => `${(v / 1000).toFixed(1)}K tokens`}
             showAnimation
-            stack
           />
         )}
       </Card>
@@ -100,8 +100,8 @@ export function Dashboard() {
               data={modelMix ?? []}
               category="tokens"
               index="model"
-              colors={["indigo", "cyan", "amber"]}
-              valueFormatter={(v: number) => `${(v / 1000).toFixed(1)}K tokens`}
+              colors={["indigo", "cyan", "amber", "emerald", "rose"]}
+              valueFormatter={(v: number) => `${v.toLocaleString()} uses`}
               showAnimation
             />
           )}

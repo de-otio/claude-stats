@@ -317,6 +317,7 @@ describe("Dashboard Page", () => {
   it("renders KPI cards with mock data", async () => {
     // Mock the hooks to return data immediately
     vi.doMock("../hooks/useApi", () => ({
+      useMe: () => ({ data: { userId: "u1", email: "a@example.com", displayName: "Alice", currentStreak: 12 }, isLoading: false }),
       useMyStats: () => ({
         data: {
           sessions: 47,
@@ -355,6 +356,7 @@ describe("Dashboard Page", () => {
 
   it("renders welcome header", async () => {
     vi.doMock("../hooks/useApi", () => ({
+      useMe: () => ({ data: { userId: "u1", email: "a@example.com", displayName: "Alice", currentStreak: 12 }, isLoading: false }),
       useMyStats: () => ({ data: null, isLoading: true }),
       useUsageTrend: () => ({ data: null, isLoading: true }),
       useModelMix: () => ({ data: null, isLoading: true }),
@@ -376,6 +378,7 @@ describe("Dashboard Page", () => {
 
   it("renders chart sections", async () => {
     vi.doMock("../hooks/useApi", () => ({
+      useMe: () => ({ data: { userId: "u1", email: "a@example.com", displayName: "Alice", currentStreak: 12 }, isLoading: false }),
       useMyStats: () => ({ data: null, isLoading: false }),
       useUsageTrend: () => ({ data: [], isLoading: false }),
       useModelMix: () => ({ data: [], isLoading: false }),
@@ -399,6 +402,7 @@ describe("Dashboard Page", () => {
 
   it("renders loading skeletons when data is loading", async () => {
     vi.doMock("../hooks/useApi", () => ({
+      useMe: () => ({ data: { userId: "u1", email: "a@example.com", displayName: "Alice", currentStreak: 12 }, isLoading: false }),
       useMyStats: () => ({ data: null, isLoading: true }),
       useUsageTrend: () => ({ data: null, isLoading: true }),
       useModelMix: () => ({ data: null, isLoading: true }),
@@ -420,6 +424,7 @@ describe("Dashboard Page", () => {
 
   it("renders achievements when loaded", async () => {
     vi.doMock("../hooks/useApi", () => ({
+      useMe: () => ({ data: { userId: "u1", email: "a@example.com", displayName: "Alice", currentStreak: 12 }, isLoading: false }),
       useMyStats: () => ({ data: null, isLoading: false }),
       useUsageTrend: () => ({ data: [], isLoading: false }),
       useModelMix: () => ({ data: [], isLoading: false }),
@@ -455,6 +460,7 @@ describe("Teams Page", () => {
 
   it("renders team list with mock data", async () => {
     vi.doMock("../hooks/useApi", () => ({
+      useMe: () => ({ data: { userId: "u1", email: "a@example.com", displayName: "Alice", currentStreak: 12 }, isLoading: false }),
       useTeams: () => ({
         data: [
           { slug: "backend-crew", name: "Backend Crew", logoUrl: null, memberCount: 12, totalPrompts: 2847, totalCost: 142.3, syncRate: 94 },
@@ -482,6 +488,7 @@ describe("Teams Page", () => {
 
   it("renders header with Create Team and Join Team buttons", async () => {
     vi.doMock("../hooks/useApi", () => ({
+      useMe: () => ({ data: { userId: "u1", email: "a@example.com", displayName: "Alice", currentStreak: 12 }, isLoading: false }),
       useTeams: () => ({ data: [], isLoading: false, error: null }),
     }));
 
@@ -499,6 +506,7 @@ describe("Teams Page", () => {
 
   it("renders loading state", async () => {
     vi.doMock("../hooks/useApi", () => ({
+      useMe: () => ({ data: { userId: "u1", email: "a@example.com", displayName: "Alice", currentStreak: 12 }, isLoading: false }),
       useTeams: () => ({ data: null, isLoading: true, error: null }),
     }));
 
@@ -516,6 +524,7 @@ describe("Teams Page", () => {
 
   it("renders empty state when no teams", async () => {
     vi.doMock("../hooks/useApi", () => ({
+      useMe: () => ({ data: { userId: "u1", email: "a@example.com", displayName: "Alice", currentStreak: 12 }, isLoading: false }),
       useTeams: () => ({ data: [], isLoading: false, error: null }),
     }));
 
@@ -533,6 +542,7 @@ describe("Teams Page", () => {
 
   it("renders error state", async () => {
     vi.doMock("../hooks/useApi", () => ({
+      useMe: () => ({ data: { userId: "u1", email: "a@example.com", displayName: "Alice", currentStreak: 12 }, isLoading: false }),
       useTeams: () => ({
         data: null,
         isLoading: false,
@@ -553,6 +563,7 @@ describe("Teams Page", () => {
 
   it("renders team prompts and cost stats", async () => {
     vi.doMock("../hooks/useApi", () => ({
+      useMe: () => ({ data: { userId: "u1", email: "a@example.com", displayName: "Alice", currentStreak: 12 }, isLoading: false }),
       useTeams: () => ({
         data: [
           { slug: "bc", name: "Backend Crew", logoUrl: null, memberCount: 5, totalPrompts: 2847, totalCost: 142.3, syncRate: 94 },
