@@ -1,35 +1,68 @@
-import { useState, type FormEvent } from "react";
-import { useLocation } from "react-router-dom";
+import { useEffect, useState, type FormEvent } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { signIn, confirmSignIn } from "aws-amplify/auth";
 import { Card, Text } from "@tremor/react";
 import { useTranslation } from "react-i18next";
 import { config } from "../config";
+import { onMagicLinkToken } from "../magicLinkRelay";
 
 export function Login() {
   const { t } = useTranslation('frontend');
   const location = useLocation();
+  const navigate = useNavigate();
   const locationState = location.state as { error?: string } | null;
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(locationState?.error ?? "");
 
+  // This tab holds the in-flight sign-in session (Amplify keeps it per-tab), so
+  // it is the only one that can answer the custom challenge. Once the link has
+  // been requested, listen for the token broadcast by the tab that opened the
+  // emailed link and complete sign-in here; Amplify then persists the JWTs to
+  // localStorage, which the other tab observes. Only armed after `submitted` —
+  // before that there is no session to confirm against.
+  useEffect(() => {
+    if (!submitted) return;
+    return onMagicLinkToken(({ token }) => {
+      confirmSignIn({ challengeResponse: token })
+        .then(() => navigate("/dashboard", { replace: true }))
+        .catch((err) => {
+          console.error("[Login] relayed confirmSignIn failed:", err);
+        });
+    });
+  }, [submitted, navigate]);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
     setSending(true);
 
-    try {
-      // In production, this calls:
-      //   import { signIn } from 'aws-amplify/auth';
-      //   await signIn({ username: email, options: { authFlowType: 'CUSTOM_WITHOUT_SRP' } });
-      console.log("[Login] Requesting magic link for:", email);
+    const username = email.trim().toLowerCase();
 
-      // Simulate network delay for UX
-      await new Promise((r) => setTimeout(r, 500));
+    try {
+      // Kick off the custom-auth magic-link flow. Cognito runs
+      // DefineAuthChallenge → CreateAuthChallenge, which is what sends the
+      // email; the promise resolves with a CONFIRM_SIGN_IN_WITH_CUSTOM_CHALLENGE
+      // next step (we never surface it — the user completes sign-in by clicking
+      // the emailed link, which lands on /auth/verify). `email` also rides in
+      // clientMetadata because a first-time user's Cognito record has no email
+      // attribute yet, so CreateAuthChallenge reads it from there.
+      await signIn({
+        username,
+        options: {
+          authFlowType: "CUSTOM_WITHOUT_SRP",
+          clientMetadata: { email: username },
+        },
+      });
       setSubmitted(true);
     } catch (err) {
+      // Normal magic-link requests RESOLVE (with a challenge next step); a
+      // throw is a genuine failure (rate limit, disallowed domain, network).
+      // The backend deliberately returns opaque messages, so show the generic
+      // copy and keep the detail in the console.
+      console.error("[Login] signIn failed:", err);
       setError(t('login.errorDefault'));
-      console.error("[Login] Error:", err);
     } finally {
       setSending(false);
     }

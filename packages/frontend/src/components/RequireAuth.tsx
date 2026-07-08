@@ -1,40 +1,42 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
+import { getCurrentUser } from "aws-amplify/auth";
 import { LoadingSkeleton } from "./LoadingSkeleton";
 
 /**
  * Auth guard that protects routes requiring authentication.
  *
- * In a full implementation this would use Amplify's `getCurrentUser()`
- * to check authentication state. For now it provides the structural
- * guard that will be wired up when the auth module is integrated.
+ * Authentication state comes from Amplify's `getCurrentUser()`, which resolves
+ * when valid Cognito tokens are present (persisted in `localStorage`, so it is
+ * shared across tabs) and rejects otherwise.
  */
 
 interface RequireAuthProps {
   children: ReactNode;
 }
 
-/** Placeholder hook — will be replaced by Amplify auth integration */
 function useAuth(): { isAuthenticated: boolean; isLoading: boolean } {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    // Simulate auth check. In production, this calls:
-    //   import { getCurrentUser } from 'aws-amplify/auth';
-    //   const user = await getCurrentUser();
+    // Guard against a state update after unmount (getCurrentUser is async).
+    let active = true;
     const checkAuth = async () => {
       try {
-        // Placeholder: check for a token in storage
-        const hasSession = !!localStorage.getItem("claude-stats-auth");
-        setIsAuthenticated(hasSession);
+        await getCurrentUser();
+        if (active) setIsAuthenticated(true);
       } catch {
-        setIsAuthenticated(false);
+        // No valid session — getCurrentUser rejects rather than returning null.
+        if (active) setIsAuthenticated(false);
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     };
     checkAuth();
+    return () => {
+      active = false;
+    };
   }, []);
 
   return { isAuthenticated, isLoading };

@@ -1,9 +1,38 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // ─── Shared Mocks ───────────────────────────────────────────────────
+
+// Amplify auth — stubbed so the Login flow exercises the real call path
+// (signIn) without hitting Cognito. Hoisted so the mock factory can reference
+// the spies.
+const { signInMock, confirmSignInMock, getCurrentUserMock } = vi.hoisted(() => ({
+  signInMock: vi.fn(),
+  confirmSignInMock: vi.fn(),
+  getCurrentUserMock: vi.fn(),
+}));
+vi.mock("aws-amplify/auth", () => ({
+  signIn: signInMock,
+  confirmSignIn: confirmSignInMock,
+  getCurrentUser: getCurrentUserMock,
+}));
+
+// Cross-tab relay: capture the handler Login registers so a test can simulate a
+// token broadcast from the tab that opened the emailed link.
+const relay = vi.hoisted(() => ({
+  handler: null as ((m: { type: string; email: string; token: string }) => void) | null,
+}));
+vi.mock("../magicLinkRelay", () => ({
+  onMagicLinkToken: (h: (m: { type: string; email: string; token: string }) => void) => {
+    relay.handler = h;
+    return () => {
+      relay.handler = null;
+    };
+  },
+  postMagicLinkToken: vi.fn(),
+}));
 
 // Mock tremor components
 vi.mock("@tremor/react", () => ({
@@ -60,6 +89,14 @@ describe("Login Page", () => {
   let Login: typeof import("../pages/Login").Login;
 
   beforeEach(async () => {
+    signInMock.mockReset();
+    confirmSignInMock.mockReset();
+    relay.handler = null;
+    // Magic-link requests resolve with a custom-challenge next step.
+    signInMock.mockResolvedValue({
+      isSignedIn: false,
+      nextStep: { signInStep: "CONFIRM_SIGN_IN_WITH_CUSTOM_CHALLENGE" },
+    });
     const mod = await import("../pages/Login");
     Login = mod.Login;
   });
@@ -127,6 +164,85 @@ describe("Login Page", () => {
 
     expect(screen.getByText(/alice@company.com/)).toBeDefined();
     expect(screen.getByText(/expires in 10 minutes/)).toBeDefined();
+  });
+
+  it("requests the magic link via Amplify custom-auth signIn", async () => {
+    render(
+      <MemoryRouter>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      // Mixed case + whitespace → normalised before the call.
+      target: { value: "  Alice@Company.com " },
+    });
+    fireEvent.click(screen.getByText("Send Magic Link"));
+
+    await waitFor(() => {
+      expect(signInMock).toHaveBeenCalledWith({
+        username: "alice@company.com",
+        options: {
+          authFlowType: "CUSTOM_WITHOUT_SRP",
+          clientMetadata: { email: "alice@company.com" },
+        },
+      });
+    });
+  });
+
+  it("shows an error and stays on the form when signIn rejects", async () => {
+    signInMock.mockRejectedValueOnce(new Error("rate limited"));
+
+    render(
+      <MemoryRouter>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "bob@company.com" },
+    });
+    fireEvent.click(screen.getByText("Send Magic Link"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Failed to send magic link. Please try again."),
+      ).toBeDefined();
+    });
+    // Still on the form, not the success state.
+    expect(screen.queryByText("Check your email")).toBeNull();
+  });
+
+  it("completes sign-in when another tab relays the emailed token", async () => {
+    confirmSignInMock.mockResolvedValue({ isSignedIn: true, nextStep: { signInStep: "DONE" } });
+
+    render(
+      <MemoryRouter initialEntries={["/login"]}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/dashboard" element={<div>Dashboard Route</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    // Request the link so the relay listener is armed.
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "alice@company.com" },
+    });
+    fireEvent.click(screen.getByText("Send Magic Link"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Check your email")).toBeDefined();
+      expect(relay.handler).not.toBeNull();
+    });
+
+    // Simulate the verify tab broadcasting the token.
+    relay.handler!({ type: "magic-link-token", email: "alice@company.com", token: "tok-xyz" });
+
+    await waitFor(() => {
+      expect(confirmSignInMock).toHaveBeenCalledWith({ challengeResponse: "tok-xyz" });
+      expect(screen.getByText("Dashboard Route")).toBeDefined();
+    });
   });
 
   it("shows 'Use a different email' button after submission", async () => {

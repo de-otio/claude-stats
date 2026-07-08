@@ -1,6 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+
+// Amplify auth — RequireAuth gates on getCurrentUser(), which resolves for a
+// valid session and rejects otherwise. Hoisted so the mock factory sees it.
+const { getCurrentUserMock } = vi.hoisted(() => ({
+  getCurrentUserMock: vi.fn(),
+}));
+vi.mock("aws-amplify/auth", () => ({
+  getCurrentUser: getCurrentUserMock,
+}));
 
 // ─── RequireAuth ────────────────────────────────────────────────────
 
@@ -8,18 +17,16 @@ describe("RequireAuth", () => {
   let RequireAuth: typeof import("../components/RequireAuth").RequireAuth;
 
   beforeEach(async () => {
+    getCurrentUserMock.mockReset();
     // Fresh import each test so useEffect re-runs
     vi.resetModules();
     const mod = await import("../components/RequireAuth");
     RequireAuth = mod.RequireAuth;
   });
 
-  afterEach(() => {
-    localStorage.clear();
-  });
-
   it("redirects to /login when unauthenticated", async () => {
-    localStorage.removeItem("claude-stats-auth");
+    // No session → getCurrentUser rejects.
+    getCurrentUserMock.mockRejectedValue(new Error("no current user"));
 
     render(
       <MemoryRouter initialEntries={["/dashboard"]}>
@@ -36,7 +43,10 @@ describe("RequireAuth", () => {
   });
 
   it("renders children when authenticated", async () => {
-    localStorage.setItem("claude-stats-auth", "mock-token");
+    getCurrentUserMock.mockResolvedValue({
+      username: "alice@company.com",
+      userId: "sub-123",
+    });
 
     render(
       <MemoryRouter>
@@ -52,7 +62,9 @@ describe("RequireAuth", () => {
   });
 
   it("shows loading skeleton while checking auth", () => {
-    // Don't set localStorage so auth check runs
+    // Never settles → stays in the loading state.
+    getCurrentUserMock.mockReturnValue(new Promise(() => {}));
+
     const { container } = render(
       <MemoryRouter>
         <RequireAuth>
