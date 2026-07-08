@@ -14,6 +14,11 @@ vi.mock("@tremor/react", () => ({
 
 describe("ThemeProvider", () => {
   beforeEach(() => {
+    // Reset the module registry so each test's `vi.doMock("../config")` is
+    // honoured — without this the first `import("../providers/ThemeProvider")`
+    // caches ThemeProvider (and its `../config`), and later doMock calls (custom
+    // title / raw hex) are silently ignored.
+    vi.resetModules();
     // Reset CSS custom properties before each test
     document.documentElement.style.removeProperty("--color-primary");
     document.documentElement.style.removeProperty("--color-accent");
