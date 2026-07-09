@@ -2,16 +2,18 @@ import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Card, Text, TextInput, Select, SelectItem, Button } from "@tremor/react";
 import { useTranslation } from "react-i18next";
+import { useJoinTeam } from "../hooks/useApi";
 
 const MOCK_ACCOUNTS = [
   { id: "acct_a1b2c3", label: "Personal" },
-  { id: "acct_d4e5f6", label: "Work (Acme Corp)" },
+  { id: "acct_d4e5f6", label: "Work (example)" },
 ];
 
 export function JoinTeamPage() {
   const { t } = useTranslation('frontend');
   const { code = "" } = useParams<{ code: string }>();
   const navigate = useNavigate();
+  const joinTeam = useJoinTeam();
 
   const [displayName, setDisplayName] = useState("");
   const [shareLevel, setShareLevel] = useState("summary");
@@ -23,10 +25,13 @@ export function JoinTeamPage() {
     );
   };
 
+  // joinTeam takes only the invite code; displayName/shareLevel/account
+  // selection are applied afterwards via updateMembership on the team page
+  // (the just-created membership isn't in the current JWT until re-auth).
   const handleJoin = () => {
-    // Derive a mock slug from the invite code
-    const slug = code.toLowerCase().replace(/[^a-z0-9]/g, "-");
-    navigate(`/team/${slug}`);
+    joinTeam.mutate(code, {
+      onSuccess: (team) => navigate(`/team/${team.teamSlug}`),
+    });
   };
 
   return (
@@ -88,7 +93,18 @@ export function JoinTeamPage() {
         </div>
       </Card>
 
-      <Button className="w-full" onClick={handleJoin} disabled={!displayName.trim()}>
+      {joinTeam.isError && (
+        <Text className="mb-3 text-sm text-red-600">
+          {(joinTeam.error as Error)?.message ?? "Failed to join team"}
+        </Text>
+      )}
+
+      <Button
+        className="w-full"
+        onClick={handleJoin}
+        disabled={!code || joinTeam.isPending}
+        loading={joinTeam.isPending}
+      >
         {t('joinTeam.joinButton')}
       </Button>
     </div>

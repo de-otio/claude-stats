@@ -8,7 +8,7 @@
  * (useLeaderboard, useSuperlatives, useTeamRankings) and challenge/admin hooks
  * still return mock data pending the P3 TeamStats aggregate worker and P3–P4 wiring.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   gql,
   ME,
@@ -18,6 +18,15 @@ import {
   MY_AGGREGATES,
   MY_TEAMS,
   TEAM_BY_SLUG,
+  CREATE_TEAM,
+  JOIN_TEAM,
+  UPDATE_PROFILE,
+  UPDATE_TEAM_SETTINGS,
+  REGENERATE_INVITE_CODE,
+  DELETE_TEAM,
+  LINK_ACCOUNT,
+  UNLINK_ACCOUNT,
+  UPDATE_ACCOUNT_SHARING,
   type GqlUser,
   type GqlMemberStats,
   type GqlProjectStats,
@@ -686,5 +695,128 @@ export function useAdminTeams() {
       return MOCK_ADMIN_TEAMS;
     },
     staleTime: 60_000,
+  });
+}
+
+// ─── Mutations ───────────────────────────────────────────────────────
+// NOTE: creating/joining a team writes a membership row, but the caller's
+// current JWT predates it — group-gated admin views only reflect the new
+// team after the next token refresh (sign back in). See RESOLVER-LAYER-SCOPE.
+
+interface GqlTeamRef {
+  teamId: string;
+  teamSlug: string;
+  teamName: string;
+}
+
+export function useCreateTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { teamName: string; logoUrl?: string | null }) => {
+      const { createTeam } = await gql<{ createTeam: GqlTeamRef }>(CREATE_TEAM, {
+        input,
+      });
+      return createTeam;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["teams"] }),
+  });
+}
+
+export function useJoinTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (inviteCode: string) => {
+      const { joinTeam } = await gql<{ joinTeam: GqlTeamRef }>(JOIN_TEAM, {
+        inviteCode,
+      });
+      return joinTeam;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["teams"] }),
+  });
+}
+
+export function useUpdateProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      displayName?: string;
+      avatarUrl?: string | null;
+      timezone?: string;
+      weekStartDay?: number;
+      defaultShareLevel?: string;
+      streakWeekendGrace?: boolean;
+    }) => {
+      await gql(UPDATE_PROFILE, { input });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
+  });
+}
+
+export function useUpdateTeamSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: {
+      teamId: string;
+      input: Record<string, unknown>;
+    }) => {
+      await gql(UPDATE_TEAM_SETTINGS, vars);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["team-info"] }),
+  });
+}
+
+export function useRegenerateInviteCode() {
+  return useMutation({
+    mutationFn: async (teamId: string) => {
+      const { regenerateInviteCode } = await gql<{ regenerateInviteCode: string }>(
+        REGENERATE_INVITE_CODE,
+        { teamId },
+      );
+      return regenerateInviteCode;
+    },
+  });
+}
+
+export function useDeleteTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (teamId: string) => {
+      await gql(DELETE_TEAM, { teamId });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["teams"] }),
+  });
+}
+
+export function useLinkAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      accountId: string;
+      label: string;
+      shareWithTeams: boolean;
+    }) => {
+      await gql(LINK_ACCOUNT, { input });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
+  });
+}
+
+export function useUnlinkAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (accountId: string) => {
+      await gql(UNLINK_ACCOUNT, { accountId });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
+  });
+}
+
+export function useUpdateAccountSharing() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { accountId: string; shareWithTeams: boolean }) => {
+      await gql(UPDATE_ACCOUNT_SHARING, vars);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
   });
 }

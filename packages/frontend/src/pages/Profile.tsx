@@ -1,12 +1,27 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, Text, TextInput, Select, SelectItem, Button } from "@tremor/react";
 import { useTranslation } from "react-i18next";
+import { useMe, useUpdateProfile } from "../hooks/useApi";
 
 export function Profile() {
   const { t } = useTranslation('frontend');
-  const [displayName, setDisplayName] = useState("Alice Chen");
+  const { data: me } = useMe();
+  const updateProfile = useUpdateProfile();
+  const [displayName, setDisplayName] = useState("");
   const [defaultShareLevel, setDefaultShareLevel] = useState("summary");
   const [sharePrompts, setSharePrompts] = useState(false);
+
+  // Seed the form from the loaded profile once.
+  useEffect(() => {
+    if (me?.displayName) setDisplayName(me.displayName);
+  }, [me?.displayName]);
+
+  const handleSave = () => {
+    updateProfile.mutate({
+      displayName: displayName.trim(),
+      defaultShareLevel: defaultShareLevel.toUpperCase(),
+    });
+  };
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -25,7 +40,7 @@ export function Profile() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">{t('profile.email')}</label>
-            <TextInput value="alice@example.com" disabled />
+            <TextInput value={me?.email ?? ""} disabled />
             <Text className="mt-1 text-xs text-gray-500">{t('profile.emailReadonly')}</Text>
           </div>
         </div>
@@ -75,8 +90,22 @@ export function Profile() {
         </div>
       </Card>
 
-      <div className="flex justify-end">
-        <Button>{t('profile.saveChanges')}</Button>
+      <div className="flex items-center justify-end gap-3">
+        {updateProfile.isSuccess && (
+          <Text className="text-sm text-green-600">{t('profile.saveChanges')} ✓</Text>
+        )}
+        {updateProfile.isError && (
+          <Text className="text-sm text-red-600">
+            {(updateProfile.error as Error)?.message ?? "Save failed"}
+          </Text>
+        )}
+        <Button
+          onClick={handleSave}
+          disabled={!displayName.trim() || updateProfile.isPending}
+          loading={updateProfile.isPending}
+        >
+          {t('profile.saveChanges')}
+        </Button>
       </div>
     </div>
   );
