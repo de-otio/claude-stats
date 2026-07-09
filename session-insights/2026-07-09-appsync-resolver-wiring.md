@@ -45,8 +45,20 @@ constraint reference lives in `plans/backend-deployment/RESOLVER-LAYER-SCOPE.md`
   `ddb.operations.replace`). 31 resolvers total. **E2E-verified** (2-user
   `scratchpad/e2e-p2b.mjs`: createTeam→join→promote→remove→updateProfile→deleteTeam).
 - The full mutation WRITE layer (create/join/leave/remove/promote/delete/settings/
-  invite/account/profile/membership) is now live. Remaining P2: **frontend mutation
-  forms** (CreateTeam, JoinTeam, TeamSettings, Accounts, Profile still call mocks).
+  invite/account/profile/membership) is now live.
+- **Frontend mutation forms — ALL wired (frontend-only, no deploy of infra needed):**
+  - CreateTeam / JoinTeam / Profile → `dac52bc` (prior).
+  - **TeamSettings + Accounts → `84acd59`.** Both aligned to the *real* GraphQL
+    contract, not the mock: `LinkedAccount` is only `{accountId,label,shareWithTeams}`
+    (no sharePrompts/linkedAt; web can't Link-New — account ids are device-side).
+    `Team` has no description/dashboard-readers field and no rename mutation, so
+    TeamSettings edits only `leaderboardEnabled`/`challengesEnabled`/
+    `crossTeamVisibility` (+ leave/delete), admin-gated via the caller's role from
+    `teamBySlug.members`. **Reused existing i18n keys only** — zero new locale strings
+    (crossTeam enum PRIVATE/PUBLIC_STATS/PUBLIC_DASHBOARD mapped onto the existing
+    None/Minimal/Summary keys). New hooks: `useTeamSettings`, `useLeaveTeam`; `ME`
+    query extended with `accounts` + `preferences`. Frontend redeployed to
+    `ClaudeStats-prod-Frontend` (UPDATE_COMPLETE) — live at claude-stats.de-otio.org.
 - Both repos pushed through P2 chunk 1: `claude-stats` master `228235a`, twin `ea6f242`.
 - All resolver wiring is table-driven in `packages/infra/lib/stacks/api-stack.ts`
   (`unitResolvers` + `pipelineResolvers` spec arrays) — add a row per new resolver.
@@ -164,16 +176,13 @@ Non-code runtime gotchas:
   plane). Still on mock; needs a product decision (drop or re-scope), not a resolver.
 
 ## Remaining Work
-- **P1b**: `myTeams` returns bare membership rows — needs a hydration Step2 (batch-get
-  Teams) or `Query.myTeams:[Team!]!` non-null violations. Nested resolvers
-  `Team.members`, `TeamMember.stats(period)`, `User.achievements`. `teamDashboard`
-  **Lambda** data source (`lambda/api/team-dashboard.ts`). `teamBySlug` Step2. De-mock
-  team-page frontend hooks.
-- **P2**: author the **10 missing mutation Step-2 writes** (auth Step1 exists, write never
-  authored: unlinkAccount, updateAccountSharing, updateTeamSettings, deleteTeam,
-  regenerateInviteCode, joinTeam, leaveTeam, removeMember, promoteMember) + `createTeam`
-  (has a regex literal AND a two-table `BatchPutItem` needing the placeholder trick +
-  role grants on both tables) + wire the mutation forms.
+- **P1b / P2: DONE and live** (31 resolvers, full write layer). All frontend mutation
+  forms wired (`84acd59`). Nothing outstanding here except the P3-blocked reads below.
+- **Blocked on the P3 `aggregate-stats` writer** (nothing to build in the frontend until
+  it lands): `teamDashboard`/`leaderboard`/`superlatives` + every per-member `TeamStats`
+  read (dashboard/leaderboard hooks still return mock). NOTE: the P1a teamStats readers
+  key `sk`/`stats#{period}` but the real sort key is `period#userId` — fix the readers
+  *when the writer ships*.
 - **P3**: unbuilt challenge/inter-team CRUD (10 fields, no resolver files) + 4 async
   workers (`aggregate-stats`=DDB stream, `challenge-scoring`/`inter-team-scoring`=cron,
   `validate-logo`=S3) + `deleteMyAccount` (Lambda).
