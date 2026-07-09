@@ -1,14 +1,43 @@
 /**
- * Mutation.createTeam — Create a new team and the creator's admin membership.
- * Generates teamId, inviteCode, teamSlug, and creates both the Team
- * and the first TeamMembership (admin role) via a BatchWriteItem.
+ * Mutation.createTeam — Pipeline Step 1: create the Team row.
+ * Step 2 (createTeamStep2) writes the creator's admin membership. Split into
+ * two single-table steps (Teams, then TeamMemberships) so each binds to a data
+ * source that already has write grants — no cross-table BatchPutItem/IAM.
+ *
+ * Role/shareLevel are stored LOWERCASE (the internal convention: pre-token
+ * builds `team:{teamId}:{role}` group claims and every resolver auth-check is
+ * lowercase). The GraphQL TeamRole/ShareLevel enums are uppercased at the
+ * TeamMember response boundary (teamMembers / Team.members / updateMembership).
  */
 import { util } from "@aws-appsync/utils";
+import * as ddb from "@aws-appsync/utils/dynamodb";
+
+/** Slug: lowercase, non-alphanumeric runs → single "-", trimmed. No regex
+ * (APPSYNC_JS bans regex literals), no for/while (also banned). */
+function slugify(name) {
+  let out = "";
+  let prevDash = false;
+  name
+    .toLowerCase()
+    .split("")
+    .forEach((ch) => {
+      const ok = (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9");
+      if (ok) {
+        out += ch;
+        prevDash = false;
+      } else if (!prevDash && out.length > 0) {
+        out += "-";
+        prevDash = true;
+      }
+    });
+  return out
+    .split("-")
+    .filter((p) => p.length > 0)
+    .join("-");
+}
 
 export function request(ctx) {
   const input = ctx.args.input;
-
-  // Validate input
   if (!input.teamName || input.teamName.trim().length === 0) {
     util.error("teamName is required", "ValidationError");
   }
@@ -19,11 +48,7 @@ export function request(ctx) {
   const now = util.time.nowEpochMilliSeconds();
   const teamId = util.autoId();
   const inviteCode = util.autoId().substring(0, 12);
-  // Generate slug from team name: lowercase, replace spaces/special chars with hyphens
-  const teamSlug = input.teamName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+  const teamSlug = slugify(input.teamName);
 
   const team = {
     teamId,
@@ -57,21 +82,16 @@ export function request(ctx) {
     updatedAt: now,
   };
 
-  // Stash for response
   ctx.stash.team = team;
+  ctx.stash.membership = membership;
 
-  return {
-    operation: "BatchPutItem",
-    tables: {
-      Teams: [util.dynamodb.toMapValues(team)],
-      TeamMemberships: [util.dynamodb.toMapValues(membership)],
-    },
-  };
+  return ddb.put({ key: { teamId }, item: team });
 }
 
 export function response(ctx) {
   if (ctx.error) {
     util.error(ctx.error.message, ctx.error.type);
   }
+  // Team returned after Step 2 writes the membership.
   return ctx.stash.team;
 }

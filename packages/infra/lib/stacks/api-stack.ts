@@ -209,6 +209,11 @@ export class ApiStack extends cdk.Stack {
         dataSource: dataSources.teamStats,
         file: "teamMemberStatsField.js",
       },
+      // ── P2: single-function mutation writes (ownership-scoped) ──
+      // (updateProfile deferred to P2 chunk 2 — its nested preferences.* update
+      //  needs a get-merge pipeline; the ddb.update helper mishandles dotted paths.)
+      { typeName: "Mutation", field: "linkAccount", dataSource: dataSources.userProfiles },
+      { typeName: "Mutation", field: "updateMembership", dataSource: dataSources.teamMemberships },
     ];
 
     for (const r of unitResolvers) {
@@ -299,6 +304,59 @@ export class ApiStack extends cdk.Stack {
         steps: [
           { file: "teamBySlug.js", dataSource: dataSources.teams },
           { file: "teamBySlugStep2.js", dataSource: dataSources.teams },
+        ],
+      },
+      // ── P2: multi-step mutation writes ──
+      // Split cross-table writes into per-table steps so each step binds to a
+      // data source that already has write grants (default readWrite) — no
+      // BatchPut/TransactWrite cross-table IAM. Non-atomic by design (a mid-
+      // pipeline failure can leave partial state); acceptable for this app.
+      {
+        typeName: "Mutation",
+        field: "createTeam",
+        steps: [
+          { file: "createTeam.js", dataSource: dataSources.teams },
+          { file: "createTeamStep2.js", dataSource: dataSources.teamMemberships },
+        ],
+      },
+      {
+        typeName: "Mutation",
+        field: "unlinkAccount",
+        steps: [
+          { file: "unlinkAccount.js", dataSource: dataSources.userProfiles },
+          { file: "unlinkAccountStep2.js", dataSource: dataSources.userProfiles },
+        ],
+      },
+      {
+        typeName: "Mutation",
+        field: "updateAccountSharing",
+        steps: [
+          { file: "updateAccountSharing.js", dataSource: dataSources.userProfiles },
+          { file: "updateAccountSharingStep2.js", dataSource: dataSources.userProfiles },
+        ],
+      },
+      {
+        typeName: "Mutation",
+        field: "updateTeamSettings",
+        steps: [
+          { file: "updateTeamSettings.js", dataSource: dataSources.teamMemberships },
+          { file: "updateTeamSettingsStep2.js", dataSource: dataSources.teams },
+        ],
+      },
+      {
+        typeName: "Mutation",
+        field: "regenerateInviteCode",
+        steps: [
+          { file: "regenerateInviteCode.js", dataSource: dataSources.teamMemberships },
+          { file: "regenerateInviteCodeStep2.js", dataSource: dataSources.teams },
+        ],
+      },
+      {
+        typeName: "Mutation",
+        field: "promoteMember",
+        steps: [
+          { file: "promoteMember.js", dataSource: dataSources.teamMemberships },
+          { file: "promoteMemberStep2.js", dataSource: dataSources.teamMemberships },
         ],
       },
     ];

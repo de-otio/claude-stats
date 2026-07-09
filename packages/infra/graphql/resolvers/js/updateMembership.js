@@ -21,7 +21,11 @@ export function request(ctx) {
   const update = { updatedAt: util.time.nowEpochMilliSeconds() };
 
   if (input.displayName !== undefined) update.displayName = input.displayName;
-  if (input.shareLevel !== undefined) update.shareLevel = input.shareLevel;
+  // Store shareLevel LOWERCASE to match the internal convention (createTeam,
+  // the aggregate-stats shareLevel checks); uppercased back at the response
+  // boundary for the ShareLevel enum.
+  if (input.shareLevel !== undefined)
+    update.shareLevel = input.shareLevel.toLowerCase();
   if (input.sharedAccounts !== undefined) update.sharedAccounts = input.sharedAccounts;
 
   return ddb.update({
@@ -41,5 +45,10 @@ export function response(ctx) {
     }
     util.error(ctx.error.message, ctx.error.type);
   }
-  return ctx.result;
+  const m = ctx.result;
+  return {
+    ...m,
+    role: (m.role || "").toUpperCase(),
+    shareLevel: (m.shareLevel || "").toUpperCase(),
+  };
 }
