@@ -3,7 +3,9 @@
  * Superadmin only: checks for "superadmin" in the cognito:groups claim.
  *
  * Uses an HTTP datasource to call SSM GetParameter via the AWS REST API.
- * The SSM parameter is a StringList (comma-separated), matching how the
+ * The SSM parameter is a comma-separated String (Type=String — the writer
+ * updateAllowedDomains cannot use StringList because the param is created by
+ * CDK as a String and SSM forbids type changes on Overwrite), matching how the
  * PreSignUp Lambda parses it — NOT a JSON array. Parsing MUST stay in sync
  * with lambda/auth/pre-signup.ts (split ",", trim, lowercase, drop empties).
  *

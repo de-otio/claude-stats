@@ -167,6 +167,33 @@ export class ApiStack extends cdk.Stack {
 
     const noneDs = api.addNoneDataSource("NoneDS");
 
+    // ── SSM HTTP data source (admin allowed-domains) ─────────────────
+    // The allowedDomains / updateAllowedDomains resolvers call the SSM REST
+    // API directly (SigV4-signed) rather than via a Lambda. AppSync signs
+    // outbound requests with this data source's service role, so the grant
+    // below is what authorizes GetParameter/PutParameter on the one param.
+    const ssmDs = api.addHttpDataSource(
+      "SsmDS",
+      `https://ssm.${config.region}.amazonaws.com`,
+      {
+        name: "SsmDS",
+        description: "SSM Parameter Store (allowed email domains)",
+        authorizationConfig: {
+          signingRegion: config.region,
+          signingServiceName: "ssm",
+        },
+      },
+    );
+    const allowedDomainsParamName = `/${prefix}/auth/allowed-domains`;
+    ssmDs.grantPrincipal.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParameter", "ssm:PutParameter"],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter${allowedDomainsParamName}`,
+        ],
+      }),
+    );
+
     interface UnitResolverSpec {
       /** "Query" | "Mutation" | a nested object type (e.g. "Team") */
       typeName: string;
@@ -235,6 +262,23 @@ export class ApiStack extends cdk.Stack {
       { typeName: "Query", field: "interTeamChallengeHistory", dataSource: dataSources.interTeamChallenges },
       // ── P4b: team logo delete (clears logoUrl; S3 object expires via lifecycle) ──
       { typeName: "Mutation", field: "deleteTeamLogo", dataSource: dataSources.teams },
+      // ── P4a: superadmin allowed-domains admin (SSM-backed, HTTP data source) ──
+      // Both resolvers gate on the "superadmin" cognito:groups claim (granted
+      // by the Auth-stack PreTokenGeneration trigger via SUPERADMIN_SUBS). The
+      // __ALLOWED_DOMAINS_PARAM__ placeholder is substituted to the env-scoped
+      // SSM path the PreSignUp Lambda reads — one param, one source of truth.
+      {
+        typeName: "Query",
+        field: "allowedDomains",
+        dataSource: ssmDs,
+        subs: { __ALLOWED_DOMAINS_PARAM__: allowedDomainsParamName },
+      },
+      {
+        typeName: "Mutation",
+        field: "updateAllowedDomains",
+        dataSource: ssmDs,
+        subs: { __ALLOWED_DOMAINS_PARAM__: allowedDomainsParamName },
+      },
     ];
 
     for (const r of unitResolvers) {

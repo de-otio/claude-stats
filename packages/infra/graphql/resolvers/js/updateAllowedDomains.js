@@ -3,9 +3,10 @@
  * Superadmin only: checks for "superadmin" in the cognito:groups claim.
  *
  * Uses an HTTP datasource to call SSM PutParameter via the AWS REST API.
- * Stores domains as an SSM StringList (comma-separated) — NOT JSON — so the
- * PreSignUp Lambda (lambda/auth/pre-signup.ts) can parse it. Consistency with
- * that parser is mandatory: it splits on ",", trims, lowercases, drops empties.
+ * Stores domains as a comma-separated SSM String (Type=String, NOT StringList
+ * — see the PutParameter body below for why) — NOT JSON — so the PreSignUp
+ * Lambda (lambda/auth/pre-signup.ts) can parse it. Consistency with that
+ * parser is mandatory: it splits on ",", trims, lowercases, drops empties.
  *
  * "__ALLOWED_DOMAINS_PARAM__" is substituted centrally to the env-scoped
  * SSM path /ClaudeStats-<env>/auth/allowed-domains (auth-stack
@@ -23,23 +24,15 @@
  */
 import { util } from "@aws-appsync/utils";
 
-/** 0-9 | A-Z | a-z */
-function isAlnum(code) {
-  return (
-    (code >= 48 && code <= 57) ||
-    (code >= 65 && code <= 90) ||
-    (code >= 97 && code <= 122)
-  );
-}
+// Character-set membership, NOT char codes: APPSYNC_JS 1.0.0 does NOT support
+// String.prototype.charCodeAt (INVALID_FUNCTION_INVOCATION at synth-gate). We
+// use the supported String.includes / startsWith / endsWith / split instead.
+const ALPHA_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const LABEL_CHARS = ALPHA_CHARS + "0123456789-";
 
-/** A-Z | a-z */
-function isAlpha(code) {
-  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
-}
-
-/** valid label character: alphanumeric or hyphen (45) */
-function isLabelChar(code) {
-  return isAlnum(code) || code === 45;
+/** true when every character of `str` is present in `allowed`. */
+function allCharsIn(str, allowed) {
+  return str.split("").filter((ch) => !allowed.includes(ch)).length === 0;
 }
 
 function isValidDomain(domain) {
@@ -54,31 +47,22 @@ function isValidDomain(domain) {
     if (label.length < 1 || label.length > 63) {
       return true;
     }
-    // no leading or trailing hyphen (45)
-    if (label.charCodeAt(0) === 45) {
+    // no leading or trailing hyphen
+    if (label.startsWith("-") || label.endsWith("-")) {
       return true;
     }
-    if (label.charCodeAt(label.length - 1) === 45) {
-      return true;
-    }
-    // reject if any character is not a valid label char
-    const badChars = label
-      .split("")
-      .filter((ch) => !isLabelChar(ch.charCodeAt(0)));
-    return badChars.length > 0;
+    // reject if any character is not a valid label char (alnum or hyphen)
+    return !allCharsIn(label, LABEL_CHARS);
   });
   if (badLabels.length > 0) {
     return false;
   }
-  // final label must be alphabetic and at least 2 chars
+  // final label (TLD) must be alphabetic and at least 2 chars
   const tld = labels[labels.length - 1];
   if (tld.length < 2) {
     return false;
   }
-  const badTldChars = tld
-    .split("")
-    .filter((ch) => !isAlpha(ch.charCodeAt(0)));
-  return badTldChars.length === 0;
+  return allCharsIn(tld, ALPHA_CHARS);
 }
 
 export function request(ctx) {
@@ -110,9 +94,13 @@ export function request(ctx) {
       },
       body: JSON.stringify({
         Name: "__ALLOWED_DOMAINS_PARAM__",
-        // StringList: comma-separated, matching pre-signup.ts parsing.
+        // Comma-separated, matching pre-signup.ts parsing. Type MUST be
+        // "String" (not "StringList"): the param is first created by the
+        // Auth stack via CDK `StringParameter` (Type=String), and SSM
+        // PutParameter rejects a type change on Overwrite — a "StringList"
+        // write would fail at runtime the first time an admin edits domains.
         Value: domains.join(","),
-        Type: "StringList",
+        Type: "String",
         Overwrite: true,
       }),
     },
