@@ -25,6 +25,7 @@
  */
 import type { SessionRow } from "../store/index.js";
 import type { AggregateProjection } from "@claude-stats/core/types/shard";
+import type { AggregateSyncInput } from "@claude-stats/core/types/api";
 import { estimateCost } from "@claude-stats/core/pricing";
 
 /** The period granularity of an aggregate bucket. Mirrors {@link AggregateProjection.periodKind}. */
@@ -212,4 +213,140 @@ function parseModels(raw: string): string[] {
 
 function compareStr(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// ── Per-user aggregate projection (deployed `syncAggregate` contract) ────────
+//
+// The deployed AppSync server (schema.graphql `input AggregateSyncInput` →
+// `userAggregates`, PK=userId/SK=period) is a PER-USER, PER-DAY model — NOT the
+// cohort model above. Its table key is `(userId, period)`, so it holds exactly
+// one row per (user, day); we therefore roll a day's sessions up into a single
+// total row (summed across the user's linked accounts and projects). This is
+// what feeds the personal dashboard (myStats) and, via the aggregate-stats
+// stream worker, per-member TeamStats.
+//
+// projectId is left null in this projection: the deployed key cannot hold more
+// than one project per day, so per-project fidelity is a separate follow-up
+// (it needs an SK-format change server-side; the table is currently empty).
+
+interface UserBucket {
+  readonly period: string;
+  sessionCount: number;
+  subagentSessionCount: number;
+  promptCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  activeMs: number;
+  estimatedCost: number;
+  readonly models: Set<string>;
+  readonly toolUseCounts: Record<string, number>;
+}
+
+export interface UserAggregateOptions {
+  /** Representative derived accountId stamped on every row (server key ignores it). */
+  readonly accountId: string;
+  /** Bucket granularity; the deployed readers expect daily buckets. Default "day". */
+  readonly periodKind?: PeriodKind;
+}
+
+/**
+ * Project local `sessions` rows into the deployed per-user `AggregateSyncInput`
+ * shape — one row per period bucket, summed across all rows passed in. PURE and
+ * deterministic (bucketing uses each row's own timestamp, sorted output).
+ * `_version` is 0 for every row; the sync client bumps it on conflict retries.
+ */
+export function projectUserAggregates(
+  rows: readonly SessionRow[],
+  options: UserAggregateOptions,
+): AggregateSyncInput[] {
+  const periodKind = options.periodKind ?? "day";
+  const buckets = new Map<string, UserBucket>();
+
+  for (const row of rows) {
+    const ts = row.first_timestamp ?? row.last_timestamp;
+    if (ts === null || ts === undefined) continue; // un-bucketable in time
+
+    const period = bucketStart(ts, periodKind);
+    let b = buckets.get(period);
+    if (!b) {
+      b = {
+        period,
+        sessionCount: 0,
+        subagentSessionCount: 0,
+        promptCount: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+        activeMs: 0,
+        estimatedCost: 0,
+        models: new Set<string>(),
+        toolUseCounts: {},
+      };
+      buckets.set(period, b);
+    }
+
+    b.sessionCount += 1;
+    if (row.is_subagent) b.subagentSessionCount += 1;
+    b.promptCount += row.prompt_count;
+    b.inputTokens += row.input_tokens;
+    b.outputTokens += row.output_tokens;
+    b.cacheCreationTokens += row.cache_creation_tokens;
+    b.cacheReadTokens += row.cache_read_tokens;
+    b.activeMs += row.active_duration_ms ?? 0;
+
+    const models = parseModels(row.models);
+    for (const m of models) b.models.add(m);
+    mergeToolCounts(b.toolUseCounts, row.tool_use_counts);
+
+    const primaryModel = models[0];
+    if (primaryModel) {
+      b.estimatedCost += estimateCost(
+        primaryModel,
+        row.input_tokens,
+        row.output_tokens,
+        row.cache_read_tokens,
+        row.cache_creation_tokens,
+      ).cost;
+    }
+  }
+
+  return [...buckets.values()]
+    .map((b): AggregateSyncInput => ({
+      period: b.period,
+      projectId: null,
+      sessionCount: b.sessionCount,
+      subagentSessionCount: b.subagentSessionCount,
+      promptCount: b.promptCount,
+      inputTokens: b.inputTokens,
+      outputTokens: b.outputTokens,
+      cacheCreationTokens: b.cacheCreationTokens,
+      cacheReadTokens: b.cacheReadTokens,
+      activeMinutes: Math.round(b.activeMs / 60000),
+      toolUseCounts: b.toolUseCounts,
+      models: [...b.models].sort(),
+      accountId: options.accountId,
+      estimatedCost: Math.round(b.estimatedCost * 100) / 100,
+      _version: 0,
+    }))
+    .sort((a, b) => compareStr(a.period, b.period));
+}
+
+/** Merge a session's `tool_use_counts` JSON column into an accumulating map. */
+function mergeToolCounts(into: Record<string, number>, raw: string): void {
+  if (!raw) return;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      for (const [tool, count] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof count === "number" && Number.isFinite(count) && count >= 0) {
+          into[tool] = (into[tool] ?? 0) + count;
+        }
+      }
+    }
+  } catch {
+    // malformed tool_use_counts column — skip
+  }
 }

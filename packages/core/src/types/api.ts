@@ -97,6 +97,36 @@ export interface SyncMessageInput {
   _version: number;
 }
 
+/**
+ * A single client-computed aggregate row, matching the deployed AppSync
+ * `input AggregateSyncInput` (schema.graphql) 1:1. The org plane accepts ONLY
+ * this shape — per-`(period, projectId)` counts/sums/costs, never per-session
+ * content. `userId` is NOT here: the server forces it from the caller's JWT.
+ *
+ * `_version` is the optimistic-concurrency token: send the last-known server
+ * version (0 for a never-synced row); on a ConditionalCheckFailed the server
+ * returns the current `serverVersion` in {@link ConflictItem} to retry with.
+ */
+export interface AggregateSyncInput {
+  /** ISO date bucket label, e.g. "2026-07-08" (day granularity). */
+  period: string;
+  projectId?: string | null;
+  sessionCount: number;
+  subagentSessionCount?: number | null;
+  promptCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens?: number | null;
+  cacheReadTokens?: number | null;
+  activeMinutes: number;
+  /** Flat {toolName: count} map (AWSJSON on the wire). */
+  toolUseCounts?: Record<string, number> | null;
+  models: string[];
+  accountId: string;
+  estimatedCost: number;
+  _version: number;
+}
+
 // ── Result types ───────────────────────────────────────────────────────────
 
 export interface SyncResult {
