@@ -1,6 +1,6 @@
 {
   "name": "@de-otio/claude-stats-infra",
-  "version": "0.1.15",
+  "version": "0.1.17",
   "description": "AWS CDK infrastructure for claude-stats — deploy your own instance",
   "type": "module",
   "main": "dist/lib/index.js",

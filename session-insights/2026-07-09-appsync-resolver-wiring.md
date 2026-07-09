@@ -37,9 +37,17 @@ constraint reference lives in `plans/backend-deployment/RESOLVER-LAYER-SCOPE.md`
   - **After createTeam the caller's JWT is stale** (minted before the membership
     row) → group-gated admin ops (updateTeamSettings/regenerate/promote, Team.members)
     need a RE-AUTH to pick up `team:{id}:admin`. The e2e does a second magic-link.
-- **P2 chunk 1 committed/pushed?** — see git log; chunk 2 pending (join/leave/remove/
-  delete + updateProfile nested-preferences fix + frontend mutation forms).
-- Both repos pushed through P1b: `claude-stats` master `0da741e`, twin `d2eed5d`.
+- **P2 chunk 2 (infra 0.1.17, live in prod)**: +5 pipelines — `joinTeam` (3-step:
+  scan code → put membership [not-exists cond] → memberCount++), `leaveTeam` /
+  `removeMember` (delete membership → memberCount−−, sharing leaveTeamStep3),
+  `deleteTeam` (4-step cascade: auth → query members → BatchDeleteItem [≤25 cap] →
+  delete team), `updateProfile` (2-step get→merge, `preferences` via
+  `ddb.operations.replace`). 31 resolvers total. **E2E-verified** (2-user
+  `scratchpad/e2e-p2b.mjs`: createTeam→join→promote→remove→updateProfile→deleteTeam).
+- The full mutation WRITE layer (create/join/leave/remove/promote/delete/settings/
+  invite/account/profile/membership) is now live. Remaining P2: **frontend mutation
+  forms** (CreateTeam, JoinTeam, TeamSettings, Accounts, Profile still call mocks).
+- Both repos pushed through P2 chunk 1: `claude-stats` master `228235a`, twin `ea6f242`.
 - All resolver wiring is table-driven in `packages/infra/lib/stacks/api-stack.ts`
   (`unitResolvers` + `pipelineResolvers` spec arrays) — add a row per new resolver.
   Nested field resolvers: `UnitResolverSpec.typeName` widened to `string`, add
@@ -70,6 +78,13 @@ The resolver JS was written as ordinary JS; `APPSYNC_JS` 1.0.0 rejects much of i
   expressionValues: util.dynamodb.toMapValues({":v": v}) } }`. `list_append`/
   `if_not_exists` also need the raw form (see linkAccount.js). Caught by e2e, NOT
   evaluate-code (it's a runtime-semantics bug, compiles clean).
+- **`ddb.update({ update: { pref: { ...obj } } })` treats a nested-OBJECT value as
+  nested-path SETs** (`SET pref.a = ..., pref.b = ...`), which throws "The document
+  path provided in the update expression is invalid" when the parent map doesn't
+  exist yet (e.g. new user, no `preferences`). To SET a whole map as a literal
+  value, wrap it: `ddb.operations.replace(obj)`. (So dotted-string keys = literal
+  attr name [no-op], but object values = nested paths — two different traps.) Also
+  e2e-only, compiles clean.
 
 **The validation gate that catches all of these offline** (do this before every deploy):
 ```
