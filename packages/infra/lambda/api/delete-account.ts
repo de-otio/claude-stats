@@ -69,6 +69,7 @@ async function queryAll(
   expressionAttributeValues: Record<string, any>,
   expressionAttributeNames?: Record<string, string>,
   indexName?: string,
+  filterExpression?: string,
 ): Promise<Record<string, any>[]> {
   const items: Record<string, any>[] = [];
   let lastKey: Record<string, any> | undefined;
@@ -85,6 +86,9 @@ async function queryAll(
     }
     if (indexName) {
       params.IndexName = indexName;
+    }
+    if (filterExpression) {
+      params.FilterExpression = filterExpression;
     }
 
     const result = await ddb.send(new QueryCommand(params));
@@ -157,7 +161,9 @@ async function deleteUserProfile(userId: string): Promise<void> {
 }
 
 /** 2. Delete all TeamMemberships (GSI query by userId, then delete by PK/SK) */
-async function deleteTeamMemberships(userId: string): Promise<number> {
+async function deleteTeamMemberships(
+  userId: string,
+): Promise<{ count: number; teamIds: string[] }> {
   const memberships = await queryAll(
     TEAM_MEMBERSHIPS_TABLE,
     "userId = :uid",
@@ -166,6 +172,9 @@ async function deleteTeamMemberships(userId: string): Promise<number> {
     "MembershipsByUser",
   );
 
+  // Capture the teamIds BEFORE deletion — deleteTeamStats needs them (the
+  // teamStats table has no by-user index; it is keyed teamId / period#userId).
+  const teamIds = memberships.map((m) => m.teamId as string);
   const keys = memberships.map((m) => ({
     teamId: m.teamId,
     userId: m.userId,
@@ -173,7 +182,7 @@ async function deleteTeamMemberships(userId: string): Promise<number> {
 
   const count = await batchDelete(TEAM_MEMBERSHIPS_TABLE, keys);
   console.log(`Deleted ${count} TeamMembership records for ${userId}`);
-  return count;
+  return { count, teamIds };
 }
 
 /** 3. Delete all SyncedSessions (PK = userId) */
@@ -261,19 +270,27 @@ async function deleteAchievements(userId: string): Promise<number> {
 }
 
 /** 6. Delete all TeamStats entries for this user (GSI query) */
-async function deleteTeamStats(userId: string): Promise<number> {
-  const stats = await queryAll(
-    TEAM_STATS_TABLE,
-    "userId = :uid",
-    { ":uid": userId },
-    undefined,
-    "StatsByUser",
-  );
-
-  const keys = stats.map((s) => ({
-    teamId: s.teamId,
-    "period#userId": s["period#userId"],
-  }));
+async function deleteTeamStats(
+  userId: string,
+  teamIds: string[],
+): Promise<number> {
+  // The teamStats table is keyed teamId (PK) / period#userId (SK) and has no
+  // by-user GSI, so we scope by the user's teams (captured before membership
+  // deletion) and filter on the row's userId attribute.
+  const keys: Record<string, any>[] = [];
+  for (const teamId of teamIds) {
+    const stats = await queryAll(
+      TEAM_STATS_TABLE,
+      "teamId = :tid",
+      { ":tid": teamId, ":uid": userId },
+      undefined,
+      undefined,
+      "userId = :uid",
+    );
+    for (const s of stats) {
+      keys.push({ teamId: s.teamId, "period#userId": s["period#userId"] });
+    }
+  }
 
   const count = await batchDelete(TEAM_STATS_TABLE, keys);
   console.log(`Deleted ${count} TeamStats records for ${userId}`);
@@ -457,8 +474,9 @@ export const handler = async (
     await deleteUserProfile(userId);
     summary.userProfiles = 1;
 
-    // 2. Delete team memberships
-    summary.teamMemberships = await deleteTeamMemberships(userId);
+    // 2. Delete team memberships (capture teamIds for teamStats deletion below)
+    const membershipResult = await deleteTeamMemberships(userId);
+    summary.teamMemberships = membershipResult.count;
 
     // 3. Delete synced sessions (returns sessionIds for message deletion)
     const sessionIds = await deleteSyncedSessions(userId);
@@ -473,8 +491,8 @@ export const handler = async (
     // 5. Delete achievements
     summary.achievements = await deleteAchievements(userId);
 
-    // 6. Delete team stats
-    summary.teamStats = await deleteTeamStats(userId);
+    // 6. Delete team stats (scoped to the user's teams, captured in step 2)
+    summary.teamStats = await deleteTeamStats(userId, membershipResult.teamIds);
 
     // 7. Handle challenges (auto-complete active ones created by user)
     await handleChallenges(userId);

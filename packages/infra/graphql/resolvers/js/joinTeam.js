@@ -26,7 +26,9 @@ export function request(ctx) {
       expressionNames: { "#code": "inviteCode" },
       expressionValues: util.dynamodb.toMapValues({ ":code": inviteCode }),
     },
-    limit: 1,
+    // NO `limit`: DynamoDB's limit bounds items EXAMINED, not MATCHED, so
+    // `limit:1` + a filter examines one arbitrary row and misses the target
+    // once the table has >1 team. Scan a page and let the filter select.
   };
 }
 
