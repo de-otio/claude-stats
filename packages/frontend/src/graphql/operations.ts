@@ -165,3 +165,59 @@ export const TEAM_BY_SLUG = /* GraphQL */ `
     }
   }
 `;
+
+// ── Mutations ─────────────────────────────────────────────────────────────
+
+export const CREATE_TEAM = /* GraphQL */ `
+  mutation CreateTeam($input: CreateTeamInput!) {
+    createTeam(input: $input) { teamId teamSlug teamName }
+  }
+`;
+
+export const JOIN_TEAM = /* GraphQL */ `
+  mutation JoinTeam($inviteCode: String!) {
+    joinTeam(inviteCode: $inviteCode) { teamId teamSlug teamName }
+  }
+`;
+
+export const UPDATE_PROFILE = /* GraphQL */ `
+  mutation UpdateProfile($input: UpdateProfileInput!) {
+    updateProfile(input: $input) { userId displayName }
+  }
+`;
+
+export const UPDATE_TEAM_SETTINGS = /* GraphQL */ `
+  mutation UpdateTeamSettings($teamId: ID!, $input: TeamSettingsInput!) {
+    updateTeamSettings(teamId: $teamId, input: $input) {
+      teamId settings { leaderboardEnabled challengesEnabled crossTeamVisibility }
+    }
+  }
+`;
+
+export const REGENERATE_INVITE_CODE = /* GraphQL */ `
+  mutation RegenerateInviteCode($teamId: ID!) {
+    regenerateInviteCode(teamId: $teamId)
+  }
+`;
+
+export const DELETE_TEAM = /* GraphQL */ `
+  mutation DeleteTeam($teamId: ID!) { deleteTeam(teamId: $teamId) }
+`;
+
+export const LINK_ACCOUNT = /* GraphQL */ `
+  mutation LinkAccount($input: LinkAccountInput!) {
+    linkAccount(input: $input) { accountId label shareWithTeams }
+  }
+`;
+
+export const UNLINK_ACCOUNT = /* GraphQL */ `
+  mutation UnlinkAccount($accountId: ID!) { unlinkAccount(accountId: $accountId) }
+`;
+
+export const UPDATE_ACCOUNT_SHARING = /* GraphQL */ `
+  mutation UpdateAccountSharing($accountId: ID!, $shareWithTeams: Boolean) {
+    updateAccountSharing(accountId: $accountId, shareWithTeams: $shareWithTeams) {
+      accountId label shareWithTeams
+    }
+  }
+`;

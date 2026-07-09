@@ -2,17 +2,24 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, Text, TextInput, Textarea, Select, SelectItem, Button } from "@tremor/react";
 import { useTranslation } from "react-i18next";
+import { useCreateTeam } from "../hooks/useApi";
 
 export function CreateTeamPage() {
   const { t } = useTranslation('frontend');
   const navigate = useNavigate();
+  const createTeam = useCreateTeam();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [leaderboardVisibility, setLeaderboardVisibility] = useState("team");
   const [challengesEnabled, setChallengesEnabled] = useState(true);
 
+  // createTeam takes only teamName (+ optional logo); the other fields default
+  // and can be changed on the team's settings page afterwards.
   const handleCreate = () => {
-    navigate("/teams");
+    createTeam.mutate(
+      { teamName: name.trim() },
+      { onSuccess: (team) => navigate(`/teams/${team.teamSlug}`) },
+    );
   };
 
   return (
@@ -65,11 +72,22 @@ export function CreateTeamPage() {
         </div>
       </Card>
 
+      {createTeam.isError && (
+        <Text className="mb-3 text-sm text-red-600">
+          {(createTeam.error as Error)?.message ?? "Failed to create team"}
+        </Text>
+      )}
+
       <div className="flex gap-3">
         <Button variant="secondary" className="flex-1" onClick={() => navigate("/teams")}>
           {t('createTeam.cancelButton')}
         </Button>
-        <Button className="flex-1" onClick={handleCreate} disabled={!name.trim()}>
+        <Button
+          className="flex-1"
+          onClick={handleCreate}
+          disabled={!name.trim() || createTeam.isPending}
+          loading={createTeam.isPending}
+        >
           {t('createTeam.createButton')}
         </Button>
       </div>
