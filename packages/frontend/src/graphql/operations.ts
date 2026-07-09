@@ -268,3 +268,14 @@ export const UPDATE_ACCOUNT_SHARING = /* GraphQL */ `
     }
   }
 `;
+
+// ── Admin (superadmin-only): allowed sign-up email domains ──────────────────
+export const ALLOWED_DOMAINS = /* GraphQL */ `
+  query AllowedDomains { allowedDomains }
+`;
+
+export const UPDATE_ALLOWED_DOMAINS = /* GraphQL */ `
+  mutation UpdateAllowedDomains($domains: [String!]!) {
+    updateAllowedDomains(domains: $domains)
+  }
+`;

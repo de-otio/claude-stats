@@ -356,7 +356,8 @@
     "headerSlug": "Slug",
     "headerMembers": "成员",
     "headerCreated": "创建时间",
-    "headerTotalPrompts": "总提示词"
+    "headerTotalPrompts": "总提示词",
+    "remove": "删除"
   },
   "auth": {
     "verifying": "验证中...",

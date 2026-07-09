@@ -356,7 +356,8 @@
     "headerSlug": "スラッグ",
     "headerMembers": "メンバー",
     "headerCreated": "作成日",
-    "headerTotalPrompts": "総プロンプト"
+    "headerTotalPrompts": "総プロンプト",
+    "remove": "削除"
   },
   "auth": {
     "verifying": "検証中...",

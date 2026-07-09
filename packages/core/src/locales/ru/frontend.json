@@ -356,7 +356,8 @@
     "headerSlug": "Слаг",
     "headerMembers": "Участники",
     "headerCreated": "Создано",
-    "headerTotalPrompts": "Всего запросов"
+    "headerTotalPrompts": "Всего запросов",
+    "remove": "Удалить"
   },
   "auth": {
     "verifying": "Проверка...",
