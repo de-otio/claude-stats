@@ -346,6 +346,12 @@ export class AuthStack extends cdk.Stack {
       {
         tableArn: teamMembershipsTableArn,
         encryptionKey: dataEncryptionKey,
+        // The Lambda Queries the MembershipsByUser GSI; without listing it here
+        // the imported table reports hasIndex=false and grantReadData omits
+        // `arn/index/*`, so the GSI Query gets AccessDenied at runtime — the
+        // handler swallows it and emits NO group claims, silently disabling
+        // every team-group-gated resolver. Must mirror the DataStack GSI.
+        globalIndexes: ["MembershipsByUser"],
       },
     );
     teamMembershipsTable.grantReadData(preTokenGenerationFn);

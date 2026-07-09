@@ -3,8 +3,10 @@
  * Each hook defines the query key and fetcher function.
  *
  * Personal-dashboard hooks (useMe, useMyStats, useTopProjects, useAchievements,
- * useUsageTrend, useModelMix) call the real AppSync API. The remaining
- * team/challenge/admin hooks still return mock data pending P1–P4 wiring.
+ * useUsageTrend, useModelMix) and the team read hooks (useTeams, useTeamInfo,
+ * useTeamMembers) call the real AppSync API. Team *aggregate* views
+ * (useLeaderboard, useSuperlatives, useTeamRankings) and challenge/admin hooks
+ * still return mock data pending the P3 TeamStats aggregate worker and P3–P4 wiring.
  */
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -14,11 +16,14 @@ import {
   MY_PROJECTS,
   MY_ACHIEVEMENTS,
   MY_AGGREGATES,
+  MY_TEAMS,
+  TEAM_BY_SLUG,
   type GqlUser,
   type GqlMemberStats,
   type GqlProjectStats,
   type GqlAchievement,
   type GqlUserAggregate,
+  type GqlTeam,
 } from "../graphql/operations";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -115,28 +120,6 @@ export interface InterTeamChallenge {
 }
 
 // ─── Mock Data ───────────────────────────────────────────────────────
-
-const MOCK_TEAM_MEMBERS: TeamMember[] = [
-  { id: "1", name: "Alice Chen", avatarUrl: null, streakDays: 12, prompts: 312, cost: 18.42, velocity: 2341, cacheRate: 87 },
-  { id: "2", name: "Bob Park", avatarUrl: null, streakDays: 5, prompts: 428, cost: 24.10, velocity: 1890, cacheRate: 91 },
-  { id: "3", name: "Charlie Kim", avatarUrl: null, streakDays: 3, prompts: 195, cost: 11.80, velocity: 1650, cacheRate: 78 },
-  { id: "4", name: "Diana Rivera", avatarUrl: null, streakDays: 8, prompts: 267, cost: 15.30, velocity: 2100, cacheRate: 84 },
-  { id: "5", name: "Eve Zhang", avatarUrl: null, streakDays: 1, prompts: 142, cost: 8.60, velocity: 1420, cacheRate: 82 },
-];
-
-const MOCK_TEAM_INFO: TeamInfo = {
-  slug: "backend-crew",
-  name: "Backend Crew",
-  logoUrl: null,
-  memberCount: 5,
-  chemistryScore: 78,
-  activeChallenge: {
-    name: "Sprint Week",
-    description: "Most prompts per member this week",
-    endsAt: "2026-03-20",
-    progress: 62,
-  },
-};
 
 const MOCK_LEADERBOARD: LeaderboardEntry[] = [
   { category: "prompts", title: "The Machine", memberId: "2", memberName: "Bob Park", value: "428 prompts" },
@@ -308,7 +291,21 @@ export function useTeamInfo(slug: string) {
   return useQuery({
     queryKey: ["team-info", slug],
     queryFn: async (): Promise<TeamInfo> => {
-      return { ...MOCK_TEAM_INFO, slug };
+      const { teamBySlug } = await gql<{ teamBySlug: GqlTeam | null }>(
+        TEAM_BY_SLUG,
+        { slug, period: "week" },
+      );
+      if (!teamBySlug) throw new Error("Team not found");
+      // chemistryScore / activeChallenge come from the TeamStats dashboard
+      // rollup (P3 aggregate worker); no source yet, so 0 / null.
+      return {
+        slug: teamBySlug.teamSlug,
+        name: teamBySlug.teamName,
+        logoUrl: teamBySlug.logoUrl,
+        memberCount: teamBySlug.memberCount,
+        chemistryScore: 0,
+        activeChallenge: null,
+      };
     },
     staleTime: 60_000,
     enabled: !!slug,
@@ -319,7 +316,23 @@ export function useTeamMembers(slug: string) {
   return useQuery({
     queryKey: ["team-members", slug],
     queryFn: async (): Promise<TeamMember[]> => {
-      return MOCK_TEAM_MEMBERS;
+      const { teamBySlug } = await gql<{ teamBySlug: GqlTeam | null }>(
+        TEAM_BY_SLUG,
+        { slug, period: "week" },
+      );
+      const members = teamBySlug?.members ?? [];
+      // prompts/cost/velocity/cacheRate come from each member's TeamStats
+      // snapshot (P3 aggregate worker); null → 0 until that worker ships.
+      return members.map((m) => ({
+        id: m.userId,
+        name: m.displayName,
+        avatarUrl: null,
+        streakDays: m.streak?.currentStreak ?? 0,
+        prompts: m.stats?.prompts ?? 0,
+        cost: m.stats?.estimatedCost ?? 0,
+        velocity: m.stats?.velocityTokensPerMin ?? 0,
+        cacheRate: 0,
+      }));
     },
     staleTime: 60_000,
     enabled: !!slug,
@@ -352,7 +365,18 @@ export function useTeams() {
   return useQuery({
     queryKey: ["teams"],
     queryFn: async (): Promise<TeamSummary[]> => {
-      return MOCK_TEAMS;
+      const { myTeams } = await gql<{ myTeams: GqlTeam[] }>(MY_TEAMS);
+      // totalPrompts/totalCost/syncRate are team-level aggregates from the
+      // TeamStats rollup (P3 aggregate worker); 0 until that worker ships.
+      return myTeams.map((t) => ({
+        slug: t.teamSlug,
+        name: t.teamName,
+        logoUrl: t.logoUrl,
+        memberCount: t.memberCount,
+        totalPrompts: 0,
+        totalCost: 0,
+        syncRate: 0,
+      }));
     },
     staleTime: 60_000,
   });

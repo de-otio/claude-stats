@@ -1,11 +1,11 @@
 /**
- * Query.myTeams — Get all teams the current user belongs to.
- * Queries the MembershipsByUser GSI to get teamIds, then batch-gets Teams.
+ * Query.myTeams — Pipeline Step 1.
+ * Query the MembershipsByUser GSI (PK userId) for every team the caller
+ * belongs to, and stash the teamIds for Step 2 to batch-get full Team items.
  *
- * Note: This resolver queries the GSI. A pipeline resolver would then
- * batch-get the full Team items. For a single-function resolver, the
- * membership records include enough data (role, displayName) and the
- * teamIds can be resolved by a field-level resolver on Team.
+ * The membership rows do NOT carry teamName/settings/memberCount, so a
+ * single-function resolver cannot satisfy `[Team!]!` — Step 2 hydrates the
+ * full Team records from the base Teams table.
  */
 import { util } from "@aws-appsync/utils";
 import * as ddb from "@aws-appsync/utils/dynamodb";
@@ -21,8 +21,7 @@ export function response(ctx) {
   if (ctx.error) {
     util.error(ctx.error.message, ctx.error.type);
   }
-  // Returns membership records; a pipeline second step or field resolver
-  // would batch-get full Team objects from the Teams table.
-  // Each item contains: teamId, userId, role, joinedAt, displayName
-  return ctx.result.items || [];
+  const memberships = ctx.result.items || [];
+  ctx.stash.teamIds = memberships.map((m) => m.teamId);
+  return memberships;
 }

@@ -86,6 +86,29 @@ export interface GqlUser {
   } | null;
 }
 
+export interface GqlTeam {
+  teamId: string;
+  teamName: string;
+  teamSlug: string;
+  logoUrl: string | null;
+  memberCount: number;
+  members?: GqlTeamMember[];
+}
+
+export interface GqlTeamMember {
+  userId: string;
+  displayName: string;
+  role: string;
+  streak: { currentStreak: number } | null;
+  // TeamMember.stats reads the TeamStats snapshot (written by the P3
+  // aggregate worker); null until that worker ships.
+  stats: {
+    prompts: number;
+    estimatedCost: number | null;
+    velocityTokensPerMin: number | null;
+  } | null;
+}
+
 // ── Operations ──────────────────────────────────────────────────────────────
 
 export const ME = /* GraphQL */ `
@@ -120,6 +143,25 @@ export const MY_AGGREGATES = /* GraphQL */ `
     myAggregates(from: $from, to: $to, limit: $limit) {
       period projectId sessionCount promptCount
       inputTokens outputTokens activeMinutes models estimatedCost
+    }
+  }
+`;
+
+export const MY_TEAMS = /* GraphQL */ `
+  query MyTeams {
+    myTeams { teamId teamName teamSlug logoUrl memberCount }
+  }
+`;
+
+export const TEAM_BY_SLUG = /* GraphQL */ `
+  query TeamBySlug($slug: String!, $period: String!) {
+    teamBySlug(slug: $slug) {
+      teamId teamName teamSlug logoUrl memberCount
+      members {
+        userId displayName role
+        streak { currentStreak }
+        stats(period: $period) { prompts estimatedCost velocityTokensPerMin }
+      }
     }
   }
 `;
