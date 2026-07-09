@@ -168,7 +168,7 @@ export function registerSyncCommands(program: Command): void {
           return;
         }
         console.log(
-          `Would sync ${aggregates.length} aggregate record(s) (period+cohort rollups; no per-session or prompt data).`,
+          `Would sync ${aggregates.length} aggregate record(s) (per-day rollups; no per-session or prompt data).`,
         );
         return;
       }

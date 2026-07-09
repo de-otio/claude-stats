@@ -5,13 +5,14 @@
  * `fetch` for GraphQL calls — no external dependencies.
  *
  * ‼️  Plane-separation invariant (non-negotiable): the ONLY payload this client
- *     can build is the {@link AggregateProjection} — per-`(period, cohort)`
- *     counts/totals computed LOCALLY (see `../org/aggregate.ts`). There is NO
- *     per-session path here: no `prompt_text`, `file_paths`, transcript content,
- *     session ids/paths, or key material can reach the org backend. The legacy
- *     `sessionToSyncInput` / `SyncSessionInput` per-session path and the prompt
- *     scan/redact export path were DELETED (not left dormant — reviews S6/F9),
- *     so aggregate-only is STRUCTURAL, not a runtime check.
+ *     can build is the {@link AggregateSyncInput} — per-`(period)` counts/totals
+ *     computed LOCALLY (see `projectUserAggregates` in `../org/aggregate.ts`),
+ *     matching the deployed `syncAggregate` mutation (userId is server-forced
+ *     from the JWT). There is NO per-session path here: no `prompt_text`,
+ *     `file_paths`, transcript content, session ids/paths, or key material can
+ *     reach the org backend. The legacy `sessionToSyncInput` / `SyncSessionInput`
+ *     per-session path was DELETED (not left dormant — reviews S6/F9), so
+ *     aggregate-only is STRUCTURAL, not a runtime check.
  *
  * Sync flow:
  *   1. Read local sessions for linked accounts.
@@ -26,10 +27,10 @@ import * as path from "node:path";
 import * as os from "node:os";
 
 import type { Store } from "../store/index.js";
-import type { AggregateProjection } from "@claude-stats/core/types/shard";
+import type { AggregateSyncInput } from "@claude-stats/core/types/api";
 import { ensureValidTokens } from "./auth.js";
 import { deriveAccountId, generateUserSalt } from "./hmac.js";
-import { projectAggregates, AGGREGATE_SCHEMA_VERSION } from "../org/aggregate.js";
+import { projectUserAggregates } from "../org/aggregate.js";
 
 // Re-export submodules for convenience
 export { deriveAccountId, generateUserSalt } from "./hmac.js";
@@ -272,11 +273,12 @@ async function graphql<T>(
  * server-side schema (Phase F server task) likewise accepts ONLY this shape and
  * rejects any per-session input (review F9).
  */
-const SYNC_AGGREGATES_MUTATION = `
-  mutation SyncAggregates($input: [AggregateInput!]!) {
-    syncAggregates(input: $input) {
+const SYNC_AGGREGATE_MUTATION = `
+  mutation SyncAggregate($input: [AggregateSyncInput!]!) {
+    syncAggregate(input: $input) {
       itemsWritten
       itemsSkipped
+      conflicts { key serverVersion }
     }
   }
 `;
@@ -305,17 +307,14 @@ const BATCH_SIZE = 25;
 const MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 100;
 
-/** Cohort id for sessions with no linked account (should not occur — see filter below). */
-const UNATTRIBUTED_COHORT = "unattributed";
-
 /**
  * Build the aggregate-only payload for the given sessions.
  *
  * Sessions are filtered to LINKED accounts only (matching the prior privacy
  * posture: data for accounts the user has not linked is never sent), then
- * projected LOCALLY into minimized {@link AggregateProjection} records. This is
- * the whole client→server payload surface for session data — structurally
- * incapable of carrying prompt/transcript/path/key material.
+ * projected LOCALLY into minimized {@link AggregateSyncInput} records (per-day
+ * totals). This is the whole client→server payload surface for session data —
+ * structurally incapable of carrying prompt/transcript/path/key material.
  *
  * Exported so `--dry-run` and tests can inspect EXACTLY what would be sent
  * without hitting the network. Deterministic: bucketing uses each session's own
@@ -324,43 +323,99 @@ const UNATTRIBUTED_COHORT = "unattributed";
 export function buildAggregatePayload(
   store: Store,
   persisted: PersistedSyncConfig,
-  periodKind: AggregateProjection["periodKind"] = "day",
-): AggregateProjection[] {
+  periodKind: "day" | "week" | "month" = "day",
+): AggregateSyncInput[] {
   const userSalt = persisted.userSalt;
   const mappings = persisted.accountMappings ?? [];
   if (!userSalt || mappings.length === 0) return [];
 
   const linkedUuids = new Set(mappings.map((m) => m.accountUuid));
-  const cohortCache = new Map<string, string>();
-  for (const m of mappings) cohortCache.set(m.accountUuid, m.accountId);
 
   const sessions = store
     .getSessions({ includeCI: true, includeDeleted: false })
     // Only sessions whose account the user has explicitly linked.
     .filter((s) => s.account_uuid !== null && s.account_uuid !== undefined && linkedUuids.has(s.account_uuid));
 
-  return projectAggregates(sessions, {
-    periodKind,
-    cohortIdFor: (accountUuid) => {
-      let cohort = cohortCache.get(accountUuid);
-      if (!cohort) {
-        cohort = deriveAccountId(accountUuid, userSalt);
-        cohortCache.set(accountUuid, cohort);
-      }
-      return cohort;
-    },
-    unattributedCohortId: UNATTRIBUTED_COHORT,
-    schemaVersion: AGGREGATE_SCHEMA_VERSION,
-  });
+  // The deployed key is (userId, period) — one row per day — so we roll the
+  // day up across all linked accounts. Stamp the primary linked account's
+  // derived accountId (a stable HMAC handle, never the raw uuid); the server
+  // key ignores it, it only populates the AggregatesByAccount GSI.
+  const primary = mappings[0];
+  if (!primary) return [];
+  const accountId =
+    primary.accountId || deriveAccountId(primary.accountUuid, userSalt);
+
+  return projectUserAggregates(sessions, { accountId, periodKind });
+}
+
+/** Max rounds to re-send a batch bumping `_version` after a conflict. */
+const MAX_CONFLICT_ROUNDS = 3;
+
+interface SyncAggregateResponse {
+  itemsWritten: number;
+  itemsSkipped: number;
+  conflicts: Array<{ key: string; serverVersion: number }>;
 }
 
 /**
- * Sync minimized local aggregates to the cloud.
+ * Send one batch via `syncAggregate` with transport-level retry/backoff.
+ * Returns the server result, or null if it errored (message pushed to
+ * `result.errors`). A GraphQL-level error (e.g. validation) is terminal — no
+ * retry; only transport/network throws are retried.
+ */
+async function sendBatch(
+  config: SyncConfig,
+  accessToken: string,
+  batch: AggregateSyncInput[],
+  result: SyncResult,
+): Promise<SyncAggregateResponse | null> {
+  let retries = 0;
+  while (retries <= MAX_RETRIES) {
+    try {
+      const response = await graphql<{ syncAggregate: SyncAggregateResponse }>(
+        config,
+        accessToken,
+        SYNC_AGGREGATE_MUTATION,
+        { input: batch },
+      );
+      if (response.errors?.length) {
+        result.errors.push(...response.errors.map((e) => e.message));
+        return null;
+      }
+      return (
+        response.data?.syncAggregate ?? {
+          itemsWritten: 0,
+          itemsSkipped: 0,
+          conflicts: [],
+        }
+      );
+    } catch (err) {
+      retries++;
+      if (retries > MAX_RETRIES) {
+        result.errors.push(
+          `Batch failed after ${MAX_RETRIES} retries: ${(err as Error).message}`,
+        );
+        return null;
+      }
+      await new Promise((r) =>
+        setTimeout(r, BASE_BACKOFF_MS * Math.pow(2, retries - 1)),
+      );
+    }
+  }
+  return null;
+}
+
+/**
+ * Sync minimized local aggregates to the cloud via the deployed `syncAggregate`
+ * mutation. Rows are per-`(userId, period)` upserts guarded by an optimistic
+ * `_version` (server condition `attribute_not_exists OR _version == expected`).
  *
- * Aggregates are idempotent upserts keyed by `(period, cohort)`, so — unlike the
- * removed per-session path — there is no version/conflict dance: a batch either
- * writes or is retried on transient transport failure. No per-session,
- * prompt, transcript, path, or key material is ever transmitted.
+ * Because `syncAggregate` uses an ATOMIC TransactWriteItems, any single stale
+ * `_version` cancels the whole batch and the server returns each stale row's
+ * current `serverVersion`. We then bump those rows' `_version` and re-send the
+ * batch (up to {@link MAX_CONFLICT_ROUNDS}); new rows keep `_version=0` and pass
+ * the `attribute_not_exists` arm. No per-session, prompt, transcript, path, or
+ * key material is ever transmitted — the payload is aggregate-only by type.
  */
 export async function syncAggregates(
   store: Store,
@@ -395,42 +450,43 @@ export async function syncAggregates(
     errors: [],
   };
 
-  const batches: AggregateProjection[][] = [];
+  const batches: AggregateSyncInput[][] = [];
   for (let i = 0; i < aggregates.length; i += BATCH_SIZE) {
     batches.push(aggregates.slice(i, i + BATCH_SIZE));
   }
 
   for (const batch of batches) {
-    let retries = 0;
-    while (retries <= MAX_RETRIES) {
-      try {
-        const response = await graphql<{
-          syncAggregates: { itemsWritten: number; itemsSkipped: number };
-        }>(config, tokens.accessToken, SYNC_AGGREGATES_MUTATION, { input: batch });
+    // Mutable copies so we can bump `_version` across conflict rounds.
+    const current = batch.map((x) => ({ ...x }));
+    let done = false;
 
-        if (response.errors?.length) {
-          result.errors.push(...response.errors.map((e) => e.message));
-          break;
-        }
-
-        const synced = response.data?.syncAggregates;
-        if (synced) {
-          result.aggregatesWritten += synced.itemsWritten;
-          result.aggregatesSkipped += synced.itemsSkipped;
-        }
-        break; // batch done
-      } catch (err) {
-        retries++;
-        if (retries > MAX_RETRIES) {
-          result.errors.push(
-            `Batch failed after ${MAX_RETRIES} retries: ${(err as Error).message}`,
-          );
-          break;
-        }
-        await new Promise((r) =>
-          setTimeout(r, BASE_BACKOFF_MS * Math.pow(2, retries - 1)),
-        );
+    for (let round = 0; round <= MAX_CONFLICT_ROUNDS && !done; round++) {
+      const response = await sendBatch(config, tokens.accessToken, current, result);
+      if (response === null) {
+        done = true; // transport/GraphQL error already recorded
+        break;
       }
+
+      if (!response.conflicts || response.conflicts.length === 0) {
+        // Full success — every item in the batch was written this round.
+        result.aggregatesWritten += current.length;
+        done = true;
+        break;
+      }
+
+      // Conflicts: bump the stale rows to the server's version and re-send.
+      const byPeriod = new Map(current.map((x) => [x.period, x]));
+      for (const c of response.conflicts) {
+        const item = byPeriod.get(c.key);
+        if (item) item._version = c.serverVersion;
+      }
+    }
+
+    if (!done) {
+      result.errors.push(
+        `Batch did not converge after ${MAX_CONFLICT_ROUNDS} conflict rounds ` +
+          `(${current.length} rows starting ${current[0]?.period}).`,
+      );
     }
   }
 
