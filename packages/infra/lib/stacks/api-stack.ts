@@ -160,11 +160,14 @@ export class ApiStack extends cdk.Stack {
     const noneDs = api.addNoneDataSource("NoneDS");
 
     interface UnitResolverSpec {
-      typeName: "Query" | "Mutation";
+      /** "Query" | "Mutation" | a nested object type (e.g. "Team") */
+      typeName: string;
       field: string;
       dataSource: appsync.BaseDataSource;
       /** logical→physical table-name substitutions for batch/transact ops */
       subs?: Record<string, string>;
+      /** resolver file when it differs from `${field}.js` (nested fields) */
+      file?: string;
     }
 
     const unitResolvers: UnitResolverSpec[] = [
@@ -184,14 +187,38 @@ export class ApiStack extends cdk.Stack {
       // ── P1a: team read path (complete + clean unit resolvers) ──
       { typeName: "Query", field: "team", dataSource: dataSources.teams },
       { typeName: "Query", field: "teamMembers", dataSource: dataSources.teamMemberships },
+      // ── P1b: nested field resolvers ──
+      // Team.members — roster, gated to team members (also hides members on
+      // the reader-dashboard path). User.achievements — e.g. `me { achievements }`.
+      // TeamMember.stats — per-member snapshot from TeamStats (writer = P3).
+      {
+        typeName: "Team",
+        field: "members",
+        dataSource: dataSources.teamMemberships,
+        file: "teamMembersField.js",
+      },
+      {
+        typeName: "User",
+        field: "achievements",
+        dataSource: dataSources.achievements,
+        file: "userAchievementsField.js",
+      },
+      {
+        typeName: "TeamMember",
+        field: "stats",
+        dataSource: dataSources.teamStats,
+        file: "teamMemberStatsField.js",
+      },
     ];
 
     for (const r of unitResolvers) {
+      // Field names are unique across all specs, so `${field}Resolver` stays
+      // a stable construct id (renaming would delete+recreate live resolvers).
       r.dataSource.createResolver(`${r.field}Resolver`, {
         typeName: r.typeName,
         fieldName: r.field,
         runtime: jsRuntime,
-        code: loadCode(`${r.field}.js`, r.subs),
+        code: loadCode(r.file ?? `${r.field}.js`, r.subs),
       });
     }
 
@@ -250,6 +277,28 @@ export class ApiStack extends cdk.Stack {
             dataSource: dataSources.teamStats,
             subs: { __TABLE_TEAMSTATS__: physicalName("teamStats") },
           },
+        ],
+      },
+      // ── P1b: myTeams / teamBySlug hydration (Team read path, teams-only) ──
+      // Step 1 finds teamIds (GSI); Step 2 batch-gets / gets the full Team(s).
+      {
+        typeName: "Query",
+        field: "myTeams",
+        steps: [
+          { file: "myTeams.js", dataSource: dataSources.teamMemberships },
+          {
+            file: "myTeamsStep2.js",
+            dataSource: dataSources.teams,
+            subs: { __TABLE_TEAMS__: physicalName("teams") },
+          },
+        ],
+      },
+      {
+        typeName: "Query",
+        field: "teamBySlug",
+        steps: [
+          { file: "teamBySlug.js", dataSource: dataSources.teams },
+          { file: "teamBySlugStep2.js", dataSource: dataSources.teams },
         ],
       },
     ];
