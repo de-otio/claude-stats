@@ -67,6 +67,44 @@ constraint reference lives in `plans/backend-deployment/RESOLVER-LAYER-SCOPE.md`
   (field names are globally unique; do NOT prefix with typeName or you delete+recreate
   live resolvers and risk a create-before-delete conflict on the same typeName+fieldName).
 
+## P3/P4 batch (infra 0.1.20, live in prod, e2e 18/18) — 2026-07-09
+Authored in parallel via a **Workflow** (8 agents: implement+verify per chunk, disjoint
+files; verify caught 4 real bugs pre-deploy), then wired + gated + deployed centrally.
+- **deleteMyAccount**: cascading-deletion Lambda (all tables + Cognito user) behind a
+  Lambda data source; resolver forwards only `ctx.identity`.
+- **Team logos**: `request-logo-upload` presign Lambda (bundles `@aws-sdk/s3-request-presigner`)
+  + `validate-logo` wired as S3 `ObjectCreated(logos/)` → sets `teams.logoUrl` + `deleteTeamLogo`.
+- **Challenges CRUD** (5 resolvers): status stored lowercase, participants a MAP seeded `{}`
+  so join's nested `SET #p.#uid` works; join/complete derive teamId from the caller's
+  single team-group claim. `ChallengeParticipant.displayName` relaxed to nullable.
+- **Inter-team CRUD** (5): 3 cross-table pipelines + 2 GSI-backed reads.
+- **DEFERRED**: admin-domains (allowedDomains/updateAllowedDomains + superadmin pre-token
+  merge) — authored in 0.1.20 but **UNWIRED** (no api-stack HTTP DS, no Auth deploy). The
+  pre-token superadmin grant is inert (`SUPERADMIN_SUBS` unset). Scoring crons + TeamStats.
+
+## Gotchas Discovered (P3/P4 — mostly e2e/deploy, not caught by evaluate-code)
+- **`deleteTeamStats` queried a phantom `StatsByUser` GSI** — teamStats has only
+  `StatsByPeriod`; a Query against a non-existent index throws `ValidationException` even
+  with zero rows. Fix: scope deletion by the user's teamIds (capture BEFORE deleting
+  memberships) + `FilterExpression userId = :uid` on the base table.
+- **DynamoDB Scan `limit:1` + filter is a lookup bug** — `limit` bounds items EXAMINED, not
+  MATCHED, so an invite-code lookup misses once the table has >1 row. Bit BOTH
+  `joinInterTeamChallenge` AND `joinTeam` (the latter a latent P2 prod bug). Fix: drop the
+  `limit`, scan a page, let the filter select. (inviteCode has no GSI.)
+- **cdk deploy from the twin: node-SDK SSO credential resolution fails** ("no credentials
+  configured") even when the aws CLI resolves the same SSO profile fine, AND the account
+  falls back to the placeholder. RELIABLE deploy incantation:
+  `eval "$(aws configure export-credentials --profile dot-shared --format env)"` then
+  `CLAUDE_STATS_PROD_ACCOUNT=<dot-shared-acct-id> npx cdk deploy -c env=prod <stack> --exclusively --require-approval never`.
+  (Static env creds bypass SSO; `CLAUDE_STATS_PROD_ACCOUNT` overrides the placeholder — set it to the dot-shared account id.)
+- **`@aws-sdk/*` is external in NodejsFunction by default** (Node22 runtime provides the v3
+  clients) — but `@aws-sdk/s3-request-presigner` is NOT in the runtime. Add it as a dep and
+  set the presign Lambda's `bundling.externalModules: ["@aws-sdk/client-s3"]` so presigner
+  bundles while the big client stays external.
+- **`npm publish` packs the WORKING TREE**, not HEAD — deferred/unwired files (admin
+  resolvers, the pre-token change) ship in the package even if not committed/wired. Ensure
+  any auth-critical change riding along is inert (it was: superadmin gated on empty env).
+
 ## Gotchas Discovered (APPSYNC_JS runtime — each cost a deploy→rollback to find)
 The resolver JS was written as ordinary JS; `APPSYNC_JS` 1.0.0 rejects much of it.
 **Banned** (verified via `aws appsync evaluate-code`):
