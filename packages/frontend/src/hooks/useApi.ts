@@ -29,6 +29,8 @@ import {
   LINK_ACCOUNT,
   UNLINK_ACCOUNT,
   UPDATE_ACCOUNT_SHARING,
+  ALLOWED_DOMAINS,
+  UPDATE_ALLOWED_DOMAINS,
   type GqlUser,
   type GqlMemberStats,
   type GqlProjectStats,
@@ -537,11 +539,6 @@ export interface InterTeamChallengeDetail extends InterTeamChallenge {
   teamScores: Array<{ teamName: string; teamSlug: string; score: number; normalizedScore: number }>;
 }
 
-export interface AdminDomain {
-  domain: string;
-  addedAt: string;
-}
-
 export interface AdminTeam {
   slug: string;
   name: string;
@@ -649,12 +646,6 @@ const MOCK_INTER_CHALLENGE_DETAIL: InterTeamChallengeDetail = {
   ],
 };
 
-const MOCK_ADMIN_DOMAINS: AdminDomain[] = [
-  { domain: "acme.com", addedAt: "2026-01-10" },
-  { domain: "example.org", addedAt: "2026-02-03" },
-  { domain: "devteam.io", addedAt: "2026-03-01" },
-];
-
 const MOCK_ADMIN_TEAMS: AdminTeam[] = [
   { slug: "backend-crew", name: "Backend Crew", memberCount: 12, createdAt: "2026-01-15", totalPrompts: 2847 },
   { slug: "platform-team", name: "Platform Team", memberCount: 8, createdAt: "2026-01-20", totalPrompts: 1923 },
@@ -742,10 +733,30 @@ export function useInterTeamChallenge(id: string) {
 export function useAdminDomains() {
   return useQuery({
     queryKey: ["admin-domains"],
-    queryFn: async (): Promise<AdminDomain[]> => {
-      return MOCK_ADMIN_DOMAINS;
+    queryFn: async (): Promise<string[]> => {
+      const { allowedDomains } = await gql<{ allowedDomains: string[] }>(ALLOWED_DOMAINS);
+      return allowedDomains;
     },
     staleTime: 60_000,
+  });
+}
+
+/**
+ * Replace the full allowed-domains set (superadmin only). The backend
+ * mutation takes the entire list — callers add/remove by mutating a copy of
+ * the current set. Returns the persisted list.
+ */
+export function useUpdateAllowedDomains() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (domains: string[]) => {
+      const { updateAllowedDomains } = await gql<{ updateAllowedDomains: string[] }>(
+        UPDATE_ALLOWED_DOMAINS,
+        { domains },
+      );
+      return updateAllowedDomains;
+    },
+    onSuccess: (data) => qc.setQueryData(["admin-domains"], data),
   });
 }
 

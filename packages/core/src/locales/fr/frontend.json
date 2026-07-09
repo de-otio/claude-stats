@@ -356,7 +356,8 @@
     "headerSlug": "Slug",
     "headerMembers": "Membres",
     "headerCreated": "Créé",
-    "headerTotalPrompts": "Prompts totaux"
+    "headerTotalPrompts": "Prompts totaux",
+    "remove": "Supprimer"
   },
   "auth": {
     "verifying": "Vérification...",

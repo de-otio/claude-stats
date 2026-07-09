@@ -356,7 +356,8 @@
     "headerSlug": "Slug",
     "headerMembers": "Członkowie",
     "headerCreated": "Utworzono",
-    "headerTotalPrompts": "Łączne prompty"
+    "headerTotalPrompts": "Łączne prompty",
+    "remove": "Usuń"
   },
   "auth": {
     "verifying": "Weryfikowanie...",
