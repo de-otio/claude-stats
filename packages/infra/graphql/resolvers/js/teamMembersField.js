@@ -25,5 +25,10 @@ export function response(ctx) {
   if (ctx.error) {
     util.error(ctx.error.message, ctx.error.type);
   }
-  return ctx.result.items || [];
+  // Storage is lowercase; the GraphQL TeamRole/ShareLevel enums are uppercase.
+  return (ctx.result.items || []).map((m) => ({
+    ...m,
+    role: (m.role || "").toUpperCase(),
+    shareLevel: (m.shareLevel || "").toUpperCase(),
+  }));
 }

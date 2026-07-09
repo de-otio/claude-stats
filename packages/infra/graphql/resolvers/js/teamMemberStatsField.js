@@ -17,7 +17,8 @@ export function request(ctx) {
   const teamId = ctx.source.teamId;
   const userId = ctx.source.userId;
   const period = ctx.args.period;
-  if (ctx.source.shareLevel === "minimal" || !teamId || !userId) {
+  // shareLevel may arrive uppercased (enum boundary) or lowercase (storage).
+  if ((ctx.source.shareLevel || "").toUpperCase() === "MINIMAL" || !teamId || !userId) {
     runtime.earlyReturn(null);
   }
   return ddb.get({

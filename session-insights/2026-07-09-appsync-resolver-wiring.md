@@ -20,8 +20,26 @@ constraint reference lives in `plans/backend-deployment/RESOLVER-LAYER-SCOPE.md`
   de-mocked. **E2E-verified with SEEDED data** (`scratchpad/e2e-p1b.mjs`: signUp →
   put Team+membership → magic-link → myTeams/teamBySlug/Team.members all return real rows
   → delete). Deployed Api + Auth + Frontend.
-- Both repos pushed through P1a: `claude-stats` master, twin `dot-claude-stats-backend`
-  main. **P1b NOT yet committed/pushed** as of this writing.
+- **P2 chunk 1 (infra 0.1.15, live in prod)**: +9 mutations — `createTeam` (2-step:
+  put Team → put admin membership), `unlinkAccount`/`updateAccountSharing` (2-step,
+  get profile → rewrite accounts list), `updateTeamSettings`/`regenerateInviteCode`
+  (auth → write teams), `promoteMember` (auth → update role), + `linkAccount` /
+  `updateMembership` units. 27 resolvers total. **E2E-verified** (`scratchpad/e2e-p2.mjs`:
+  signUp → createTeam → myTeams → re-auth for admin group → teamBySlug/members(ADMIN) →
+  updateTeamSettings → regenerateInviteCode → updateMembership → cleanup).
+  - **Casing decision**: role/shareLevel stored LOWERCASE (matches pre-token group
+    building + every resolver auth-check); uppercased to the enum ONLY at the
+    TeamMember response boundary (teamMembers, Team.members, updateMembership,
+    promoteMemberStep2). No Auth-stack change needed.
+  - **Cross-table writes** use per-table pipeline steps (each step's data source
+    already has default readWrite grants) instead of BatchPut/TransactWrite — no
+    extra IAM, but NON-ATOMIC (a mid-pipeline failure leaves partial state).
+  - **After createTeam the caller's JWT is stale** (minted before the membership
+    row) → group-gated admin ops (updateTeamSettings/regenerate/promote, Team.members)
+    need a RE-AUTH to pick up `team:{id}:admin`. The e2e does a second magic-link.
+- **P2 chunk 1 committed/pushed?** — see git log; chunk 2 pending (join/leave/remove/
+  delete + updateProfile nested-preferences fix + frontend mutation forms).
+- Both repos pushed through P1b: `claude-stats` master `0da741e`, twin `d2eed5d`.
 - All resolver wiring is table-driven in `packages/infra/lib/stacks/api-stack.ts`
   (`unitResolvers` + `pipelineResolvers` spec arrays) — add a row per new resolver.
   Nested field resolvers: `UnitResolverSpec.typeName` widened to `string`, add
@@ -41,6 +59,17 @@ The resolver JS was written as ordinary JS; `APPSYNC_JS` 1.0.0 rejects much of i
 - **`{ payload }` return from a step bound to a DynamoDB data source** → error
   `"Value for field '$[operation]' not found."` Use `runtime.earlyReturn(value)`
   (import `runtime`) to skip the data-source call. `{payload}` is only valid on NONE.
+- **`String(x)` is banned** (`INVALID_FUNCTION_INVOCATION: Invalid function: String`).
+  Call `.toLowerCase()`/`.toUpperCase()` on the value directly (enum args are
+  already strings). Likely `Number()`/`Boolean()` too.
+- **`ddb.update({ update: { "settings.foo": v } })` does NOT nest** — the helper
+  treats a dotted key as a literal attribute name (writes an attr literally named
+  "settings.foo"), silently no-op'ing the intended nested field. For nested/partial
+  map updates use a RAW request: `{ operation: "UpdateItem", key, update: {
+  expression: "SET #s.#f = :v", expressionNames: {"#s":"settings","#f":"foo"},
+  expressionValues: util.dynamodb.toMapValues({":v": v}) } }`. `list_append`/
+  `if_not_exists` also need the raw form (see linkAccount.js). Caught by e2e, NOT
+  evaluate-code (it's a runtime-semantics bug, compiles clean).
 
 **The validation gate that catches all of these offline** (do this before every deploy):
 ```
