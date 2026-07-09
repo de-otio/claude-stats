@@ -359,6 +359,57 @@ export class ApiStack extends cdk.Stack {
           { file: "promoteMemberStep2.js", dataSource: dataSources.teamMemberships },
         ],
       },
+      // ── P2 chunk 2: membership lifecycle + updateProfile ──
+      {
+        typeName: "Mutation",
+        field: "updateProfile",
+        steps: [
+          { file: "updateProfile.js", dataSource: dataSources.userProfiles },
+          { file: "updateProfileStep2.js", dataSource: dataSources.userProfiles },
+        ],
+      },
+      {
+        typeName: "Mutation",
+        field: "joinTeam",
+        steps: [
+          { file: "joinTeam.js", dataSource: dataSources.teams },
+          { file: "joinTeamStep2.js", dataSource: dataSources.teamMemberships },
+          { file: "joinTeamStep3.js", dataSource: dataSources.teams },
+        ],
+      },
+      {
+        typeName: "Mutation",
+        field: "leaveTeam",
+        steps: [
+          { file: "leaveTeam.js", dataSource: dataSources.teamMemberships },
+          { file: "leaveTeamStep2.js", dataSource: dataSources.teamMemberships },
+          { file: "leaveTeamStep3.js", dataSource: dataSources.teams },
+        ],
+      },
+      {
+        typeName: "Mutation",
+        field: "removeMember",
+        steps: [
+          { file: "removeMember.js", dataSource: dataSources.teamMemberships },
+          { file: "removeMemberStep2.js", dataSource: dataSources.teamMemberships },
+          // Step 3 (decrement memberCount) shares leaveTeamStep3 — both key off stash.teamId.
+          { file: "leaveTeamStep3.js", dataSource: dataSources.teams },
+        ],
+      },
+      {
+        typeName: "Mutation",
+        field: "deleteTeam",
+        steps: [
+          { file: "deleteTeam.js", dataSource: dataSources.teamMemberships },
+          { file: "deleteTeamStep2.js", dataSource: dataSources.teamMemberships },
+          {
+            file: "deleteTeamStep3.js",
+            dataSource: dataSources.teamMemberships,
+            subs: { __TABLE_MEMBERSHIPS__: physicalName("teamMemberships") },
+          },
+          { file: "deleteTeamStep4.js", dataSource: dataSources.teams },
+        ],
+      },
     ];
 
     for (const r of pipelineResolvers) {
