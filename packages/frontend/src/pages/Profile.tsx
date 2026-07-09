@@ -16,6 +16,10 @@ export function Profile() {
     if (me?.displayName) setDisplayName(me.displayName);
   }, [me?.displayName]);
 
+  useEffect(() => {
+    if (me?.defaultShareLevel) setDefaultShareLevel(me.defaultShareLevel.toLowerCase());
+  }, [me?.defaultShareLevel]);
+
   const handleSave = () => {
     updateProfile.mutate({
       displayName: displayName.trim(),
