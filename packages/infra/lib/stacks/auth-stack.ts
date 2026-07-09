@@ -336,6 +336,10 @@ export class AuthStack extends cdk.Stack {
         logGroup: makeLogGroup(`${prefix}-PreTokenGeneration`),
         environment: {
           TABLE_NAME: teamMembershipsTableName,
+          // AUTH-CRITICAL: comma-separated allowlist of subs/emails granted
+          // the "superadmin" claim. Empty (default) → nobody. See
+          // config.superadminSubs and lambda/auth/pre-token-generation.ts.
+          SUPERADMIN_SUBS: (config.superadminSubs ?? []).join(","),
         },
       },
     );

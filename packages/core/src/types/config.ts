@@ -18,6 +18,13 @@ export interface EnvironmentConfig {
   // Auth
   senderEmail: string;
   allowedEmailDomains: string[];
+  /**
+   * Cognito `sub`s and/or email addresses granted the "superadmin" group
+   * claim by the PreTokenGeneration trigger. Superadmin gates the admin-only
+   * allowedDomains / updateAllowedDomains resolvers. Empty/unset → nobody.
+   * AUTH-CRITICAL: any value here grants org-wide superadmin.
+   */
+  superadminSubs?: string[];
   magicLinkTtlMinutes: number;
   magicLinkMaxRequestsPerHour: number;
   cognitoAccessTokenTtlMinutes: number;
