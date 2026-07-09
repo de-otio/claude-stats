@@ -76,14 +76,34 @@ export interface GqlUserAggregate {
   estimatedCost: number;
 }
 
+export interface GqlLinkedAccount {
+  accountId: string;
+  label: string;
+  shareWithTeams: boolean;
+}
+
 export interface GqlUser {
   userId: string;
   email: string;
   displayName: string;
+  accounts?: GqlLinkedAccount[];
+  preferences?: {
+    defaultShareLevel: string;
+    timezone: string;
+    weekStartDay: number;
+    streakWeekendGrace: boolean;
+  };
   streak: {
     currentStreak: number;
     longestStreak: number;
   } | null;
+}
+
+export interface GqlTeamSettings {
+  leaderboardEnabled: boolean;
+  challengesEnabled: boolean;
+  crossTeamVisibility: string; // PRIVATE | PUBLIC_STATS | PUBLIC_DASHBOARD
+  minMembersForAggregates: number;
 }
 
 export interface GqlTeam {
@@ -92,6 +112,8 @@ export interface GqlTeam {
   teamSlug: string;
   logoUrl: string | null;
   memberCount: number;
+  inviteCode?: string | null;
+  settings?: GqlTeamSettings;
   members?: GqlTeamMember[];
 }
 
@@ -113,7 +135,12 @@ export interface GqlTeamMember {
 
 export const ME = /* GraphQL */ `
   query Me {
-    me { userId email displayName streak { currentStreak longestStreak } }
+    me {
+      userId email displayName
+      accounts { accountId label shareWithTeams }
+      preferences { defaultShareLevel timezone weekStartDay streakWeekendGrace }
+      streak { currentStreak longestStreak }
+    }
   }
 `;
 
@@ -166,7 +193,27 @@ export const TEAM_BY_SLUG = /* GraphQL */ `
   }
 `;
 
+// Lean settings/admin view of a team: identity + editable settings + the
+// caller's own role (members[] is admin-gated server-side, so a non-member
+// gets an empty list and the page falls back to read-only).
+export const TEAM_SETTINGS = /* GraphQL */ `
+  query TeamSettings($slug: String!) {
+    teamBySlug(slug: $slug) {
+      teamId teamName teamSlug inviteCode
+      settings {
+        leaderboardEnabled challengesEnabled
+        crossTeamVisibility minMembersForAggregates
+      }
+      members { userId role }
+    }
+  }
+`;
+
 // ── Mutations ─────────────────────────────────────────────────────────────
+
+export const LEAVE_TEAM = /* GraphQL */ `
+  mutation LeaveTeam($teamId: ID!) { leaveTeam(teamId: $teamId) }
+`;
 
 export const CREATE_TEAM = /* GraphQL */ `
   mutation CreateTeam($input: CreateTeamInput!) {

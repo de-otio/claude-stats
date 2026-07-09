@@ -1,18 +1,63 @@
-import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { Card, Text, TextInput, Textarea, Select, SelectItem, Button, Badge } from "@tremor/react";
+import { useState, useEffect } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { Card, Text, TextInput, Select, SelectItem, Button, Badge } from "@tremor/react";
 import { useTranslation } from "react-i18next";
+import {
+  useTeamSettings,
+  useUpdateTeamSettings,
+  useLeaveTeam,
+  useDeleteTeam,
+} from "../hooks/useApi";
 
 export function TeamSettingsPage() {
   const { t } = useTranslation('frontend');
   const { slug = "" } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
 
-  const [name, setName] = useState("Backend Crew");
-  const [description, setDescription] = useState("Our backend engineering team");
-  const [leaderboardVisibility, setLeaderboardVisibility] = useState("team");
-  const [crossTeamVisibility, setCrossTeamVisibility] = useState("summary");
-  const [challengesEnabled, setChallengesEnabled] = useState(true);
-  const [dashboardReaders, setDashboardReaders] = useState("");
+  const { data: team } = useTeamSettings(slug);
+  const updateSettings = useUpdateTeamSettings();
+  const leaveTeam = useLeaveTeam();
+  const deleteTeam = useDeleteTeam();
+
+  const isAdmin = team?.myRole === "ADMIN";
+
+  // leaderboardEnabled is a boolean server-side; expose it as private-vs-team.
+  const [leaderboard, setLeaderboard] = useState("team");
+  // crossTeamVisibility maps directly to the CrossTeamVisibility enum.
+  const [crossTeam, setCrossTeam] = useState("PRIVATE");
+  const [challenges, setChallenges] = useState(true);
+
+  // Seed the form once the real settings load.
+  useEffect(() => {
+    if (!team) return;
+    setLeaderboard(team.settings.leaderboardEnabled ? "team" : "private");
+    setCrossTeam(team.settings.crossTeamVisibility);
+    setChallenges(team.settings.challengesEnabled);
+  }, [team]);
+
+  const handleSave = () => {
+    if (!team) return;
+    updateSettings.mutate({
+      teamId: team.teamId,
+      input: {
+        leaderboardEnabled: leaderboard !== "private",
+        crossTeamVisibility: crossTeam,
+        challengesEnabled: challenges,
+        // Preserve the server value we didn't surface in the form.
+        minMembersForAggregates: team.settings.minMembersForAggregates,
+      },
+    });
+  };
+
+  const handleLeave = () => {
+    if (!team) return;
+    leaveTeam.mutate(team.teamId, { onSuccess: () => navigate("/teams") });
+  };
+
+  const handleDelete = () => {
+    if (!team) return;
+    deleteTeam.mutate(team.teamId, { onSuccess: () => navigate("/teams") });
+  };
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -25,31 +70,15 @@ export function TeamSettingsPage() {
 
       <div className="mb-6 flex items-center gap-3">
         <h1 className="text-2xl font-bold text-gray-900">{t('teamSettings.title')}</h1>
-        <Badge color="red" size="xs">{t('teamSettings.adminOnly')}</Badge>
+        {isAdmin && <Badge color="red" size="xs">{t('teamSettings.adminOnly')}</Badge>}
       </div>
 
-      {/* Team Identity */}
+      {/* Team Identity — name is set at creation and not renamable here. */}
       <Card className="mb-4 space-y-4">
         <Text className="text-lg font-semibold text-gray-900">{t('teamSettings.teamIdentity')}</Text>
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">{t('teamSettings.teamName')}</label>
-          <TextInput value={name} onValueChange={setName} placeholder={t('teamSettings.teamNamePlaceholder')} />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">{t('teamSettings.description')}</label>
-          <Textarea
-            value={description}
-            onValueChange={setDescription}
-            placeholder={t('teamSettings.descriptionPlaceholder')}
-            rows={3}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">{t('teamSettings.teamLogo')}</label>
-          <Button variant="secondary" size="xs">
-            {t('teamSettings.uploadLogo')}
-          </Button>
-          <Text className="mt-1 text-xs text-gray-400">{t('teamSettings.logoHint')}</Text>
+          <TextInput value={team?.teamName ?? ""} disabled />
         </div>
       </Card>
 
@@ -60,20 +89,19 @@ export function TeamSettingsPage() {
           <label className="mb-1 block text-sm font-medium text-gray-700">
             {t('teamSettings.leaderboardVisibility')}
           </label>
-          <Select value={leaderboardVisibility} onValueChange={setLeaderboardVisibility}>
+          <Select value={leaderboard} onValueChange={setLeaderboard} disabled={!isAdmin}>
             <SelectItem value="private">{t('teamSettings.visibilityPrivateAdmins')}</SelectItem>
             <SelectItem value="team">{t('teamSettings.visibilityTeam')}</SelectItem>
-            <SelectItem value="public">{t('teamSettings.visibilityPublic')}</SelectItem>
           </Select>
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">
             {t('teamSettings.crossTeamVisibility')}
           </label>
-          <Select value={crossTeamVisibility} onValueChange={setCrossTeamVisibility}>
-            <SelectItem value="none">{t('teamSettings.crossTeamNone')}</SelectItem>
-            <SelectItem value="minimal">{t('teamSettings.crossTeamMinimal')}</SelectItem>
-            <SelectItem value="summary">{t('teamSettings.crossTeamSummary')}</SelectItem>
+          <Select value={crossTeam} onValueChange={setCrossTeam} disabled={!isAdmin}>
+            <SelectItem value="PRIVATE">{t('teamSettings.crossTeamNone')}</SelectItem>
+            <SelectItem value="PUBLIC_STATS">{t('teamSettings.crossTeamMinimal')}</SelectItem>
+            <SelectItem value="PUBLIC_DASHBOARD">{t('teamSettings.crossTeamSummary')}</SelectItem>
           </Select>
           <Text className="mt-1 text-xs text-gray-400">
             {t('teamSettings.crossTeamHint')}
@@ -88,28 +116,15 @@ export function TeamSettingsPage() {
           <input
             type="checkbox"
             id="challengesEnabled"
-            checked={challengesEnabled}
-            onChange={(e) => setChallengesEnabled(e.target.checked)}
+            checked={challenges}
+            disabled={!isAdmin}
+            onChange={(e) => setChallenges(e.target.checked)}
             className="h-4 w-4 rounded border-gray-300"
           />
           <label htmlFor="challengesEnabled" className="text-sm text-gray-700">
             {t('teamSettings.enableChallenges')}
           </label>
         </div>
-      </Card>
-
-      {/* Dashboard Readers */}
-      <Card className="mb-4 space-y-3">
-        <Text className="text-lg font-semibold text-gray-900">{t('teamSettings.dashboardReaders')}</Text>
-        <Text className="text-sm text-gray-500">
-          {t('teamSettings.dashboardReadersHint')}
-        </Text>
-        <Textarea
-          value={dashboardReaders}
-          onValueChange={setDashboardReaders}
-          placeholder={t('teamSettings.dashboardReadersPlaceholder')}
-          rows={2}
-        />
       </Card>
 
       {/* Danger Zone */}
@@ -123,26 +138,51 @@ export function TeamSettingsPage() {
                 {t('teamSettings.leaveTeamDescription')}
               </Text>
             </div>
-            <Button color="red" variant="secondary" size="xs">
+            <Button
+              color="red"
+              variant="secondary"
+              size="xs"
+              loading={leaveTeam.isPending}
+              onClick={handleLeave}
+            >
               {t('teamSettings.leaveTeam')}
             </Button>
           </div>
-          <div className="flex items-center justify-between rounded-lg border border-red-100 bg-red-50 p-4">
-            <div>
-              <Text className="font-medium text-red-800">{t('teamSettings.deleteTeam')}</Text>
-              <Text className="text-sm text-red-600">
-                {t('teamSettings.deleteTeamDescription')}
-              </Text>
+          {isAdmin && (
+            <div className="flex items-center justify-between rounded-lg border border-red-100 bg-red-50 p-4">
+              <div>
+                <Text className="font-medium text-red-800">{t('teamSettings.deleteTeam')}</Text>
+                <Text className="text-sm text-red-600">
+                  {t('teamSettings.deleteTeamDescription')}
+                </Text>
+              </div>
+              <Button
+                color="red"
+                variant="secondary"
+                size="xs"
+                loading={deleteTeam.isPending}
+                onClick={handleDelete}
+              >
+                {t('teamSettings.deleteTeam')}
+              </Button>
             </div>
-            <Button color="red" variant="secondary" size="xs">
-              {t('teamSettings.deleteTeam')}
-            </Button>
-          </div>
+          )}
         </div>
       </Card>
 
-      <div className="flex justify-end">
-        <Button>{t('teamSettings.saveChanges')}</Button>
+      <div className="flex items-center justify-end gap-3">
+        {updateSettings.isSuccess && (
+          <Text className="text-sm text-green-600">{t('teamSettings.saveChanges')} ✓</Text>
+        )}
+        {(updateSettings.isError || leaveTeam.isError || deleteTeam.isError) && (
+          <Text className="text-sm text-red-600">
+            {((updateSettings.error ?? leaveTeam.error ?? deleteTeam.error) as Error)?.message ??
+              "Action failed"}
+          </Text>
+        )}
+        <Button onClick={handleSave} disabled={!isAdmin || updateSettings.isPending} loading={updateSettings.isPending}>
+          {t('teamSettings.saveChanges')}
+        </Button>
       </div>
     </div>
   );

@@ -18,12 +18,14 @@ import {
   MY_AGGREGATES,
   MY_TEAMS,
   TEAM_BY_SLUG,
+  TEAM_SETTINGS,
   CREATE_TEAM,
   JOIN_TEAM,
   UPDATE_PROFILE,
   UPDATE_TEAM_SETTINGS,
   REGENERATE_INVITE_CODE,
   DELETE_TEAM,
+  LEAVE_TEAM,
   LINK_ACCOUNT,
   UNLINK_ACCOUNT,
   UPDATE_ACCOUNT_SHARING,
@@ -33,6 +35,8 @@ import {
   type GqlAchievement,
   type GqlUserAggregate,
   type GqlTeam,
+  type GqlLinkedAccount,
+  type GqlTeamSettings,
 } from "../graphql/operations";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -168,11 +172,19 @@ const MOCK_CHALLENGES: InterTeamChallenge[] = [
 
 // ─── Hooks ───────────────────────────────────────────────────────────
 
+export interface LinkedAccount {
+  accountId: string;
+  label: string;
+  shareWithTeams: boolean;
+}
+
 export interface MeData {
   userId: string;
   email: string;
   displayName: string;
   currentStreak: number;
+  defaultShareLevel: string; // FULL | SUMMARY | MINIMAL
+  accounts: LinkedAccount[];
 }
 
 export function useMe() {
@@ -185,6 +197,12 @@ export function useMe() {
         email: me.email,
         displayName: me.displayName,
         currentStreak: me.streak?.currentStreak ?? 0,
+        defaultShareLevel: me.preferences?.defaultShareLevel ?? "SUMMARY",
+        accounts: (me.accounts ?? []).map((a: GqlLinkedAccount) => ({
+          accountId: a.accountId,
+          label: a.label,
+          shareWithTeams: a.shareWithTeams,
+        })),
       };
     },
     staleTime: 300_000,
@@ -345,6 +363,49 @@ export function useTeamMembers(slug: string) {
     },
     staleTime: 60_000,
     enabled: !!slug,
+  });
+}
+
+export interface TeamSettingsData {
+  teamId: string;
+  teamName: string;
+  teamSlug: string;
+  inviteCode: string | null;
+  settings: GqlTeamSettings;
+  /** The caller's role in this team, or null if not a member (read-only). */
+  myRole: "ADMIN" | "MEMBER" | null;
+}
+
+const DEFAULT_TEAM_SETTINGS: GqlTeamSettings = {
+  leaderboardEnabled: true,
+  challengesEnabled: true,
+  crossTeamVisibility: "PRIVATE",
+  minMembersForAggregates: 3,
+};
+
+export function useTeamSettings(slug: string) {
+  const { data: me } = useMe();
+  return useQuery({
+    queryKey: ["team-settings", slug],
+    queryFn: async (): Promise<TeamSettingsData> => {
+      const { teamBySlug } = await gql<{
+        teamBySlug:
+          | (GqlTeam & { members?: Array<{ userId: string; role: string }> })
+          | null;
+      }>(TEAM_SETTINGS, { slug });
+      if (!teamBySlug) throw new Error("Team not found");
+      const mine = teamBySlug.members?.find((m) => m.userId === me?.userId);
+      return {
+        teamId: teamBySlug.teamId,
+        teamName: teamBySlug.teamName,
+        teamSlug: teamBySlug.teamSlug,
+        inviteCode: teamBySlug.inviteCode ?? null,
+        settings: teamBySlug.settings ?? DEFAULT_TEAM_SETTINGS,
+        myRole: (mine?.role as "ADMIN" | "MEMBER") ?? null,
+      };
+    },
+    staleTime: 60_000,
+    enabled: !!slug && !!me,
   });
 }
 
@@ -761,11 +822,16 @@ export function useUpdateTeamSettings() {
     }) => {
       await gql(UPDATE_TEAM_SETTINGS, vars);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["team-info"] }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["team-info"] });
+      qc.invalidateQueries({ queryKey: ["team-settings"] });
+      void vars;
+    },
   });
 }
 
 export function useRegenerateInviteCode() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: async (teamId: string) => {
       const { regenerateInviteCode } = await gql<{ regenerateInviteCode: string }>(
@@ -774,6 +840,7 @@ export function useRegenerateInviteCode() {
       );
       return regenerateInviteCode;
     },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["team-settings"] }),
   });
 }
 
@@ -782,6 +849,16 @@ export function useDeleteTeam() {
   return useMutation({
     mutationFn: async (teamId: string) => {
       await gql(DELETE_TEAM, { teamId });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["teams"] }),
+  });
+}
+
+export function useLeaveTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (teamId: string) => {
+      await gql(LEAVE_TEAM, { teamId });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["teams"] }),
   });
