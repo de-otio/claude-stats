@@ -7,6 +7,12 @@ import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as sqs from "aws-cdk-lib/aws-sqs";
+import * as lambda from "aws-cdk-lib/aws-lambda-nodejs";
+import * as lambdaRuntime from "aws-cdk-lib/aws-lambda";
+import * as logs from "aws-cdk-lib/aws-logs";
+import * as iam from "aws-cdk-lib/aws-iam";
+import * as s3 from "aws-cdk-lib/aws-s3";
+import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import { Construct } from "constructs";
 import type { EnvironmentConfig } from "../config/types.js";
 import { putParam, getParam } from "../ssm-params.js";
@@ -117,6 +123,7 @@ export class ApiStack extends cdk.Stack {
     // ── DynamoDB data sources ────────────────────────────────────────
 
     const dataSources: Record<string, appsync.DynamoDbDataSource> = {};
+    const tables: Record<string, dynamodb.ITable> = {};
 
     for (const name of TABLE_NAMES) {
       const table = dynamodb.Table.fromTableAttributes(this, `${name}Table`, {
@@ -124,6 +131,7 @@ export class ApiStack extends cdk.Stack {
         encryptionKey: dataEncryptionKey,
         globalIndexes: TABLE_INDEXES[name] ?? [],
       });
+      tables[name] = table;
       dataSources[name] = api.addDynamoDbDataSource(
         `${name}DS`,
         table,
@@ -214,6 +222,19 @@ export class ApiStack extends cdk.Stack {
       //  needs a get-merge pipeline; the ddb.update helper mishandles dotted paths.)
       { typeName: "Mutation", field: "linkAccount", dataSource: dataSources.userProfiles },
       { typeName: "Mutation", field: "updateMembership", dataSource: dataSources.teamMemberships },
+      // ── P3b: intra-team challenge CRUD (challenges table; scoring worker deferred) ──
+      // joinChallenge/completeChallenge derive teamId from the caller's team-group
+      // claims (table PK is teamId but the field args carry only challengeId).
+      { typeName: "Mutation", field: "createChallenge", dataSource: dataSources.challenges },
+      { typeName: "Mutation", field: "joinChallenge", dataSource: dataSources.challenges },
+      { typeName: "Mutation", field: "completeChallenge", dataSource: dataSources.challenges },
+      { typeName: "Query", field: "activeChallenge", dataSource: dataSources.challenges },
+      { typeName: "Query", field: "challengeHistory", dataSource: dataSources.challenges },
+      // ── P3c: inter-team challenge reads (writes are pipelines below) ──
+      { typeName: "Query", field: "activeInterTeamChallenges", dataSource: dataSources.interTeamChallenges },
+      { typeName: "Query", field: "interTeamChallengeHistory", dataSource: dataSources.interTeamChallenges },
+      // ── P4b: team logo delete (clears logoUrl; S3 object expires via lifecycle) ──
+      { typeName: "Mutation", field: "deleteTeamLogo", dataSource: dataSources.teams },
     ];
 
     for (const r of unitResolvers) {
@@ -410,6 +431,40 @@ export class ApiStack extends cdk.Stack {
           { file: "deleteTeamStep4.js", dataSource: dataSources.teams },
         ],
       },
+      // ── P3c: inter-team challenge writes (cross-table per-step pipelines) ──
+      // create: verify admin (memberships) → read creating team (teams) → put challenge.
+      {
+        typeName: "Mutation",
+        field: "createInterTeamChallenge",
+        steps: [
+          { file: "createInterTeamChallenge.js", dataSource: dataSources.teamMemberships },
+          { file: "createInterTeamChallengeStep2.js", dataSource: dataSources.teams },
+          { file: "createInterTeamChallengeStep3.js", dataSource: dataSources.interTeamChallenges },
+        ],
+      },
+      // join: verify admin (memberships) → read joining team (teams) → find challenge by
+      // inviteCode (interTeamChallenges) → append team (interTeamChallenges).
+      {
+        typeName: "Mutation",
+        field: "joinInterTeamChallenge",
+        steps: [
+          { file: "joinInterTeamChallenge.js", dataSource: dataSources.teamMemberships },
+          { file: "joinInterTeamChallengeStep2.js", dataSource: dataSources.teams },
+          { file: "joinInterTeamChallengeStep3.js", dataSource: dataSources.interTeamChallenges },
+          { file: "joinInterTeamChallengeStep4.js", dataSource: dataSources.interTeamChallenges },
+        ],
+      },
+      // complete: load challenge (interTeamChallenges) → verify admin of creatingTeamId
+      // (memberships) → set status completed (interTeamChallenges).
+      {
+        typeName: "Mutation",
+        field: "completeInterTeamChallenge",
+        steps: [
+          { file: "completeInterTeamChallenge.js", dataSource: dataSources.interTeamChallenges },
+          { file: "completeInterTeamChallengeStep2.js", dataSource: dataSources.teamMemberships },
+          { file: "completeInterTeamChallengeStep3.js", dataSource: dataSources.interTeamChallenges },
+        ],
+      },
     ];
 
     for (const r of pipelineResolvers) {
@@ -429,6 +484,78 @@ export class ApiStack extends cdk.Stack {
       });
     }
 
+    // ── Lambda-backed resolvers ──────────────────────────────────────
+    //
+    // Some mutations need cross-table work or an AWS API call that a VTL/JS
+    // resolver can't express (here: cascading GDPR deletion + a Cognito
+    // AdminDeleteUser). They run as NodejsFunctions behind a Lambda data
+    // source; the thin JS resolver just forwards `ctx.identity` and returns
+    // the Lambda result.
+    const lambdaDir = path.join(__dirname, "../../../lambda/api");
+    const logRetention = toRetentionDays(config.logRetentionDays);
+    const makeLogGroup = (functionName: string): logs.LogGroup =>
+      new logs.LogGroup(this, `${functionName}LogGroup`, {
+        logGroupName: `/aws/lambda/${functionName}`,
+        retention: logRetention,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      });
+    const commonLambdaProps = {
+      runtime: lambdaRuntime.Runtime.NODEJS_22_X,
+      bundling: { minify: true, sourceMap: true, target: "node22" },
+    };
+
+    // deleteMyAccount — cascading deletion across every table + the Cognito
+    // user. Reads only the caller identity; never trusts client args.
+    const deleteAccountFn = new lambda.NodejsFunction(this, "DeleteAccountFn", {
+      ...commonLambdaProps,
+      entry: path.join(lambdaDir, "delete-account.ts"),
+      handler: "handler",
+      functionName: `${prefix}-delete-account`,
+      description: "Cascading account deletion (GDPR): purges all tables + Cognito user",
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
+      logGroup: makeLogGroup(`${prefix}-delete-account`),
+      environment: {
+        USER_PROFILES_TABLE: physicalName("userProfiles"),
+        TEAM_MEMBERSHIPS_TABLE: physicalName("teamMemberships"),
+        SYNCED_SESSIONS_TABLE: physicalName("syncedSessions"),
+        SYNCED_MESSAGES_TABLE: physicalName("syncedMessages"),
+        USER_AGGREGATES_TABLE: physicalName("userAggregates"),
+        TEAM_STATS_TABLE: physicalName("teamStats"),
+        ACHIEVEMENTS_TABLE: physicalName("achievements"),
+        CHALLENGES_TABLE: physicalName("challenges"),
+        INTER_TEAM_CHALLENGES_TABLE: physicalName("interTeamChallenges"),
+        USER_POOL_ID: userPoolId,
+      },
+    });
+
+    // The handler deletes across all tables (and their GSIs); grant readWrite
+    // on each — this also grants the CMK actions because the imported tables
+    // carry `encryptionKey`.
+    for (const name of TABLE_NAMES) {
+      tables[name].grantReadWriteData(deleteAccountFn);
+    }
+    // Cognito AdminDeleteUser on this env's user pool.
+    deleteAccountFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cognito-idp:AdminDeleteUser"],
+        resources: [
+          `arn:aws:cognito-idp:${this.region}:${this.account}:userpool/${userPoolId}`,
+        ],
+      }),
+    );
+
+    const deleteAccountDs = api.addLambdaDataSource(
+      "DeleteAccountDS",
+      deleteAccountFn,
+    );
+    deleteAccountDs.createResolver("deleteMyAccountResolver", {
+      typeName: "Mutation",
+      fieldName: "deleteMyAccount",
+      runtime: jsRuntime,
+      code: loadCode("deleteMyAccount.js"),
+    });
+
     // ── Aggregate-stats DLQ (SQS) ────────────────────────────────────
 
     const dlq = new sqs.Queue(this, "AggregateStatsDLQ", {
@@ -442,7 +569,68 @@ export class ApiStack extends cdk.Stack {
 
     // ── Team Logos construct ─────────────────────────────────────────
 
-    new TeamLogos(this, "TeamLogos", { config, prefix });
+    const teamLogos = new TeamLogos(this, "TeamLogos", { config, prefix });
+
+    // ── Logo upload / validation Lambdas (P4b) ───────────────────────
+    // requestTeamLogoUpload: the JS resolver admin-checks then Invokes this
+    // Lambda, which presigns an S3 PUT URL for logos/{teamId}/logo.png.
+    const requestLogoUploadFn = new lambda.NodejsFunction(this, "RequestLogoUploadFn", {
+      ...commonLambdaProps,
+      entry: path.join(lambdaDir, "request-logo-upload.ts"),
+      handler: "handler",
+      functionName: `${prefix}-request-logo-upload`,
+      description: "Presigns an S3 PUT URL for a team logo upload (admin-gated in the resolver)",
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      logGroup: makeLogGroup(`${prefix}-request-logo-upload`),
+      // @aws-sdk/s3-request-presigner is NOT provided by the Lambda runtime, so
+      // it must be bundled; the large @aws-sdk/client-s3 stays external (runtime).
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: "node22",
+        externalModules: ["@aws-sdk/client-s3"],
+      },
+      environment: {
+        LOGOS_BUCKET: teamLogos.bucket.bucketName,
+        CDN_URL: teamLogos.cdnUrl,
+      },
+    });
+    teamLogos.bucket.grantPut(requestLogoUploadFn, "logos/*");
+    const requestLogoUploadDs = api.addLambdaDataSource(
+      "RequestLogoUploadDS",
+      requestLogoUploadFn,
+    );
+    requestLogoUploadDs.createResolver("requestTeamLogoUploadResolver", {
+      typeName: "Mutation",
+      fieldName: "requestTeamLogoUpload",
+      runtime: jsRuntime,
+      code: loadCode("requestTeamLogoUpload.js"),
+    });
+
+    // validate-logo: S3 ObjectCreated (prefix logos/) → validate size/type →
+    // set teams.logoUrl to the CDN URL, or delete the object if invalid.
+    const validateLogoFn = new lambda.NodejsFunction(this, "ValidateLogoFn", {
+      ...commonLambdaProps,
+      entry: path.join(lambdaDir, "validate-logo.ts"),
+      handler: "handler",
+      functionName: `${prefix}-validate-logo`,
+      description: "Validates uploaded team logos and sets teams.logoUrl (S3-triggered)",
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
+      logGroup: makeLogGroup(`${prefix}-validate-logo`),
+      environment: {
+        TEAMS_TABLE: physicalName("teams"),
+        CDN_URL: teamLogos.cdnUrl,
+      },
+    });
+    teamLogos.bucket.grantReadWrite(validateLogoFn, "logos/*");
+    tables.teams.grantWriteData(validateLogoFn);
+    teamLogos.bucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED,
+      new s3n.LambdaDestination(validateLogoFn),
+      { prefix: "logos/" },
+    );
 
     // ── SSM Parameters ───────────────────────────────────────────────
 

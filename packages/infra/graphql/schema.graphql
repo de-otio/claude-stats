@@ -248,7 +248,9 @@ type Challenge {
 
 type ChallengeParticipant {
   userId: ID!
-  displayName: String!
+  # Nullable: CRUD stores only userId+score+rank at join time; displayName is
+  # backfilled by the challenge-scoring worker (from TeamStats) once it runs.
+  displayName: String
   score: Float!
   rank: Int!
 }

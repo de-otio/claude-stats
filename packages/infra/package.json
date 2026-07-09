@@ -1,6 +1,6 @@
 {
   "name": "@de-otio/claude-stats-infra",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "AWS CDK infrastructure for claude-stats — deploy your own instance",
   "type": "module",
   "main": "dist/lib/index.js",
@@ -27,6 +27,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@aws-sdk/s3-request-presigner": "^3.1083.0",
     "@claude-stats/core": "*",
     "source-map-support": "^0.5.21"
   },

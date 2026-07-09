@@ -1,15 +1,21 @@
 /**
  * Query.allowedDomains — Read allowed email domains from SSM Parameter Store.
- * Superadmin only: checks for "superadmin" in ctx.identity.groups.
+ * Superadmin only: checks for "superadmin" in the cognito:groups claim.
  *
- * Uses an HTTP datasource to call SSM GetParameter via AWS REST API.
- * The SSM parameter stores a JSON array of domain strings.
+ * Uses an HTTP datasource to call SSM GetParameter via the AWS REST API.
+ * The SSM parameter is a StringList (comma-separated), matching how the
+ * PreSignUp Lambda parses it — NOT a JSON array. Parsing MUST stay in sync
+ * with lambda/auth/pre-signup.ts (split ",", trim, lowercase, drop empties).
+ *
+ * "__ALLOWED_DOMAINS_PARAM__" is substituted centrally to the env-scoped
+ * SSM path /ClaudeStats-<env>/auth/allowed-domains (auth-stack
+ * SSM_ALLOWED_DOMAINS_PATH), the same parameter the signup path reads.
  */
 import { util } from "@aws-appsync/utils";
 
 export function request(ctx) {
   // Superadmin authorization check
-  const groups = ctx.identity.groups || [];
+  const groups = ctx.identity.claims["cognito:groups"] || [];
   if (!groups.includes("superadmin")) {
     util.error("Not authorized. Superadmin access required.", "UnauthorizedError");
   }
@@ -23,7 +29,7 @@ export function request(ctx) {
         "X-Amz-Target": "AmazonSSM.GetParameter",
       },
       body: JSON.stringify({
-        Name: "/claude-stats/allowed-domains",
+        Name: "__ALLOWED_DOMAINS_PARAM__",
         WithDecryption: false,
       }),
     },
@@ -38,11 +44,11 @@ export function response(ctx) {
   const body = JSON.parse(ctx.result.body);
 
   if (body.Parameter && body.Parameter.Value) {
-    try {
-      return JSON.parse(body.Parameter.Value);
-    } catch (e) {
-      util.error("Failed to parse allowed domains", "InternalError");
-    }
+    // StringList: comma-separated. Parse exactly like pre-signup.ts.
+    return body.Parameter.Value
+      .split(",")
+      .map((d) => d.trim().toLowerCase())
+      .filter((d) => d.length > 0);
   }
 
   // Parameter not found or empty — return empty list
