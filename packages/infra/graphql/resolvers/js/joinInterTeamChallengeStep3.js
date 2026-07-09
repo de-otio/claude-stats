@@ -16,7 +16,10 @@ export function request(ctx) {
         ":code": ctx.stash.inviteCode,
       }),
     },
-    limit: 1,
+    // NO `limit`: DynamoDB applies limit to items EXAMINED, not items MATCHED,
+    // so `limit:1` + a filter examines one arbitrary row and usually misses the
+    // target once the table has >1 row. Scan a full page and let the filter
+    // select. (inviteCode has no GSI; the table is small + TTL'd.)
   };
 }
 
