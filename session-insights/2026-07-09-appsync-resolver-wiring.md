@@ -227,3 +227,61 @@ Non-code runtime gotchas:
 - **P4**: admin HTTP→SSM data source (`allowedDomains`/`updateAllowedDomains` — the
   latter has a regex literal) + `requestTeamLogoUpload` Lambda presign.
 - Regex-literal offenders still to fix in their phases: `createTeam.js`, `updateAllowedDomains.js`.
+
+## admin-domains (P4a) SHIPPED — infra 0.1.21 / core 0.1.1, prod, e2e 14/14
+
+Wired the superadmin allowed-domains admin (`allowedDomains` query + `updateAllowedDomains`
+mutation), the last deferred piece. Deployed Api + Auth to prod; e2e (scratchpad/
+`e2e-admin-domains.mjs`) passed 14/14 (read / add / restore / invalid-reject /
+non-superadmin-reject); SSM param left at its original value.
+
+**Two bugs found because these resolvers were AUTHORED-BUT-NEVER-GATED in 0.1.20** (deferred/
+unwired → the P3/P4 evaluate-code gate never touched them). Lesson: *evaluate-code every
+resolver file before it ships in a package, even if unwired* — `npm publish` packs the working
+tree, so an ungated file rides along latent.
+- **`charCodeAt` is NOT a supported function in APPSYNC_JS 1.0.0** → `INVALID_FUNCTION_INVOCATION`
+  at the synth gate. (New entry for the APPSYNC_JS ban-list.) Rewrote domain validation to
+  character-set membership: `ALLOWED.includes(ch)` / `label.startsWith("-")` / `endsWith("-")`
+  instead of char codes. `--query '{errors:codeErrors}'` on evaluate-code **hid** this — the
+  real error is under a top-level `error` key, so the query returned `codeErrors:null`. Run
+  evaluate-code RAW (no `--query`) or the gate lies.
+- **SSM PutParameter rejects a Type change on Overwrite.** The writer used `Type:"StringList"`
+  but the param is created by the Auth stack as a CDK `StringParameter` (Type=String). First
+  admin edit would fail at runtime. Fixed to `Type:"String"` (reader is type-agnostic — both
+  are comma-separated).
+
+**Wiring specifics:**
+- First **HTTP data source** in the API: `api.addHttpDataSource("SsmDS", "https://ssm.<region>.amazonaws.com",
+  { authorizationConfig:{ signingRegion, signingServiceName:"ssm" } })`. Grant via
+  `ssmDs.grantPrincipal.addToPrincipalPolicy(...)` scoped to the ONE param arn.
+- Placeholder `"__ALLOWED_DOMAINS_PARAM__"` substituted by the same `loadCode` subs mechanism
+  (double-quoted-string replace) to `/ClaudeStats-<env>/auth/allowed-domains`.
+- Superadmin claim: `config.superadminSubs?: string[]` (core) → auth-stack passes
+  `SUPERADMIN_SUBS` env → pre-token-generation.ts merges `"superadmin"` into groups when the
+  caller's sub OR email matches (empty ⇒ nobody). Twin config sets it to a maildummy testing
+  address (matches by email; the e2e harness signs it up).
+
+**CFN drift insight (why the Auth deploy was safe):** the `allowed-domains` SSM param had
+out-of-band drift (`maildummy.claude-stats.de-otio.org` added for e2e signups, NOT in config).
+CloudFormation only acts on a resource when its *template properties change* — since the Auth
+change didn't touch `config.allowedEmailDomains`, the `StringParameter`'s template value was
+unchanged → CFN no-op'd it → the drifted value was **preserved** (confirmed via `cdk diff`:
+only `PreTokenGenerationFn` code+env changed).
+
+**DESIGN CAVEAT (documented, not fixed):** `config.allowedEmailDomains` and runtime
+`updateAllowedDomains` edits fight over the same param. A future `cdk deploy` that *does*
+change `allowedEmailDomains` will clobber superadmin runtime edits. Proper fix = seed-once
+(AwsCustomResource `putParameter Overwrite:false` on create only), but that's a
+StringParameter→CustomResource migration = deletes+recreates the param in prod → too risky
+to do casually. Left as a deliberate follow-up.
+
+## Remaining Work (superseded — current status)
+- **admin-domains: DONE** (above). P4b logos + P3 challenges/inter-team/deleteMyAccount: DONE
+  (prior batch, infra 0.1.20). The "Remaining Work" list above this section is stale.
+- **Still deferred — the TeamStats chain (hard dependency order):** (1) reconcile the sync
+  contract — CLI calls `syncAggregates`/`AggregateProjection` (periodStart/periodKind/cohortId)
+  but the deployed schema exposes `syncAggregate`/`AggregateSyncInput`; no real aggregate data
+  flows until they agree. (2) `aggregate-stats` stream worker on `userAggregates` writing
+  per-member TeamStats keyed `teamId`/`period#userId`. (3) `challenge-scoring` +
+  `inter-team-scoring` EventBridge crons (both read TeamStats). NOTE: P1a teamStats readers
+  key `sk`/`stats#{period}` — fix to `period#userId` when the writer lands.
