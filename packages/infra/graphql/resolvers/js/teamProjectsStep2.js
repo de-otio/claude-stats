@@ -11,21 +11,28 @@
  * Members with shareLevel = "minimal" have no projectBreakdown — skip them.
  */
 import { util } from "@aws-appsync/utils";
-import * as ddb from "@aws-appsync/utils/dynamodb";
 
 export function request(ctx) {
   const teamId = ctx.stash.teamId;
   const period = ctx.stash.period;
 
-  // Query all member stat entries for this team + period
-  // SK begins_with "period#" to get all members for this period
-  return ddb.query({
+  // Query every member row for this team + period. The sort key is the
+  // attribute literally named "period#userId"; the `ddb.query` sugar would
+  // generate the placeholder "#period#userId" (a second '#') which DynamoDB
+  // rejects as a syntax error — so build the raw Query with a clean "#sk"
+  // placeholder mapped to the real attribute name.
+  return {
+    operation: "Query",
     query: {
-      teamId: { eq: teamId },
-      sk: { beginsWith: `${period}#` },
+      expression: "#teamId = :teamId AND begins_with(#sk, :skPrefix)",
+      expressionNames: { "#teamId": "teamId", "#sk": "period#userId" },
+      expressionValues: util.dynamodb.toMapValues({
+        ":teamId": teamId,
+        ":skPrefix": `${period}#`,
+      }),
     },
     limit: 1000, // Upper bound — typical team has far fewer members
-  });
+  };
 }
 
 export function response(ctx) {

@@ -1,15 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ---------------------------------------------------------------------------
-// Mock AWS SDK modules
+// Integration: UserAggregates stream → aggregate-stats worker → TeamStats.
+//
+// Complements the single-team unit test (../aggregate-stats.test.ts) with
+// MULTI-user / MULTI-team fan-out and read-recompute scenarios. Only the
+// worker is exercised (the syncAggregate resolver is APPSYNC_JS and is
+// covered by evaluate-code + e2e); this proves the fan-in aggregation across
+// several members and teams in one stream batch.
 // ---------------------------------------------------------------------------
 
 const mockDdbSend = vi.hoisted(() => vi.fn());
 
 vi.mock("@aws-sdk/client-dynamodb", () => ({
-  DynamoDBClient: vi.fn(function () { return { send: mockDdbSend }; }),
-  QueryCommand: vi.fn(function(input: any) { return { _type: "Query", ...input }; }),
-  UpdateItemCommand: vi.fn(function(input: any) { return { _type: "UpdateItem", ...input }; }),
+  DynamoDBClient: vi.fn(function () {
+    return { send: mockDdbSend };
+  }),
+  QueryCommand: vi.fn(function (input: any) {
+    return { _type: "Query", ...input };
+  }),
+  UpdateItemCommand: vi.fn(function (input: any) {
+    return { _type: "UpdateItem", ...input };
+  }),
 }));
 
 vi.mock("@aws-sdk/util-dynamodb", () => ({
@@ -29,38 +41,30 @@ vi.mock("@aws-sdk/util-dynamodb", () => ({
 }));
 
 vi.mock("@aws-sdk/signature-v4", () => ({
-  SignatureV4: vi.fn(function() { return { sign: vi.fn(function(req: any) { return req; }) }; }),
+  SignatureV4: vi.fn(function () {
+    return { sign: vi.fn((req: any) => req) };
+  }),
 }));
-
 vi.mock("@aws-sdk/credential-provider-node", () => ({
   defaultProvider: vi.fn(() => vi.fn()),
 }));
-
-vi.mock("@aws-crypto/sha256-js", () => ({
-  Sha256: vi.fn(),
-}));
-
+vi.mock("@aws-crypto/sha256-js", () => ({ Sha256: vi.fn() }));
 vi.mock("@aws-sdk/protocol-http", () => ({
-  HttpRequest: vi.fn(function(opts: any) { return opts; }),
+  HttpRequest: vi.fn(function (opts: any) {
+    return opts;
+  }),
 }));
 
 const mockFetch = vi.hoisted(() => vi.fn());
 vi.stubGlobal("fetch", mockFetch);
 
-// ---------------------------------------------------------------------------
-// Environment — set before module imports via vi.hoisted
-// ---------------------------------------------------------------------------
-
 vi.hoisted(() => {
+  process.env.USER_AGGREGATES_TABLE = "UserAggregates";
   process.env.TEAM_MEMBERSHIPS_TABLE = "TeamMemberships";
   process.env.TEAM_STATS_TABLE = "TeamStats";
   process.env.APPSYNC_ENDPOINT = "https://appsync.example.com/graphql";
   process.env.AWS_REGION = "us-east-1";
 });
-
-// ---------------------------------------------------------------------------
-// Import handler after mocks
-// ---------------------------------------------------------------------------
 
 import { handler } from "../../aggregate-stats.js";
 
@@ -68,11 +72,7 @@ import { handler } from "../../aggregate-stats.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Wrap plain JS values into DynamoDB typed attribute values for the mock
- * stream NewImage format.
- */
-function wrapDynamoImage(record: Record<string, any>): Record<string, any> {
+function wrap(record: Record<string, any>): Record<string, any> {
   const img: Record<string, any> = {};
   for (const [k, v] of Object.entries(record)) {
     if (typeof v === "string") img[k] = { S: v };
@@ -83,312 +83,159 @@ function wrapDynamoImage(record: Record<string, any>): Record<string, any> {
   return img;
 }
 
-/** Build a DynamoDB Streams record for a synced session. */
-function makeStreamRecord(
-  eventName: "INSERT" | "MODIFY" | "REMOVE",
-  sessionData: Record<string, any>,
-) {
-  return {
-    eventName,
-    dynamodb: {
-      NewImage:
-        eventName !== "REMOVE" ? wrapDynamoImage(sessionData) : undefined,
-    },
-  };
+function insertRecord(row: Record<string, any>) {
+  return { eventName: "INSERT", dynamodb: { NewImage: wrap(row) } };
 }
-
-/** Build a full DynamoDB Streams event. */
-function makeStreamEvent(records: ReturnType<typeof makeStreamRecord>[]) {
+function event(records: any[]) {
   return { Records: records } as any;
 }
 
-// A typical synced session record written to the SyncedSessions table
-const BASE_SESSION = {
-  userId: "user-alice",
-  sessionId: "sess-abc-001",
-  accountId: "acct-001",
-  projectId: "proj-api",
-  firstTimestamp: 1773187200000, // 2026-03-11 00:00:00 UTC (Wednesday, W11)
-  lastTimestamp: 1773190800000, // +1 hour
-  promptCount: 20,
-  inputTokens: 10000,
-  outputTokens: 5000,
-  cacheCreationTokens: 200,
-  cacheReadTokens: 800,
-  estimatedCost: 0.42,
-  models: ["claude-sonnet-4-20250514"],
-  isSubagent: false,
-  toolUseCounts: { Read: 10, Edit: 5, Bash: 3 },
-};
+/** A per-(user, day) UserAggregates row (2026-03-11 is a Wednesday, W11). */
+function makeRow(over: Record<string, any> = {}) {
+  return {
+    userId: "user-alice",
+    period: "2026-03-11",
+    accountId: "acct-001",
+    projectId: null,
+    sessionCount: 4,
+    subagentSessionCount: 0,
+    promptCount: 20,
+    inputTokens: 10000,
+    outputTokens: 5000,
+    cacheCreationTokens: 200,
+    cacheReadTokens: 800,
+    activeMinutes: 60,
+    estimatedCost: 0.42,
+    models: ["claude-sonnet-4-20250514"],
+    toolUseCounts: { Read: 10, Edit: 5, Bash: 3 },
+    ...over,
+  };
+}
+
+function membership(over: Record<string, any> = {}) {
+  return {
+    teamId: "team-alpha",
+    userId: "user-alice",
+    role: "MEMBER",
+    shareLevel: "full",
+    sharedAccounts: ["acct-001"],
+    displayName: "Alice",
+    ...over,
+  };
+}
+
+/** All UpdateItem inputs issued, keyed for assertion. */
+function updates() {
+  return mockDdbSend.mock.calls
+    .map((c) => c[0])
+    .filter((c) => c?._type === "UpdateItem");
+}
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("sync-flow integration: syncSessions → aggregate-stats → TeamStats", () => {
+describe("sync-flow: UserAggregates stream → aggregate-stats → TeamStats", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mockFetch.mockResolvedValue({ ok: true });
   });
 
-  it("processes a DynamoDB Streams event and writes TeamStats with correct token counts", async () => {
-    const event = makeStreamEvent([makeStreamRecord("INSERT", BASE_SESSION)]);
+  it("fans one member's week out to every team that shares the account", async () => {
+    // user-alice is in two teams; both share acct-001.
+    mockDdbSend
+      .mockResolvedValueOnce({
+        Items: [{ teamId: { S: "team-alpha" } }, { teamId: { S: "team-beta" } }],
+      }) // GSI
+      .mockResolvedValueOnce({ Items: [wrap(membership({ teamId: "team-alpha" }))] })
+      .mockResolvedValueOnce({ Items: [wrap(membership({ teamId: "team-beta" }))] })
+      .mockResolvedValueOnce({ Items: [wrap(makeRow())] }) // week days
+      .mockResolvedValue({}); // both UpdateItems
 
-    // GSI query: user-alice belongs to team-alpha
-    mockDdbSend.mockResolvedValueOnce({
-      Items: [{ teamId: "team-alpha" }],
+    await handler(event([insertRecord(makeRow())]));
+
+    const u = updates();
+    expect(u).toHaveLength(2);
+    const teams = u.map((c) => c.Key.teamId).sort();
+    expect(teams).toEqual(["team-alpha", "team-beta"]);
+    // Correct SK attribute name + ISO-week value.
+    u.forEach((c) => {
+      expect(c.Key["period#userId"]).toMatch(/^2026-W\d{2}#user-alice$/);
+      expect(c.Key.SK).toBeUndefined();
     });
-
-    // Base table query: full membership with sharedAccounts
-    mockDdbSend.mockResolvedValueOnce({
-      Items: [
-        {
-          teamId: "team-alpha",
-          userId: "user-alice",
-          role: "MEMBER",
-          shareLevel: "full",
-          sharedAccounts: ["acct-001"],
-          displayName: "Alice",
-        },
-      ],
-    });
-
-    // Capture the UpdateItem call to inspect what was written
-    let capturedUpdate: any = null;
-    mockDdbSend.mockImplementationOnce((command: any) => {
-      capturedUpdate = command;
-      return Promise.resolve({});
-    });
-
-    await handler(event);
-
-    // Verify DDB calls: GSI query + base table query + UpdateItem
-    expect(mockDdbSend).toHaveBeenCalledTimes(3);
-
-    // The UpdateItem should have been called with the TeamStats table
-    expect(capturedUpdate).not.toBeNull();
-    expect(capturedUpdate.TableName).toBe("TeamStats");
-
-    // Key should be teamId = "team-alpha" and SK = "2026-W11#user-alice"
-    expect(capturedUpdate.Key.teamId).toBe("team-alpha");
-    expect(capturedUpdate.Key.SK).toMatch(/^2026-W\d+#user-alice$/);
-
-    // AppSync notification should be triggered
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    // One subscription notification per updated (team, week).
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it("writes TeamStats with correct aggregated token counts for a single session", async () => {
-    const event = makeStreamEvent([makeStreamRecord("INSERT", BASE_SESSION)]);
+  it("only writes for the team whose membership shares the row's account", async () => {
+    mockDdbSend
+      .mockResolvedValueOnce({
+        Items: [{ teamId: { S: "team-alpha" } }, { teamId: { S: "team-beta" } }],
+      })
+      .mockResolvedValueOnce({
+        Items: [wrap(membership({ teamId: "team-alpha", sharedAccounts: ["acct-001"] }))],
+      })
+      .mockResolvedValueOnce({
+        Items: [wrap(membership({ teamId: "team-beta", sharedAccounts: ["acct-999"] }))],
+      })
+      .mockResolvedValueOnce({ Items: [wrap(makeRow())] })
+      .mockResolvedValue({});
 
-    mockDdbSend.mockResolvedValueOnce({
-      Items: [{ teamId: "team-alpha" }],
-    });
+    await handler(event([insertRecord(makeRow())]));
 
-    mockDdbSend.mockResolvedValueOnce({
-      Items: [
-        {
-          teamId: "team-alpha",
-          userId: "user-alice",
-          role: "ADMIN",
-          shareLevel: "full",
-          sharedAccounts: ["acct-001"],
-          displayName: "Alice",
-        },
-      ],
-    });
-
-    // Capture the UpdateItem expression attribute values
-    let capturedValues: any = null;
-    mockDdbSend.mockImplementationOnce((command: any) => {
-      capturedValues = command.ExpressionAttributeValues;
-      return Promise.resolve({});
-    });
-
-    await handler(event);
-
-    expect(capturedValues).not.toBeNull();
-
-    // stats should contain aggregated values from the session
-    const stats = capturedValues[":stats"];
-    expect(stats.sessions).toBe(1);
-    expect(stats.prompts).toBe(BASE_SESSION.promptCount);
-    expect(stats.inputTokens).toBe(BASE_SESSION.inputTokens);
-    expect(stats.outputTokens).toBe(BASE_SESSION.outputTokens);
-    expect(stats.estimatedCost).toBe(BASE_SESSION.estimatedCost);
+    const u = updates();
+    expect(u).toHaveLength(1);
+    expect(u[0].Key.teamId).toBe("team-alpha");
   });
 
-  it("groups two sessions from the same user+team+period and writes a single TeamStats record", async () => {
-    const session2 = {
-      ...BASE_SESSION,
-      sessionId: "sess-abc-002",
-      promptCount: 10,
-      inputTokens: 5000,
-      outputTokens: 2500,
-      estimatedCost: 0.21,
-    };
+  it("aggregates two distinct users' weeks in one batch", async () => {
+    const aliceRow = makeRow();
+    const bobRow = makeRow({ userId: "user-bob", sessionCount: 7, promptCount: 30 });
 
-    const event = makeStreamEvent([
-      makeStreamRecord("INSERT", BASE_SESSION),
-      makeStreamRecord("INSERT", session2),
-    ]);
+    mockDdbSend
+      // user-alice
+      .mockResolvedValueOnce({ Items: [{ teamId: { S: "team-alpha" } }] })
+      .mockResolvedValueOnce({ Items: [wrap(membership())] })
+      .mockResolvedValueOnce({ Items: [wrap(aliceRow)] })
+      .mockResolvedValueOnce({}) // alice UpdateItem
+      // user-bob
+      .mockResolvedValueOnce({ Items: [{ teamId: { S: "team-alpha" } }] })
+      .mockResolvedValueOnce({
+        Items: [wrap(membership({ userId: "user-bob", displayName: "Bob" }))],
+      })
+      .mockResolvedValueOnce({ Items: [wrap(bobRow)] })
+      .mockResolvedValueOnce({}); // bob UpdateItem
 
-    // Single user — one GSI + one base table query
-    mockDdbSend.mockResolvedValueOnce({
-      Items: [{ teamId: "team-alpha" }],
+    await handler(event([insertRecord(aliceRow), insertRecord(bobRow)]));
+
+    const u = updates();
+    expect(u).toHaveLength(2);
+    const byUser: Record<string, any> = {};
+    u.forEach((c) => {
+      byUser[c.ExpressionAttributeValues[":userId"]] =
+        c.ExpressionAttributeValues[":stats"];
     });
-
-    mockDdbSend.mockResolvedValueOnce({
-      Items: [
-        {
-          teamId: "team-alpha",
-          userId: "user-alice",
-          role: "MEMBER",
-          shareLevel: "full",
-          sharedAccounts: ["acct-001"],
-          displayName: "Alice",
-        },
-      ],
-    });
-
-    let capturedValues: any = null;
-    mockDdbSend.mockImplementationOnce((command: any) => {
-      capturedValues = command.ExpressionAttributeValues;
-      return Promise.resolve({});
-    });
-
-    await handler(event);
-
-    // Should be: GSI query + base table query + 1 UpdateItem (merged group)
-    expect(mockDdbSend).toHaveBeenCalledTimes(3);
-
-    // Aggregated across both sessions
-    const stats = capturedValues[":stats"];
-    expect(stats.sessions).toBe(2);
-    expect(stats.prompts).toBe(
-      BASE_SESSION.promptCount + session2.promptCount,
-    );
-    expect(stats.inputTokens).toBe(
-      BASE_SESSION.inputTokens + session2.inputTokens,
-    );
+    expect(byUser["user-alice"].sessions).toBe(4);
+    expect(byUser["user-bob"].sessions).toBe(7);
   });
 
-  it("omits estimatedCost and projectBreakdown from TeamStats for minimal share level", async () => {
-    const event = makeStreamEvent([makeStreamRecord("INSERT", BASE_SESSION)]);
+  it("carries full token/tool/model detail into the member stats blob", async () => {
+    mockDdbSend
+      .mockResolvedValueOnce({ Items: [{ teamId: { S: "team-alpha" } }] })
+      .mockResolvedValueOnce({ Items: [wrap(membership())] })
+      .mockResolvedValueOnce({ Items: [wrap(makeRow())] })
+      .mockResolvedValueOnce({});
 
-    mockDdbSend.mockResolvedValueOnce({
-      Items: [{ teamId: "team-beta" }],
-    });
+    await handler(event([insertRecord(makeRow())]));
 
-    mockDdbSend.mockResolvedValueOnce({
-      Items: [
-        {
-          teamId: "team-beta",
-          userId: "user-alice",
-          role: "MEMBER",
-          shareLevel: "minimal", // minimal share level
-          sharedAccounts: ["acct-001"],
-          displayName: "Alice",
-        },
-      ],
-    });
-
-    let capturedValues: any = null;
-    mockDdbSend.mockImplementationOnce((command: any) => {
-      capturedValues = command.ExpressionAttributeValues;
-      return Promise.resolve({});
-    });
-
-    await handler(event);
-
-    const stats = capturedValues[":stats"];
-
-    // Core metrics should be present
-    expect(stats.sessions).toBe(1);
-    expect(stats.prompts).toBe(BASE_SESSION.promptCount);
-
-    // Sensitive fields should be absent for minimal share level
-    expect(stats.estimatedCost).toBeUndefined();
-    expect(stats.modelsUsed).toBeUndefined();
-    expect(stats.topTools).toBeUndefined();
-    expect(stats.projectBreakdown).toBeUndefined();
-  });
-
-  it("skips sessions where accountId is not in the member's sharedAccounts", async () => {
-    const sessionWithWrongAccount = {
-      ...BASE_SESSION,
-      accountId: "acct-other",
-    };
-
-    const event = makeStreamEvent([
-      makeStreamRecord("INSERT", sessionWithWrongAccount),
-    ]);
-
-    mockDdbSend.mockResolvedValueOnce({
-      Items: [{ teamId: "team-alpha" }],
-    });
-
-    mockDdbSend.mockResolvedValueOnce({
-      Items: [
-        {
-          teamId: "team-alpha",
-          userId: "user-alice",
-          role: "MEMBER",
-          shareLevel: "full",
-          sharedAccounts: ["acct-001"], // does NOT include "acct-other"
-          displayName: "Alice",
-        },
-      ],
-    });
-
-    await handler(event);
-
-    // Only GSI + base table queries — no UpdateItem
-    expect(mockDdbSend).toHaveBeenCalledTimes(2);
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  it("sends AppSync notification after writing TeamStats", async () => {
-    const event = makeStreamEvent([makeStreamRecord("INSERT", BASE_SESSION)]);
-
-    mockDdbSend.mockResolvedValueOnce({
-      Items: [{ teamId: "team-alpha" }],
-    });
-
-    mockDdbSend.mockResolvedValueOnce({
-      Items: [
-        {
-          teamId: "team-alpha",
-          userId: "user-alice",
-          role: "MEMBER",
-          shareLevel: "full",
-          sharedAccounts: ["acct-001"],
-          displayName: "Alice",
-        },
-      ],
-    });
-
-    mockDdbSend.mockResolvedValueOnce({}); // UpdateItem success
-
-    await handler(event);
-
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-
-    // The fetch call should be a POST to the AppSync endpoint
-    const fetchArgs = mockFetch.mock.calls[0];
-    expect(fetchArgs[1].method).toBe("POST");
-    expect(fetchArgs[1].body).toContain("refreshTeamStats");
-    expect(fetchArgs[1].body).toContain("team-alpha");
-  });
-
-  it("handles a REMOVE event (no NewImage) gracefully — skips without error", async () => {
-    const event = makeStreamEvent([
-      makeStreamRecord("REMOVE", BASE_SESSION),
-    ]);
-
-    await handler(event);
-
-    // No DynamoDB calls should be made for REMOVE events
-    expect(mockDdbSend).not.toHaveBeenCalled();
-    expect(mockFetch).not.toHaveBeenCalled();
+    const stats = updates()[0].ExpressionAttributeValues[":stats"];
+    expect(stats.sessions).toBe(4);
+    expect(stats.prompts).toBe(20);
+    expect(stats.inputTokens).toBe(10000);
+    expect(stats.outputTokens).toBe(5000);
+    expect(stats.estimatedCost).toBe(0.42);
+    expect(stats.activeMinutes).toBe(60);
+    expect(stats.topTools).toContain("Read");
+    expect(stats.modelsUsed["claude-sonnet-4-20250514"]).toBe(1);
   });
 });
