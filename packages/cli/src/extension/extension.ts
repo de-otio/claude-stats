@@ -21,6 +21,7 @@ import {
   runBackupSetupWizard,
   runDeleteAllStoredDataCommand,
 } from "./backup-onboarding.js";
+import { SyncManager } from "./sync-integration.js";
 
 // Build a require() that works in both ESM and CJS (esbuild bundles).
 const _url = typeof import.meta?.url === "string"
@@ -116,6 +117,20 @@ export function activate(context: vscode.ExtensionContext): void {
       DashboardPanel.refreshIfVisible();
     }),
   );
+
+  // Org-plane aggregate sync (opt-in). SyncManager owns its own status-bar
+  // item plus the connect / disconnect / syncNow / showTeamDashboard commands,
+  // and — when `claude-stats.autoSync` is enabled — pushes after each
+  // collection via collector.onDidCollect. It transmits ONLY minimized daily
+  // aggregates through the deployed `syncAggregate` mutation (see
+  // sync-integration.ts → the CLI's syncAggregates engine); never per-session
+  // data. Requires linked accounts from `claude-stats setup`.
+  const syncManager = new SyncManager(context);
+  context.subscriptions.push(syncManager);
+  for (const cmd of syncManager.registerCommands()) {
+    context.subscriptions.push(cmd);
+  }
+  syncManager.startAutoSync(collector);
 
   const openDashboard = vscode.commands.registerCommand(
     "claude-stats.openDashboard",
