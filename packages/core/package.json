@@ -114,6 +114,6 @@
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
     "age-encryption": "^0.3.0",
-    "i18next": "^25.8.18"
+    "i18next": "^26.3.6"
   }
 }
