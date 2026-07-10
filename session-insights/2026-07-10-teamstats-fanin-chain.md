@@ -86,4 +86,23 @@ best-effort after each write.
   with projectId omitted, so project breakdown collapses to one "(unlinked)"
   bucket. Per-project SK/attribution is deferred.
 - CLI public npm release (Phase 1 CLI reconcile is committed but unreleased).
-- VS Code extension still calls a nonexistent `syncSessions` mutation.
+
+## Extension sync reconciled onto syncAggregate (2026-07-10, follow-up)
+The VS Code extension's `SyncManager.uploadSessions` (`packages/cli/src/extension/
+sync-integration.ts`) hand-rolled a dead `syncSessions(input: SyncInput!)` mutation
+(deleted from the schema). Replaced the whole body with a delegation to the CLI's
+shared `syncAggregates(store, config)` engine — the SAME path as `claude-stats
+sync`. So extension and CLI now share ONE aggregate-only contract, token refresh,
+linked-account projection, batching, and `_version` conflict-retry. Removed the
+per-session payload and the `buildDashboard` import from that method. tsc clean;
+org+extension+sync tests green (66 pass).
+
+- **Prerequisite gotcha:** `syncAggregates` needs `userSalt` + `accountMappings`
+  in `~/.claude-stats/sync-config.json`, which are written by `claude-stats setup`
+  (CLI), NOT by the extension's `handleConnect` (auth-only). An extension-only
+  user who never ran CLI setup gets "No linked accounts. Run 'claude-stats setup'
+  first." surfaced as an error toast. Extension-native account linking is still a
+  gap (deferred) — the extension assumes CLI setup has linked accounts, and both
+  read the same config file.
+- The compiled extension `dist`/VSIX still ships the old code until rebuilt +
+  republished (a separate release step, not done here).
