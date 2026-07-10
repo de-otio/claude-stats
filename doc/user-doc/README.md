@@ -10,6 +10,7 @@
 | [commands.md](commands.md) | Full command and option reference |
 | [output-guide.md](output-guide.md) | Reading and interpreting the reports |
 | [backup-and-sync.md](backup-and-sync.md) | Optional end-to-end-encrypted backup/sync, recovery keys, and the data-privacy model |
+| [team-sync.md](team-sync.md) | Optional aggregate-only usage sharing to a shared team backend, and what it can and cannot see |
 | [faq.md](faq.md) | Common questions and troubleshooting |
 
 ## How it works

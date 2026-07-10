@@ -660,6 +660,64 @@ scope and the VS Code **Delete All Stored Data…** equivalent.
 
 ---
 
+## `setup`
+
+Connect this device to a shared team Claude Stats backend and choose which local
+accounts to share (aggregate-only). See [team-sync.md](team-sync.md).
+
+```
+claude-stats setup [--backend-url <url>] [--email <email>] [--accounts <csv> | --all-accounts]
+```
+
+| Option | Description |
+|---|---|
+| `--backend-url <url>` | Team backend URL (or set `CLAUDE_STATS_BACKEND_URL`); discovers config from `<url>/.well-known/claude-stats.json` |
+| `--email <email>` | Email for the passwordless sign-in (or set `CLAUDE_STATS_EMAIL`) |
+| `--accounts <csv>` | Link these accounts (UUIDs or labels, comma-separated) without prompting |
+| `--all-accounts` | Link all known local accounts without prompting |
+
+Prompts for the backend URL, email, and (unless a flag is given) which accounts
+to share. Generates a per-user salt used to derive one-way account handles — your
+raw account UUID never leaves the machine.
+
+## `link`
+
+Re-choose which local accounts to share, after `setup`. Same selection flags.
+
+```
+claude-stats link [--accounts <csv> | --all-accounts]
+```
+
+Requires a prior `setup` (needs the salt). Without at least one linked account,
+`sync` has nothing to send.
+
+## `sync`
+
+Push minimized per-day aggregates for your linked accounts to the team backend.
+
+```
+claude-stats sync [--dry-run]
+```
+
+| Option | Description |
+|---|---|
+| `--dry-run` | Print exactly what would be sent (per-day rollups only) without sending |
+
+Sends only aggregate totals — never per-session, prompt, path, or transcript
+data. Each `(you, day)` row is an optimistic, idempotent upsert, so re-syncing a
+day is safe.
+
+## `disconnect`
+
+Remove team-sync tokens and configuration. Preserves the salt so re-linking later
+produces the same account handles.
+
+```
+claude-stats disconnect
+```
+
+---
+
 ## VS Code Extension
 
 The optional VS Code extension embeds the dashboard directly inside the editor. It provides:
@@ -668,6 +726,7 @@ The optional VS Code extension embeds the dashboard directly inside the editor. 
 - **Dashboard panel** — the same interactive Chart.js dashboard as `serve`, displayed in a VS Code webview tab (opened via the Command Palette: **Claude Stats: Open Dashboard**). Updates automatically after each collection.
 - **Status bar item** — shows today's token count and estimated cost in the bottom bar; click to open the dashboard. Updates automatically after each collection.
 - **Optional backup & sync** — **Claude Stats: Set Up Backup & Sync…** (or the dashboard's **Settings tab → Backup & Sync**, which also shows status and can turn it off again) turns on optional, end-to-end-encrypted backup and cross-device sync via a cloud folder you already use; **Claude Stats: Delete All Stored Data…** removes it. See [backup-and-sync.md](backup-and-sync.md).
+- **Optional team sync (aggregate-only)** — **Claude Stats: Connect to Team Sync…** → **Link Accounts to Share…** → **Sync Now** shares minimized per-day usage totals with a shared team backend (never per-session or prompt data); **Disconnect from Team Sync** and **Open Team Dashboard** round it out. Equivalent to the CLI `setup` / `link` / `sync` / `disconnect` commands. See [team-sync.md](team-sync.md).
 
 ### Installation
 
@@ -685,12 +744,15 @@ For development, you can use `npm run build:ext` to rebuild just the extension b
 
 ### Configuration
 
-The extension contributes two settings (accessible via **Settings > Extensions > Claude Stats**):
+The extension contributes these settings (accessible via **Settings > Extensions > Claude Stats**):
 
 | Setting | Default | Description |
 |---|---|---|
 | `claude-stats.port` | `9120` | Port for the `serve` command (informational; the extension panel uses direct data access) |
 | `claude-stats.autoRefreshSeconds` | `30` | How often the dashboard panel refreshes its data (seconds). Set to `0` to disable |
+| `claude-stats.recap.embeddings` | `auto` | Semantic clustering for daily-recap. `auto` uses the bundled local embedding model; `off` falls back to lexical clustering. All inference is on-device |
+| `claude-stats.backendUrl` | `""` | Base URL of your team's Claude Stats backend, set when you **Connect to Team Sync** (team sync only) |
+| `claude-stats.autoSync` | `false` | Push minimized daily aggregates to your team backend automatically after each collection (team sync only) |
 
 ### Multiple VS Code instances
 
