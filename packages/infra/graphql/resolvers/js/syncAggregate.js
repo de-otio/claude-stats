@@ -86,7 +86,6 @@ export function request(ctx) {
     const record = {
       userId,
       period: item.period,
-      projectId: item.projectId,
       sessionCount: item.sessionCount,
       subagentSessionCount: item.subagentSessionCount,
       promptCount: item.promptCount,
@@ -102,6 +101,14 @@ export function request(ctx) {
       _version: item._version + 1,
       updatedAt: now,
     };
+
+    // projectId is the AggregatesByProject GSI partition key. DynamoDB rejects
+    // a NULL value for a GSI key attribute ("Type mismatch for Index Key
+    // projectId Expected: S Actual: NULL"), so OMIT it entirely when the client
+    // sends null (per-day totals) — a sparse-index write, not a NULL write.
+    if (item.projectId !== null && item.projectId !== undefined) {
+      record.projectId = item.projectId;
+    }
 
     return {
       table: "UserAggregates",
