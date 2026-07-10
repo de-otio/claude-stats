@@ -2,7 +2,7 @@
   "name": "claude-stats-vscode",
   "displayName": "Claude Stats by de-otio",
   "description": "View Claude Code usage statistics in VS Code",
-  "version": "0.17.1",
+  "version": "0.17.2",
   "publisher": "de-otio",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -91,6 +91,11 @@
       {
         "command": "claude-stats.showTeamDashboard",
         "title": "Open Team Dashboard",
+        "category": "Claude Stats"
+      },
+      {
+        "command": "claude-stats.linkAccounts",
+        "title": "Link Accounts to Share…",
         "category": "Claude Stats"
       }
     ],

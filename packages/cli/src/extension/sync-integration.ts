@@ -15,6 +15,15 @@ import * as os from "node:os";
 
 import type { SyncConfig } from "../sync/index.js";
 import {
+  discoverConfig,
+  saveSyncConfig,
+  loadPersistedConfig,
+  savePersistedConfig,
+  generateUserSalt,
+  listLinkableAccounts,
+  linkAccounts,
+} from "../sync/index.js";
+import {
   loadTokens,
   clearTokens,
   ensureValidTokens,
@@ -84,17 +93,10 @@ export class SyncManager implements vscode.Disposable {
     }
   }
 
-  /**
-   * Save SyncConfig to disk.
-   */
-  private saveConfig(config: SyncConfig): void {
-    fs.mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-    fs.writeFileSync(
-      SYNC_CONFIG_FILE,
-      JSON.stringify(config, null, 2) + "\n",
-      { encoding: "utf-8", mode: 0o600 },
-    );
-  }
+  // Config writes go through the CLI sync helpers (saveSyncConfig /
+  // savePersistedConfig) so the salt and linked accounts are always preserved.
+  // The old private saveConfig() wrote only the 4 endpoint fields and thus
+  // clobbered them — removed.
 
   // ── Status ──────────────────────────────────────────────────────────────
 
@@ -315,13 +317,21 @@ export class SyncManager implements vscode.Disposable {
       ),
     );
 
+    commands.push(
+      vscode.commands.registerCommand("claude-stats.linkAccounts", () =>
+        this.linkAccountsInteractive(),
+      ),
+    );
+
     return commands;
   }
 
   /**
-   * Handle the connect command.
-   * If a backend URL is configured in VS Code settings, use it.
-   * Otherwise prompt the user to enter one.
+   * Handle the connect command — the extension's full GUI setup flow, the
+   * equivalent of `claude-stats setup`. Discovers the backend, runs the
+   * passwordless auth, generates the per-user salt, persists the config
+   * WITHOUT clobbering any existing salt/linked accounts, then guides the user
+   * through picking which local accounts to share. End users never need the CLI.
    */
   private async handleConnect(): Promise<void> {
     const vsConfig = vscode.workspace.getConfiguration("claude-stats");
@@ -338,48 +348,35 @@ export class SyncManager implements vscode.Disposable {
       await vsConfig.update("backendUrl", backendUrl, vscode.ConfigurationTarget.Global);
     }
 
-    // Fetch the backend's discovery endpoint to get Cognito config
     try {
-      await vscode.window.withProgress(
+      // Auth runs inside a progress notification. Account-linking runs AFTER it
+      // (a QuickPick can't be shown from inside withProgress). `connected` is
+      // true once tokens are saved; linking is a best-effort follow-up step.
+      const syncConfig = await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
           title: t("extension:sync.progress.connecting"),
           cancellable: false,
         },
-        async () => {
-          const discoveryUrl = `${backendUrl.replace(/\/$/, "")}/.well-known/claude-stats.json`;
-          const response = await fetch(discoveryUrl);
-          if (!response.ok) {
-            throw new Error(t("extension:sync.messages.backendError", { status: String(response.status) }));
+        async (): Promise<SyncConfig | null> => {
+          // Reuse the CLI's discovery — it reads the deployed well-known shape
+          // ({appsyncEndpoint, cognitoUserPoolId, cognitoClientId, region}),
+          // which the extension's old inline parser did NOT match.
+          const discovered = await discoverConfig(backendUrl);
+          if (!discovered) {
+            throw new Error(t("extension:sync.messages.backendError", { status: "discovery" }));
           }
 
-          const discovery = (await response.json()) as {
-            region: string;
-            userPoolId: string;
-            clientId: string;
-            endpoint: string;
-          };
-
-          const syncConfig: SyncConfig = {
-            region: discovery.region,
-            userPoolId: discovery.userPoolId,
-            clientId: discovery.clientId,
-            endpoint: discovery.endpoint,
-          };
-
-          // Prompt for email to initiate auth
           const email = await vscode.window.showInputBox({
             prompt: t("extension:sync.dialogs.enterEmail"),
             placeHolder: t("extension:sync.dialogs.emailPlaceholder"),
             ignoreFocusOut: true,
           });
-          if (!email) return;
+          if (!email) return null;
 
-          // Initiate device auth flow
-          const authResponse = await initiateAuth(syncConfig, email);
+          const authResponse = await initiateAuth(discovered, email);
 
           if (authResponse.verificationUri) {
-            // Open the verification URL in the browser
             void vscode.env.openExternal(
               vscode.Uri.parse(authResponse.verificationUri),
             );
@@ -392,24 +389,38 @@ export class SyncManager implements vscode.Disposable {
             );
           }
 
-          // Poll for tokens
           const tokens = await pollForTokens(
-            syncConfig,
+            discovered,
             authResponse.deviceCode,
             3000,
             300_000,
           );
 
           saveTokens(tokens);
-          this.saveConfig(syncConfig);
-          this.config = syncConfig;
+          // Persist via the CLI helpers so salt/linked accounts are preserved
+          // and a salt is generated on first connect (the extension previously
+          // wrote neither, leaving sync permanently un-completable).
+          saveSyncConfig(discovered);
+          const persisted = loadPersistedConfig();
+          if (persisted && !persisted.userSalt) {
+            savePersistedConfig({ ...persisted, userSalt: generateUserSalt() });
+          }
+          this.config = discovered;
           this.setStatus("connected");
+          return discovered;
         },
       );
+
+      // User cancelled at the email prompt.
+      if (!syncConfig) return;
 
       void vscode.window.showInformationMessage(
         t("extension:sync.messages.connectedSuccess"),
       );
+
+      // Guide the user through linking accounts — the step that actually
+      // enables sync. Skipping it leaves "No linked accounts" on first sync.
+      await this.linkAccountsInteractive();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       void vscode.window.showErrorMessage(
@@ -463,6 +474,64 @@ export class SyncManager implements vscode.Disposable {
 
     const dashboardUrl = `${backendUrl.replace(/\/$/, "")}/dashboard`;
     void vscode.env.openExternal(vscode.Uri.parse(dashboardUrl));
+  }
+
+  /**
+   * GUI account-linking: a multi-select of the local accounts, persisted as the
+   * shared set. This is the step `syncAggregate` requires — without it, sync
+   * reports "No linked accounts". Runnable standalone (the Link Accounts command)
+   * or as the tail of the connect flow. Requires a prior connect (a userSalt);
+   * `linkAccounts` throws otherwise and we surface that.
+   */
+  private async linkAccountsInteractive(): Promise<void> {
+    const { Store } = await import("../store/index.js");
+    const store = new Store();
+    let linkable: ReturnType<typeof listLinkableAccounts>;
+    try {
+      linkable = listLinkableAccounts(store);
+    } finally {
+      store.close();
+    }
+
+    if (linkable.length === 0) {
+      void vscode.window.showWarningMessage(t("extension:sync.link.noAccounts"));
+      return;
+    }
+
+    interface AccountItem extends vscode.QuickPickItem {
+      accountUuid: string;
+    }
+    const items: AccountItem[] = linkable.map((a) => ({
+      label: a.label,
+      description: a.detail,
+      accountUuid: a.accountUuid,
+      picked: true,
+    }));
+
+    const chosen = await vscode.window.showQuickPick(items, {
+      canPickMany: true,
+      placeHolder: t("extension:sync.link.placeholder"),
+      ignoreFocusOut: true,
+    });
+    if (!chosen || chosen.length === 0) return;
+
+    try {
+      const byUuid = new Map(linkable.map((a) => [a.accountUuid, a]));
+      const count = linkAccounts(
+        chosen.map((c) => {
+          const a = byUuid.get(c.accountUuid)!;
+          return { accountUuid: a.accountUuid, label: a.label };
+        }),
+      );
+      void vscode.window.showInformationMessage(
+        t("extension:sync.link.linked", { count }),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      void vscode.window.showErrorMessage(
+        t("extension:sync.messages.syncFailed", { message: msg }),
+      );
+    }
   }
 
   // ── Disposal ────────────────────────────────────────────────────────────

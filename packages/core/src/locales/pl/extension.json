@@ -496,6 +496,11 @@
       "disconnected": "Claude Stats: Disconnected.",
       "noBackendUrl": "Claude Stats: No backend URL configured. Connect first to use the team dashboard.",
       "backendError": "Backend returned {{status}}. Check the URL and try again."
+    },
+    "link": {
+      "placeholder": "Wybierz konta, których zagregowane dane chcesz udostępnić swojemu zespołowi",
+      "noAccounts": "Claude Stats: Nie znaleziono jeszcze żadnych kont lokalnych. Użyj Claude Code przez chwilę, a następnie uruchom „Połącz konta”.",
+      "linked": "Claude Stats: Połączono {{count}} kont(a). Uruchom „Synchronizuj teraz”, aby wysłać zagregowane dane."
     }
   },
   "onboarding": {
