@@ -20,7 +20,13 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: false,
-    include: ["lib/__tests__/**/*.test.ts"],
+    // `lib/**` = synth-template assertions on the declarative stacks.
+    // `lambda/**` = real business-logic units (e.g. the aggregate-stats
+    // stream worker), which DO warrant executed line coverage.
+    include: [
+      "lib/__tests__/**/*.test.ts",
+      "lambda/**/__tests__/**/*.test.ts",
+    ],
     exclude: ["**/node_modules/**", "dist/**", "cdk.out/**"],
   },
 });

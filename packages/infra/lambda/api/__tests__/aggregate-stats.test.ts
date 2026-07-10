@@ -7,14 +7,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockSend = vi.hoisted(() => vi.fn());
 
 vi.mock("@aws-sdk/client-dynamodb", () => ({
-  DynamoDBClient: vi.fn(function () { return { send: mockSend }; }),
-  QueryCommand: vi.fn(function(input: any) { return { _type: "Query", ...input }; }),
-  UpdateItemCommand: vi.fn(function(input: any) { return { _type: "Update", ...input }; }),
+  DynamoDBClient: vi.fn(function () {
+    return { send: mockSend };
+  }),
+  QueryCommand: vi.fn(function (input: any) {
+    return { _type: "Query", ...input };
+  }),
+  UpdateItemCommand: vi.fn(function (input: any) {
+    return { _type: "Update", ...input };
+  }),
 }));
 
 vi.mock("@aws-sdk/util-dynamodb", () => ({
   unmarshall: (item: Record<string, any>) => {
-    // Simple mock unmarshall: extract .S / .N / .BOOL / .L / .M or pass through
     const result: Record<string, any> = {};
     for (const [key, val] of Object.entries(item)) {
       if (val && typeof val === "object" && "S" in val) result[key] = val.S;
@@ -30,39 +35,30 @@ vi.mock("@aws-sdk/util-dynamodb", () => ({
 }));
 
 vi.mock("@aws-sdk/signature-v4", () => ({
-  SignatureV4: vi.fn(function() { return { sign: vi.fn(function(req: any) { return req; }) }; }),
+  SignatureV4: vi.fn(function () {
+    return { sign: vi.fn((req: any) => req) };
+  }),
 }));
-
 vi.mock("@aws-sdk/credential-provider-node", () => ({
   defaultProvider: vi.fn(() => vi.fn()),
 }));
-
-vi.mock("@aws-crypto/sha256-js", () => ({
-  Sha256: vi.fn(),
-}));
-
+vi.mock("@aws-crypto/sha256-js", () => ({ Sha256: vi.fn() }));
 vi.mock("@aws-sdk/protocol-http", () => ({
-  HttpRequest: vi.fn(function(opts: any) { return opts; }),
+  HttpRequest: vi.fn(function (opts: any) {
+    return opts;
+  }),
 }));
 
-// Mock global fetch for AppSync notification
 const mockFetch = vi.hoisted(() => vi.fn());
 vi.stubGlobal("fetch", mockFetch);
 
-// ---------------------------------------------------------------------------
-// Environment — set before module imports via vi.hoisted
-// ---------------------------------------------------------------------------
-
 vi.hoisted(() => {
+  process.env.USER_AGGREGATES_TABLE = "UserAggregates";
   process.env.TEAM_MEMBERSHIPS_TABLE = "TeamMemberships";
   process.env.TEAM_STATS_TABLE = "TeamStats";
   process.env.APPSYNC_ENDPOINT = "https://appsync.example.com/graphql";
 });
 process.env.AWS_REGION = "us-east-1";
-
-// ---------------------------------------------------------------------------
-// Import handler after mocks are set up
-// ---------------------------------------------------------------------------
 
 import { handler } from "../../api/aggregate-stats.js";
 
@@ -70,392 +66,195 @@ import { handler } from "../../api/aggregate-stats.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeDynamoDBImage(record: Record<string, any>): Record<string, any> {
-  // Wrap values so the mock unmarshall can extract them
+/** Wrap a plain record into a DynamoDB image the mock unmarshall understands. */
+function image(record: Record<string, any>): Record<string, any> {
   const img: Record<string, any> = {};
   for (const [k, v] of Object.entries(record)) {
     if (typeof v === "string") img[k] = { S: v };
     else if (typeof v === "number") img[k] = { N: String(v) };
     else if (typeof v === "boolean") img[k] = { BOOL: v };
-    else img[k] = v; // arrays, objects passed through
+    else img[k] = v; // arrays / objects pass through
   }
   return img;
 }
 
-function makeStreamRecord(
+function streamRecord(
   eventName: "INSERT" | "MODIFY" | "REMOVE",
   record: Record<string, any>,
 ) {
   return {
     eventName,
-    dynamodb: {
-      NewImage: eventName !== "REMOVE" ? makeDynamoDBImage(record) : undefined,
-    },
+    dynamodb:
+      eventName === "REMOVE"
+        ? { OldImage: image(record) }
+        : { NewImage: image(record) },
   };
 }
 
-function makeStreamEvent(records: any[]) {
+function event(records: any[]) {
   return { Records: records } as any;
 }
 
-const baseSession = {
+/** A per-(user, day) UserAggregates row. 2025-03-12 is a Wednesday. */
+const dayRow = {
   userId: "user-1",
-  sessionId: "sess-1",
+  period: "2025-03-12",
   accountId: "acct-1",
-  projectId: "proj-1",
-  firstTimestamp: 1741737600000, // 2025-03-12 00:00:00 UTC (a Wednesday)
-  lastTimestamp: 1741741200000, // +1 hour
-  promptCount: 10,
+  projectId: null,
+  sessionCount: 5,
+  subagentSessionCount: 1,
+  promptCount: 20,
   inputTokens: 5000,
   outputTokens: 2000,
   cacheCreationTokens: 100,
   cacheReadTokens: 300,
+  activeMinutes: 45,
   estimatedCost: 0.15,
   models: ["claude-sonnet-4-20250514"],
-  isSubagent: false,
   toolUseCounts: { Read: 5, Edit: 3 },
 };
+
+const membership = {
+  teamId: "team-1",
+  userId: "user-1",
+  role: "MEMBER",
+  shareLevel: "full",
+  sharedAccounts: ["acct-1"],
+  displayName: "Alice",
+};
+
+/** Queue the standard call sequence for one (user, week) with one team. */
+function queueOneTeam(opts: {
+  member?: Record<string, any>;
+  weekDays: Record<string, any>[];
+}) {
+  mockSend
+    .mockResolvedValueOnce({ Items: [{ teamId: { S: "team-1" } }] }) // GSI
+    .mockResolvedValueOnce({ Items: [image(opts.member ?? membership)] }) // base
+    .mockResolvedValueOnce({ Items: opts.weekDays.map(image) }) // week days
+    .mockResolvedValueOnce({}); // UpdateItem
+}
+
+/** Find the UpdateItemCommand input among mockSend calls. */
+function updateCall() {
+  const call = mockSend.mock.calls.find((c) => c[0]?._type === "Update");
+  return call?.[0];
+}
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("aggregate-stats handler", () => {
+describe("aggregate-stats handler (UserAggregates stream → weekly TeamStats)", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mockFetch.mockResolvedValue({ ok: true });
   });
 
-  it("should skip batch with no actionable records (REMOVE events only)", async () => {
-    const event = makeStreamEvent([
-      makeStreamRecord("REMOVE", baseSession),
-    ]);
-
-    await handler(event);
-
-    // No DynamoDB queries should be made for memberships
+  it("skips records with no usable image", async () => {
+    await handler(event([{ eventName: "INSERT", dynamodb: {} }]));
     expect(mockSend).not.toHaveBeenCalled();
   });
 
-  it("should process INSERT events and write TeamStats", async () => {
-    const event = makeStreamEvent([
-      makeStreamRecord("INSERT", baseSession),
-    ]);
+  it("writes a TeamStats member row keyed by the real 'period#userId' attribute", async () => {
+    queueOneTeam({ weekDays: [dayRow] });
+    await handler(event([streamRecord("INSERT", dayRow)]));
 
-    // Mock: GSI query returns one team membership
-    mockSend
-      .mockResolvedValueOnce({
-        // GSI MembershipsByUser query
-        Items: [{ teamId: "team-1" }],
-      })
-      .mockResolvedValueOnce({
-        // Base table query for full membership
-        Items: [
-          {
-            teamId: "team-1",
-            userId: "user-1",
-            role: "MEMBER",
-            shareLevel: "full",
-            sharedAccounts: ["acct-1"],
-            displayName: "Alice",
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        // UpdateItemCommand for TeamStats write
-      });
-
-    await handler(event);
-
-    // Should have made 3 DynamoDB calls: GSI query, base table query, update
-    expect(mockSend).toHaveBeenCalledTimes(3);
+    const cmd = updateCall();
+    expect(cmd).toBeTruthy();
+    expect(cmd.TableName).toBe("TeamStats");
+    // The bug the previous version had: it wrote a bogus "SK" attribute.
+    expect(cmd.Key.SK).toBeUndefined();
+    expect(cmd.Key.teamId).toBe("team-1");
+    expect(cmd.Key["period#userId"]).toMatch(/^2025-W\d{2}#user-1$/);
+    // period attribute is the ISO week, not the day.
+    expect(cmd.ExpressionAttributeValues[":period"]).toMatch(/^2025-W\d{2}$/);
   });
 
-  it("should process MODIFY events the same as INSERT", async () => {
-    const event = makeStreamEvent([
-      makeStreamRecord("MODIFY", baseSession),
-    ]);
+  it("read-recomputes the WHOLE week, not just the changed day-row", async () => {
+    // Stream carries ONE changed day, but the table holds THREE days that week.
+    const d1 = { ...dayRow, period: "2025-03-10", sessionCount: 2, promptCount: 4 };
+    const d2 = { ...dayRow, period: "2025-03-12", sessionCount: 5, promptCount: 20 };
+    const d3 = { ...dayRow, period: "2025-03-14", sessionCount: 3, promptCount: 6 };
+    queueOneTeam({ weekDays: [d1, d2, d3] });
 
-    mockSend
-      .mockResolvedValueOnce({
-        Items: [{ teamId: "team-1" }],
-      })
-      .mockResolvedValueOnce({
-        Items: [
-          {
-            teamId: "team-1",
-            userId: "user-1",
-            role: "MEMBER",
-            shareLevel: "full",
-            sharedAccounts: ["acct-1"],
-            displayName: "Bob",
-          },
-        ],
-      })
-      .mockResolvedValueOnce({});
+    await handler(event([streamRecord("MODIFY", d2)]));
 
-    await handler(event);
-
-    expect(mockSend).toHaveBeenCalledTimes(3);
+    const stats = updateCall().ExpressionAttributeValues[":stats"];
+    expect(stats.sessions).toBe(10); // 2+5+3 — the whole week, not just d2
+    expect(stats.prompts).toBe(30); // 4+20+6
   });
 
-  it("should skip sessions when accountId is not in sharedAccounts", async () => {
-    const event = makeStreamEvent([
-      makeStreamRecord("INSERT", { ...baseSession, accountId: "acct-other" }),
-    ]);
-
+  it("skips a membership when the day-row's account is not shared", async () => {
+    const notShared = { ...membership, sharedAccounts: ["acct-other"] };
     mockSend
-      .mockResolvedValueOnce({
-        Items: [{ teamId: "team-1" }],
-      })
-      .mockResolvedValueOnce({
-        Items: [
-          {
-            teamId: "team-1",
-            userId: "user-1",
-            role: "MEMBER",
-            shareLevel: "full",
-            sharedAccounts: ["acct-1"],
-            displayName: "Alice",
-          },
-        ],
-      });
+      .mockResolvedValueOnce({ Items: [{ teamId: { S: "team-1" } }] })
+      .mockResolvedValueOnce({ Items: [image(notShared)] })
+      .mockResolvedValueOnce({ Items: [image(dayRow)] });
+    // no UpdateItem queued — none should be issued
 
-    await handler(event);
-
-    // Only 2 calls (GSI + base table), no UpdateItem because session doesn't match
-    expect(mockSend).toHaveBeenCalledTimes(2);
+    await handler(event([streamRecord("INSERT", dayRow)]));
+    expect(updateCall()).toBeUndefined();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("should handle users with no team memberships", async () => {
-    const event = makeStreamEvent([
-      makeStreamRecord("INSERT", baseSession),
-    ]);
+  it("does nothing for a user with no team memberships", async () => {
+    mockSend.mockResolvedValueOnce({ Items: [] }); // GSI: no teams
+    await handler(event([streamRecord("INSERT", dayRow)]));
+    expect(mockSend).toHaveBeenCalledTimes(1); // just the GSI probe
+    expect(updateCall()).toBeUndefined();
+  });
 
-    mockSend.mockResolvedValueOnce({
-      Items: [], // No memberships
+  it("dedupes multiple stream records for the same (user, week)", async () => {
+    queueOneTeam({ weekDays: [dayRow] });
+    const other = { ...dayRow, period: "2025-03-13" }; // same ISO week
+
+    await handler(event([
+      streamRecord("INSERT", dayRow),
+      streamRecord("MODIFY", other),
+    ]));
+
+    // GSI + base + weekDays + 1 UpdateItem = 4 (memberships cached, week read once)
+    expect(mockSend).toHaveBeenCalledTimes(4);
+  });
+
+  it("strips cost/models/tools/projects for a 'minimal' share level", async () => {
+    queueOneTeam({
+      member: { ...membership, shareLevel: "minimal" },
+      weekDays: [dayRow],
     });
+    await handler(event([streamRecord("INSERT", dayRow)]));
 
-    await handler(event);
-
-    expect(mockSend).toHaveBeenCalledTimes(1);
+    const stats = updateCall().ExpressionAttributeValues[":stats"];
+    expect(stats.sessions).toBe(5);
+    expect(stats.estimatedCost).toBeUndefined();
+    expect(stats.modelsUsed).toBeUndefined();
+    expect(stats.topTools).toBeUndefined();
+    expect(stats.projectBreakdown).toBeUndefined();
   });
 
-  it("should group multiple sessions for the same team/period/user", async () => {
-    const session2 = {
-      ...baseSession,
-      sessionId: "sess-2",
-      promptCount: 5,
-      inputTokens: 2000,
-      outputTokens: 1000,
-    };
-
-    const event = makeStreamEvent([
-      makeStreamRecord("INSERT", baseSession),
-      makeStreamRecord("INSERT", session2),
-    ]);
-
-    mockSend
-      .mockResolvedValueOnce({
-        Items: [{ teamId: "team-1" }],
-      })
-      .mockResolvedValueOnce({
-        Items: [
-          {
-            teamId: "team-1",
-            userId: "user-1",
-            role: "MEMBER",
-            shareLevel: "full",
-            sharedAccounts: ["acct-1"],
-            displayName: "Alice",
-          },
-        ],
-      })
-      .mockResolvedValueOnce({}); // Single UpdateItem for the group
-
-    await handler(event);
-
-    // GSI query (1 user) + base table query + 1 UpdateItem
-    expect(mockSend).toHaveBeenCalledTimes(3);
-  });
-
-  it("should handle ConditionalCheckFailedException gracefully (stale update)", async () => {
-    const event = makeStreamEvent([
-      makeStreamRecord("INSERT", baseSession),
-    ]);
-
-    const conditionalError = new Error("ConditionalCheckFailedException");
-    conditionalError.name = "ConditionalCheckFailedException";
-
-    mockSend
-      .mockResolvedValueOnce({
-        Items: [{ teamId: "team-1" }],
-      })
-      .mockResolvedValueOnce({
-        Items: [
-          {
-            teamId: "team-1",
-            userId: "user-1",
-            role: "MEMBER",
-            shareLevel: "full",
-            sharedAccounts: ["acct-1"],
-            displayName: "Alice",
-          },
-        ],
-      })
-      .mockRejectedValueOnce(conditionalError);
-
-    // Should not throw
-    await expect(handler(event)).resolves.toBeUndefined();
-  });
-
-  it("should notify AppSync subscribers after successful update", async () => {
-    const event = makeStreamEvent([
-      makeStreamRecord("INSERT", baseSession),
-    ]);
-
-    mockSend
-      .mockResolvedValueOnce({
-        Items: [{ teamId: "team-1" }],
-      })
-      .mockResolvedValueOnce({
-        Items: [
-          {
-            teamId: "team-1",
-            userId: "user-1",
-            role: "MEMBER",
-            shareLevel: "full",
-            sharedAccounts: ["acct-1"],
-            displayName: "Alice",
-          },
-        ],
-      })
-      .mockResolvedValueOnce({}); // UpdateItem success
-
-    await handler(event);
-
+  it("notifies AppSync subscribers after a successful write", async () => {
+    queueOneTeam({ weekDays: [dayRow] });
+    await handler(event([streamRecord("INSERT", dayRow)]));
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("should handle multiple users across multiple teams", async () => {
-    const session2 = {
-      ...baseSession,
-      userId: "user-2",
-      sessionId: "sess-2",
-    };
+  it("handles ConditionalCheckFailedException without throwing", async () => {
+    const conflict = new Error("stale");
+    conflict.name = "ConditionalCheckFailedException";
+    mockSend
+      .mockResolvedValueOnce({ Items: [{ teamId: { S: "team-1" } }] })
+      .mockResolvedValueOnce({ Items: [image(membership)] })
+      .mockResolvedValueOnce({ Items: [image(dayRow)] })
+      .mockRejectedValueOnce(conflict);
 
-    const event = makeStreamEvent([
-      makeStreamRecord("INSERT", baseSession),
-      makeStreamRecord("INSERT", session2),
-    ]);
-
-    // user-1 GSI (call 1)
-    mockSend.mockResolvedValueOnce({
-      Items: [{ teamId: "team-1" }],
-    });
-    // user-1 base table for team-1 (call 2) — processed before user-2 GSI
-    mockSend.mockResolvedValueOnce({
-      Items: [
-        {
-          teamId: "team-1",
-          userId: "user-1",
-          role: "MEMBER",
-          shareLevel: "full",
-          sharedAccounts: ["acct-1"],
-          displayName: "Alice",
-        },
-      ],
-    });
-    // user-2 GSI (call 3)
-    mockSend.mockResolvedValueOnce({
-      Items: [{ teamId: "team-1" }, { teamId: "team-2" }],
-    });
-    // user-2 base table for team-1 (call 4)
-    mockSend.mockResolvedValueOnce({
-      Items: [
-        {
-          teamId: "team-1",
-          userId: "user-2",
-          role: "MEMBER",
-          shareLevel: "summary",
-          sharedAccounts: ["acct-1"],
-          displayName: "Bob",
-        },
-      ],
-    });
-    // user-2 base table for team-2
-    mockSend.mockResolvedValueOnce({
-      Items: [
-        {
-          teamId: "team-2",
-          userId: "user-2",
-          role: "ADMIN",
-          shareLevel: "full",
-          sharedAccounts: ["acct-1"],
-          displayName: "Bob",
-        },
-      ],
-    });
-    // 3 UpdateItems (team-1/user-1, team-1/user-2, team-2/user-2)
-    mockSend.mockResolvedValueOnce({});
-    mockSend.mockResolvedValueOnce({});
-    mockSend.mockResolvedValueOnce({});
-
-    await handler(event);
-
-    // 2 GSI + 3 base table + 3 updates = 8
-    expect(mockSend).toHaveBeenCalledTimes(8);
+    await expect(handler(event([streamRecord("INSERT", dayRow)]))).resolves.toBeUndefined();
+    expect(mockFetch).not.toHaveBeenCalled(); // write did not "succeed"
   });
 
-  it("should handle missing NewImage gracefully", async () => {
-    const event = makeStreamEvent([
-      {
-        eventName: "INSERT",
-        dynamodb: {},
-      },
-    ]);
-
-    await handler(event);
-    expect(mockSend).not.toHaveBeenCalled();
-  });
-
-  it("should continue processing when membership fetch fails for one user", async () => {
-    const session2 = {
-      ...baseSession,
-      userId: "user-2",
-      sessionId: "sess-2",
-    };
-
-    const event = makeStreamEvent([
-      makeStreamRecord("INSERT", baseSession),
-      makeStreamRecord("INSERT", session2),
-    ]);
-
-    // user-1 GSI fails
-    mockSend.mockRejectedValueOnce(new Error("DynamoDB error"));
-    // user-2 GSI succeeds
-    mockSend.mockResolvedValueOnce({
-      Items: [{ teamId: "team-1" }],
-    });
-    // user-2 base table
-    mockSend.mockResolvedValueOnce({
-      Items: [
-        {
-          teamId: "team-1",
-          userId: "user-2",
-          role: "MEMBER",
-          shareLevel: "full",
-          sharedAccounts: ["acct-1"],
-          displayName: "Bob",
-        },
-      ],
-    });
-    // UpdateItem
-    mockSend.mockResolvedValueOnce({});
-
-    await handler(event);
-
-    // Should still process user-2 despite user-1 failure
-    expect(mockSend).toHaveBeenCalledTimes(4);
+  it("recomputes on REMOVE using the OldImage", async () => {
+    queueOneTeam({ weekDays: [dayRow] }); // remaining rows re-summed
+    await handler(event([streamRecord("REMOVE", dayRow)]));
+    expect(updateCall()).toBeTruthy();
   });
 });

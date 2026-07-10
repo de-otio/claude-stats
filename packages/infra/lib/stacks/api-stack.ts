@@ -9,6 +9,10 @@ import * as kms from "aws-cdk-lib/aws-kms";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as lambda from "aws-cdk-lib/aws-lambda-nodejs";
 import * as lambdaRuntime from "aws-cdk-lib/aws-lambda";
+import {
+  DynamoEventSource,
+  SqsDlq,
+} from "aws-cdk-lib/aws-lambda-event-sources";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3 from "aws-cdk-lib/aws-s3";
@@ -70,6 +74,11 @@ export class ApiStack extends cdk.Stack {
       this,
       prefix,
       "data/synced-sessions-stream-arn",
+    );
+    const userAggregatesStreamArn = getParam(
+      this,
+      prefix,
+      "data/user-aggregates-stream-arn",
     );
 
     const tableArns: Record<string, string> = {};
@@ -219,6 +228,10 @@ export class ApiStack extends cdk.Stack {
         dataSource: dataSources.userAggregates,
         subs: { UserAggregates: physicalName("userAggregates") },
       },
+      // IAM-only mutation the aggregate-stats worker fires after writing
+      // TeamStats; a local (NONE) resolver just echoes the update so the
+      // onTeamStatsUpdated subscription fans out to connected clients.
+      { typeName: "Mutation", field: "refreshTeamStats", dataSource: noneDs },
       // ── P1a: team read path (complete + clean unit resolvers) ──
       { typeName: "Query", field: "team", dataSource: dataSources.teams },
       { typeName: "Query", field: "teamMembers", dataSource: dataSources.teamMemberships },
@@ -610,6 +623,60 @@ export class ApiStack extends cdk.Stack {
 
     this.graphqlApi = api;
     this.dlq = dlq;
+
+    // ── Aggregate-stats worker (org-plane fan-in) ────────────────────
+    //
+    // Consumes the UserAggregates stream; rolls each per-user/day aggregate
+    // into weekly per-member TeamStats rows (read-recompute-write). This is
+    // the writer for every TeamStats reader (teamMemberStats / teamProjects /
+    // teamDashboardAsReader / teamsComparison). Poison records land in the DLQ.
+    const aggregateStatsFn = new lambda.NodejsFunction(this, "AggregateStatsFn", {
+      ...commonLambdaProps,
+      entry: path.join(lambdaDir, "aggregate-stats.ts"),
+      handler: "handler",
+      functionName: `${prefix}-aggregate-stats`,
+      description:
+        "Rolls UserAggregates day-rows into weekly per-member TeamStats (DynamoDB-stream triggered)",
+      timeout: cdk.Duration.seconds(90),
+      memorySize: 512,
+      logGroup: makeLogGroup(`${prefix}-aggregate-stats`),
+      environment: {
+        USER_AGGREGATES_TABLE: physicalName("userAggregates"),
+        TEAM_MEMBERSHIPS_TABLE: physicalName("teamMemberships"),
+        TEAM_STATS_TABLE: physicalName("teamStats"),
+        APPSYNC_ENDPOINT: api.graphqlUrl,
+      },
+    });
+
+    // Read the source aggregates + memberships; write the derived TeamStats.
+    tables.userAggregates.grantReadData(aggregateStatsFn);
+    tables.teamMemberships.grantReadData(aggregateStatsFn);
+    tables.teamStats.grantWriteData(aggregateStatsFn);
+    // Fire the refreshTeamStats mutation (IAM auth) to drive subscriptions.
+    api.grantMutation(aggregateStatsFn, "refreshTeamStats");
+
+    // Bind the DynamoDB-stream event source. The base imports above don't carry
+    // the stream ARN, so import the table once more WITH it; grantStreamRead
+    // (done by DynamoEventSource) then also covers the CMK when present.
+    const userAggregatesStreamTable = dynamodb.Table.fromTableAttributes(
+      this,
+      "UserAggregatesStreamTable",
+      {
+        tableArn: tableArns.userAggregates,
+        tableStreamArn: userAggregatesStreamArn,
+        encryptionKey: dataEncryptionKey,
+      },
+    );
+    aggregateStatsFn.addEventSource(
+      new DynamoEventSource(userAggregatesStreamTable, {
+        startingPosition: lambdaRuntime.StartingPosition.TRIM_HORIZON,
+        batchSize: 100,
+        maxBatchingWindow: cdk.Duration.seconds(30),
+        retryAttempts: 3,
+        bisectBatchOnError: true,
+        onFailure: new SqsDlq(dlq),
+      }),
+    );
 
     // ── Team Logos construct ─────────────────────────────────────────
 

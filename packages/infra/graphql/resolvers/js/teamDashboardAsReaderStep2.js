@@ -1,12 +1,19 @@
 /**
  * Query.teamDashboardAsReader — Pipeline Step 2.
- * Fetch TeamStats aggregate for the authorized team and assemble the
- * TeamDashboard response. This is the same data shape as teamDashboard.
+ * Assemble the read-only TeamDashboard for an authorized dashboard reader.
+ *
+ * TeamStats has NO team-level rollup row — the aggregate-stats worker writes
+ * one row PER MEMBER, keyed PK=teamId, SK (attribute "period#userId") =
+ * "<period>#<userId>", each carrying a MemberStats `stats` blob. So we query
+ * begins_with "<period>#" and SUM the members into a TeamAggregate here.
+ *
+ * The reader view is deliberately limited: no member list, no member cards,
+ * no leaderboard/chemistry/superlatives (those need per-member identity the
+ * reader isn't entitled to). It surfaces the team-wide totals + project roll-up.
  *
  * If the previous step returned null (not authorized), short-circuit.
  */
 import { util, runtime } from "@aws-appsync/utils";
-import * as ddb from "@aws-appsync/utils/dynamodb";
 
 export function request(ctx) {
   // If authorization failed, short-circuit. This step is bound to a DynamoDB
@@ -19,13 +26,22 @@ export function request(ctx) {
   const teamId = ctx.stash.targetTeamId;
   const period = ctx.stash.period;
 
-  // Fetch the TeamStats aggregate for this team + period
-  return ddb.get({
-    key: {
-      teamId,
-      sk: `stats#${period}`,
+  // Fan out to every member row for this team + period. The sort key attribute
+  // is literally named "period#userId"; the `ddb.query` sugar would emit the
+  // invalid placeholder "#period#userId" (a second '#'), so use the raw Query
+  // form with a clean "#sk" placeholder mapped to the real attribute name.
+  return {
+    operation: "Query",
+    query: {
+      expression: "#teamId = :teamId AND begins_with(#sk, :skPrefix)",
+      expressionNames: { "#teamId": "teamId", "#sk": "period#userId" },
+      expressionValues: util.dynamodb.toMapValues({
+        ":teamId": teamId,
+        ":skPrefix": `${period}#`,
+      }),
     },
-  });
+    limit: 1000,
+  };
 }
 
 export function response(ctx) {
@@ -38,11 +54,77 @@ export function response(ctx) {
   }
 
   const team = ctx.stash.targetTeam;
-  const stats = ctx.result;
+  const memberEntries = ctx.result.items ?? [];
 
-  // Assemble TeamDashboard response
-  // NOTE: As a reader, the dashboard is read-only — no inviteCode, no raw session data
-  const dashboard = {
+  // Sum per-member MemberStats blobs into the team-wide TeamAggregate.
+  let totalSessions = 0;
+  let totalPrompts = 0;
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let totalEstimatedCost = 0;
+  let activeMemberCount = 0;
+  let latestComputedAt = 0;
+  const projectMap = {};
+
+  memberEntries.forEach((entry) => {
+    const stats = entry.stats;
+    if (!stats) {
+      return;
+    }
+    activeMemberCount += 1;
+    totalSessions += stats.sessions ?? 0;
+    totalPrompts += stats.prompts ?? 0;
+    totalInputTokens += stats.inputTokens ?? 0;
+    totalOutputTokens += stats.outputTokens ?? 0;
+    totalEstimatedCost += stats.estimatedCost ?? 0;
+
+    if ((entry.computedAt ?? 0) > latestComputedAt) {
+      latestComputedAt = entry.computedAt;
+    }
+
+    // Aggregate the project roll-up (members sharing "minimal" have none).
+    if (stats.projectBreakdown) {
+      stats.projectBreakdown.forEach((p) => {
+        const pid = p.projectId ?? "(unlinked)";
+        if (!projectMap[pid]) {
+          projectMap[pid] = {
+            projectId: pid,
+            sessions: 0,
+            prompts: 0,
+            estimatedCost: 0,
+          };
+        }
+        projectMap[pid].sessions += p.sessions ?? 0;
+        projectMap[pid].prompts += p.prompts ?? 0;
+        projectMap[pid].estimatedCost += p.estimatedCost ?? 0;
+      });
+    }
+  });
+
+  const projectSummary = Object.values(projectMap);
+  projectSummary.forEach((p) => {
+    p.estimatedCost = Math.round(p.estimatedCost * 100) / 100;
+  });
+
+  const aggregate =
+    activeMemberCount > 0
+      ? {
+          totalSessions,
+          totalPrompts,
+          totalInputTokens,
+          totalOutputTokens,
+          totalEstimatedCost: Math.round(totalEstimatedCost * 100) / 100,
+          activeMemberCount,
+          avgSessionsPerMember:
+            Math.round((totalSessions / activeMemberCount) * 100) / 100,
+          avgCostPerMember:
+            Math.round((totalEstimatedCost / activeMemberCount) * 100) / 100,
+        }
+      : null;
+
+  // Assemble TeamDashboard response.
+  // NOTE: As a reader, the dashboard is read-only — no inviteCode, no members.
+  return {
     team: {
       teamId: team.teamId,
       teamName: team.teamName,
@@ -55,25 +137,12 @@ export function response(ctx) {
       currentChallenge: team.currentChallenge || null,
     },
     period: ctx.stash.period,
-    aggregate: stats
-      ? {
-          totalSessions: stats.totalSessions || 0,
-          totalPrompts: stats.totalPrompts || 0,
-          totalInputTokens: stats.totalInputTokens || 0,
-          totalOutputTokens: stats.totalOutputTokens || 0,
-          totalEstimatedCost: stats.totalEstimatedCost || 0,
-          activeMemberCount: stats.activeMemberCount || 0,
-          avgSessionsPerMember: stats.avgSessionsPerMember || 0,
-          avgCostPerMember: stats.avgCostPerMember || 0,
-        }
-      : null,
-    leaderboard: stats ? stats.leaderboard || null : null,
-    memberCards: [], // Readers do not see individual member cards
-    chemistry: stats ? stats.chemistry || null : null,
-    superlatives: stats ? stats.superlatives || [] : [],
-    projectSummary: stats ? stats.projectSummary || [] : [],
-    computedAt: stats ? stats.computedAt || 0 : 0,
+    aggregate,
+    leaderboard: null, // Reader view omits per-member identity
+    memberCards: [],
+    chemistry: null,
+    superlatives: [],
+    projectSummary,
+    computedAt: latestComputedAt,
   };
-
-  return dashboard;
 }

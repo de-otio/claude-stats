@@ -11,9 +11,29 @@ import { HttpRequest } from "@aws-sdk/protocol-http";
 import type { DynamoDBStreamEvent, DynamoDBRecord } from "aws-lambda";
 
 // ---------------------------------------------------------------------------
+// aggregate-stats — org-plane fan-in worker.
+//
+// Trigger: the UserAggregates DynamoDB stream. Each changed row is one
+// client-computed per-(userId, day) aggregate (the ONLY thing the org backend
+// ever sees — see schema.graphql "Sync types"). This worker rolls those daily
+// rows into WEEKLY per-member TeamStats rows so the team dashboards / project
+// views / leaderboards have something to read.
+//
+// Design (fixes the three bugs the previous session-stream version had):
+//   1. Consumes UserAggregates (not the dead SyncedSessions table).
+//   2. Writes the TeamStats sort key under its REAL attribute name
+//      "period#userId" (the old code wrote a bogus "SK" attribute).
+//   3. READ-RECOMPUTE-WRITE: on any changed day-row we re-read the user's
+//      whole ISO-week of day-rows and recompute the member snapshot from
+//      scratch, so out-of-order / partial stream batches can't clobber a
+//      week with only the current batch's slice.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // Environment
 // ---------------------------------------------------------------------------
 
+const USER_AGGREGATES_TABLE = process.env.USER_AGGREGATES_TABLE!;
 const TEAM_MEMBERSHIPS_TABLE = process.env.TEAM_MEMBERSHIPS_TABLE!;
 const TEAM_STATS_TABLE = process.env.TEAM_STATS_TABLE!;
 const APPSYNC_ENDPOINT = process.env.APPSYNC_ENDPOINT!;
@@ -24,29 +44,32 @@ const ddb = new DynamoDBClient({});
 // Types
 // ---------------------------------------------------------------------------
 
-interface SessionRecord {
+/** One client-computed per-(userId, day) aggregate row from UserAggregates. */
+interface DailyAggregate {
   userId: string;
-  sessionId: string;
+  period: string; // day bucket, "YYYY-MM-DD"
   accountId: string;
   projectId: string | null;
-  firstTimestamp: number;
-  lastTimestamp: number;
+  sessionCount: number;
+  subagentSessionCount: number;
   promptCount: number;
   inputTokens: number;
   outputTokens: number;
   cacheCreationTokens: number;
   cacheReadTokens: number;
+  activeMinutes: number;
   estimatedCost: number;
   models: string[];
-  isSubagent: boolean;
   toolUseCounts: Record<string, number>;
 }
+
+type ShareLevel = "full" | "summary" | "minimal";
 
 interface TeamMembership {
   teamId: string;
   userId: string;
   role: string;
-  shareLevel: "full" | "summary" | "minimal";
+  shareLevel: ShareLevel;
   sharedAccounts: string[];
   displayName: string;
 }
@@ -58,7 +81,7 @@ interface ProjectStats {
   estimatedCost: number;
 }
 
-interface AggregatedStats {
+interface MemberAggregate {
   sessions: number;
   prompts: number;
   inputTokens: number;
@@ -74,108 +97,204 @@ interface AggregatedStats {
   projectBreakdown: ProjectStats[];
 }
 
-interface StatsGroupKey {
-  teamId: string;
-  period: string;
+/** A (userId, ISO-week) recompute unit derived from the stream batch. */
+interface AffectedWeek {
   userId: string;
-  shareLevel: "full" | "summary" | "minimal";
-  displayName: string;
+  week: string; // "YYYY-Www"
 }
 
 // ---------------------------------------------------------------------------
-// ISO Week Helper
+// ISO week helpers
 // ---------------------------------------------------------------------------
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/** ISO day number (Mon=1..Sun=7) for a Date. */
+function isoDayNum(date: Date): number {
+  const d = date.getUTCDay(); // 0=Sun..6=Sat
+  return d === 0 ? 7 : d;
+}
+
+/** Format a Date as a UTC "YYYY-MM-DD" day string. */
+function dayStr(date: Date): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 /**
- * Returns the ISO 8601 week string for a given epoch-millisecond timestamp.
- * Format: "YYYY-Www" (e.g. "2026-W11").
- *
- * ISO weeks start on Monday. Week 1 is the week containing the first Thursday
- * of the year (equivalently, the week containing January 4).
+ * ISO 8601 week string ("YYYY-Www") for a UTC Date. Week 1 is the week
+ * containing the first Thursday of the year (= the week containing Jan 4).
  */
-function getISOWeek(epochMs: number): string {
-  const date = new Date(epochMs);
-
-  // Set to nearest Thursday: current date + 4 - day number (Mon=1..Sun=7)
-  const dayOfWeek = date.getUTCDay(); // 0=Sun..6=Sat
-  // Convert to ISO day number: Mon=1..Sun=7
-  const isoDay = dayOfWeek === 0 ? 7 : dayOfWeek;
-
-  // Move to Thursday of the current ISO week
+function isoWeekOf(date: Date): string {
   const thursday = new Date(date);
-  thursday.setUTCDate(date.getUTCDate() + (4 - isoDay));
-
-  // ISO year is the year of the Thursday
+  thursday.setUTCDate(date.getUTCDate() + (4 - isoDayNum(date)));
   const isoYear = thursday.getUTCFullYear();
-
-  // Ordinal day of that Thursday within its year
   const jan1 = new Date(Date.UTC(isoYear, 0, 1));
   const ordinal =
-    Math.floor(
-      (thursday.getTime() - jan1.getTime()) / (24 * 60 * 60 * 1000),
-    ) + 1;
-
-  // ISO week number
+    Math.floor((thursday.getTime() - jan1.getTime()) / MS_PER_DAY) + 1;
   const weekNum = Math.floor((ordinal - 1) / 7) + 1;
-
   return `${isoYear}-W${String(weekNum).padStart(2, "0")}`;
 }
 
-// ---------------------------------------------------------------------------
-// DynamoDB Helpers
-// ---------------------------------------------------------------------------
+/** Parse a "YYYY-MM-DD" day string to a UTC Date (midnight). Null if invalid. */
+function parseDay(period: string): Date | null {
+  const m = period.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+}
 
 /**
- * Parse a DynamoDB Stream NewImage into a typed SessionRecord.
- * Returns null if the image is missing required fields.
+ * Given a "YYYY-Www" ISO week, return the Monday and Sunday day-strings that
+ * bound it (inclusive) — used to query the user's day-rows for that week.
  */
-function parseSessionFromImage(
+function weekDayBounds(week: string): { monday: string; sunday: string } | null {
+  const m = week.match(/^(\d{4})-W(\d{2})$/);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const wk = Number(m[2]);
+  // Monday of ISO week 1 = the Monday of the week containing Jan 4.
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const week1Monday = new Date(jan4);
+  week1Monday.setUTCDate(jan4.getUTCDate() - (isoDayNum(jan4) - 1));
+  const monday = new Date(week1Monday);
+  monday.setUTCDate(week1Monday.getUTCDate() + (wk - 1) * 7);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  return { monday: dayStr(monday), sunday: dayStr(sunday) };
+}
+
+/**
+ * TTL for a TeamStats row: ~1 year after the end of the ISO week.
+ */
+function computeExpiresAt(week: string): number {
+  const bounds = weekDayBounds(week);
+  if (!bounds) {
+    return Math.floor(Date.now() / 1000) + 365 * MS_PER_DAY / 1000;
+  }
+  const sunday = parseDay(bounds.sunday)!;
+  const endMs = sunday.getTime() + MS_PER_DAY + 365 * MS_PER_DAY;
+  return Math.floor(endMs / 1000);
+}
+
+// ---------------------------------------------------------------------------
+// Stream parsing
+// ---------------------------------------------------------------------------
+
+/** Read a DynamoDB image into a typed DailyAggregate. Null if unusable. */
+function parseAggregateFromImage(
   image: Record<string, any>,
-): SessionRecord | null {
+): DailyAggregate | null {
   try {
     const item = unmarshall(image);
+    if (!item.userId || !item.period) return null;
     return {
       userId: item.userId,
-      sessionId: item.sessionId,
-      accountId: item.accountId,
+      period: item.period,
+      accountId: item.accountId ?? "",
       projectId: item.projectId ?? null,
-      firstTimestamp: item.firstTimestamp,
-      lastTimestamp: item.lastTimestamp,
+      sessionCount: item.sessionCount ?? 0,
+      subagentSessionCount: item.subagentSessionCount ?? 0,
       promptCount: item.promptCount ?? 0,
       inputTokens: item.inputTokens ?? 0,
       outputTokens: item.outputTokens ?? 0,
       cacheCreationTokens: item.cacheCreationTokens ?? 0,
       cacheReadTokens: item.cacheReadTokens ?? 0,
+      activeMinutes: item.activeMinutes ?? 0,
       estimatedCost: item.estimatedCost ?? 0,
-      models: item.models ?? [],
-      isSubagent: item.isSubagent ?? false,
-      toolUseCounts: item.toolUseCounts ?? {},
+      models: Array.isArray(item.models) ? item.models : [],
+      toolUseCounts:
+        item.toolUseCounts && typeof item.toolUseCounts === "object"
+          ? item.toolUseCounts
+          : {},
     };
   } catch (err) {
-    console.error("Failed to parse session image", err);
+    console.error("Failed to parse aggregate image", err);
     return null;
   }
 }
 
 /**
- * Look up all team memberships for a user via the MembershipsByUser GSI.
- * Returns full membership details including sharedAccounts and shareLevel
- * by fetching from the base table.
+ * Derive the distinct (userId, ISO-week) recompute units from a stream batch.
+ * INSERT/MODIFY use NewImage; REMOVE uses OldImage (a deleted day still needs
+ * its week recomputed to drop the subtracted totals).
+ */
+function affectedWeeks(records: DynamoDBRecord[]): AffectedWeek[] {
+  const seen = new Set<string>();
+  const out: AffectedWeek[] = [];
+
+  for (const record of records) {
+    const image =
+      record.eventName === "REMOVE"
+        ? record.dynamodb?.OldImage
+        : record.dynamodb?.NewImage;
+    if (!image) continue;
+
+    const row = parseAggregateFromImage(image as Record<string, any>);
+    if (!row) continue;
+
+    const day = parseDay(row.period);
+    if (!day) continue;
+
+    const week = isoWeekOf(day);
+    const key = `${row.userId}#${week}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ userId: row.userId, week });
+  }
+
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// DynamoDB reads
+// ---------------------------------------------------------------------------
+
+/** Read all of a user's day-rows within an ISO week. */
+async function getUserWeekDays(
+  userId: string,
+  week: string,
+): Promise<DailyAggregate[]> {
+  const bounds = weekDayBounds(week);
+  if (!bounds) return [];
+
+  const rows: DailyAggregate[] = [];
+  let lastKey: Record<string, any> | undefined;
+
+  do {
+    const result = await ddb.send(
+      new QueryCommand({
+        TableName: USER_AGGREGATES_TABLE,
+        KeyConditionExpression:
+          "userId = :uid AND #p BETWEEN :from AND :to",
+        ExpressionAttributeNames: { "#p": "period" },
+        ExpressionAttributeValues: marshall({
+          ":uid": userId,
+          ":from": bounds.monday,
+          ":to": bounds.sunday,
+        }),
+        ExclusiveStartKey: lastKey,
+      }),
+    );
+    for (const item of result.Items ?? []) {
+      const row = parseAggregateFromImage(item);
+      if (row) rows.push(row);
+    }
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey);
+
+  return rows;
+}
+
+/**
+ * All of a user's team memberships, with sharedAccounts + shareLevel.
+ * The MembershipsByUser GSI only projects (role, joinedAt, displayName), so
+ * we get the teamId list from it then fetch each full base-table record.
  */
 async function getUserTeamMemberships(
   userId: string,
 ): Promise<TeamMembership[]> {
-  // The GSI MembershipsByUser only projects role, joinedAt, displayName.
-  // We need sharedAccounts and shareLevel, so query the GSI to get
-  // (teamId, userId) pairs, then batch-fetch from the base table.
-  // However, for simplicity and to avoid a second round-trip per team,
-  // we query with a full projection request. Since the GSI projection
-  // is INCLUDE [role, joinedAt, displayName], we must query the base
-  // table instead — but we only have userId, not teamId.
-  //
-  // Strategy: Query the GSI to get teamId list, then query base table
-  // for each teamId+userId to get full membership record.
-
   const gsiResult = await ddb.send(
     new QueryCommand({
       TableName: TEAM_MEMBERSHIPS_TABLE,
@@ -185,16 +304,11 @@ async function getUserTeamMemberships(
     }),
   );
 
-  if (!gsiResult.Items || gsiResult.Items.length === 0) {
-    return [];
-  }
+  if (!gsiResult.Items || gsiResult.Items.length === 0) return [];
 
-  // Fetch full records from base table for each membership
   const memberships: TeamMembership[] = [];
-
   for (const gsiItem of gsiResult.Items) {
     const { teamId } = unmarshall(gsiItem) as { teamId: string };
-
     try {
       const baseResult = await ddb.send(
         new QueryCommand({
@@ -206,14 +320,13 @@ async function getUserTeamMemberships(
           }),
         }),
       );
-
       if (baseResult.Items && baseResult.Items.length > 0) {
         const item = unmarshall(baseResult.Items[0]);
         memberships.push({
           teamId: item.teamId,
           userId: item.userId,
           role: item.role,
-          shareLevel: item.shareLevel ?? "summary",
+          shareLevel: (item.shareLevel ?? "summary") as ShareLevel,
           sharedAccounts: item.sharedAccounts ?? [],
           displayName: item.displayName ?? "",
         });
@@ -225,125 +338,98 @@ async function getUserTeamMemberships(
       );
     }
   }
-
   return memberships;
 }
 
 // ---------------------------------------------------------------------------
-// Aggregation Logic
+// Aggregation
 // ---------------------------------------------------------------------------
 
 /**
- * Build a composite key for grouping sessions during aggregation.
+ * Roll a set of daily aggregate rows into a single member snapshot.
+ * All inputs are already aggregates (counts / sums / minutes) — this is a
+ * pure sum, never a per-session recomputation.
  */
-function groupKey(teamId: string, period: string, userId: string): string {
-  return `${teamId}#${period}#${userId}`;
-}
-
-interface GroupedEntry {
-  key: StatsGroupKey;
-  sessions: SessionRecord[];
-}
-
-/**
- * Compute aggregate stats from a collection of sessions.
- */
-function computeAggregates(
-  sessions: SessionRecord[],
-  shareLevel: "full" | "summary" | "minimal",
-): AggregatedStats {
-  let totalInputTokens = 0;
-  let totalOutputTokens = 0;
-  let totalCacheCreationTokens = 0;
-  let totalCacheReadTokens = 0;
-  let totalPrompts = 0;
-  let totalEstimatedCost = 0;
-  let totalActiveMinutes = 0;
-  let subagentCount = 0;
+function computeMemberAggregate(rows: DailyAggregate[]): MemberAggregate {
+  let sessions = 0;
+  let subagentSessions = 0;
+  let prompts = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheCreationTokens = 0;
+  let cacheReadTokens = 0;
+  let estimatedCost = 0;
+  let activeMinutes = 0;
   const modelsUsed: Record<string, number> = {};
   const toolCounts: Record<string, number> = {};
-  const projectMap = new Map<
-    string,
-    { sessions: number; prompts: number; estimatedCost: number }
-  >();
+  const projectMap = new Map<string, ProjectStats>();
 
-  for (const session of sessions) {
-    totalInputTokens += session.inputTokens;
-    totalOutputTokens += session.outputTokens;
-    totalCacheCreationTokens += session.cacheCreationTokens;
-    totalCacheReadTokens += session.cacheReadTokens;
-    totalPrompts += session.promptCount;
-    totalEstimatedCost += session.estimatedCost;
+  for (const r of rows) {
+    sessions += r.sessionCount;
+    subagentSessions += r.subagentSessionCount;
+    prompts += r.promptCount;
+    inputTokens += r.inputTokens;
+    outputTokens += r.outputTokens;
+    cacheCreationTokens += r.cacheCreationTokens;
+    cacheReadTokens += r.cacheReadTokens;
+    estimatedCost += r.estimatedCost;
+    activeMinutes += r.activeMinutes;
 
-    // Active minutes: duration of the session
-    const durationMs = Math.max(0, session.lastTimestamp - session.firstTimestamp);
-    totalActiveMinutes += durationMs / (1000 * 60);
-
-    if (session.isSubagent) {
-      subagentCount++;
-    }
-
-    // Model counts
-    for (const model of session.models) {
+    // Daily rows carry a model UNION (no per-model counts); tally how many
+    // day-rows each model appeared in — an honest usage proxy for AWSJSON.
+    for (const model of r.models) {
       modelsUsed[model] = (modelsUsed[model] ?? 0) + 1;
     }
 
-    // Tool counts
-    for (const [tool, count] of Object.entries(session.toolUseCounts)) {
+    for (const [tool, count] of Object.entries(r.toolUseCounts)) {
       toolCounts[tool] = (toolCounts[tool] ?? 0) + count;
     }
 
-    // Project breakdown
-    const projectKey = session.projectId ?? "(unlinked)";
-    const existing = projectMap.get(projectKey);
+    const pid = r.projectId ?? "(unlinked)";
+    const existing = projectMap.get(pid);
     if (existing) {
-      existing.sessions += 1;
-      existing.prompts += session.promptCount;
-      existing.estimatedCost += session.estimatedCost;
+      existing.sessions += r.sessionCount;
+      existing.prompts += r.promptCount;
+      existing.estimatedCost += r.estimatedCost;
     } else {
-      projectMap.set(projectKey, {
-        sessions: 1,
-        prompts: session.promptCount,
-        estimatedCost: session.estimatedCost,
+      projectMap.set(pid, {
+        projectId: pid,
+        sessions: r.sessionCount,
+        prompts: r.promptCount,
+        estimatedCost: r.estimatedCost,
       });
     }
   }
 
-  // Top tools: sorted by total usage count, take top 10
   const topTools = Object.entries(toolCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
     .map(([tool]) => tool);
 
   const velocityTokensPerMin =
-    totalActiveMinutes > 0
-      ? Math.round(totalOutputTokens / totalActiveMinutes)
-      : 0;
-
+    activeMinutes > 0 ? Math.round(outputTokens / activeMinutes) : 0;
   const subagentRatio =
-    sessions.length > 0
-      ? Math.round((subagentCount / sessions.length) * 1000) / 1000
-      : 0;
+    sessions > 0 ? Math.round((subagentSessions / sessions) * 1000) / 1000 : 0;
 
   const projectBreakdown: ProjectStats[] = [];
-  for (const [projectId, stats] of projectMap) {
+  for (const p of projectMap.values()) {
     projectBreakdown.push({
-      projectId,
-      sessions: stats.sessions,
-      prompts: stats.prompts,
-      estimatedCost: Math.round(stats.estimatedCost * 100) / 100,
+      projectId: p.projectId,
+      sessions: p.sessions,
+      prompts: p.prompts,
+      estimatedCost: Math.round(p.estimatedCost * 100) / 100,
     });
   }
 
   return {
-    sessions: sessions.length,
-    prompts: totalPrompts,
-    inputTokens: totalInputTokens,
-    outputTokens: totalOutputTokens,
-    cacheCreationTokens: totalCacheCreationTokens,
-    cacheReadTokens: totalCacheReadTokens,
-    estimatedCost: Math.round(totalEstimatedCost * 100) / 100,
-    activeMinutes: Math.round(totalActiveMinutes),
+    sessions,
+    prompts,
+    inputTokens,
+    outputTokens,
+    cacheCreationTokens,
+    cacheReadTokens,
+    estimatedCost: Math.round(estimatedCost * 100) / 100,
+    activeMinutes,
     modelsUsed,
     topTools,
     velocityTokensPerMin,
@@ -353,15 +439,12 @@ function computeAggregates(
 }
 
 /**
- * Build the stats attribute map for DynamoDB, respecting shareLevel.
- *
- * - "full": all fields included
- * - "summary": all fields included (same as full for stats)
- * - "minimal": omit estimatedCost, modelsUsed, topTools, projectBreakdown
+ * Shape the `stats` attribute (a MemberStats blob), applying shareLevel.
+ * "minimal" strips cost / models / tools / project breakdown.
  */
 function buildStatsAttribute(
-  agg: AggregatedStats,
-  shareLevel: "full" | "summary" | "minimal",
+  agg: MemberAggregate,
+  shareLevel: ShareLevel,
 ): Record<string, any> {
   const stats: Record<string, any> = {
     sessions: agg.sessions,
@@ -372,44 +455,39 @@ function buildStatsAttribute(
     velocityTokensPerMin: agg.velocityTokensPerMin,
     subagentRatio: agg.subagentRatio,
   };
-
   if (shareLevel !== "minimal") {
     stats.estimatedCost = agg.estimatedCost;
     stats.modelsUsed = agg.modelsUsed;
     stats.topTools = agg.topTools;
     stats.projectBreakdown = agg.projectBreakdown;
   }
-
   return stats;
 }
 
 // ---------------------------------------------------------------------------
-// TeamStats Write (Idempotent Upsert)
+// TeamStats write
 // ---------------------------------------------------------------------------
 
 /**
- * Write or update the TeamStats item for a (teamId, period#userId) key.
- * Uses a conditional expression on computedAt for idempotency:
- * only overwrites if our computedAt is newer than what's already stored.
+ * Upsert the TeamStats member row for (teamId, week, userId). The sort key is
+ * stored under its real attribute name "period#userId". Idempotent on
+ * computedAt: an older recompute never overwrites a newer one.
  */
-async function writeTeamStats(
-  entry: GroupedEntry,
-  agg: AggregatedStats,
+async function writeMemberStats(
+  membership: TeamMembership,
+  week: string,
+  agg: MemberAggregate,
 ): Promise<boolean> {
-  const { key } = entry;
   const now = Date.now();
-  const sk = `${key.period}#${key.userId}`;
-  const stats = buildStatsAttribute(agg, key.shareLevel);
-
-  // Compute expiresAt: end of the ISO week + 1 year
-  // Parse period like "2026-W11" to get end of week, then add 365 days
-  const expiresAt = computeExpiresAt(key.period);
+  const sk = `${week}#${membership.userId}`;
+  const stats = buildStatsAttribute(agg, membership.shareLevel);
+  const expiresAt = computeExpiresAt(week);
 
   try {
     await ddb.send(
       new UpdateItemCommand({
         TableName: TEAM_STATS_TABLE,
-        Key: marshall({ teamId: key.teamId, SK: sk }),
+        Key: marshall({ teamId: membership.teamId, "period#userId": sk }),
         UpdateExpression: `
           SET #period = :period,
               userId = :userId,
@@ -421,15 +499,13 @@ async function writeTeamStats(
               expiresAt = :expiresAt
         `,
         ConditionExpression:
-          "attribute_not_exists(computedAt) OR computedAt < :computedAt",
-        ExpressionAttributeNames: {
-          "#period": "period",
-        },
+          "attribute_not_exists(computedAt) OR computedAt <= :computedAt",
+        ExpressionAttributeNames: { "#period": "period" },
         ExpressionAttributeValues: marshall({
-          ":period": key.period,
-          ":userId": key.userId,
-          ":displayName": key.displayName,
-          ":shareLevel": key.shareLevel,
+          ":period": week,
+          ":userId": membership.userId,
+          ":displayName": membership.displayName,
+          ":shareLevel": membership.shareLevel,
           ":stats": stats,
           ":computedAt": now,
           ":updatedAt": now,
@@ -440,9 +516,8 @@ async function writeTeamStats(
     return true;
   } catch (err: any) {
     if (err.name === "ConditionalCheckFailedException") {
-      // A newer computation already exists — this is expected, not an error
       console.log(
-        `Skipping stale update for team=${key.teamId} period=${key.period} user=${key.userId}`,
+        `Skipping stale TeamStats update team=${membership.teamId} week=${week} user=${membership.userId}`,
       );
       return false;
     }
@@ -450,53 +525,16 @@ async function writeTeamStats(
   }
 }
 
-/**
- * Compute TTL expiresAt (epoch seconds) for a given ISO week period.
- * Returns the epoch seconds for ~1 year after the end of that ISO week.
- */
-function computeExpiresAt(period: string): number {
-  // Parse "YYYY-Www"
-  const match = period.match(/^(\d{4})-W(\d{2})$/);
-  if (!match) {
-    // Fallback: 1 year from now
-    return Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
-  }
-
-  const year = parseInt(match[1], 10);
-  const week = parseInt(match[2], 10);
-
-  // Find the Monday of ISO week 1 for this year:
-  // January 4 is always in week 1. Find the Monday of that week.
-  const jan4 = new Date(Date.UTC(year, 0, 4));
-  const jan4Day = jan4.getUTCDay() === 0 ? 7 : jan4.getUTCDay(); // ISO day
-  const week1Monday = new Date(jan4);
-  week1Monday.setUTCDate(jan4.getUTCDate() - (jan4Day - 1));
-
-  // Monday of the target week
-  const targetMonday = new Date(week1Monday);
-  targetMonday.setUTCDate(week1Monday.getUTCDate() + (week - 1) * 7);
-
-  // End of week = Sunday 23:59:59 = Monday + 7 days
-  const endOfWeek = new Date(targetMonday);
-  endOfWeek.setUTCDate(targetMonday.getUTCDate() + 7);
-
-  // Add 1 year (365 days)
-  const expiresMs = endOfWeek.getTime() + 365 * 24 * 60 * 60 * 1000;
-  return Math.floor(expiresMs / 1000);
-}
-
 // ---------------------------------------------------------------------------
-// AppSync Subscription Notification
+// AppSync subscription notification
 // ---------------------------------------------------------------------------
 
 /**
- * Invoke the `refreshTeamStats` AppSync mutation using IAM SigV4 auth.
- * This triggers the `onTeamStatsUpdated` subscription for real-time updates.
+ * Fire the `refreshTeamStats` AppSync mutation (IAM SigV4) to trigger the
+ * `onTeamStatsUpdated` subscription. Best-effort — failures never fail the
+ * stream batch.
  */
-async function notifySubscribers(
-  teamId: string,
-  period: string,
-): Promise<void> {
+async function notifySubscribers(teamId: string, period: string): Promise<void> {
   if (!APPSYNC_ENDPOINT) {
     console.warn("APPSYNC_ENDPOINT not configured, skipping notification");
     return;
@@ -504,25 +542,17 @@ async function notifySubscribers(
 
   const mutation = `
     mutation RefreshTeamStats($teamId: ID!, $period: String!) {
-      refreshTeamStats(teamId: $teamId, period: $period)
+      refreshTeamStats(teamId: $teamId, period: $period) { teamId period computedAt }
     }
   `;
-
-  const body = JSON.stringify({
-    query: mutation,
-    variables: { teamId, period },
-  });
-
+  const body = JSON.stringify({ query: mutation, variables: { teamId, period } });
   const url = new URL(APPSYNC_ENDPOINT);
 
   const request = new HttpRequest({
     method: "POST",
     hostname: url.hostname,
     path: url.pathname,
-    headers: {
-      "Content-Type": "application/json",
-      host: url.hostname,
-    },
+    headers: { "Content-Type": "application/json", host: url.hostname },
     body,
   });
 
@@ -532,60 +562,21 @@ async function notifySubscribers(
     service: "appsync",
     sha256: Sha256,
   });
-
   const signed = await signer.sign(request);
 
-  const response = await fetch(
-    `https://${signed.hostname}${signed.path}`,
-    {
-      method: signed.method,
-      headers: signed.headers as Record<string, string>,
-      body: signed.body as string,
-    },
-  );
+  const response = await fetch(`https://${signed.hostname}${signed.path}`, {
+    method: signed.method,
+    headers: signed.headers as Record<string, string>,
+    body: signed.body as string,
+  });
 
   if (!response.ok) {
     const text = await response.text();
     console.error(
-      `AppSync mutation failed: ${response.status} ${response.statusText}`,
+      `AppSync refreshTeamStats failed: ${response.status} ${response.statusText}`,
       text,
     );
   }
-}
-
-// ---------------------------------------------------------------------------
-// Stream Record Processing
-// ---------------------------------------------------------------------------
-
-/**
- * Extract valid session records from DynamoDB Stream event records.
- * Only processes INSERT and MODIFY events with a NewImage.
- */
-function extractSessions(records: DynamoDBRecord[]): SessionRecord[] {
-  const sessions: SessionRecord[] = [];
-
-  for (const record of records) {
-    if (
-      record.eventName !== "INSERT" &&
-      record.eventName !== "MODIFY"
-    ) {
-      continue;
-    }
-
-    const newImage = record.dynamodb?.NewImage;
-    if (!newImage) {
-      continue;
-    }
-
-    const session = parseSessionFromImage(
-      newImage as Record<string, any>,
-    );
-    if (session) {
-      sessions.push(session);
-    }
-  }
-
-  return sessions;
 }
 
 // ---------------------------------------------------------------------------
@@ -593,118 +584,82 @@ function extractSessions(records: DynamoDBRecord[]): SessionRecord[] {
 // ---------------------------------------------------------------------------
 
 export const handler = async (event: DynamoDBStreamEvent): Promise<void> => {
-  console.log(
-    `Processing ${event.Records.length} stream record(s)`,
-  );
+  console.log(`Processing ${event.Records.length} stream record(s)`);
 
-  // 1. Extract sessions from stream records
-  const sessions = extractSessions(event.Records);
-  if (sessions.length === 0) {
-    console.log("No actionable session records in batch");
+  // 1. Collapse the batch to distinct (userId, ISO-week) recompute units.
+  const units = affectedWeeks(event.Records);
+  if (units.length === 0) {
+    console.log("No actionable aggregate rows in batch");
     return;
   }
+  console.log(`Recomputing ${units.length} (user, week) unit(s)`);
 
-  console.log(`Extracted ${sessions.length} session(s) to process`);
-
-  // 2. Look up memberships for each distinct user
-  const userIds = [...new Set(sessions.map((s) => s.userId))];
+  // 2. Cache memberships per user across this batch (one user, many weeks).
   const membershipsByUser = new Map<string, TeamMembership[]>();
-
-  for (const userId of userIds) {
+  const getMemberships = async (userId: string): Promise<TeamMembership[]> => {
+    const cached = membershipsByUser.get(userId);
+    if (cached) return cached;
+    let memberships: TeamMembership[] = [];
     try {
-      const memberships = await getUserTeamMemberships(userId);
-      membershipsByUser.set(userId, memberships);
+      memberships = await getUserTeamMemberships(userId);
     } catch (err) {
       console.error(`Failed to fetch memberships for user=${userId}`, err);
-      // Continue processing other users — don't fail the whole batch
-      membershipsByUser.set(userId, []);
     }
-  }
+    membershipsByUser.set(userId, memberships);
+    return memberships;
+  };
 
-  // 3. For each session, determine which teams it belongs to and group
-  const groups = new Map<string, GroupedEntry>();
-
-  for (const session of sessions) {
-    const memberships = membershipsByUser.get(session.userId) ?? [];
-
-    for (const membership of memberships) {
-      // Check if session's accountId is in the membership's sharedAccounts
-      if (!membership.sharedAccounts.includes(session.accountId)) {
-        continue;
-      }
-
-      const period = getISOWeek(session.firstTimestamp);
-      const gk = groupKey(membership.teamId, period, session.userId);
-
-      let entry = groups.get(gk);
-      if (!entry) {
-        entry = {
-          key: {
-            teamId: membership.teamId,
-            period,
-            userId: session.userId,
-            shareLevel: membership.shareLevel,
-            displayName: membership.displayName,
-          },
-          sessions: [],
-        };
-        groups.set(gk, entry);
-      }
-
-      entry.sessions.push(session);
-    }
-  }
-
-  if (groups.size === 0) {
-    console.log("No sessions matched any team memberships");
-    return;
-  }
-
-  console.log(
-    `Grouped into ${groups.size} (teamId, period, userId) combination(s)`,
-  );
-
-  // 4. Compute aggregates and write TeamStats for each group
-  // Track which (teamId, period) pairs were updated for subscription notification
   const updatedTeamPeriods = new Set<string>();
 
-  for (const [gk, entry] of groups) {
+  // 3. Recompute each unit: re-read the week, aggregate per team, upsert.
+  for (const unit of units) {
     try {
-      const agg = computeAggregates(entry.sessions, entry.key.shareLevel);
-      const written = await writeTeamStats(entry, agg);
+      const memberships = await getMemberships(unit.userId);
+      if (memberships.length === 0) continue;
 
-      if (written) {
-        updatedTeamPeriods.add(
-          `${entry.key.teamId}#${entry.key.period}`,
+      const weekDays = await getUserWeekDays(unit.userId, unit.week);
+
+      for (const membership of memberships) {
+        // Only the day-rows whose account this member shares with the team.
+        const relevant = weekDays.filter((r) =>
+          membership.sharedAccounts.includes(r.accountId),
         );
-        console.log(
-          `Updated TeamStats: team=${entry.key.teamId} period=${entry.key.period} user=${entry.key.userId} sessions=${agg.sessions}`,
-        );
+        if (relevant.length === 0) continue;
+
+        const agg = computeMemberAggregate(relevant);
+        const written = await writeMemberStats(membership, unit.week, agg);
+        if (written) {
+          updatedTeamPeriods.add(`${membership.teamId}#${unit.week}`);
+          console.log(
+            `Updated TeamStats team=${membership.teamId} week=${unit.week} user=${unit.userId} sessions=${agg.sessions}`,
+          );
+        }
       }
     } catch (err) {
       console.error(
-        `Failed to write TeamStats for group=${gk}`,
+        `Failed to recompute user=${unit.userId} week=${unit.week}`,
         err,
       );
-      // Continue processing other groups
+      // Continue with the other units.
     }
   }
 
-  // 5. Notify AppSync subscribers for each updated (teamId, period)
+  // 4. Notify subscribers per updated (teamId, week) — best-effort.
   for (const tp of updatedTeamPeriods) {
-    const [teamId, period] = tp.split("#", 2);
+    const idx = tp.lastIndexOf("#");
+    const teamId = tp.slice(0, idx);
+    const period = tp.slice(idx + 1);
     try {
       await notifySubscribers(teamId, period);
     } catch (err) {
-      // Subscription notification is best-effort — don't fail the batch
       console.error(
-        `Failed to notify subscribers for team=${teamId} period=${period}`,
+        `Failed to notify subscribers team=${teamId} period=${period}`,
         err,
       );
     }
   }
 
   console.log(
-    `Completed: ${groups.size} group(s) processed, ${updatedTeamPeriods.size} notification(s) sent`,
+    `Completed: ${units.length} unit(s), ${updatedTeamPeriods.size} notification(s)`,
   );
 };

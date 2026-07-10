@@ -12,6 +12,7 @@ interface DataStackProps extends cdk.StackProps {
 export class DataStack extends cdk.Stack {
   public readonly tables: Record<string, dynamodb.Table>;
   public readonly syncedSessionsStreamArn: string;
+  public readonly userAggregatesStreamArn: string;
 
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, { ...props, description: "Claude Stats data layer — DynamoDB tables, GSIs, and streams" });
@@ -205,6 +206,11 @@ export class DataStack extends cdk.Stack {
       tableName: `${prefix}-userAggregates`,
       partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "period", type: dynamodb.AttributeType.STRING },
+      // The org plane's fan-in trigger: the aggregate-stats worker consumes
+      // this stream to roll each per-user/day aggregate into weekly per-member
+      // TeamStats rows. NEW image is sufficient (the worker read-recomputes the
+      // whole team-week from the table), but keep OLD too for debuggability.
+      stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
     });
 
     userAggregates.addGlobalSecondaryIndex({
@@ -339,6 +345,7 @@ export class DataStack extends cdk.Stack {
 
     this.tables = tables;
     this.syncedSessionsStreamArn = syncedSessions.tableStreamArn!;
+    this.userAggregatesStreamArn = userAggregates.tableStreamArn!;
 
     for (const [name, table] of Object.entries(tables)) {
       putParam(this, prefix, `data/table-arns/${name}`, table.tableArn);
@@ -360,6 +367,13 @@ export class DataStack extends cdk.Stack {
       prefix,
       "data/synced-sessions-stream-arn",
       syncedSessions.tableStreamArn!,
+    );
+
+    putParam(
+      this,
+      prefix,
+      "data/user-aggregates-stream-arn",
+      userAggregates.tableStreamArn!,
     );
   }
 }
