@@ -21,6 +21,8 @@ import {
   generateUserSalt,
   buildAggregatePayload,
   syncAggregates,
+  listLinkableAccounts,
+  linkAccounts,
 } from "../sync/index.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -39,6 +41,81 @@ async function prompt(question: string): Promise<string> {
   }
 }
 
+/**
+ * Resolve the accounts to link (from flags or an interactive prompt), derive
+ * their privacy-preserving handles, and persist them as the shared set. Shared
+ * by `setup` (post-auth) and the standalone `link` command. Requires a prior
+ * connect (userSalt present) — `linkAccounts` throws otherwise.
+ */
+async function selectAndLinkAccounts(opts: {
+  accounts?: string;
+  allAccounts?: boolean;
+}): Promise<void> {
+  const store = new Store();
+  let linkable;
+  try {
+    linkable = listLinkableAccounts(store);
+  } finally {
+    store.close();
+  }
+
+  if (linkable.length === 0) {
+    console.log(
+      "No local accounts found yet. Run a collection first, then 'claude-stats link'.",
+    );
+    return;
+  }
+
+  let selected: typeof linkable;
+  if (opts.allAccounts) {
+    selected = linkable;
+  } else if (opts.accounts) {
+    const wanted = new Set(
+      opts.accounts.split(",").map((s) => s.trim()).filter(Boolean),
+    );
+    selected = linkable.filter(
+      (a) => wanted.has(a.accountUuid) || wanted.has(a.label),
+    );
+    if (selected.length === 0) {
+      console.error("None of the given --accounts matched a known account.");
+      process.exitCode = 1;
+      return;
+    }
+  } else {
+    console.log("\nSelect the account(s) to share aggregates from:");
+    linkable.forEach((a, i) => {
+      const detail = a.detail ? ` (${a.detail})` : "";
+      console.log(`  ${i + 1}. ${a.label}${detail}`);
+    });
+    const answer = await prompt("Enter numbers (comma-separated) or 'all': ");
+    if (answer.toLowerCase() === "all") {
+      selected = linkable;
+    } else {
+      const idxs = answer
+        .split(",")
+        .map((s) => parseInt(s.trim(), 10) - 1)
+        .filter((n) => Number.isInteger(n) && n >= 0 && n < linkable.length);
+      selected = idxs.map((i) => linkable[i]!);
+    }
+    if (selected.length === 0) {
+      console.log("No accounts selected; nothing linked.");
+      return;
+    }
+  }
+
+  try {
+    const count = linkAccounts(
+      selected.map((a) => ({ accountUuid: a.accountUuid, label: a.label })),
+    );
+    console.log(
+      `Linked ${count} account(s). Run 'claude-stats sync' to push aggregates.`,
+    );
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exitCode = 1;
+  }
+}
+
 // ── Commands ────────────────────────────────────────────────────────────────
 
 /**
@@ -52,7 +129,9 @@ export function registerSyncCommands(program: Command): void {
     .description("Connect this device to the claude-stats cloud backend")
     .option("--backend-url <url>", "Backend URL (or set CLAUDE_STATS_BACKEND_URL)")
     .option("--email <email>", "Email address for authentication")
-    .action(async (opts: { backendUrl?: string; email?: string }) => {
+    .option("--accounts <csv>", "Link these accounts (uuids or labels, comma-separated) without prompting")
+    .option("--all-accounts", "Link all known local accounts without prompting")
+    .action(async (opts: { backendUrl?: string; email?: string; accounts?: string; allAccounts?: boolean }) => {
       // 1. Resolve backend URL
       const backendUrl =
         opts.backendUrl ||
@@ -116,12 +195,30 @@ export function registerSyncCommands(program: Command): void {
         };
         savePersistedConfig(persistedConfig);
 
-        console.log(`\nSetup complete. Linked to ${email}.`);
-        console.log("Run 'claude-stats sync' to sync your sessions.");
+        console.log(`\nAuthenticated as ${email}.`);
+
+        // 9. Link accounts — the step that actually enables sync. Without at
+        //    least one linked account, `sync` has nothing to send. Prompt (or
+        //    honor --accounts/--all-accounts) right here so setup is complete
+        //    in one flow rather than leaving the user at a dead end.
+        await selectAndLinkAccounts(opts);
+
+        console.log("\nSetup complete.");
       } catch (err) {
         console.error(`Authentication failed: ${(err as Error).message}`);
         process.exitCode = 1;
       }
+    });
+
+  // ── link ──────────────────────────────────────────────────────────────────
+
+  program
+    .command("link")
+    .description("Choose which local accounts to share aggregates from")
+    .option("--accounts <csv>", "Link these accounts (uuids or labels, comma-separated) without prompting")
+    .option("--all-accounts", "Link all known local accounts without prompting")
+    .action(async (opts: { accounts?: string; allAccounts?: boolean }) => {
+      await selectAndLinkAccounts(opts);
     });
 
   // ── sync ────────────────────────────────────────────────────────────────────

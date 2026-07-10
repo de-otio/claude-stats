@@ -73,6 +73,21 @@ export interface SyncResult {
 const CONFIG_DIR = path.join(os.homedir(), ".claude-stats");
 const SYNC_CONFIG_FILE = path.join(CONFIG_DIR, "sync-config.json");
 
+/**
+ * One linked local account. Selecting accounts to link is what populates the
+ * `syncAggregate` payload: `buildAggregatePayload` includes only sessions whose
+ * `account_uuid` is in a mapping, and stamps the derived (never-raw) `accountId`.
+ * `shareWithTeams` reserves an opt-out flag; today every mapping is shared.
+ * NOTE: no `sharePrompts` — the org plane is aggregate-only; there is no
+ * prompt-sharing opt-in on the client (reviews S6/F9).
+ */
+export interface AccountMapping {
+  accountUuid: string;
+  accountId: string;
+  label: string;
+  shareWithTeams: boolean;
+}
+
 export interface PersistedSyncConfig {
   endpoint: string;
   userPoolId: string;
@@ -81,14 +96,7 @@ export interface PersistedSyncConfig {
   userId?: string;
   userSalt?: string;
   enabled?: boolean;
-  accountMappings?: Array<{
-    accountUuid: string;
-    accountId: string;
-    label: string;
-    shareWithTeams: boolean;
-    // NOTE: no `sharePrompts` — the org plane is aggregate-only; there is no
-    // prompt-sharing opt-in on the client (reviews S6/F9).
-  }>;
+  accountMappings?: AccountMapping[];
   lastPushAt?: number | null;
   lastPullAt?: number | null;
 }
@@ -346,6 +354,72 @@ export function buildAggregatePayload(
     primary.accountId || deriveAccountId(primary.accountUuid, userSalt);
 
   return projectUserAggregates(sessions, { accountId, periodKind });
+}
+
+// ── Account linking ────────────────────────────────────────────────────────
+
+/** A local account offered for linking (a projection of the store's row). */
+export interface LinkableAccount {
+  accountUuid: string;
+  /** Human label (email or, failing that, the uuid). */
+  label: string;
+  /** Secondary detail for pickers (subscription/seat), may be empty. */
+  detail: string;
+}
+
+/**
+ * List the local accounts a user can choose to share, newest-observed first.
+ * Pure projection of `store.listAccountsFull()` — no derivation, no I/O beyond
+ * the read — so the CLI prompt and the extension QuickPick render the same set.
+ */
+export function listLinkableAccounts(store: Store): LinkableAccount[] {
+  return store.listAccountsFull().map((a) => ({
+    accountUuid: a.accountUuid,
+    label: a.emailLabel ?? a.accountUuid,
+    detail: a.subscriptionType ?? a.seatTier ?? "",
+  }));
+}
+
+/**
+ * Build {@link AccountMapping} rows from the user's selection, deriving each
+ * privacy-preserving `accountId` via HMAC(userSalt). Pure and deterministic
+ * (same uuid + salt → same accountId), so it is fully unit-testable without
+ * touching disk. The raw `accountUuid` is kept locally only — it never appears
+ * in the sync payload; only the derived `accountId` does.
+ */
+export function buildAccountMappings(
+  selected: Array<{ accountUuid: string; label: string; shareWithTeams?: boolean }>,
+  userSalt: string,
+): AccountMapping[] {
+  return selected.map((a) => ({
+    accountUuid: a.accountUuid,
+    accountId: deriveAccountId(a.accountUuid, userSalt),
+    label: a.label,
+    shareWithTeams: a.shareWithTeams ?? true,
+  }));
+}
+
+/**
+ * Persist the chosen accounts as the linked set. Requires a prior connect/setup
+ * (which writes `userSalt`); throws otherwise so callers surface a clear
+ * "connect first" message. Merges into the existing persisted config — endpoint,
+ * tokens-adjacent fields, and salt are preserved. Returns the count linked.
+ *
+ * This is the step that was missing entirely: without it `accountMappings` is
+ * never written, so `syncAggregates` always reported "No linked accounts".
+ */
+export function linkAccounts(
+  selected: Array<{ accountUuid: string; label: string; shareWithTeams?: boolean }>,
+): number {
+  const persisted = loadPersistedConfig();
+  if (!persisted?.userSalt) {
+    throw new Error(
+      "Not connected. Run 'claude-stats setup' (or Connect in the extension) first.",
+    );
+  }
+  const accountMappings = buildAccountMappings(selected, persisted.userSalt);
+  savePersistedConfig({ ...persisted, accountMappings });
+  return accountMappings.length;
 }
 
 /** Max rounds to re-send a batch bumping `_version` after a conflict. */
