@@ -207,8 +207,8 @@ export class SyncManager implements vscode.Disposable {
           cancellable: false,
         },
         async () => {
-          // POST session data to the GraphQL endpoint
-          await this.uploadSessions(tokens.accessToken);
+          // Push minimized daily aggregates via the deployed syncAggregate contract.
+          await this.uploadSessions();
         },
       );
 
@@ -222,54 +222,30 @@ export class SyncManager implements vscode.Disposable {
   }
 
   /**
-   * Upload recent session summaries to the backend.
+   * Upload minimized daily aggregates to the org backend.
+   *
+   * Delegates to the CLI's `syncAggregates` engine — the SAME code path as
+   * `claude-stats sync`. There is intentionally NO extension-specific payload:
+   * the org plane accepts only the aggregate-only `syncAggregate` mutation
+   * (per-day totals, structurally incapable of carrying prompt/transcript/path
+   * material), and `syncAggregates` owns token refresh, the linked-account
+   * projection, batching, and the optimistic `_version` conflict-retry loop.
+   *
+   * Requires linked accounts + a user salt (from `claude-stats setup`);
+   * `syncAggregates` returns descriptive errors if either is missing, which we
+   * re-throw so `syncNow` surfaces them to the user.
    */
-  private async uploadSessions(accessToken: string): Promise<void> {
+  private async uploadSessions(): Promise<void> {
     if (!this.config) return;
 
-    // Dynamically import Store and buildDashboard to gather session data
     const { Store } = await import("../store/index.js");
-    const { buildDashboard } = await import("../dashboard/index.js");
+    const { syncAggregates } = await import("../sync/index.js");
 
     const store = new Store();
     try {
-      const data = buildDashboard(store, { period: "week" }) as unknown as Record<string, unknown>;
-
-      const payload = {
-        query: `mutation SyncSessions($input: SyncInput!) {
-          syncSessions(input: $input) { syncedCount lastSyncAt }
-        }`,
-        variables: {
-          input: {
-            sessions: ((data.sessions ?? []) as Array<Record<string, unknown>>).map((s) => ({
-              sessionId: s.sessionId,
-              project: s.project,
-              timestamp: s.timestamp,
-              totalInput: s.totalInput,
-              totalOutput: s.totalOutput,
-              estimatedCost: s.estimatedCost,
-              messageCount: s.messageCount,
-              durationMinutes: s.durationMinutes,
-              model: s.model,
-            })),
-            deviceId: os.hostname(),
-            syncedAt: new Date().toISOString(),
-          },
-        },
-      };
-
-      const response = await fetch(this.config.endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const body = await response.text();
-        throw new Error(`Sync request failed (${response.status}): ${body}`);
+      const result = await syncAggregates(store, this.config);
+      if (result.errors.length > 0) {
+        throw new Error(result.errors.join("; "));
       }
     } finally {
       store.close();
