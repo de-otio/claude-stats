@@ -78,6 +78,7 @@ const LOCALE_NAMES = {
   "pt-BR": "Brazilian Portuguese (Português do Brasil)",
   "pt-PT": "European Portuguese (Português de Portugal)",
   ru: "Russian (Русский)",
+  uk: "Ukrainian (Українська)",
   it: "Italian (Italiano)",
   nl: "Dutch (Nederlands)",
   pl: "Polish (Polski)",
@@ -161,11 +162,18 @@ function writeJson(filePath, obj) {
   fs.writeFileSync(filePath, JSON.stringify(obj, null, 2) + "\n");
 }
 
-/** All non-en locale directories currently on disk. */
+/**
+ * All non-en locale directories currently on disk. Dot-directories (e.g. a
+ * stray `.claude/`) are NOT locales — skip them, matching check-locale-parity's
+ * discovery. Without this guard the script treated `.claude` as a locale and
+ * tried to translate every namespace into it (expensive, and pure junk).
+ */
 function listLocales(localesDir) {
   return fs
     .readdirSync(localesDir, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && e.name !== REFERENCE_LOCALE)
+    .filter(
+      (e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== REFERENCE_LOCALE,
+    )
     .map((e) => e.name);
 }
 
