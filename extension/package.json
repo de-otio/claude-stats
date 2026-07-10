@@ -2,7 +2,7 @@
   "name": "claude-stats-vscode",
   "displayName": "Claude Stats by de-otio",
   "description": "View Claude Code usage statistics in VS Code",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "publisher": "de-otio",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -72,6 +72,26 @@
         "command": "claude-stats.deleteAllStoredData",
         "title": "Delete All Stored Data…",
         "category": "Claude Stats"
+      },
+      {
+        "command": "claude-stats.connect",
+        "title": "Connect to Team Sync…",
+        "category": "Claude Stats"
+      },
+      {
+        "command": "claude-stats.disconnect",
+        "title": "Disconnect from Team Sync",
+        "category": "Claude Stats"
+      },
+      {
+        "command": "claude-stats.syncNow",
+        "title": "Sync Now",
+        "category": "Claude Stats"
+      },
+      {
+        "command": "claude-stats.showTeamDashboard",
+        "title": "Open Team Dashboard",
+        "category": "Claude Stats"
       }
     ],
     "configuration": {
@@ -96,6 +116,16 @@
           ],
           "default": "auto",
           "markdownDescription": "Semantic clustering for the daily-recap digest. `auto` uses local embeddings when a model is available and falls back to lexical clustering otherwise. `off` always uses lexical clustering. All inference runs on your machine; no data leaves your computer. Restart Claude Code after changing this setting for it to take effect."
+        },
+        "claude-stats.backendUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Base URL of your team's Claude Stats backend, used by **Connect to Team Sync**. Set automatically when you connect; the extension reads `<url>/.well-known/claude-stats.json` for the Cognito/AppSync config."
+        },
+        "claude-stats.autoSync": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "When enabled, push minimized daily aggregates to your team backend automatically after each collection. Requires linked accounts (`claude-stats setup`) and an active connection. Only per-day totals are sent — never per-session or transcript data."
         }
       }
     }
