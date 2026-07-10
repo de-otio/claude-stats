@@ -13,6 +13,8 @@ import {
   DynamoEventSource,
   SqsDlq,
 } from "aws-cdk-lib/aws-lambda-event-sources";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3 from "aws-cdk-lib/aws-s3";
@@ -677,6 +679,65 @@ export class ApiStack extends cdk.Stack {
         onFailure: new SqsDlq(dlq),
       }),
     );
+
+    // ── Scoring crons (hourly EventBridge schedules) ─────────────────
+    //
+    // Both read the TeamStats rows the aggregate-stats worker writes (correct
+    // "period#userId" begins_with form) and rank challenge participants /
+    // competing teams. They are pure schedule-driven consumers — no client
+    // path — so wire them to an hourly rate rule each.
+
+    // challenge-scoring: intra-team challenges (scan Challenges, rank members).
+    const challengeScoringFn = new lambda.NodejsFunction(this, "ChallengeScoringFn", {
+      ...commonLambdaProps,
+      entry: path.join(lambdaDir, "challenge-scoring.ts"),
+      handler: "handler",
+      functionName: `${prefix}-challenge-scoring`,
+      description: "Hourly: scores active intra-team challenges from TeamStats",
+      timeout: cdk.Duration.seconds(120),
+      memorySize: 512,
+      logGroup: makeLogGroup(`${prefix}-challenge-scoring`),
+      environment: {
+        CHALLENGES_TABLE: physicalName("challenges"),
+        TEAM_STATS_TABLE: physicalName("teamStats"),
+        TEAM_MEMBERSHIPS_TABLE: physicalName("teamMemberships"),
+      },
+    });
+    tables.challenges.grantReadWriteData(challengeScoringFn);
+    tables.teamStats.grantReadData(challengeScoringFn);
+    tables.teamMemberships.grantReadData(challengeScoringFn);
+    new events.Rule(this, "ChallengeScoringSchedule", {
+      ruleName: `${prefix}-challenge-scoring`,
+      description: "Hourly intra-team challenge scoring",
+      schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+      targets: [new targets.LambdaFunction(challengeScoringFn)],
+    });
+
+    // inter-team-scoring: cross-team challenges (status GSI, rank teams).
+    const interTeamScoringFn = new lambda.NodejsFunction(this, "InterTeamScoringFn", {
+      ...commonLambdaProps,
+      entry: path.join(lambdaDir, "inter-team-scoring.ts"),
+      handler: "handler",
+      functionName: `${prefix}-inter-team-scoring`,
+      description: "Hourly: scores active inter-team challenges from TeamStats",
+      timeout: cdk.Duration.seconds(120),
+      memorySize: 512,
+      logGroup: makeLogGroup(`${prefix}-inter-team-scoring`),
+      environment: {
+        INTER_TEAM_CHALLENGES_TABLE: physicalName("interTeamChallenges"),
+        TEAM_STATS_TABLE: physicalName("teamStats"),
+        TEAM_MEMBERSHIPS_TABLE: physicalName("teamMemberships"),
+      },
+    });
+    tables.interTeamChallenges.grantReadWriteData(interTeamScoringFn);
+    tables.teamStats.grantReadData(interTeamScoringFn);
+    tables.teamMemberships.grantReadData(interTeamScoringFn);
+    new events.Rule(this, "InterTeamScoringSchedule", {
+      ruleName: `${prefix}-inter-team-scoring`,
+      description: "Hourly inter-team challenge scoring",
+      schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+      targets: [new targets.LambdaFunction(interTeamScoringFn)],
+    });
 
     // ── Team Logos construct ─────────────────────────────────────────
 
