@@ -2,6 +2,46 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.17.2 — 2026-07-10
+
+### Added — Account linking for team sync
+
+Team sync is now completable end-to-end. **Connect to Team Sync** guides you
+through picking which local accounts to share (a multi-select, re-runnable via
+the new **Claude Stats: Link Accounts to Share…** command). Only the accounts
+you pick are shared, each under a one-way salted handle — raw account IDs never
+leave your machine. Previously there was no way to link accounts, so every sync
+reported "No linked accounts".
+
+### Fixed
+
+- **Connect** now completes the full setup: it generates the per-user salt and
+  preserves it (and your linked accounts) across reconnects. It previously wrote
+  neither, and its config write clobbered anything the CLI had set up — leaving
+  sync permanently un-completable.
+- **Connect** now reads the backend's discovery document with the correct keys
+  (`appsyncEndpoint` / `cognitoUserPoolId` / `cognitoClientId`); the old inline
+  parser used the wrong field names and would fail against a real backend.
+
+## 0.17.1 — 2026-07-10
+
+### Added — Team sync commands
+
+The optional **team sync** feature (aggregate-only usage sharing to a shared
+Claude Stats backend) is now reachable from the Command Palette: **Connect to
+Team Sync…**, **Sync Now**, **Disconnect from Team Sync**, and **Open Team
+Dashboard**, plus a click-to-sync cloud item in the status bar and the
+`claude-stats.backendUrl` / `claude-stats.autoSync` settings. The feature
+existed in the codebase but was never wired into the extension.
+
+### Fixed
+
+- The extension's cloud sync issued a `syncSessions` mutation that no longer
+  exists in the backend schema and built a per-session payload the aggregate-only
+  org plane rejects. Sync now goes through the same minimized-aggregate path as
+  the CLI (`claude-stats sync`) — per-day totals only, never per-session or
+  prompt data.
+
 ## 0.17.0 — 2026-07-07
 
 ### Added — Backup & Sync on the dashboard Settings tab
