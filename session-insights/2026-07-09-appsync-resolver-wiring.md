@@ -194,8 +194,8 @@ Non-code runtime gotchas:
 - **CodeArtifact publish** (`@de-otio` scope): write a scratchpad `.npmrc` with
   `//<host>/npm/npm/:_authToken=${CODEARTIFACT_AUTH_TOKEN}` (literal `${...}`, env-
   interpolated — NEVER the real token in a file; the classifier blocks it), export
-  the token from `aws codeartifact get-authorization-token --domain dot
-  --domain-owner 000000000000`, and `npm publish --userconfig <that .npmrc>`.
+  the token from `aws codeartifact get-authorization-token --domain <domain>
+  --domain-owner <aws-account-id>`, and `npm publish --userconfig <that .npmrc>`.
 - Release cycle per change: bump `packages/infra` version → commit → build → publish →
   `npm pkg set` twin dep + `npm i` → `cdk deploy` → e2e. CodeArtifact won't let you
   republish a version, so every fix needs a new patch version.
