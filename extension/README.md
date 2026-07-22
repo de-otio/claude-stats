@@ -39,6 +39,8 @@ Once installed, ask your AI agent things like:
 - "Which projects am I spending the most on?"
 - "How much CO₂ did my Claude usage cause last week?"
 
+Most tools accept an optional `account` filter (UUID, full or prefix-matched) to narrow queries to a specific account.
+
 | Tool | Purpose |
 | --- | --- |
 | `get_stats` | Usage summary — tokens, cost, sessions, cache efficiency, streaks |

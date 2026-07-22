@@ -30,6 +30,11 @@ export interface ReportOptions extends DateRangeOpts {
   tag?: string;
   timezone?: string;
   includeCI?: boolean;
+  /** Include sessions whose source JSONL was rotated away (source_deleted=1).
+   *  Undefined lets buildDashboard apply its default (true — see the `rows`
+   *  query), so cost/session aggregates reconcile with the message-scoped
+   *  headline. Explicit callers still win. */
+  includeDeleted?: boolean;
   /** Monthly plan fee in USD for ROI calculations (0 = disabled). */
   planFee?: number;
   /** Plan type string (e.g. "pro", "max_5x") used as fallback when telemetry subscription_type is absent. */

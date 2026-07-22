@@ -65,7 +65,15 @@ function parseOpts(url: URL): ReportOptions {
     accountUuid: account && account.length > 0 ? account : undefined,
     entrypoint: p.get("entrypoint") ?? undefined,
     timezone: p.get("timezone") ?? undefined,
-    includeCI: p.get("includeCI") === "true",
+    // Tri-state: an ABSENT param must be undefined (not false) so it inherits
+    // buildDashboard's new default (includeCI ?? true). A bare `=== "true"`
+    // would yield false when absent, half-flipping the served dashboard (deleted
+    // included but CI excluded) and breaking the Σ byAccount == headline
+    // invariant exactly on the HTTP path.
+    includeCI: (() => {
+      const ci = p.get("includeCI");
+      return ci === "true" ? true : ci === "false" ? false : undefined;
+    })(),
   };
 }
 

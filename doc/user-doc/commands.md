@@ -561,6 +561,21 @@ No options. The server is intended to be launched by a Claude Code client (not r
 | `summarize_day` | Clustered digest of what you accomplished on a given day |
 | `get_cost_per_task` | Cost per successful task — outcome-cost overall and per model (read-only) |
 
+**Per-account filtering:** `get_stats`, `list_sessions`, `list_projects`, and
+`get_cost_per_task` all accept an optional `account` param — a full account
+UUID or an unambiguous prefix (e.g. `<uuid-prefix>`). An empty string, a
+prefix matching no account, or a prefix matching more than one account
+returns an error rather than silently falling back to all accounts.
+`list_sessions` rows also include an `accountUuid` field.
+
+**Per-account token breakdown:** `get_stats`'s `planUtilization.byAccount[]`
+entries carry `inputTokens`, `outputTokens`, `cacheReadTokens`, and
+`cacheCreationTokens`, plus a `byModel` split (mirroring the top-level
+`byModel` shape). These `byAccount`/`byModel` token figures are **in-window**
+(bounded to the requested period), whereas the top-level `summary` token
+totals are **session-lifetime** — the two are not directly comparable for a
+session that started before the window.
+
 **Client configuration** — register via `claude mcp add`:
 
 ```sh
@@ -579,6 +594,7 @@ The VS Code extension auto-registers this in `~/.claude.json` on first activatio
 - "What were my most expensive sessions today?"
 - "Which projects am I spending the most on?"
 - "What's my cost per successful task, by model?"
+- "How many tokens did my work account use this month?" (pass `account: "<uuid-prefix>"`)
 
 ---
 

@@ -470,8 +470,8 @@ describe("renderDashboard", () => {
         recommendedPlan: "max_5x",
         currentPlanVerdict: "good-value",
         byAccount: [
-          { accountId: "acct-wor...", emailAddress: "work@example.com", subscriptionType: "max_5x", detectedPlanFee: 100, sessions: 7, estimatedCost: 20.0, planVerdict: "underusing" },
-          { accountId: "acct-per...", emailAddress: "personal@example.com", subscriptionType: "pro", detectedPlanFee: 20, sessions: 3, estimatedCost: 5.0, planVerdict: "underusing" },
+          { accountId: "acct-wor...", emailAddress: "work@example.com", subscriptionType: "max_5x", detectedPlanFee: 100, sessions: 7, estimatedCost: 20.0, planVerdict: "underusing", inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, byModel: [] },
+          { accountId: "acct-per...", emailAddress: "personal@example.com", subscriptionType: "pro", detectedPlanFee: 20, sessions: 3, estimatedCost: 5.0, planVerdict: "underusing", inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, byModel: [] },
         ],
       },
     };
@@ -505,7 +505,7 @@ describe("renderDashboard", () => {
         totalWindows: 2,
         recommendedPlan: "pro",
         currentPlanVerdict: "good-value",
-        byAccount: [{ accountId: "acct-111...", emailAddress: null, subscriptionType: "pro", detectedPlanFee: 20, sessions: 5, estimatedCost: 15.0, planVerdict: "good-value" }],
+        byAccount: [{ accountId: "acct-111...", emailAddress: null, subscriptionType: "pro", detectedPlanFee: 20, sessions: 5, estimatedCost: 15.0, planVerdict: "good-value", inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, byModel: [] }],
       },
     };
     const html = renderDashboard(autoDetected, t);
@@ -536,7 +536,7 @@ describe("renderDashboard", () => {
         totalWindows: 2,
         recommendedPlan: "pro",
         currentPlanVerdict: "good-value",
-        byAccount: [{ accountId: "acct-111...", emailAddress: "user@example.com", subscriptionType: "max_5x", detectedPlanFee: 100, sessions: 5, estimatedCost: 15.0, planVerdict: "good-value" }],
+        byAccount: [{ accountId: "acct-111...", emailAddress: "user@example.com", subscriptionType: "max_5x", detectedPlanFee: 100, sessions: 5, estimatedCost: 15.0, planVerdict: "good-value", inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, byModel: [] }],
       },
     };
     const html = renderDashboard(withPlan, t);

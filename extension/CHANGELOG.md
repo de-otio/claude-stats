@@ -2,6 +2,25 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.18.0 — 2026-07-22
+
+### Added — Per-account token-level breakdown in MCP tools
+
+The MCP tools `get_stats`, `list_projects`, `list_sessions`, and `get_cost_per_task` now accept an optional `account` filter (UUID, full or prefix-matched) for querying usage by account.
+
+- `planUtilization.byAccount[]` now carries the full token breakdown: `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheCreationTokens`, plus a `byModel` split matching the top-level model breakdown.
+- `list_sessions` rows now include `accountUuid` for each session, allowing filtering and grouping by account programmatically.
+
+### Fixed — Session aggregates now reconcile with headline totals
+
+Session-scoped aggregates (`byAccount`, `byProject`, `byDay`, session counts, and velocity) now align with the headline cost. **You may see higher session counts and cost-per-project figures; here's why:**
+
+- **Sessions now include CI/non-interactive and source-deleted** — they were silently excluded before, but they are real API usage and the headline cost already counted them. Restoring them brings the session-scoped view into agreement with the cost bottom line.
+- **Per-account cost and tokens are computed the same way as the headline total** — grouped from the per-message data over your date range — so the per-account and per-model breakdowns sum exactly to the headline, even for sessions with incomplete timestamp metadata that the old session-based grouping under-counted. Per-account/per-model token counts are in-window; the summary `inputTokens`/`outputTokens` remain session-lifetime totals.
+- **`period:"all"` may shift ~1%** due to orphan messages in the hourly rollup that session aggregates cannot address.
+
+See the MCP tool descriptions for the reconciliation guarantee.
+
 ## 0.17.2 — 2026-07-10
 
 ### Added — Account linking for team sync

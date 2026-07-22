@@ -1732,3 +1732,282 @@ describe("Store — rollup read-path parity (Build 2 Phase 1, Stream B)", () => 
     expect(dispatched).toHaveLength(0); // proves it did NOT read the rollup
   });
 });
+
+// ─── Phase 1 (T-store-test): getMessageTotalsBySession bound + getMessageTotals
+// account/entrypoint filter + listAccounts includeDeleted ───────────────────
+//
+// Synthetic data only. Fixed epoch-ms timestamps; no Date.now() in assertions.
+
+describe("Store — getMessageTotalsBySession opts.since/until bound (Phase 1 D3 effect-3)", () => {
+  let store: Store;
+  let dbPath: string;
+
+  const T0 = 2_000_000_000_000;
+
+  const mkMsg = (o: { uuid: string; sessionId: string; timestamp: number; model: string; input: number; output: number }) => ({
+    uuid: o.uuid, sessionId: o.sessionId, timestamp: o.timestamp, claudeVersion: "2.1.70",
+    model: o.model, stopReason: "end_turn", inputTokens: o.input, outputTokens: o.output,
+    cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], filePaths: [], thinkingBlocks: 0,
+    serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0,
+    promptText: null,
+  });
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+    // Boundary-straddling session: spans well beyond the query window on both sides.
+    store.upsertSession(makeSession({ sessionId: "straddle", firstTimestamp: T0 - 10_000, lastTimestamp: T0 + 10_000 }));
+    store.upsertMessages([
+      // BEFORE the window
+      mkMsg({ uuid: "before1", sessionId: "straddle", timestamp: T0 - 5_000, model: "claude-opus-4-6", input: 1_000, output: 100 }),
+      // INSIDE the window [T0, T0+2000)
+      mkMsg({ uuid: "in1", sessionId: "straddle", timestamp: T0, model: "claude-opus-4-6", input: 300, output: 30 }),
+      mkMsg({ uuid: "in2", sessionId: "straddle", timestamp: T0 + 1_000, model: "claude-opus-4-6", input: 200, output: 20 }),
+      // AFTER the window (>= until)
+      mkMsg({ uuid: "after1", sessionId: "straddle", timestamp: T0 + 2_000, model: "claude-opus-4-6", input: 5_000, output: 500 }),
+      mkMsg({ uuid: "after2", sessionId: "straddle", timestamp: T0 + 50_000, model: "claude-opus-4-6", input: 9_000, output: 900 }),
+    ]);
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  it("sums ONLY in-window messages when { since, until } is passed", () => {
+    const totals = store.getMessageTotalsBySession(["straddle"], { since: T0, until: T0 + 2_000 });
+    expect(totals).toHaveLength(1);
+    const row = totals[0]!;
+    expect(row.session_id).toBe("straddle");
+    expect(row.model).toBe("claude-opus-4-6");
+    // Only in1 (300/30) + in2 (200/20); before1 and after1/after2 excluded.
+    expect(row.input_tokens).toBe(300 + 200);
+    expect(row.output_tokens).toBe(30 + 20);
+  });
+
+  it("the unbounded call (no opts) still returns LIFETIME totals across the same session", () => {
+    const totals = store.getMessageTotalsBySession(["straddle"]);
+    expect(totals).toHaveLength(1);
+    const row = totals[0]!;
+    // Every message on the session, in and out of the window above.
+    expect(row.input_tokens).toBe(1_000 + 300 + 200 + 5_000 + 9_000);
+    expect(row.output_tokens).toBe(100 + 30 + 20 + 500 + 900);
+  });
+
+  it("since-only bound excludes messages before `since` but keeps everything at/after it", () => {
+    const totals = store.getMessageTotalsBySession(["straddle"], { since: T0 + 1_000 });
+    expect(totals).toHaveLength(1);
+    // in2(200) + after1(5000) + after2(9000); before1 and in1 excluded.
+    expect(totals[0]!.input_tokens).toBe(200 + 5_000 + 9_000);
+  });
+
+  it("until-only bound excludes messages at/after `until` but keeps everything before it", () => {
+    const totals = store.getMessageTotalsBySession(["straddle"], { until: T0 + 1_000 });
+    expect(totals).toHaveLength(1);
+    // before1(1000) + in1(300); in2 is at exactly the (excluded) boundary is NOT — in2 is T0+1000 which is excluded (< until, strict), so only before1+in1.
+    expect(totals[0]!.input_tokens).toBe(1_000 + 300);
+  });
+});
+
+describe("Store — getMessageTotals accountUuid / entrypoint filter (Phase 1 D0 + S3)", () => {
+  let store: Store;
+  let dbPath: string;
+
+  const T0 = 3_000_000_000_000;
+
+  const mkMsg = (o: { uuid: string; sessionId: string; timestamp: number; model: string; input: number; output: number }) => ({
+    uuid: o.uuid, sessionId: o.sessionId, timestamp: o.timestamp, claudeVersion: "2.1.70",
+    model: o.model, stopReason: "end_turn", inputTokens: o.input, outputTokens: o.output,
+    cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], filePaths: [], thinkingBlocks: 0,
+    serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0,
+    promptText: null,
+  });
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+    // Two accounts, two entrypoints, one session each.
+    store.upsertSession(makeSession({
+      sessionId: "sess-work", accountUuid: "11111111-1111-1111-1111-111111111111",
+      entrypoint: "claude-vscode", firstTimestamp: T0 - 1_000, lastTimestamp: T0 + 5_000,
+    }));
+    store.upsertSession(makeSession({
+      sessionId: "sess-personal", accountUuid: "22222222-2222-2222-2222-222222222222",
+      entrypoint: "claude", firstTimestamp: T0 - 1_000, lastTimestamp: T0 + 5_000,
+    }));
+    store.upsertMessages([
+      mkMsg({ uuid: "w1", sessionId: "sess-work", timestamp: T0, model: "claude-opus-4-6", input: 1_000, output: 100 }),
+      mkMsg({ uuid: "w2", sessionId: "sess-work", timestamp: T0 + 1_000, model: "claude-opus-4-6", input: 500, output: 50 }),
+      mkMsg({ uuid: "p1", sessionId: "sess-personal", timestamp: T0, model: "claude-sonnet-4-6", input: 300, output: 30 }),
+    ]);
+    // Ensure the rollup exists (and is stale-free) so an unbounded-except-account
+    // call has a real fast path available to (correctly) bypass.
+    store.recomputeMessageHourly();
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  it("getMessageTotals({ accountUuid }) returns only that account's messages", () => {
+    const rows = store.getMessageTotals({ accountUuid: "11111111-1111-1111-1111-111111111111" });
+    const total = rows.reduce((a, r) => a + r.input_tokens, 0);
+    expect(total).toBe(1_000 + 500); // sess-work only; sess-personal's 300 excluded
+    expect(rows.every(r => r.model !== "claude-sonnet-4-6")).toBe(true);
+  });
+
+  it("getMessageTotals({ accountUuid }) is in-window: excludes messages outside since/until too", () => {
+    const rows = store.getMessageTotals({
+      accountUuid: "11111111-1111-1111-1111-111111111111",
+      since: T0 + 1_000,
+    });
+    const total = rows.reduce((a, r) => a + r.input_tokens, 0);
+    expect(total).toBe(500); // w1 (at T0) dropped by since; only w2 remains
+  });
+
+  it("an account-filtered call bypasses the rollup fast path (matches the raw seek path exactly, not the account-blind rollup)", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const s = store as any;
+    const rollupTotal = (s.getMessageTotalsFromRollup() as Array<{ input_tokens: number }>)
+      .reduce((a, r) => a + r.input_tokens, 0);
+    // The rollup has no account dimension, so it sums BOTH accounts.
+    expect(rollupTotal).toBe(1_000 + 500 + 300);
+
+    const filtered = store.getMessageTotals({ accountUuid: "11111111-1111-1111-1111-111111111111" });
+    const filteredTotal = filtered.reduce((a, r) => a + r.input_tokens, 0);
+    // If the account filter had (wrongly) taken the fully-unbounded rollup path,
+    // this would equal rollupTotal (1800). It must instead equal only the
+    // filtered account's contribution — proving the raw seek path was used.
+    expect(filteredTotal).toBe(1_500);
+    expect(filteredTotal).not.toBe(rollupTotal);
+
+    // And it must match the raw seek path's result exactly (private method,
+    // called directly for a precise same-path comparison).
+    const raw = s.getMessageTotalsRaw({ accountUuid: "11111111-1111-1111-1111-111111111111" });
+    expect(filtered).toEqual(raw);
+  });
+
+  it("getMessageTotals({ entrypoint }) is symmetric with the accountUuid filter — scopes to that entrypoint's messages only", () => {
+    const rows = store.getMessageTotals({ entrypoint: "claude" });
+    const total = rows.reduce((a, r) => a + r.input_tokens, 0);
+    expect(total).toBe(300); // sess-personal (entrypoint "claude") only
+    expect(rows.every(r => r.model !== "claude-opus-4-6")).toBe(true);
+  });
+
+  it("getMessageTotals({ entrypoint }) also bypasses the rollup fast path", () => {
+    const filtered = store.getMessageTotals({ entrypoint: "claude-vscode" });
+    const total = filtered.reduce((a, r) => a + r.input_tokens, 0);
+    expect(total).toBe(1_000 + 500); // sess-work only, not the account-blind rollup total (1800)
+  });
+});
+
+describe("Store — listAccounts includeDeleted (Phase 1 Blocker 2)", () => {
+  let store: Store;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+    store.upsertSession(makeSession({
+      sessionId: "live-sess", accountUuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      firstTimestamp: 1_000, sourceDeleted: false, isInteractive: true,
+    }));
+    store.upsertSession(makeSession({
+      sessionId: "gone-sess", accountUuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      firstTimestamp: 2_000, sourceDeleted: true, isInteractive: true,
+    }));
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  it("excludes source_deleted accounts by default", () => {
+    const accounts = store.listAccounts();
+    const uuids = accounts.map(a => a.accountUuid);
+    expect(uuids).toContain("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    expect(uuids).not.toContain("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+  });
+
+  it("includes source_deleted accounts when includeDeleted: true", () => {
+    const accounts = store.listAccounts({ includeDeleted: true });
+    const uuids = accounts.map(a => a.accountUuid);
+    expect(uuids).toContain("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    expect(uuids).toContain("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    const gone = accounts.find(a => a.accountUuid === "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    expect(gone!.sessionCount).toBe(1);
+  });
+});
+
+describe("Store — getMessageTotalsByAccount reconciles with the headline (exact-reconciliation fix)", () => {
+  let store: Store;
+  let dbPath: string;
+
+  const T0 = 3_000_000_000_000;
+  const HOUR = 3_600_000;
+  const A = "11111111-1111-1111-1111-111111111111";
+  const B = "22222222-2222-2222-2222-222222222222";
+
+  const mkMsg = (o: { uuid: string; sessionId: string; timestamp: number; model: string; input: number; output: number }) => ({
+    uuid: o.uuid, sessionId: o.sessionId, timestamp: o.timestamp, claudeVersion: "2.1.70",
+    model: o.model, stopReason: "end_turn", inputTokens: o.input, outputTokens: o.output,
+    cacheCreationTokens: 0, cacheReadTokens: 0, tools: [], filePaths: [], thinkingBlocks: 0,
+    serviceTier: null, inferenceGeo: null, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0,
+    promptText: null,
+  });
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+    // Account A: a normal in-window session.
+    store.upsertSession(makeSession({
+      sessionId: "a-normal", accountUuid: A,
+      firstTimestamp: T0, lastTimestamp: T0 + HOUR,
+    }));
+    // Account B: the pathological case that under-counted on real data — a
+    // session whose stored last_timestamp is NULL and whose first_timestamp is
+    // BEFORE the window, yet which has messages INSIDE the window. The
+    // session-`rows` path drops it (COALESCE(last,first)=first < since); the
+    // message-scoped getMessageTotalsByAccount must still count its in-window
+    // messages so Σ byAccount == headline.
+    store.upsertSession(makeSession({
+      sessionId: "b-nulllast", accountUuid: B,
+      firstTimestamp: T0 - 10 * HOUR, lastTimestamp: null,
+    }));
+    store.upsertMessages([
+      mkMsg({ uuid: "a1", sessionId: "a-normal", timestamp: T0 + 1_000, model: "claude-opus-4-6", input: 1_000, output: 100 }),
+      // B's in-window message (must be counted) + an out-of-window one (must not).
+      mkMsg({ uuid: "b1", sessionId: "b-nulllast", timestamp: T0 + 2_000, model: "claude-sonnet-4-6", input: 400, output: 40 }),
+      mkMsg({ uuid: "b0", sessionId: "b-nulllast", timestamp: T0 - 5 * HOUR, model: "claude-sonnet-4-6", input: 9_999, output: 9_999 }),
+    ]);
+  });
+
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+  });
+
+  it("summed over accounts+models equals getMessageTotals (headline) for the same window", () => {
+    const since = T0;
+    const until = T0 + HOUR;
+    const headline = store.getMessageTotals({ since, until });
+    const byAcct = store.getMessageTotalsByAccount({ since, until });
+
+    const sum = (rows: Array<{ input_tokens: number; output_tokens: number }>) =>
+      rows.reduce((a, r) => ({ i: a.i + r.input_tokens, o: a.o + r.output_tokens }), { i: 0, o: 0 });
+
+    expect(sum(byAcct)).toEqual(sum(headline)); // identity by construction
+    expect(sum(headline).i).toBe(1_000 + 400);  // a1 + b1 only (b0 is out of window)
+  });
+
+  it("attributes the NULL-last-timestamp session's in-window message to its account", () => {
+    const byAcct = store.getMessageTotalsByAccount({ since: T0, until: T0 + HOUR });
+    const bRows = byAcct.filter(r => r.account_uuid === B);
+    const bInput = bRows.reduce((a, r) => a + r.input_tokens, 0);
+    expect(bInput).toBe(400); // the in-window message, NOT the 9_999 out-of-window one
+    // And account A is present too.
+    expect(byAcct.some(r => r.account_uuid === A)).toBe(true);
+  });
+});

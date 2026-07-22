@@ -125,7 +125,71 @@ function redactPlanUtilizationForMcp(
       sessions: account.sessions,
       estimatedCost: account.estimatedCost,
       planVerdict: account.planVerdict,
+      // Per-account token detail (added for the token-breakdown feature). These
+      // are numbers/model-names only — no PII — so they are allowlisted here;
+      // `byModel` is copied whole for the same reason. `emailAddress` stays
+      // DENIED (surfaced as `emailPresent` above), never copied.
+      inputTokens: account.inputTokens,
+      outputTokens: account.outputTokens,
+      cacheReadTokens: account.cacheReadTokens,
+      cacheCreationTokens: account.cacheCreationTokens,
+      byModel: account.byModel,
     })),
+  };
+}
+
+/** Result of resolving a caller-supplied `account` filter to a full UUID. */
+type AccountResolution =
+  | { ok: true; accountUuid: string | undefined }
+  | { ok: false; error: string };
+
+/**
+ * Resolve a full-or-prefix `account` argument to a full account UUID, shared by
+ * every tool that accepts an `account` filter (get_stats, list_projects,
+ * list_sessions, get_cost_per_task) so they behave identically.
+ *
+ * Security (analysis §3.4, plan §1d):
+ *  - `undefined` means "no filter" — returns `accountUuid: undefined`.
+ *  - Empty/blank input is REJECTED: an empty string is a prefix of every UUID
+ *    and would silently widen scope to all/one account (Sec-3a).
+ *  - Accounts are enumerated from the `accounts` table (`listAccountsFull`),
+ *    which is independent of session `source_deleted` / `is_interactive`, so a
+ *    valid prefix for a rotated-away or CI-only account still resolves.
+ *  - Exact full-UUID match wins; else the unique UUID with that prefix.
+ *  - No match / ambiguous → error, NEVER a silent all-accounts fallback
+ *    (widening scope is the exact failure the analysis warns against).
+ *  - The error body carries NO PII — no emails, hashes, or full UUIDs — only
+ *    the match count and 8-char truncated prefixes (Sec-1c).
+ */
+function resolveAccountFilter(store: Store, account: string | undefined): AccountResolution {
+  if (account === undefined) return { ok: true, accountUuid: undefined };
+  if (!account.trim()) {
+    return {
+      ok: false,
+      error: "Account filter must not be empty or blank. Omit `account` to include all accounts, "
+        + "or pass a full or 8-character-prefix account UUID (see get_account_info).",
+    };
+  }
+  const query = account.trim();
+  const uuids = store
+    .listAccountsFull()
+    .map((a) => a.accountUuid)
+    .filter((u): u is string => Boolean(u));
+  // Exact full-UUID match wins over prefix matching.
+  if (uuids.includes(query)) return { ok: true, accountUuid: query };
+  const matches = uuids.filter((u) => u.startsWith(query));
+  if (matches.length === 1) return { ok: true, accountUuid: matches[0] };
+  if (matches.length === 0) {
+    return {
+      ok: false,
+      error: `No account matches prefix "${query.slice(0, 8)}". Use get_account_info to list account UUIDs.`,
+    };
+  }
+  const prefixes = matches.map((u) => u.slice(0, 8)).join(", ");
+  return {
+    ok: false,
+    error: `Ambiguous account prefix "${query.slice(0, 8)}" matches ${matches.length} accounts `
+      + `(${prefixes}). Provide more characters.`,
   };
 }
 
@@ -145,13 +209,22 @@ export function createMcpServer(store: Store): McpServer {
     "Get your Claude Code usage stats for a period — tokens, cost, sessions, velocity, cache efficiency, streaks. " +
       "Also returns `planAdvice` (plan-utilization metrics + actionable recommendations, or null with no data), " +
       "reusing the same numbers the dashboard Plan tab shows. `planAdvice.planUtilization.byAccount` never carries " +
-      "a raw email address — only `accountId` and `emailPresent`.",
+      "a raw email address — only `accountId` and `emailPresent`. `byAccount` (and `byModel`) token/cost figures are " +
+      "scoped to the requested window (in-window); the top-level `summary` token totals are session-LIFETIME sums, " +
+      "so per-account in-window tokens and summary lifetime tokens can differ for a boundary-straddling session.",
     {
       ...dateRangeShape,
+      account: z.string().optional()
+        .describe("Filter to a specific account UUID (full or prefix match)"),
     },
-    async ({ period, since, until }) => {
+    async ({ period, since, until, account }) => {
+      const resolved = resolveAccountFilter(store, account);
+      if (!resolved.ok) return formatResult({ error: resolved.error });
       const effectivePeriod = period ?? "week";
-      const data = buildDashboard(store, dateRangeToReportOpts({ period: effectivePeriod, since, until }));
+      const data = buildDashboard(store, {
+        ...dateRangeToReportOpts({ period: effectivePeriod, since, until }),
+        accountUuid: resolved.accountUuid,
+      });
       return formatResult({
         period: data.period,
         since: data.sinceIso,
@@ -174,13 +247,18 @@ export function createMcpServer(store: Store): McpServer {
       ...dateRangeShape,
       project: z.string().optional()
         .describe("Filter by project path"),
+      account: z.string().optional()
+        .describe("Filter to a specific account UUID (full or prefix match)"),
       limit: z.number().int().min(1).max(100).default(20)
         .describe("Maximum number of sessions to return"),
     },
-    async ({ period, since, until, project, limit }) => {
+    async ({ period, since, until, project, account, limit }) => {
+      const resolved = resolveAccountFilter(store, account);
+      if (!resolved.ok) return formatResult({ error: resolved.error });
       const effectivePeriod = period ?? "week";
       const filters: Parameters<Store["getSessions"]>[0] = {};
       if (project) filters.projectPath = project;
+      if (resolved.accountUuid) filters.accountUuid = resolved.accountUuid;
       const { periodRange } = await import("../reporter/index.js");
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const range = periodRange({ period: effectivePeriod, since, until }, tz);
@@ -192,6 +270,9 @@ export function createMcpServer(store: Store): McpServer {
       const costBySession = store.getCostBySession(sessionRows.map((s) => s.session_id));
       const sessions = sessionRows.map((s) => ({
         sessionId: s.session_id,
+        // Opaque account id — already surfaced (truncated) via byAccount /
+        // get_account_info; no email is added here. Was silently dropped before.
+        accountUuid: s.account_uuid,
         project: s.project_path,
         firstTimestamp: s.first_timestamp ? new Date(s.first_timestamp).toISOString() : null,
         lastTimestamp: s.last_timestamp ? new Date(s.last_timestamp).toISOString() : null,
@@ -260,10 +341,17 @@ export function createMcpServer(store: Store): McpServer {
     "List projects with usage breakdown — sessions, tokens, and cost per project",
     {
       ...dateRangeShape,
+      account: z.string().optional()
+        .describe("Filter to a specific account UUID (full or prefix match)"),
     },
-    async ({ period, since, until }) => {
+    async ({ period, since, until, account }) => {
+      const resolved = resolveAccountFilter(store, account);
+      if (!resolved.ok) return formatResult({ error: resolved.error });
       const effectivePeriod = period ?? "week";
-      const data = buildDashboard(store, dateRangeToReportOpts({ period: effectivePeriod, since, until }));
+      const data = buildDashboard(store, {
+        ...dateRangeToReportOpts({ period: effectivePeriod, since, until }),
+        accountUuid: resolved.accountUuid,
+      });
       return formatResult(data.byProject);
     },
   );
@@ -407,11 +495,16 @@ export function createMcpServer(store: Store): McpServer {
       project: z.string().optional()
         .describe("Filter to a specific project path"),
       account: z.string().optional()
-        .describe("Filter to a specific account UUID"),
+        .describe("Filter to a specific account UUID (full or prefix match)"),
       byModel: z.boolean().default(true)
         .describe("Include the per-model breakdown (dominant-model assignment)"),
     },
     async ({ period, since, until, project, account, byModel }) => {
+      // Route `account` through the shared resolver so a prefix works here too
+      // (it previously required an exact UUID — a prefix silently returned zero
+      // rows). Consistent behavior across all four account-filtering tools.
+      const resolved = resolveAccountFilter(store, account);
+      if (!resolved.ok) return formatResult({ error: resolved.error });
       const effectivePeriod = period ?? "month";
       const { buildCostPerTaskReport } = await import("../cost-per-task/index.js");
       const report = await buildCostPerTaskReport(store, {
@@ -419,7 +512,7 @@ export function createMcpServer(store: Store): McpServer {
         since,
         until,
         projectPath: project,
-        accountUuid: account,
+        accountUuid: resolved.accountUuid,
         byModel,
       });
       return formatResult(report);

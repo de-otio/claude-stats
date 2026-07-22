@@ -1294,14 +1294,23 @@ export class Store {
   getMessageTotals(filters: {
     projectPath?: string;
     repoUrl?: string;
+    accountUuid?: string;
+    entrypoint?: string;
     since?: number;
     until?: number;
   } = {}): MessageTotalRow[] {
+    // An account/entrypoint filter is a session-scoped bound just like
+    // project/repo: it must take the raw seek path (getMessageTotalsRaw), never
+    // the fully-unbounded message_hourly rollup (which has no session dimension
+    // and would return every account's totals). This is what lets an
+    // account-filtered get_stats headline reconcile with its byAccount split.
     const fullyUnbounded =
       filters.since === undefined &&
       filters.until === undefined &&
       !filters.projectPath &&
-      !filters.repoUrl;
+      !filters.repoUrl &&
+      !filters.accountUuid &&
+      !filters.entrypoint;
     if (fullyUnbounded && this.isMessageHourlyFresh()) return this.getMessageTotalsFromRollup();
     return this.getMessageTotalsRaw(filters);
   }
@@ -1329,6 +1338,8 @@ export class Store {
   private getMessageTotalsRaw(filters: {
     projectPath?: string;
     repoUrl?: string;
+    accountUuid?: string;
+    entrypoint?: string;
     since?: number;
     until?: number;
   } = {}): MessageTotalRow[] {
@@ -1358,6 +1369,17 @@ export class Store {
       sessionConditions.push("s.repo_url = ?");
       params.push(filters.repoUrl);
     }
+    if (filters.accountUuid) {
+      sessionConditions.push("s.account_uuid = ?");
+      params.push(filters.accountUuid);
+    }
+    if (filters.entrypoint) {
+      // S3 — entrypoint symmetry: `rows` filters on entrypoint, so the headline
+      // membership subquery must too, else Σ byAccount ≠ headline when a caller
+      // filters by entrypoint (server ?entrypoint=, CLI --source).
+      sessionConditions.push("s.entrypoint = ?");
+      params.push(filters.entrypoint);
+    }
 
     // EXISTS (not IN): preserves orphan-drop AND lets the m.timestamp filter
     // seek idx_messages_timestamp. An `IN (SELECT all session_ids)` would make
@@ -1381,6 +1403,75 @@ export class Store {
     const stmt = this.db.prepare(sql);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (stmt.all as (...args: any[]) => unknown[])(...params) as MessageTotalRow[];
+  }
+
+  /**
+   * Per-account, per-model token totals for messages SENT in the window — the
+   * SAME query `getMessageTotalsRaw` runs (message-timestamp filter + the same
+   * session-scoped conditions), just carrying `account_uuid` and grouping by it.
+   *
+   * Summing this over accounts+models therefore equals `getMessageTotalsRaw` for
+   * identical filters — i.e. Σ byAccount == headline BY CONSTRUCTION. This is the
+   * message-scoped source `buildDashboard.byAccount` uses instead of the session
+   * `rows` set, so per-account cost reconciles with the headline even when a
+   * session's `first/last_timestamp` aggregate columns drift from its actual
+   * message timestamps (e.g. a NULL `last_timestamp` with an early
+   * `first_timestamp` — which the session-scoped `activeSince` predicate drops
+   * but the message-timestamp filter keeps).
+   *
+   * The INNER JOIN on the unique `sessions.session_id` reproduces
+   * `getMessageTotalsRaw`'s EXISTS orphan-drop exactly (one row per qualifying
+   * message), so orphan messages are dropped identically in both.
+   */
+  getMessageTotalsByAccount(filters: {
+    projectPath?: string;
+    repoUrl?: string;
+    accountUuid?: string;
+    entrypoint?: string;
+    since?: number;
+    until?: number;
+  } = {}): AccountModelTotalRow[] {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (filters.since !== undefined) {
+      conditions.push("m.timestamp >= ?");
+      params.push(filters.since);
+    }
+    if (filters.until !== undefined) {
+      conditions.push("m.timestamp < ?");
+      params.push(filters.until);
+    }
+    if (filters.projectPath) {
+      conditions.push("s.project_path = ?");
+      params.push(filters.projectPath);
+    }
+    if (filters.repoUrl) {
+      conditions.push("s.repo_url = ?");
+      params.push(filters.repoUrl);
+    }
+    if (filters.accountUuid) {
+      conditions.push("s.account_uuid = ?");
+      params.push(filters.accountUuid);
+    }
+    if (filters.entrypoint) {
+      conditions.push("s.entrypoint = ?");
+      params.push(filters.entrypoint);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const sql = `
+      SELECT s.account_uuid AS account_uuid, m.model AS model,
+        SUM(m.input_tokens) AS input_tokens,
+        SUM(m.output_tokens) AS output_tokens,
+        SUM(m.cache_read_tokens) AS cache_read_tokens,
+        SUM(m.cache_creation_tokens) AS cache_creation_tokens
+      FROM messages m
+      JOIN sessions s ON s.session_id = m.session_id
+      ${where}
+      GROUP BY s.account_uuid, m.model
+    `;
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(...params) as AccountModelTotalRow[];
   }
 
   getSessions(filters: {
@@ -1469,12 +1560,12 @@ export class Store {
    * subscription_type and session count for each. Used to populate the
    * dashboard's account selector independent of the current account filter.
    */
-  listAccounts(filters: { since?: number; until?: number; includeCI?: boolean } = {}): Array<{
+  listAccounts(filters: { since?: number; until?: number; includeCI?: boolean; includeDeleted?: boolean } = {}): Array<{
     accountUuid: string;
     subscriptionType: string | null;
     sessionCount: number;
   }> {
-    const conditions: string[] = ["account_uuid IS NOT NULL", "source_deleted = 0"];
+    const conditions: string[] = ["account_uuid IS NOT NULL"];
     const params: unknown[] = [];
     if (filters.since !== undefined) {
       conditions.push("first_timestamp >= ?");
@@ -1486,6 +1577,13 @@ export class Store {
     }
     if (!filters.includeCI) {
       conditions.push("is_interactive = 1");
+    }
+    // Mirror getSessions: only exclude source_deleted rows when NOT asked to
+    // include them. After buildDashboard's `rows` flip, the account selector
+    // must list the same accounts byAccount can show (Blocker 2), so the
+    // dashboard passes includeDeleted: true here.
+    if (!filters.includeDeleted) {
+      conditions.push("source_deleted = 0");
     }
     const where = `WHERE ${conditions.join(" AND ")}`;
     const stmt = this.db.prepare(`
@@ -1696,11 +1794,41 @@ export class Store {
 
   // ─── Per-session message totals (for conversation cost ranking) ─────────────
 
-  /** Returns per-session per-model token totals for the given session IDs. */
-  getMessageTotalsBySession(sessionIds: string[]): SessionMessageTotalRow[] {
+  /**
+   * Returns per-session per-model token totals for the given session IDs.
+   *
+   * This method serves two callers that need DIFFERENT time bounds:
+   *  - `getCostBySession` (→ list_sessions per-session `estimatedCost`) wants a
+   *    session's WHOLE-lifetime cost regardless of the query window — it calls
+   *    this UNBOUNDED (the default).
+   *  - `buildDashboard`'s `sessionCostMap` (→ byAccount / byConversationCost /
+   *    spending / contextAnalysis) wants each session's IN-WINDOW contribution
+   *    only, since those numbers are presented as scoped to the query range —
+   *    it passes `{ since, until }`.
+   * (See analysis §3.3.3.) The default (no opts) is byte-for-byte the prior
+   * unbounded query, so every existing caller is unchanged.
+   */
+  getMessageTotalsBySession(
+    sessionIds: string[],
+    opts: { since?: number; until?: number } = {},
+  ): SessionMessageTotalRow[] {
     if (sessionIds.length === 0) return [];
     // Process in batches of 500 to avoid SQLite variable limit
     const results: SessionMessageTotalRow[] = [];
+    // Optional timestamp bound, mirroring getMessageTotalsRaw's [since, until).
+    // Built once; the batch ids bind first, then the bounds — matching the `?`
+    // order in the SQL below.
+    const boundConditions: string[] = [];
+    const boundParams: unknown[] = [];
+    if (opts.since !== undefined) {
+      boundConditions.push("timestamp >= ?");
+      boundParams.push(opts.since);
+    }
+    if (opts.until !== undefined) {
+      boundConditions.push("timestamp < ?");
+      boundParams.push(opts.until);
+    }
+    const boundAnd = boundConditions.length ? ` AND ${boundConditions.join(" AND ")}` : "";
     for (let i = 0; i < sessionIds.length; i += 500) {
       const batch = sessionIds.slice(i, i + 500);
       const placeholders = batch.map(() => "?").join(",");
@@ -1711,11 +1839,11 @@ export class Store {
           SUM(cache_read_tokens) AS cache_read_tokens,
           SUM(cache_creation_tokens) AS cache_creation_tokens
         FROM messages
-        WHERE session_id IN (${placeholders})
+        WHERE session_id IN (${placeholders})${boundAnd}
         GROUP BY session_id, model
       `);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rows = (stmt.all as (...args: any[]) => unknown[])(...batch) as SessionMessageTotalRow[];
+      const rows = (stmt.all as (...args: any[]) => unknown[])(...batch, ...boundParams) as SessionMessageTotalRow[];
       results.push(...rows);
     }
     return results;
@@ -2723,6 +2851,15 @@ export interface SessionMessageTotalRow {
 }
 
 export interface MessageTotalRow {
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+}
+
+export interface AccountModelTotalRow {
+  account_uuid: string | null;
   model: string;
   input_tokens: number;
   output_tokens: number;

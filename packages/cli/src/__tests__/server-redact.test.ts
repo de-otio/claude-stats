@@ -149,6 +149,7 @@ describe("redactDashboardForHttp", () => {
             sessions: 5,
             estimatedCost: 20,
             planVerdict: "good-value",
+            inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, byModel: [],
           },
           {
             accountId: ACCOUNT_B_UUID.slice(0, 8),
@@ -158,6 +159,7 @@ describe("redactDashboardForHttp", () => {
             sessions: 3,
             estimatedCost: 5,
             planVerdict: "underusing",
+            inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, byModel: [],
           },
         ],
       },
@@ -195,6 +197,7 @@ describe("redactDashboardForHttp", () => {
             sessions: 5,
             estimatedCost: 20,
             planVerdict: "good-value",
+            inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, byModel: [],
           },
         ],
       },

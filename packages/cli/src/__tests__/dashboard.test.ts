@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Store } from "../store/index.js";
 import { buildDashboard, PLAN_LADDER_THRESHOLDS } from "../dashboard/index.js";
 import type { SessionRecord, MessageRecord } from "@claude-stats/core/types";
+import { estimateCost } from "@claude-stats/core/pricing";
 import os from "os";
 import path from "path";
 import fs from "fs";
@@ -1001,7 +1002,7 @@ describe("buildDashboard — context analysis", () => {
     expect(data.contextAnalysis!.longSessions[0]!.compacted).toBe(false);
   });
 
-  it("does not count out-of-scope sessions in compactionRate (regression: >100%)", () => {
+  it("keeps compactionRate ≤ 100% with CI sessions now in scope (regression: >100%)", () => {
     // One interactive session in scope, with no compaction.
     store.upsertSession(makeSession({ sessionId: "ctx-int", promptCount: 5, isInteractive: true }));
     store.upsertMessages(
@@ -1015,11 +1016,13 @@ describe("buildDashboard — context analysis", () => {
       )
     );
 
-    // Two CI (non-interactive) sessions, each with a compaction event. These
-    // are excluded from `rows` (includeCI defaults to false → is_interactive=1)
-    // but their messages still come back from getMessagesForContext. Before the
-    // fix the numerator counted them while the denominator did not, yielding
-    // compactionRate = 2/1 * 100 = 200%.
+    // Two CI (non-interactive) sessions, each with a compaction event. Since the
+    // per-account-token-breakdown change, `rows` includes CI sessions by default
+    // (includeCI ?? true), so these are now IN scope for both numerator AND
+    // denominator. The durable invariant this guards: the numerator (sessions
+    // with compaction) and denominator (in-scope sessions) stay consistent, so
+    // compactionRate can never exceed 100% (the original bug counted CI in the
+    // numerator only, yielding 2/1 = 200%).
     for (const s of ["ci-1", "ci-2"]) {
       store.upsertSession(makeSession({ sessionId: s, promptCount: 3, isInteractive: false }));
       store.upsertMessages([
@@ -1034,9 +1037,9 @@ describe("buildDashboard — context analysis", () => {
     expect(data.contextAnalysis).not.toBeNull();
     // Rate is a percentage of in-scope sessions; it can never exceed 100%.
     expect(data.contextAnalysis!.compactionRate).toBeLessThanOrEqual(100);
-    // The only in-scope session had no compaction, and CI sessions must not leak in.
-    expect(data.contextAnalysis!.compactionRate).toBe(0);
-    expect(data.contextAnalysis!.compactionEvents.length).toBe(0);
+    // 3 in-scope sessions (1 interactive + 2 CI), 2 of which compacted → 66.7%.
+    expect(data.contextAnalysis!.compactionRate).toBeCloseTo(66.7, 1);
+    expect(data.contextAnalysis!.compactionEvents.length).toBe(2);
   });
 
   it("computes cache efficiency by conversation length", () => {
@@ -1116,5 +1119,336 @@ describe("buildDashboard — per-account subscriptions", () => {
 
     const data = buildDashboard(store, { timezone: "UTC", planFee: 150 });
     expect(data.summary.planFee).toBe(150);
+  });
+});
+
+// ── Per-account token-level breakdown — RECONCILIATION (T-dash-test) ──────────
+//
+// Per plan/per-account-token-breakdown/PLAN.md §2 + §Phase 2 "T-dash-test".
+// One shared fixture across every test below (>=2 accounts), containing:
+//   (i)   a sourceDeleted:true session       ("sess-b-deleted", account B)
+//   (ii)  an isInteractive:false (CI) session ("sess-a-ci", account A)
+//   (iii) a boundary-straddling session       ("sess-a-straddle", account A)
+//         with one message OUTSIDE the window and one INSIDE it
+//   plus an ORPHAN message (session_id absent from `sessions`) for S2.
+//
+// All in-window token counts are whole multiples of 1,000,000. At the default
+// pricing table's per-million rates for claude-sonnet-4 / claude-opus-4, that
+// makes every message's (and therefore every account's and the headline's)
+// dollar cost land exactly on the cent — so the dashboard's internal
+// `Math.round(cost * 100) / 100` is a no-op modulo float noise, and comparing
+// an independently-recomputed (via `estimateCost`) unrounded total against the
+// dashboard's rounded output within 1e-9 is a genuine float-exactness check,
+// not one masked by real rounding (see S1 below).
+describe("buildDashboard — per-account reconciliation (RECONCILIATION)", () => {
+  let store: Store;
+  let dbPath: string;
+
+  const WSTART = Date.UTC(2023, 10, 15); // 2023-11-15T00:00:00.000Z (Wed)
+  const HOUR = 3_600_000;
+  const M = 1_000_000;
+  const SINCE_YMD = "2023-11-15";
+  const UNTIL_YMD = "2023-11-15"; // inclusive day -> window is [WSTART, WSTART + 1 day)
+
+  const ACCT_A = "33333333-aaaa-bbbb-cccc-000000000003";
+  const ACCT_B = "44444444-aaaa-bbbb-cccc-000000000004";
+
+  type FixtureMsg = {
+    uuid: string; sessionId: string; model: string;
+    input: number; output: number; cacheRead: number; cacheCreation: number;
+    timestamp: number;
+  };
+
+  // In-window messages — the four sessions' contributions inside [since, until).
+  const inWindowMsgs: FixtureMsg[] = [
+    { uuid: "m-a1-1", sessionId: "sess-a1", model: "claude-sonnet-4",
+      input: 5 * M, output: 1 * M, cacheRead: 2 * M, cacheCreation: 1 * M,
+      timestamp: WSTART + 1 * HOUR + 1000 },
+    { uuid: "m-ci-1", sessionId: "sess-a-ci", model: "claude-sonnet-4",
+      input: 4 * M, output: 1 * M, cacheRead: 1 * M, cacheCreation: 0,
+      timestamp: WSTART + 3 * HOUR + 1000 },
+    { uuid: "m-b-1", sessionId: "sess-b-deleted", model: "claude-opus-4",
+      input: 3 * M, output: 1 * M, cacheRead: 1 * M, cacheCreation: 1 * M,
+      timestamp: WSTART + 2 * HOUR + 1000 },
+    { uuid: "m-strad-in", sessionId: "sess-a-straddle", model: "claude-opus-4",
+      input: 2 * M, output: 1 * M, cacheRead: 1 * M, cacheCreation: 0,
+      timestamp: WSTART + 4 * HOUR },
+  ];
+
+  // Outside the window (30 minutes before `since`), on the SAME session as
+  // "m-strad-in" — this is what makes "sess-a-straddle" boundary-straddling:
+  // its own lifetime spans across `since`, with messages on both sides.
+  const outOfWindowMsg: FixtureMsg = {
+    uuid: "m-strad-out", sessionId: "sess-a-straddle", model: "claude-sonnet-4",
+    input: 50 * M, output: 10 * M, cacheRead: 5 * M, cacheCreation: 0,
+    timestamp: WSTART - 30 * 60_000,
+  };
+
+  // S2: a message whose session_id has NO row in `sessions` at all (a true
+  // orphan — not source-deleted, never had a session record). Both the
+  // bounded raw seek (getMessageTotalsRaw / getMessageTotalsBySession, used by
+  // every bounded test below) and the fully-unbounded message_hourly rollup
+  // path (only reachable via a real collect()'s recomputeMessageHourly — see
+  // the "S2" test) apply the same EXISTS-based session-membership drop, so
+  // this must never show up in byAccount/byModel/summary anywhere.
+  const orphanMsg: FixtureMsg = {
+    uuid: "m-orphan", sessionId: "sess-does-not-exist", model: "claude-sonnet-4",
+    input: 1 * M, output: 1 * M, cacheRead: 0, cacheCreation: 0,
+    timestamp: WSTART + 1 * HOUR,
+  };
+
+  const costOf = (m: FixtureMsg): number =>
+    estimateCost(m.model, m.input, m.output, m.cacheRead, m.cacheCreation).cost;
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+
+    // (i) sourceDeleted:true — must now be counted (the D3 "full flip").
+    store.upsertSession(makeSession({
+      sessionId: "sess-b-deleted",
+      accountUuid: ACCT_B,
+      sourceDeleted: true,
+      isInteractive: true,
+      firstTimestamp: WSTART + 2 * HOUR,
+      lastTimestamp: WSTART + 2 * HOUR + 300_000,
+      inputTokens: 3 * M, outputTokens: 1 * M, cacheReadTokens: 1 * M, cacheCreationTokens: 1 * M,
+      promptCount: 1,
+      models: ["claude-opus-4"],
+    }));
+
+    // (ii) isInteractive:false (CI) — must now be counted.
+    store.upsertSession(makeSession({
+      sessionId: "sess-a-ci",
+      accountUuid: ACCT_A,
+      sourceDeleted: false,
+      isInteractive: false,
+      firstTimestamp: WSTART + 3 * HOUR,
+      lastTimestamp: WSTART + 3 * HOUR + 300_000,
+      inputTokens: 4 * M, outputTokens: 1 * M, cacheReadTokens: 1 * M, cacheCreationTokens: 0,
+      promptCount: 1,
+      models: ["claude-sonnet-4"],
+    }));
+
+    // Plain interactive, non-deleted, fully-in-window session (control case).
+    store.upsertSession(makeSession({
+      sessionId: "sess-a1",
+      accountUuid: ACCT_A,
+      sourceDeleted: false,
+      isInteractive: true,
+      firstTimestamp: WSTART + 1 * HOUR,
+      lastTimestamp: WSTART + 1 * HOUR + 300_000,
+      inputTokens: 5 * M, outputTokens: 1 * M, cacheReadTokens: 2 * M, cacheCreationTokens: 1 * M,
+      promptCount: 1,
+      models: ["claude-sonnet-4"],
+    }));
+
+    // (iii) boundary-straddling session: starts before `since` (its
+    // out-of-window message's timestamp) and stays active into the window
+    // (its in-window message's timestamp). The session's own token COLUMNS
+    // are session-LIFETIME (both messages: 52M/11M/6M/0) — deliberately NOT
+    // equal to the in-window-only sum byAccount uses (2M/1M/1M/0). See the
+    // Blocker-3 test below.
+    store.upsertSession(makeSession({
+      sessionId: "sess-a-straddle",
+      accountUuid: ACCT_A,
+      sourceDeleted: false,
+      isInteractive: true,
+      firstTimestamp: outOfWindowMsg.timestamp,
+      lastTimestamp: WSTART + 4 * HOUR,
+      inputTokens: 52 * M, outputTokens: 11 * M, cacheReadTokens: 6 * M, cacheCreationTokens: 0,
+      promptCount: 2,
+      models: ["claude-sonnet-4", "claude-opus-4"],
+    }));
+
+    store.upsertMessages(
+      [...inWindowMsgs, outOfWindowMsg, orphanMsg].map(m => makeMessage({
+        uuid: m.uuid,
+        sessionId: m.sessionId,
+        model: m.model,
+        timestamp: m.timestamp,
+        inputTokens: m.input,
+        outputTokens: m.output,
+        cacheReadTokens: m.cacheRead,
+        cacheCreationTokens: m.cacheCreation,
+      })),
+    );
+  });
+
+  afterEach(() => {
+    store.close();
+    fs.rmSync(dbPath, { force: true });
+  });
+
+  it("S1: Σ byAccount.estimatedCost reconciles with summary.estimatedCost (cent-tolerance AND float-exact)", () => {
+    const data = buildDashboard(store, { since: SINCE_YMD, until: UNTIL_YMD, timezone: "UTC" });
+    expect(data.planUtilization).not.toBeNull();
+    const byAccount = data.planUtilization!.byAccount;
+    const nAccounts = byAccount.length;
+    expect(nAccounts).toBe(2);
+
+    // Cent-tolerance on the EMITTED (independently-rounded) fields — do NOT
+    // assert exact `===` here (plan S1): each account rounds its own total
+    // separately, and so does the grand total, so up to nAccounts*0.005 of
+    // drift between the two is expected BY DESIGN, not a bug.
+    const sumEmitted = byAccount.reduce((s, a) => s + a.estimatedCost, 0);
+    expect(Math.abs(sumEmitted - data.summary.estimatedCost)).toBeLessThanOrEqual(nAccounts * 0.005);
+
+    // Float-exact: recompute the expected UNROUNDED total straight from the
+    // fixture messages via estimateCost (imported from @claude-stats/core/pricing;
+    // NOT read back from any dashboard output), then compare to
+    // summary.estimatedCost within 1e-9. This also implicitly confirms the
+    // orphan message (present in this same store — see the beforeEach and the
+    // "S2" tests below) contributes nothing: if it leaked in, this would be off
+    // by a whole cent, far outside 1e-9.
+    const expectedTotalRaw = inWindowMsgs.reduce((s, m) => s + costOf(m), 0);
+    expect(Math.abs(data.summary.estimatedCost - expectedTotalRaw)).toBeLessThan(1e-9);
+    expect(Math.abs(sumEmitted - expectedTotalRaw)).toBeLessThan(1e-9);
+  });
+
+  it("S1: Σ_account byAccount.byModel[m] reconciles with top-level byModel[m]", () => {
+    const data = buildDashboard(store, { since: SINCE_YMD, until: UNTIL_YMD, timezone: "UTC" });
+    expect(data.planUtilization).not.toBeNull();
+    const byAccount = data.planUtilization!.byAccount;
+
+    const expectedByModel = new Map<string, { input: number; output: number; cost: number }>();
+    for (const m of inWindowMsgs) {
+      const e = expectedByModel.get(m.model) ?? { input: 0, output: 0, cost: 0 };
+      e.input += m.input;
+      e.output += m.output;
+      e.cost += costOf(m);
+      expectedByModel.set(m.model, e);
+    }
+    expect(expectedByModel.size).toBe(2); // claude-sonnet-4, claude-opus-4
+
+    for (const [model, exp] of expectedByModel) {
+      const top = data.byModel.find(bm => bm.model === model);
+      expect(top).toBeDefined();
+      // Top-level byModel tokens are raw (never rounded) — exact.
+      expect(top!.inputTokens).toBe(exp.input);
+      expect(top!.outputTokens).toBe(exp.output);
+      expect(Math.abs(top!.estimatedCost - exp.cost)).toBeLessThan(1e-9);
+
+      let sumInput = 0, sumOutput = 0, sumCost = 0, accountsWithModel = 0;
+      for (const acct of byAccount) {
+        const bm = acct.byModel.find(x => x.model === model);
+        if (!bm) continue;
+        accountsWithModel++;
+        sumInput += bm.inputTokens;
+        sumOutput += bm.outputTokens;
+        sumCost += bm.estimatedCost;
+      }
+      // Σ_account tokens are exact (raw integer sums, never rounded).
+      expect(sumInput).toBe(exp.input);
+      expect(sumOutput).toBe(exp.output);
+      // Σ_account cost: each (account, model) bucket is rounded independently
+      // before summing — cent-tolerant ("≈" in the plan), not exact `===`.
+      expect(Math.abs(sumCost - exp.cost)).toBeLessThanOrEqual(Math.max(1, accountsWithModel) * 0.005);
+    }
+  });
+
+  it("new per-account token fields are present and correct (in-window only)", () => {
+    const data = buildDashboard(store, { since: SINCE_YMD, until: UNTIL_YMD, timezone: "UTC" });
+    expect(data.planUtilization).not.toBeNull();
+    const byAccount = data.planUtilization!.byAccount;
+
+    const acctA = byAccount.find(a => a.accountId === ACCT_A.slice(0, 8) + "...");
+    const acctB = byAccount.find(a => a.accountId === ACCT_B.slice(0, 8) + "...");
+    expect(acctA).toBeDefined();
+    expect(acctB).toBeDefined();
+
+    // Account A: sess-a1 + sess-a-ci + the IN-WINDOW half of sess-a-straddle
+    // only (its 50M/10M/5M out-of-window message must NOT be folded in).
+    expect(acctA!.inputTokens).toBe(5 * M + 4 * M + 2 * M);
+    expect(acctA!.outputTokens).toBe(1 * M + 1 * M + 1 * M);
+    expect(acctA!.cacheReadTokens).toBe(2 * M + 1 * M + 1 * M);
+    expect(acctA!.cacheCreationTokens).toBe(1 * M + 0 + 0);
+    expect(acctA!.byModel.map(m => m.model).sort()).toEqual(["claude-opus-4", "claude-sonnet-4"]);
+
+    // Account B: sess-b-deleted only.
+    expect(acctB!.inputTokens).toBe(3 * M);
+    expect(acctB!.outputTokens).toBe(1 * M);
+    expect(acctB!.cacheReadTokens).toBe(1 * M);
+    expect(acctB!.cacheCreationTokens).toBe(1 * M);
+    expect(acctB!.byModel).toEqual([
+      expect.objectContaining({ model: "claude-opus-4", inputTokens: 3 * M, outputTokens: 1 * M }),
+    ]);
+  });
+
+  it("regression: source-deleted and non-interactive sessions are now counted (the flip)", () => {
+    const data = buildDashboard(store, { since: SINCE_YMD, until: UNTIL_YMD, timezone: "UTC" });
+    // All 4 sessions overlap the window: sess-a1, sess-b-deleted
+    // (source_deleted), sess-a-ci (non-interactive), sess-a-straddle. Before
+    // the flip, the first two would have been silently dropped from `rows`
+    // (and therefore from every session-scoped aggregate).
+    expect(data.summary.sessions).toBe(4);
+
+    expect(data.planUtilization).not.toBeNull();
+    const byAccount = data.planUtilization!.byAccount;
+    const acctA = byAccount.find(a => a.accountId === ACCT_A.slice(0, 8) + "...");
+    const acctB = byAccount.find(a => a.accountId === ACCT_B.slice(0, 8) + "...");
+    expect(acctA!.sessions).toBe(3); // sess-a1 + sess-a-ci + sess-a-straddle
+    expect(acctB!.sessions).toBe(1); // sess-b-deleted — its ONLY session, and it's deleted
+  });
+
+  it("Blocker 2: an account whose only in-window session is source-deleted appears in BOTH byAccount and availableAccounts", () => {
+    const data = buildDashboard(store, { since: SINCE_YMD, until: UNTIL_YMD, timezone: "UTC" });
+    expect(data.planUtilization).not.toBeNull();
+    const inByAccount = data.planUtilization!.byAccount.some(a => a.accountId === ACCT_B.slice(0, 8) + "...");
+    const inAvailable = data.availableAccounts.some(a => a.accountUuid === ACCT_B);
+    expect(inByAccount).toBe(true);
+    expect(inAvailable).toBe(true);
+  });
+
+  it("Blocker 3 (recorded gap): Σ byAccount.inputTokens !== summary.inputTokens for a boundary-straddling session", () => {
+    const data = buildDashboard(store, { since: SINCE_YMD, until: UNTIL_YMD, timezone: "UTC" });
+    expect(data.planUtilization).not.toBeNull();
+    const byAccount = data.planUtilization!.byAccount;
+    const sumByAccountInput = byAccount.reduce((s, a) => s + a.inputTokens, 0);
+
+    // INTENTIONAL, DOCUMENTED gap (plan §2, "Blocker 3" — deferred by design,
+    // not a bug to fix here). `summary.inputTokens` is summed from
+    // SESSION-LIFETIME columns (`rows`), while `byAccount.inputTokens` is
+    // summed from the BOUNDED msgTotalsBySession (in-window messages only).
+    // "sess-a-straddle" has a lifetime input total (52M) that includes its
+    // 50M-token out-of-window message, but byAccount only ever sees its
+    // 2M-token in-window message — so the two totals MUST differ whenever a
+    // boundary-straddling session is in scope. This is recorded in the
+    // `byAccount` type doc comment (dashboard/index.ts) and must surface in
+    // the get_stats tool description + changelog (T-doc-commands/
+    // T-doc-changelog); this test exists so the gap stays deliberate, not
+    // accidental drift.
+    expect(sumByAccountInput).toBe(14 * M); // 11M (Account A) + 3M (Account B)
+    expect(data.summary.inputTokens).toBe(64 * M); // session-lifetime: 5M+3M+4M+52M
+    expect(sumByAccountInput).not.toBe(data.summary.inputTokens);
+  });
+
+  it("S2: a period:'all' build with an orphan message present does not crash and excludes the orphan consistently", () => {
+    // The orphan message ("m-orphan", session_id "sess-does-not-exist") has no
+    // row in `sessions` at all. In PRODUCTION, a fully-unbounded ("all"
+    // period, no other filters) get_stats/dashboard call takes the
+    // message_hourly ROLLUP fast path (getMessageTotalsFromRollup) instead of
+    // the raw seek — but ONLY when isMessageHourlyFresh(), which requires a
+    // real collect() to have run recomputeMessageHourly(). This test's direct
+    // store.upsertMessages() calls never do that (the watermark stays stale),
+    // so this build always falls back to the raw seek path — we cannot
+    // exercise the rollup path from a unit fixture without also simulating a
+    // full collect(). Per plan §2/S2, we deliberately do NOT assert exact
+    // Σ byAccount == headline reconciliation on the "all"-period path here;
+    // the production-only rollup-vs-session-based-byAccount divergence for
+    // orphan messages is documented in the changelog/analysis (T-doc-changelog),
+    // not re-derived in this unit test. What we DO assert: the raw path this
+    // test exercises still consistently drops the orphan (both here and on the
+    // bounded path above), and a full, unbounded build doesn't crash.
+    const dataAll = buildDashboard(store, { timezone: "UTC" });
+    expect(dataAll.summary.sessions).toBe(4);
+
+    // Fully-unbounded sonnet total = sess-a1 (5M) + sess-a-ci (4M) +
+    // sess-a-straddle's out-of-window message (50M) = 59M. The orphan's 1M
+    // sonnet-model tokens must NOT be folded in despite matching model and
+    // timestamp, because its session_id has no row in `sessions`.
+    const sonnet = dataAll.byModel.find(m => m.model === "claude-sonnet-4");
+    expect(sonnet).toBeDefined();
+    expect(sonnet!.inputTokens).toBe(59 * M);
   });
 });

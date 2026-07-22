@@ -230,6 +230,18 @@ export interface DashboardData {
       sessions: number;
       estimatedCost: number;
       planVerdict: string;
+      // Per-account token detail + per-model split, mirroring the top-level
+      // `byModel` shape. These are IN-WINDOW (sourced from the bounded
+      // msgTotalsBySession), so Σ byAccount tokens == top-level byModel tokens.
+      // NOTE (§2): the sibling `summary.inputTokens` et al. are session-LIFETIME
+      // totals (summed from session columns), so per-account in-window tokens
+      // and summary lifetime tokens intentionally differ for any
+      // boundary-straddling session — see the get_stats tool description.
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheCreationTokens: number;
+      byModel: Array<{ model: string; inputTokens: number; outputTokens: number; estimatedCost: number }>;
     }>;
   } | null;
   /** Subscription-fee-to-project attribution for the selected period. */
@@ -475,6 +487,12 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   // (e.g. one straddling midnight into a new day/month) contributes cost, energy
   // and active-hours — all filtered by MESSAGE timestamp below — so it must be
   // counted here too, else the summary shows "0 sessions" beside a non-zero cost.
+  // The session set is flipped to include CI/non-interactive AND source-deleted
+  // sessions by default so every session-scoped aggregate (byAccount, byProject,
+  // byDay, sessionCostMap, spending, context) reconciles with the message-scoped
+  // headline (getMessageTotals, which counts every in-window message regardless
+  // of session flags). Explicit caller values still win — server ?includeCI=,
+  // CLI --include-ci; only callers that OMIT them inherit the new default.
   const rows = store.getSessions({
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
@@ -482,7 +500,8 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     entrypoint: opts.entrypoint,
     activeSince: since > 0 ? since : undefined,
     until: isCustomRange ? until : undefined,
-    includeCI: opts.includeCI ?? false,
+    includeCI: opts.includeCI ?? true,
+    includeDeleted: opts.includeDeleted ?? true,
   });
 
   // ── Summary aggregation ──────────────────────────────────────────────────
@@ -573,6 +592,8 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   const messageTotals = store.getMessageTotals({
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
+    accountUuid: opts.accountUuid,
+    entrypoint: opts.entrypoint,
     since: since > 0 ? since : undefined,
     until: isCustomRange ? until : undefined,
   });
@@ -755,7 +776,15 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   const currentWindowCost = currentWindow?.totalCostEquivalent ?? 0;
 
   // ── Per-conversation cost ranking ─────────────────────────────────────────
-  const msgTotalsBySession = store.getMessageTotalsBySession(sessionIds);
+  // Bound to the SAME [since, until) the headline uses so each session's
+  // IN-WINDOW contribution (not its whole lifetime) feeds byAccount /
+  // byConversationCost / spending / contextAnalysis — the fix for Effect 3
+  // (analysis §3.3.3). list_sessions' per-session cost stays unbounded via the
+  // separate getCostBySession call.
+  const msgTotalsBySession = store.getMessageTotalsBySession(sessionIds, {
+    since: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
+  });
   const sessionCostMap = new Map<string, { cost: number; topModel: string; topModelTokens: number }>();
   for (const mt of msgTotalsBySession) {
     const entry = sessionCostMap.get(mt.session_id) ?? { cost: 0, topModel: mt.model ?? "", topModelTokens: 0 };
@@ -874,25 +903,62 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   if (byWeek.length > 0) {
     // Auto-detect plan fee from account subscription types if not explicitly set.
     // Group sessions by account to support multi-account usage.
-    const accountMap = new Map<string, { subscriptionType: string | null; sessions: number; cost: number }>();
+    // Session-count + subscription-type per account come from the session `rows`
+    // (a session-experience metric). Cost/tokens do NOT — see accountTokens below.
+    const accountMap = new Map<string, { subscriptionType: string | null; sessions: number }>();
     for (const row of rows) {
       const acctKey = row.account_uuid ?? "(unknown)";
-      const entry = accountMap.get(acctKey) ?? { subscriptionType: row.subscription_type, sessions: 0, cost: 0 };
+      const entry = accountMap.get(acctKey) ?? { subscriptionType: row.subscription_type, sessions: 0 };
       entry.sessions++;
       // Pick the most recent subscription type seen for this account
       if (row.subscription_type) entry.subscriptionType = row.subscription_type;
       accountMap.set(acctKey, entry);
     }
 
-    // Distribute cost to accounts proportionally by session output tokens
-    // (we already have sessionCostMap from the conversation cost ranking)
-    for (const row of rows) {
-      const acctKey = row.account_uuid ?? "(unknown)";
-      const entry = accountMap.get(acctKey);
-      if (entry) {
-        const sc = sessionCostMap.get(row.session_id);
-        entry.cost += sc?.cost ?? 0;
-      }
+    // Per-account token + per-model + cost totals, sourced from a MESSAGE-scoped,
+    // account-grouped query — the SAME query the headline (getMessageTotals) runs,
+    // just GROUP BY account. This makes Σ byAccount == headline an IDENTITY,
+    // independent of session first/last-timestamp drift: a session with a NULL
+    // last_timestamp and an early first_timestamp is dropped from the session
+    // `rows` set (its COALESCE(last,first) falls before `since`) but its in-window
+    // messages still count here and in the headline. Orphan messages (session_id
+    // absent from `sessions`) are dropped by the inner join, exactly as the
+    // headline's EXISTS drops them. (The earlier `rows`+sessionCostMap source
+    // under-counted by exactly those NULL-last sessions — verified on real data.)
+    type AcctTokens = {
+      inputTokens: number; outputTokens: number;
+      cacheReadTokens: number; cacheCreationTokens: number; cost: number;
+      byModel: Map<string, { inputTokens: number; outputTokens: number; estimatedCost: number }>;
+    };
+    const accountTokens = new Map<string, AcctTokens>();
+    const acctModelTotals = store.getMessageTotalsByAccount({
+      projectPath: opts.projectPath,
+      repoUrl: opts.repoUrl,
+      accountUuid: opts.accountUuid,
+      entrypoint: opts.entrypoint,
+      since: since > 0 ? since : undefined,
+      until: isCustomRange ? until : undefined,
+    });
+    for (const mt of acctModelTotals) {
+      const acctKey = mt.account_uuid ?? "(unknown)";
+      const entry = accountTokens.get(acctKey) ?? {
+        inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, cost: 0,
+        byModel: new Map<string, { inputTokens: number; outputTokens: number; estimatedCost: number }>(),
+      };
+      entry.inputTokens += mt.input_tokens;
+      entry.outputTokens += mt.output_tokens;
+      entry.cacheReadTokens += mt.cache_read_tokens;
+      entry.cacheCreationTokens += mt.cache_creation_tokens;
+      const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens);
+      entry.cost += cost;
+      // Use mt.model as-is (matching the top-level byModel grouping key) so the
+      // per-account split reconciles model-for-model with the headline split.
+      const m = entry.byModel.get(mt.model) ?? { inputTokens: 0, outputTokens: 0, estimatedCost: 0 };
+      m.inputTokens += mt.input_tokens;
+      m.outputTokens += mt.output_tokens;
+      m.estimatedCost += cost;
+      entry.byModel.set(mt.model, m);
+      accountTokens.set(acctKey, entry);
     }
 
     // `planFee` already resolves the effective subscription cost: an explicit
@@ -956,6 +1022,13 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       const unknown = accountMap.get("(unknown)")!;
       accountMap.delete("(unknown)");
       accountMap.set(claudeAcct.accountUuid, unknown);
+      // Mirror the repair for the token/model accumulation so byAccount's new
+      // token fields attach to the resolved UUID, not the transitional key.
+      const unknownTokens = accountTokens.get("(unknown)");
+      if (unknownTokens) {
+        accountTokens.delete("(unknown)");
+        accountTokens.set(claudeAcct.accountUuid, unknownTokens);
+      }
     }
     // Email labels persisted the last time each account was current, so the
     // per-account breakdown shows a readable address for accounts OTHER than the
@@ -964,38 +1037,62 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     const emailLabelByUuid = new Map(
       store.listAccountsFull().map((a) => [a.accountUuid, a.emailLabel ?? null] as const),
     );
+    // Emit one row per account present in EITHER map: `accountMap` (session
+    // count / subscription type, from `rows`) OR `accountTokens` (cost / tokens,
+    // message-scoped). The union matters because a NULL-last-timestamp session
+    // can contribute in-window messages (→ accountTokens) while being absent from
+    // `rows` (→ not in accountMap); such an account must still show its cost, or
+    // Σ byAccount would again fall short of the headline.
+    const allAcctKeys = new Set<string>([...accountMap.keys(), ...accountTokens.keys()]);
     const byAccount: DashboardData["planUtilization"] extends { byAccount: infer T } | null ? T : never =
-      Array.from(accountMap.entries())
-        .sort(([, a], [, b]) => b.cost - a.cost)
-        .map(([acctKey, acct]) => {
+      Array.from(allAcctKeys)
+        .map((acctKey) => {
+          const acct = accountMap.get(acctKey);
+          const tokens = accountTokens.get(acctKey);
+          const acctCost = tokens?.cost ?? 0;
+          const sessions = acct?.sessions ?? 0;
           // Effective plan type, per account: an explicitly-configured per-account
           // type wins, then telemetry's subscription_type, then the (legacy)
           // global configured type. Two accounts can resolve to different plans.
           const subscriptionType =
-            feeConfig.accountFees?.[acctKey]?.type ?? acct.subscriptionType ?? opts.planType ?? null;
+            feeConfig.accountFees?.[acctKey]?.type ?? acct?.subscriptionType ?? opts.planType ?? null;
           // Prefer a user-configured per-account fee over the type-derived default.
-          const detectedFee = resolveAccountFee(feeConfig, acctKey, subscriptionType, accountMap.size)?.monthlyFee ?? null;
+          const detectedFee = resolveAccountFee(feeConfig, acctKey, subscriptionType, allAcctKeys.size)?.monthlyFee ?? null;
           let verdict = "no-plan";
           if (detectedFee && detectedFee > 0) {
-            verdict = acct.cost >= detectedFee ? "good-value" : "underusing";
+            verdict = acctCost >= detectedFee ? "good-value" : "underusing";
           } else if (effectivePlanFee > 0) {
             // Fall back to proportional share of explicit plan fee
-            const share = effectivePlanFee * (acct.sessions / rows.length);
-            verdict = acct.cost >= share ? "good-value" : "underusing";
+            const share = effectivePlanFee * (sessions / Math.max(rows.length, 1));
+            verdict = acctCost >= share ? "good-value" : "underusing";
           }
           const email = claudeAcct?.accountUuid === acctKey
             ? claudeAcct.emailAddress
             : (emailLabelByUuid.get(acctKey) ?? null);
+          const byModel = tokens
+            ? Array.from(tokens.byModel.entries()).map(([model, m]) => ({
+                model,
+                inputTokens: m.inputTokens,
+                outputTokens: m.outputTokens,
+                estimatedCost: Math.round(m.estimatedCost * 100) / 100,
+              }))
+            : [];
           return {
             accountId: acctKey === "(unknown)" ? "(unknown)" : acctKey.slice(0, 8) + "...",
             emailAddress: email,
             subscriptionType,
             detectedPlanFee: detectedFee,
-            sessions: acct.sessions,
-            estimatedCost: Math.round(acct.cost * 100) / 100,
+            sessions,
+            estimatedCost: Math.round(acctCost * 100) / 100,
             planVerdict: verdict,
+            inputTokens: tokens?.inputTokens ?? 0,
+            outputTokens: tokens?.outputTokens ?? 0,
+            cacheReadTokens: tokens?.cacheReadTokens ?? 0,
+            cacheCreationTokens: tokens?.cacheCreationTokens ?? 0,
+            byModel,
           };
-        });
+        })
+        .sort((a, b) => b.estimatedCost - a.estimatedCost);
 
     planUtilization = {
       weeklyPlanBudget: Math.round(weeklyPlanBudget * 100) / 100,
@@ -1168,10 +1265,15 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       // Always list accounts using the unfiltered period so the dropdown can
       // offer all accounts regardless of the current account filter.
       const claudeAcct = readClaudeAccount();
+      // Match the `rows` flip (includeCI/includeDeleted default true) so the
+      // account selector lists exactly the accounts byAccount can show — else an
+      // account whose only in-window sessions are CI/source-deleted would appear
+      // in byAccount but be missing from the selector (Blocker 2).
       const list = store.listAccounts({
         since: since > 0 ? since : undefined,
         until: isCustomRange ? until : undefined,
-        includeCI: opts.includeCI ?? false,
+        includeCI: opts.includeCI ?? true,
+        includeDeleted: true,
       });
       const emailLabelByUuid = new Map(
         store.listAccountsFull().map((a) => [a.accountUuid, a.emailLabel ?? null] as const),
