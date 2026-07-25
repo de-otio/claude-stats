@@ -53,6 +53,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
+        timeout-minutes: 10
         run: npm ci
 
       - name: Build core package
@@ -63,10 +64,12 @@ jobs:
 
       - name: Typecheck (Linux x64 only — same answer on every leg)
         if: matrix.target == 'linux-x64'
+        timeout-minutes: 10
         run: npx tsc --build --force
 
       - name: Run tests (Linux x64 only)
         if: matrix.target == 'linux-x64'
+        timeout-minutes: 15
         run: npx vitest run
 
       # Cache the model file across legs and across runs. The cache key is
@@ -82,9 +85,12 @@ jobs:
 
       - name: Fetch embedding model
         if: steps.cache-model.outputs.cache-hit != 'true'
+        # Large download from an external host — the classic hang candidate.
+        timeout-minutes: 10
         run: node scripts/fetch-embedding-model.mjs
 
       - name: Build and package per-target VSIX
+        timeout-minutes: 15
         run: node scripts/package-vsix.mjs --target=${{ matrix.target }}
 
       - name: Verify tag matches extension version
@@ -99,9 +105,11 @@ jobs:
           fi
 
       - name: Smoke-check VSIX contents
+        timeout-minutes: 5
         run: node scripts/verify-vsix.mjs --target=${{ matrix.target }}
 
       - name: Upload VSIX artifact
+        timeout-minutes: 10
         uses: actions/upload-artifact@v7
         with:
           name: claude-stats-vscode-${{ matrix.target }}
@@ -112,7 +120,9 @@ jobs:
     name: Publish to VS Code Marketplace
     needs: package
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Slightly above the publish step's own 20-minute ceiling, so the step
+    # timeout is what fires first and names the culprit in the log.
+    timeout-minutes: 25
     if: github.event_name == 'push' || inputs.dry_run != true
 
     steps:
@@ -126,9 +136,11 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
+        timeout-minutes: 10
         run: npm ci
 
       - name: Download all per-target VSIXes
+        timeout-minutes: 10
         uses: actions/download-artifact@v7
         with:
           path: artifacts
@@ -138,13 +150,62 @@ jobs:
         run: find artifacts -name '*.vsix' -print
 
       - name: Publish each per-target VSIX
+        # Ceiling for the whole loop. Without it a wedged upload would sit
+        # until the job timeout, burning billed minutes for nothing.
+        timeout-minutes: 20
         env:
           VSCE_PAT: ${{ secrets.VSCODE_MARKETPLACE_PAT }}
         run: |
           set -euo pipefail
+
+          # This loop publishes one VSIX per target platform, and it must be
+          # safe to re-run. Two failure modes made the naive version wedge a
+          # release:
+          #
+          #  1. The marketplace intermittently answers a perfectly valid
+          #     upload with TF400898 ("An Internal Error Occurred"). It is
+          #     service-side and clears on its own, so it is worth retrying.
+          #  2. A failure part-way through the loop left earlier targets
+          #     published. Re-running then died on "already exists" before
+          #     reaching the un-published ones, so the only way out was a
+          #     version bump. Treating an already-published target as done
+          #     makes the whole job idempotent and re-runnable.
+          #
+          # Anything else fails fast — a bad manifest or a rejected PAT will
+          # not fix itself, and retrying it just wastes minutes.
+          publish_one() {
+            local vsix="$1" attempt log backoff
+            for attempt in 1 2 3; do
+              log="$(mktemp)"
+              if npx @vscode/vsce publish --packagePath "$vsix" >"$log" 2>&1; then
+                cat "$log"
+                return 0
+              fi
+              cat "$log"
+
+              if grep -qiE 'already exists|already published' "$log"; then
+                echo "note: this target is already at this version — nothing to do"
+                return 0
+              fi
+
+              if ! grep -qiE 'TF400898|internal error|ECONNRESET|ETIMEDOUT|socket hang up|50[0-9] ' "$log"; then
+                echo "::error::non-transient publish failure for $vsix — not retrying"
+                return 1
+              fi
+
+              if [ "$attempt" -lt 3 ]; then
+                backoff=$(( attempt * 30 ))
+                echo "transient marketplace error; retrying in ${backoff}s (attempt ${attempt}/3)"
+                sleep "$backoff"
+              fi
+            done
+            echo "::error::$vsix still failing after 3 attempts"
+            return 1
+          }
+
           for vsix in $(find artifacts -name '*.vsix'); do
             echo "::group::Publishing $vsix"
-            npx @vscode/vsce publish --packagePath "$vsix"
+            publish_one "$vsix"
             echo "::endgroup::"
           done
 
@@ -161,6 +222,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Download all per-target VSIXes
+        timeout-minutes: 10
         uses: actions/download-artifact@v7
         with:
           path: artifacts
