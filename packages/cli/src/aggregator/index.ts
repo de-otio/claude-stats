@@ -182,6 +182,23 @@ export async function collect(
     }
 
     store.transaction(() => {
+      // Compare-and-swap against the checkpoint we planned this parse from.
+      // `getCheckpoint` above ran OUTSIDE any transaction and the parse is async,
+      // so a second collector (VS Code extension, MCP server, CLI — all of which
+      // can run concurrently) may have processed this same range meanwhile. Its
+      // work is a superset of ours, so ours is pure waste: re-parsing lines into
+      // quarantine twice and re-writing rows we already have.
+      //
+      // Correctness no longer DEPENDS on this — the session counters are a
+      // projection of the uuid-keyed `messages` table now, so applying a delta
+      // twice is a no-op. This is the cheap guard that stops the duplicate work,
+      // not the thing that makes the numbers right.
+      const fresh = store.getCheckpoint(sf.filePath);
+      if (fresh && fresh.lastByteOffset >= parsed.lastGoodOffset && startOffset > 0) {
+        result.filesSkipped++;
+        return;
+      }
+
       if (parsed.session) {
         if (startOffset > 0) {
           store.upsertSessionIncremental(parsed.session);
@@ -205,6 +222,20 @@ export async function collect(
 
       if (parsed.errors.length > 0) {
         store.addToQuarantine(parsed.errors);
+      }
+
+      // Re-derive this session's counters from `messages` rather than trusting
+      // the additive delta that `upsertSessionIncremental` just applied.
+      //
+      // The additive path is not idempotent: nothing guards read-checkpoint →
+      // parse → add against a second collector (extension, MCP server, CLI)
+      // processing the same byte range, so a delta could be added twice and
+      // stayed added forever. `messages` is uuid-keyed and therefore immune, so
+      // projecting the counters off it makes them immune too — measured
+      // inflation before this was 14x on a real session. Runs inside the same
+      // transaction as the upserts, so a crash can't leave the two disagreeing.
+      if (parsed.session) {
+        store.recomputeSessionAggregates([parsed.session.sessionId]);
       }
 
       store.upsertCheckpoint({

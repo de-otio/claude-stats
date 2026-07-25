@@ -143,6 +143,10 @@ export async function parseSessionFile(
   let totalThinkingBlocks = 0;
   const toolUseCounts = new Map<string, number>();
   const modelsSet = new Set<string>();
+  /** Assistant uuids already accumulated — see the dedupe note in the loop. */
+  const seenAssistantUuids = new Set<string>();
+  /** Set by a real user prompt, consumed by the assistant message that answers it. */
+  let pendingTurnStart = false;
 
   // Subagent parent linkage
   let parentUuid: string | null = null;
@@ -215,8 +219,21 @@ export async function parseSessionFile(
           prev.toolErrorCount = (prev.toolErrorCount ?? 0) + errs;
         }
       }
+      // A `type: "user"` entry is only a real PROMPT if the human wrote it.
+      // Tool results are delivered as user entries too, so counting every
+      // non-meta user entry counts each tool call as a prompt — a tool-heavy
+      // session reported 227 "prompts" for ~4 actual ones. An entry carrying any
+      // tool_result block is the transcript echoing our own tool output back.
+      const isToolResultCarrier =
+        Array.isArray(uContent) && uContent.some(b => b.type === "tool_result");
+
       if (!entry.isMeta) {
-        promptCount++;
+        if (!isToolResultCarrier) {
+          promptCount++;
+          // Flag the NEXT assistant message as answering a real prompt, so a
+          // per-period prompt count can be derived from `messages` alone.
+          pendingTurnStart = true;
+        }
         if (ts !== null) lastUserTimestamp = ts;
         // Extract user prompt text for the next assistant message
         lastPromptText = extractPromptText(entry.message?.content);
@@ -226,6 +243,22 @@ export async function parseSessionFile(
         }
       }
     } else if (type === "assistant") {
+      // A transcript can contain the SAME assistant message more than once:
+      // resumes and compaction replay earlier turns verbatim (one real file was
+      // measured carrying 2571 repeated uuids, one of them 6 times). The
+      // `messages` table collapses those through its `uuid` PRIMARY KEY, which
+      // is the correct billing semantics — one API call was charged once. The
+      // session accumulators below must therefore skip repeats too, or they
+      // over-report by the duplication factor (2.9x on that file) and can never
+      // reconcile with the message rows they are supposed to summarise.
+      //
+      // Entries with no uuid cannot be deduped and also produce no message row,
+      // so they stay counted exactly as before.
+      const assistantUuid = entry.uuid;
+      if (assistantUuid) {
+        if (seenAssistantUuids.has(assistantUuid)) continue;
+        seenAssistantUuids.add(assistantUuid);
+      }
       assistantMessageCount++;
       const usage = entry.message?.usage;
       const model = entry.message?.model;
@@ -241,8 +274,15 @@ export async function parseSessionFile(
       const msgOutputTokens = usage?.output_tokens ?? 0;
       const msgStopReason = entry.message?.stop_reason;
 
+      // This message answers a real user prompt iff one is pending. Consume the
+      // flag so a follow-up assistant message in the same turn isn't also
+      // counted as a new prompt.
+      const msgIsTurnStart = pendingTurnStart;
+      pendingTurnStart = false;
+
       // Throttle heuristic: truncated at suspiciously low output
-      if (msgStopReason === "max_tokens" && msgOutputTokens < 200) {
+      const msgIsThrottled = msgStopReason === "max_tokens" && msgOutputTokens < 200;
+      if (msgIsThrottled) {
         throttleEvents++;
       }
 
@@ -338,6 +378,10 @@ export async function parseSessionFile(
           ephemeral1hCacheTokens: usage?.cache_creation?.ephemeral_1h_input_tokens ?? 0,
           promptText: lastPromptText,
           toolErrorCount,
+          isTurnStart: msgIsTurnStart,
+          webSearchRequests: usage?.server_tool_use?.web_search_requests ?? 0,
+          webFetchRequests: usage?.server_tool_use?.web_fetch_requests ?? 0,
+          isThrottled: msgIsThrottled,
         });
       }
       lastPromptText = null;

@@ -163,6 +163,30 @@ export interface MessageRecord {
    * back-compat: records/rows written before this field default to 0/undefined.
    */
   toolErrorCount?: number;
+  /**
+   * 1 when this assistant message answers a genuine USER PROMPT rather than a
+   * tool result. Tool results come back as `type: "user"` entries, so counting
+   * every user entry (which `sessions.prompt_count` did) counts each tool call
+   * as a "prompt" — one real session reported 227 prompts for ~4 actual ones.
+   *
+   * This is the per-message signal that makes a PERIOD prompt count possible at
+   * all: `messages` holds only assistant rows, so without it "prompts in this
+   * window" cannot be computed and the dashboard had to sum session-lifetime
+   * totals instead. Optional for back-compat; rows written before this field
+   * default to 0.
+   */
+  isTurnStart?: boolean;
+  /** Server-side web_search calls billed to this message. */
+  webSearchRequests?: number;
+  /** Server-side web_fetch calls billed to this message. */
+  webFetchRequests?: number;
+  /**
+   * 1 when this message was truncated at the output limit with suspiciously
+   * little output (`stop_reason=max_tokens` under 200 output tokens) — the
+   * throttle heuristic, per-message so it can be recomputed rather than
+   * accumulated.
+   */
+  isThrottled?: boolean;
 }
 
 // ─── Collection state ─────────────────────────────────────────────────────────

@@ -571,10 +571,15 @@ returns an error rather than silently falling back to all accounts.
 **Per-account token breakdown:** `get_stats`'s `planUtilization.byAccount[]`
 entries carry `inputTokens`, `outputTokens`, `cacheReadTokens`, and
 `cacheCreationTokens`, plus a `byModel` split (mirroring the top-level
-`byModel` shape). These `byAccount`/`byModel` token figures are **in-window**
-(bounded to the requested period), whereas the top-level `summary` token
-totals are **session-lifetime** — the two are not directly comparable for a
-session that started before the window.
+`byModel` shape). Every token, prompt and cost figure — `summary`,
+`byAccount`, `byModel`, `byDay`, `byHour`, `byProject` — is **in-window**
+(bounded to the requested period) and computed from the same per-message data,
+so each breakdown sums exactly to the headline.
+
+Only `sessions` counts are session-scoped: a session is counted in the period
+it was active, and attributed to the day it *started*. Its tokens are always
+attributed to when they were actually sent, so a session spanning several days
+contributes one session count but per-day token counts.
 
 **Client configuration** — register via `claude mcp add`:
 

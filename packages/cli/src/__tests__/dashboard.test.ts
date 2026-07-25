@@ -71,6 +71,38 @@ function makeMessage(overrides: Partial<MessageRecord> = {}): MessageRecord {
   };
 }
 
+/**
+ * Upsert a session together with the message row it implies.
+ *
+ * The dashboard sources every period TOKEN total from `messages` (session
+ * aggregate columns are lifetime sums and would misattribute a
+ * boundary-straddling session's whole history to the window). A fixture that
+ * writes only a session row therefore has no tokens to report — which is also
+ * true of no real store: 0 of 1168 real sessions have tokens without message
+ * rows. This keeps the two in agreement, the way collection does.
+ */
+function seedSession(store: Store, session: SessionRecord, msgOverrides: Partial<MessageRecord> = {}): void {
+  store.upsertSession(session);
+  store.upsertMessages([
+    makeMessage({
+      uuid: `msg-for-${session.sessionId}`,
+      sessionId: session.sessionId,
+      // Messages land at the session's start unless the caller places them.
+      timestamp: session.firstTimestamp,
+      inputTokens: session.inputTokens,
+      outputTokens: session.outputTokens,
+      cacheReadTokens: session.cacheReadTokens,
+      cacheCreationTokens: session.cacheCreationTokens,
+      thinkingBlocks: session.thinkingBlocks,
+      // One real user turn per seeded session. Period prompt counts come from
+      // this per-message flag (session `prompt_count` is a lifetime total AND
+      // counted tool results as prompts), so a fixture without it reports zero.
+      isTurnStart: true,
+      ...msgOverrides,
+    }),
+  ]);
+}
+
 describe("getSessions activeSince — period-boundary overlap", () => {
   let store: Store;
   let dbPath: string;
@@ -236,7 +268,7 @@ describe("buildDashboard — with sessions", () => {
   });
 
   it("returns correct aggregate totals", () => {
-    store.upsertSession(makeSession({
+    seedSession(store, makeSession({
       sessionId: "s1",
       inputTokens: 10_000,
       outputTokens: 2_000,
@@ -244,7 +276,7 @@ describe("buildDashboard — with sessions", () => {
       cacheCreationTokens: 500,
       promptCount: 5,
     }));
-    store.upsertSession(makeSession({
+    seedSession(store, makeSession({
       sessionId: "s2",
       inputTokens: 20_000,
       outputTokens: 4_000,
@@ -255,7 +287,9 @@ describe("buildDashboard — with sessions", () => {
 
     const data = buildDashboard(store, { timezone: "UTC" });
     expect(data.summary.sessions).toBe(2);
-    expect(data.summary.prompts).toBe(15);
+    // Two seeded sessions, one turn-start message each. NOT 15 (the sessions'
+    // combined lifetime prompt_count) — prompts are now counted per period.
+    expect(data.summary.prompts).toBe(2);
     expect(data.summary.inputTokens).toBe(30_000);
     expect(data.summary.outputTokens).toBe(6_000);
     expect(data.summary.cacheReadTokens).toBe(24_000);
@@ -263,7 +297,7 @@ describe("buildDashboard — with sessions", () => {
   });
 
   it("computes cache efficiency correctly", () => {
-    store.upsertSession(makeSession({
+    seedSession(store, makeSession({
       inputTokens: 1_000,
       cacheReadTokens: 8_000,
       cacheCreationTokens: 1_000,
@@ -309,18 +343,18 @@ describe("buildDashboard — with sessions", () => {
 
   it("byDay groups sessions by date", () => {
     // Two sessions on same day
-    store.upsertSession(makeSession({
+    seedSession(store, makeSession({
       sessionId: "s1",
       firstTimestamp: 1_700_000_000_000,
       inputTokens: 1_000,
     }));
-    store.upsertSession(makeSession({
+    seedSession(store, makeSession({
       sessionId: "s2",
       firstTimestamp: 1_700_000_000_000 + 3_600_000, // 1 hour later, same day
       inputTokens: 2_000,
     }));
     // One session on a different day
-    store.upsertSession(makeSession({
+    seedSession(store, makeSession({
       sessionId: "s3",
       firstTimestamp: 1_700_000_000_000 + 86_400_000, // next day
       inputTokens: 3_000,
@@ -335,19 +369,19 @@ describe("buildDashboard — with sessions", () => {
   });
 
   it("byProject correctly splits sessions by project_path", () => {
-    store.upsertSession(makeSession({
+    seedSession(store, makeSession({
       sessionId: "s1",
       projectPath: "/proj/alpha",
       inputTokens: 1_000,
       outputTokens: 500,
     }));
-    store.upsertSession(makeSession({
+    seedSession(store, makeSession({
       sessionId: "s2",
       projectPath: "/proj/beta",
       inputTokens: 2_000,
       outputTokens: 1_000,
     }));
-    store.upsertSession(makeSession({
+    seedSession(store, makeSession({
       sessionId: "s3",
       projectPath: "/proj/alpha",
       inputTokens: 3_000,
@@ -1400,27 +1434,22 @@ describe("buildDashboard — per-account reconciliation (RECONCILIATION)", () =>
     expect(inAvailable).toBe(true);
   });
 
-  it("Blocker 3 (recorded gap): Σ byAccount.inputTokens !== summary.inputTokens for a boundary-straddling session", () => {
+  it("Blocker 3 (CLOSED): Σ byAccount.inputTokens == summary.inputTokens even for a boundary-straddling session", () => {
     const data = buildDashboard(store, { since: SINCE_YMD, until: UNTIL_YMD, timezone: "UTC" });
     expect(data.planUtilization).not.toBeNull();
     const byAccount = data.planUtilization!.byAccount;
     const sumByAccountInput = byAccount.reduce((s, a) => s + a.inputTokens, 0);
 
-    // INTENTIONAL, DOCUMENTED gap (plan §2, "Blocker 3" — deferred by design,
-    // not a bug to fix here). `summary.inputTokens` is summed from
-    // SESSION-LIFETIME columns (`rows`), while `byAccount.inputTokens` is
-    // summed from the BOUNDED msgTotalsBySession (in-window messages only).
-    // "sess-a-straddle" has a lifetime input total (52M) that includes its
-    // 50M-token out-of-window message, but byAccount only ever sees its
-    // 2M-token in-window message — so the two totals MUST differ whenever a
-    // boundary-straddling session is in scope. This is recorded in the
-    // `byAccount` type doc comment (dashboard/index.ts) and must surface in
-    // the get_stats tool description + changelog (T-doc-commands/
-    // T-doc-changelog); this test exists so the gap stays deliberate, not
-    // accidental drift.
+    // Formerly a deliberate gap: `summary.inputTokens` was summed from
+    // SESSION-LIFETIME columns while `byAccount.inputTokens` came from
+    // in-window messages, so "sess-a-straddle" contributed its whole 52M
+    // lifetime input to the headline while byAccount saw only the 2M it
+    // actually sent inside the window. The headline is now message-scoped too,
+    // so the split reconciles with it by construction and the straddling
+    // session contributes only its in-window 2M.
     expect(sumByAccountInput).toBe(14 * M); // 11M (Account A) + 3M (Account B)
-    expect(data.summary.inputTokens).toBe(64 * M); // session-lifetime: 5M+3M+4M+52M
-    expect(sumByAccountInput).not.toBe(data.summary.inputTokens);
+    expect(data.summary.inputTokens).toBe(14 * M);
+    expect(sumByAccountInput).toBe(data.summary.inputTokens);
   });
 
   it("S2: a period:'all' build with an orphan message present does not crash and excludes the orphan consistently", () => {

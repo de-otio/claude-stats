@@ -2,6 +2,24 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## Unreleased
+
+### Fixed — Token, prompt and cost figures are now correct per period
+
+Several defects made the dashboard's numbers wrong, in some cases by orders of magnitude. If your figures move sharply after this upgrade, they were wrong before.
+
+- **A dashboard could show "0 sessions" beside a non-zero cost.** Both session upserts overwrote a session's `last_timestamp` with `NULL` whenever a parse chunk contained no timestamped entry (SQLite's scalar `max()` returns `NULL` if any argument is `NULL`). 45% of stored sessions were affected. Those sessions then dropped out of every period view while their messages still counted toward the headline cost. The stored values are repaired on upgrade, and period membership no longer depends on that cached column.
+
+- **Session token counters were inflated up to 14x.** Counters were *added* on each incremental parse with nothing making that idempotent, so two collectors (the extension, the MCP server, the CLI — which can run at once) each added the same work, permanently. They are now recomputed from the per-message data, which is keyed by message id and therefore immune. One real session had 73.5M output tokens recorded against 5.1M actually sent.
+
+- **A session's whole history was charged to one day.** Period token totals summed session *lifetime* columns, and the per-day/per-hour charts attributed a session's entire total to the day and hour it *started*. A week-long session put 7.1 billion cache-read tokens into a single day. Every token, prompt and cost figure is now attributed to when the work was actually sent, so `byDay`, `byHour`, `byProject` and `byAccount` each sum exactly to the headline.
+
+- **"Prompts" counted tool results.** Tool results arrive as user messages, so every tool call counted as a prompt — one session reported 227 prompts for about 4 real ones. Prompts now count genuine user turns, within the selected period. Sessions whose transcripts Claude Code has already deleted keep an approximate historical count (recovered from stored prompt text, ~68% accurate); ongoing sessions are exact.
+
+- **Replayed messages could zero out real usage.** Transcripts replay earlier turns verbatim on resume and compaction, and the replayed copies carry an empty usage block. Last-write-wins let those overwrite genuinely billed usage; an empty usage block is now treated as carrying no information.
+
+- **`includeCI=false` now applies to cost too.** It narrowed the session list but not the per-message totals, so cost kept including CI work that the session count had already excluded.
+
 ## 0.18.0 — 2026-07-22
 
 ### Added — Per-account token-level breakdown in MCP tools
@@ -16,7 +34,7 @@ The MCP tools `get_stats`, `list_projects`, `list_sessions`, and `get_cost_per_t
 Session-scoped aggregates (`byAccount`, `byProject`, `byDay`, session counts, and velocity) now align with the headline cost. **You may see higher session counts and cost-per-project figures; here's why:**
 
 - **Sessions now include CI/non-interactive and source-deleted** — they were silently excluded before, but they are real API usage and the headline cost already counted them. Restoring them brings the session-scoped view into agreement with the cost bottom line.
-- **Per-account cost and tokens are computed the same way as the headline total** — grouped from the per-message data over your date range — so the per-account and per-model breakdowns sum exactly to the headline, even for sessions with incomplete timestamp metadata that the old session-based grouping under-counted. Per-account/per-model token counts are in-window; the summary `inputTokens`/`outputTokens` remain session-lifetime totals.
+- **Per-account cost and tokens are computed the same way as the headline total** — grouped from the per-message data over your date range — so the per-account and per-model breakdowns sum exactly to the headline, even for sessions with incomplete timestamp metadata that the old session-based grouping under-counted.
 - **`period:"all"` may shift ~1%** due to orphan messages in the hourly rollup that session aggregates cannot address.
 
 See the MCP tool descriptions for the reconciliation guarantee.

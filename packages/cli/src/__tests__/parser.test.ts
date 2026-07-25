@@ -886,3 +886,121 @@ describe("extractPromptText (prompt-injection hardening)", () => {
     expect(result.messages[0]!.promptText).toBeNull();
   });
 });
+
+// ── replayed assistant turns ──────────────────────────────────────────────────
+
+/**
+ * Claude Code transcripts replay earlier assistant turns verbatim on resume and
+ * on compaction. The replayed copies reuse the SAME `uuid` and carry an EMPTY
+ * usage block, while the first occurrence holds the real numbers.
+ *
+ * `messages` is keyed on `uuid`, so it stores one row per real API call — the
+ * correct billing semantics. The session-level accumulators must agree with it,
+ * or every session counter over-reports by the duplication factor (measured at
+ * 2.9x on a real transcript, where 2571 uuids repeated and one appeared 6
+ * times) and no session-vs-message reconciliation can ever hold.
+ */
+describe("parseSessionFile — duplicate assistant uuids", () => {
+  let filePath: string;
+
+  beforeEach(() => { filePath = tmpFile(); });
+  afterEach(() => { try { fs.unlinkSync(filePath); } catch { /* ok */ } });
+
+  /** A replayed copy: same uuid, zeroed usage — exactly what real files contain. */
+  function replayOf(uuid: string) {
+    return assistantEntry({
+      uuid,
+      message: {
+        model: "claude-opus-4-6",
+        stop_reason: "end_turn",
+        content: [],
+        usage: {
+          input_tokens: 0, output_tokens: 0,
+          cache_creation_input_tokens: 0, cache_read_input_tokens: 0,
+        },
+      },
+    });
+  }
+
+  it("counts a repeated assistant uuid exactly once", async () => {
+    writeLines(filePath, [
+      userEntry(),
+      assistantEntry({ uuid: "a-dup" }),
+      replayOf("a-dup"),
+      replayOf("a-dup"),
+    ]);
+
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.session!.assistantMessageCount).toBe(1);
+    expect(r.session!.outputTokens).toBe(50);
+    expect(r.session!.inputTokens).toBe(100);
+    expect(r.session!.cacheReadTokens).toBe(80);
+    expect(r.messages).toHaveLength(1);
+  });
+
+  it("keeps the FIRST occurrence's usage, not the zeroed replay's", async () => {
+    writeLines(filePath, [userEntry(), assistantEntry({ uuid: "a-dup" }), replayOf("a-dup")]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.messages[0]!.outputTokens).toBe(50);
+  });
+
+  it("session counters equal the message rows they summarise", async () => {
+    // The invariant that makes `sessions` a faithful projection of `messages`.
+    writeLines(filePath, [
+      userEntry(),
+      assistantEntry({ uuid: "a1" }),
+      assistantEntry({ uuid: "a2" }),
+      replayOf("a1"),
+      replayOf("a2"),
+      assistantEntry({ uuid: "a3" }),
+    ]);
+
+    const r = await parseSessionFile(filePath, "/proj");
+    const msgΣ = r.messages.reduce(
+      (a, m) => ({
+        i: a.i + m.inputTokens, o: a.o + m.outputTokens,
+        cr: a.cr + m.cacheReadTokens, cc: a.cc + m.cacheCreationTokens,
+      }),
+      { i: 0, o: 0, cr: 0, cc: 0 },
+    );
+    expect(r.session!.assistantMessageCount).toBe(r.messages.length);
+    expect({
+      i: r.session!.inputTokens, o: r.session!.outputTokens,
+      cr: r.session!.cacheReadTokens, cc: r.session!.cacheCreationTokens,
+    }).toEqual(msgΣ);
+  });
+
+  it("still counts distinct assistant messages separately", async () => {
+    // The dedupe must key on uuid, not collapse genuinely distinct messages.
+    writeLines(filePath, [userEntry(), assistantEntry({ uuid: "a1" }), assistantEntry({ uuid: "a2" })]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.session!.assistantMessageCount).toBe(2);
+    expect(r.session!.outputTokens).toBe(100);
+  });
+
+  it("counts tool_use and web-request tallies once per repeated uuid", async () => {
+    // These accumulate inside the same branch, so they inflate the same way.
+    writeLines(filePath, [
+      userEntry(),
+      assistantEntry({
+        uuid: "a-tool",
+        message: {
+          model: "claude-opus-4-6",
+          stop_reason: "end_turn",
+          content: [{ type: "tool_use", name: "Read", input: {} }],
+          usage: {
+            input_tokens: 10, output_tokens: 5,
+            cache_creation_input_tokens: 0, cache_read_input_tokens: 0,
+            server_tool_use: { web_search_requests: 1, web_fetch_requests: 2 },
+          },
+        },
+      }),
+      replayOf("a-tool"),
+    ]);
+
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.session!.toolUseCounts).toEqual([{ name: "Read", count: 1 }]);
+    expect(r.session!.webSearchRequests).toBe(1);
+    expect(r.session!.webFetchRequests).toBe(2);
+  });
+});

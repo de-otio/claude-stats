@@ -25,7 +25,7 @@ import type {
 import { estimateCost } from "@claude-stats/core/pricing";
 import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
-const SCHEMA_VERSION = 16;
+const SCHEMA_VERSION = 18;
 
 export class Store {
   private db: DatabaseSync;
@@ -74,6 +74,8 @@ export class Store {
     if (current < 14) this.migrateToV14();
     if (current < 15) this.migrateToV15();
     if (current < 16) this.migrateToV16();
+    if (current < 17) this.migrateToV17();
+    if (current < 18) this.migrateToV18();
 
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
@@ -452,6 +454,122 @@ export class Store {
   }
 
   /**
+   * V17 — repair `sessions.last_timestamp` values destroyed by the NULL-poisoning
+   * upserts (see the notes on `upsertSession` / `upsertSessionIncremental`).
+   *
+   * A delta parse that produced no timestamped entry wrote NULL over a
+   * known-good `last_timestamp`; SQLite's scalar `max()` returning NULL for any
+   * NULL argument made the incremental path do it too. Those rows are then
+   * invisible to every `activeSince` (period) query while their messages still
+   * count toward the headline cost. Recompute from `messages`, which is the
+   * ground truth the aggregate column caches.
+   *
+   * Only touches rows where the cached value is NULL or provably too early
+   * (< the session's real max message timestamp); never moves a value backwards,
+   * so a session whose messages were pruned keeps its recorded end. Idempotent:
+   * a second run finds nothing left to fix.
+   */
+  private migrateToV17(): void {
+    this.db.exec("BEGIN");
+    try {
+      this.db.exec(`
+        UPDATE sessions SET last_timestamp = (
+          SELECT MAX(m.timestamp) FROM messages m
+          WHERE m.session_id = sessions.session_id AND m.timestamp IS NOT NULL
+        )
+        WHERE EXISTS (
+          SELECT 1 FROM messages m
+          WHERE m.session_id = sessions.session_id AND m.timestamp IS NOT NULL
+        )
+        AND (
+          last_timestamp IS NULL
+          OR last_timestamp < (
+            SELECT MAX(m.timestamp) FROM messages m
+            WHERE m.session_id = sessions.session_id AND m.timestamp IS NOT NULL
+          )
+        );
+      `);
+      // Serves the correlated message-existence arm of the `activeSince`
+      // predicate: session_id equality plus a timestamp range in one index.
+      this.db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_messages_session_ts
+          ON messages (session_id, timestamp);
+      `);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
+  /**
+   * V18 — make the `sessions` counter columns a PROJECTION of `messages`
+   * instead of an accumulator, and repair the values already inflated.
+   *
+   * `upsertSessionIncremental` ADDS each delta's counters. Nothing made that
+   * idempotent — there is no lock around read-checkpoint → parse → add, so two
+   * collectors (VS Code extension, MCP server, CLI) processing the same delta
+   * both added it. `messages` was immune the whole time because its `uuid`
+   * PRIMARY KEY dedupes. Measured on one real session: `output_tokens`
+   * 73 553 732 stored vs 5 115 161 true — 14x, compounding forever.
+   *
+   * Recomputing from `messages` fixes every session in one pass and removes the
+   * failure mode: a projection cannot double-count.
+   *
+   * Also adds the per-message signals that let the projection be TOTAL rather
+   * than partial — `is_turn_start` (a real user prompt, not a tool result),
+   * `web_search_requests`, `web_fetch_requests`, `is_throttled`.
+   *
+   * `is_turn_start` cannot be recovered exactly for existing rows (it needs the
+   * transcript, and 936 of 1168 sessions no longer have one — Claude Code prunes
+   * them). It IS approximable from data already stored: `prompt_text` is only
+   * attached to the assistant message that answered a user turn, so
+   * `prompt_text IS NOT NULL` marks turn starts wherever the prompt had
+   * extractable text. Measured against sessions the new parser has since done
+   * exactly, that proxy captures 68% of real turns — imperfect, but the column
+   * it replaces was reporting 296 155 "prompts" for ~7 600 real ones.
+   *
+   * The proxy is applied ONLY to sessions with no real signal at all, so it can
+   * never overwrite an exact value, and it only ever sets 0 → 1.
+   *
+   * Deliberately does NOT invalidate the collection checkpoints. Doing so would
+   * force a ~0.7 GB re-parse on the next collect to recover the exact signal for
+   * the 232 live transcripts; that is a surprising amount of work to trigger from
+   * a schema migration, and it stalled the collector past its timeouts. Ongoing
+   * sessions get exact values for new turns as they are appended.
+   */
+  private migrateToV18(): void {
+    const addColumn = (table: string, column: string, def: string): void => {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === column)) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+      }
+    };
+    addColumn("messages", "is_turn_start", "INTEGER NOT NULL DEFAULT 0");
+    addColumn("messages", "web_search_requests", "INTEGER NOT NULL DEFAULT 0");
+    addColumn("messages", "web_fetch_requests", "INTEGER NOT NULL DEFAULT 0");
+    addColumn("messages", "is_throttled", "INTEGER NOT NULL DEFAULT 0");
+
+    this.db.exec("BEGIN");
+    try {
+      this.db.exec(`
+        UPDATE messages SET is_turn_start = 1
+        WHERE is_turn_start = 0
+          AND prompt_text IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM messages m2
+            WHERE m2.session_id = messages.session_id AND m2.is_turn_start = 1
+          );
+      `);
+      this.recomputeSessionAggregatesSql(null);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
+  /**
    * V14 — anchor pins. Durable, session-keyed ground-truth pins produced by the
    * attribution engine's anchor signal (live CLI sessions observed active under
    * the currently-read account). Persisted because the live-session files are
@@ -468,6 +586,73 @@ export class Store {
         source       TEXT NOT NULL
       );
     `);
+  }
+
+  // ─── Session aggregate projection ───────────────────────────────────────────
+
+  /**
+   * Recompute the `sessions` counter columns from `messages` — the ONLY writer
+   * of those columns that is safe to run twice.
+   *
+   * `messages` is keyed on the message uuid, so re-processing a byte range
+   * cannot change it. Deriving the session counters from it therefore makes them
+   * idempotent too, which is what the old additive `upsertSessionIncremental`
+   * could never be (see migrateToV18 for the 14x it produced).
+   *
+   * Pass a session-id list to recompute just those (the collector's case) or
+   * `null` for every session (the migration's case).
+   *
+   * `prompt_count` is only rewritten for sessions that actually carry the
+   * `is_turn_start` signal. Rows ingested before V18 have it as 0 for every
+   * message, and blindly recomputing would report "0 prompts" for all history
+   * rather than a stale-but-nonzero number.
+   */
+  private recomputeSessionAggregatesSql(sessionIds: string[] | null): void {
+    const scope = sessionIds === null
+      ? ""
+      : `AND s.session_id IN (${sessionIds.map(() => "?").join(",")})`;
+    // The only bound placeholders are the session ids in `scope`; every other
+    // term is a correlated subquery with no parameters.
+    const params = sessionIds ?? [];
+
+    // Written as a single UPDATE so the whole projection lands atomically per row.
+    this.db
+      .prepare(
+        `UPDATE sessions AS s SET
+           input_tokens            = (SELECT COALESCE(SUM(m.input_tokens), 0)          FROM messages m WHERE m.session_id = s.session_id),
+           output_tokens           = (SELECT COALESCE(SUM(m.output_tokens), 0)         FROM messages m WHERE m.session_id = s.session_id),
+           cache_read_tokens       = (SELECT COALESCE(SUM(m.cache_read_tokens), 0)     FROM messages m WHERE m.session_id = s.session_id),
+           cache_creation_tokens   = (SELECT COALESCE(SUM(m.cache_creation_tokens), 0) FROM messages m WHERE m.session_id = s.session_id),
+           thinking_blocks         = (SELECT COALESCE(SUM(m.thinking_blocks), 0)       FROM messages m WHERE m.session_id = s.session_id),
+           assistant_message_count = (SELECT COUNT(*)                                  FROM messages m WHERE m.session_id = s.session_id),
+           web_search_requests     = (SELECT COALESCE(SUM(m.web_search_requests), 0)   FROM messages m WHERE m.session_id = s.session_id),
+           web_fetch_requests      = (SELECT COALESCE(SUM(m.web_fetch_requests), 0)    FROM messages m WHERE m.session_id = s.session_id),
+           throttle_events         = (SELECT COALESCE(SUM(m.is_throttled), 0)          FROM messages m WHERE m.session_id = s.session_id),
+           prompt_count            = CASE
+             WHEN (SELECT COALESCE(SUM(m.is_turn_start), 0) FROM messages m WHERE m.session_id = s.session_id) > 0
+             THEN (SELECT SUM(m.is_turn_start) FROM messages m WHERE m.session_id = s.session_id)
+             ELSE s.prompt_count END
+         WHERE EXISTS (SELECT 1 FROM messages m WHERE m.session_id = s.session_id) ${scope}`
+      )
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .run(...(params as any[]));
+  }
+
+  /**
+   * Public entry point for the projection — see `recomputeSessionAggregatesSql`.
+   *
+   * Opens its own transaction so a crash can't leave counters half-updated, but
+   * joins an existing one if the caller already has one open: the collector runs
+   * this alongside its upserts inside a single transaction, and `BEGIN` does not
+   * nest in SQLite.
+   */
+  recomputeSessionAggregates(sessionIds: string[] | null = null): void {
+    if (sessionIds !== null && sessionIds.length === 0) return;
+    if (this.db.isTransaction) {
+      this.recomputeSessionAggregatesSql(sessionIds);
+    } else {
+      this.transaction(() => this.recomputeSessionAggregatesSql(sessionIds));
+    }
   }
 
   // ─── Rollup recompute (shared: backfill + incremental) ──────────────────────
@@ -591,7 +776,13 @@ export class Store {
         source_deleted, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (session_id) DO UPDATE SET
-        last_timestamp          = excluded.last_timestamp,
+        -- COALESCE, not a bare overwrite: a re-parse whose entries carry no
+        -- usable timestamp yields lastTimestamp=null, and writing that over a
+        -- known-good value silently destroys it. A NULL last_timestamp next to
+        -- an early first_timestamp then drops the session from every
+        -- activeSince (period) query while its MESSAGES still count toward the
+        -- headline cost — the "0 sessions, non-zero cost" dashboard bug.
+        last_timestamp          = COALESCE(excluded.last_timestamp, sessions.last_timestamp),
         claude_version          = excluded.claude_version,
         entrypoint              = COALESCE(excluded.entrypoint, sessions.entrypoint),
         is_interactive          = excluded.is_interactive,
@@ -676,7 +867,16 @@ export class Store {
         source_deleted, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (session_id) DO UPDATE SET
-        last_timestamp          = MAX(sessions.last_timestamp, excluded.last_timestamp),
+        -- SQLite's SCALAR max() returns NULL if ANY argument is NULL, so a bare
+        -- MAX(sessions.last_timestamp, excluded.last_timestamp) wipes a
+        -- known-good value whenever a delta chunk carries no timestamped entry
+        -- (parseSession leaves lastTimestamp null then). COALESCE each side to
+        -- the other first so a null delta is a no-op and only "both null" is
+        -- null. See the note on upsertSession's last_timestamp.
+        last_timestamp          = MAX(
+                                    COALESCE(sessions.last_timestamp, excluded.last_timestamp),
+                                    COALESCE(excluded.last_timestamp, sessions.last_timestamp)
+                                  ),
         claude_version          = excluded.claude_version,
         entrypoint              = COALESCE(excluded.entrypoint, sessions.entrypoint),
         is_interactive          = MAX(sessions.is_interactive, excluded.is_interactive),
@@ -741,29 +941,54 @@ export class Store {
   // ─── Message upsert ─────────────────────────────────────────────────────────
 
   upsertMessages(records: MessageRecord[]): void {
+    // A transcript replays earlier assistant turns verbatim on resume and
+    // compaction, and the replayed copies carry an EMPTY usage block
+    // ({input:0,output:0,cache:0}) while the FIRST occurrence holds the real
+    // numbers. Plain last-write-wins therefore zeroed genuinely-billed usage —
+    // measured on one real file, two messages each lost 490 output and 420 067
+    // cache-read tokens that way.
+    //
+    // So: treat "every token field is 0" as "this copy carries NO usage
+    // information" and keep what is already stored. A re-parse that reports
+    // different NON-ZERO usage is a real correction and still wins, including
+    // when it corrects downwards — which a blunt MAX() would have blocked.
+    const carriesNoUsage =
+      "excluded.input_tokens = 0 AND excluded.output_tokens = 0 AND " +
+      "excluded.cache_read_tokens = 0 AND excluded.cache_creation_tokens = 0";
+    const keepIfNoUsage = (col: string): string =>
+      `${col} = CASE WHEN ${carriesNoUsage} THEN messages.${col} ELSE excluded.${col} END`;
+
     const stmt = this.db.prepare(`
       INSERT INTO messages (
         uuid, session_id, timestamp, claude_version, model, stop_reason,
         input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
         tools, file_paths, thinking_blocks,
         service_tier, inference_geo, ephemeral_5m_cache_tokens, ephemeral_1h_cache_tokens,
-        prompt_text, tool_error_count
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        prompt_text, tool_error_count,
+        is_turn_start, web_search_requests, web_fetch_requests, is_throttled
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (uuid) DO UPDATE SET
         model                       = excluded.model,
-        input_tokens                = excluded.input_tokens,
-        output_tokens               = excluded.output_tokens,
-        cache_creation_tokens       = excluded.cache_creation_tokens,
-        cache_read_tokens           = excluded.cache_read_tokens,
+        ${keepIfNoUsage("input_tokens")},
+        ${keepIfNoUsage("output_tokens")},
+        ${keepIfNoUsage("cache_creation_tokens")},
+        ${keepIfNoUsage("cache_read_tokens")},
+        ${keepIfNoUsage("thinking_blocks")},
+        ${keepIfNoUsage("ephemeral_5m_cache_tokens")},
+        ${keepIfNoUsage("ephemeral_1h_cache_tokens")},
+        ${keepIfNoUsage("web_search_requests")},
+        ${keepIfNoUsage("web_fetch_requests")},
         tools                       = excluded.tools,
         file_paths                  = COALESCE(excluded.file_paths, messages.file_paths),
-        thinking_blocks             = excluded.thinking_blocks,
         service_tier                = excluded.service_tier,
         inference_geo               = excluded.inference_geo,
-        ephemeral_5m_cache_tokens   = excluded.ephemeral_5m_cache_tokens,
-        ephemeral_1h_cache_tokens   = excluded.ephemeral_1h_cache_tokens,
         prompt_text                 = COALESCE(excluded.prompt_text, messages.prompt_text),
-        tool_error_count            = excluded.tool_error_count
+        tool_error_count            = excluded.tool_error_count,
+        -- Turn-start and throttle are properties of the real turn, so a zeroed
+        -- replay must not clear them: MAX keeps a 1 once seen. Both are 0/1 and
+        -- NOT NULL, so MAX has no NULL hazard here.
+        is_turn_start               = MAX(messages.is_turn_start, excluded.is_turn_start),
+        is_throttled                = MAX(messages.is_throttled, excluded.is_throttled)
     `);
     for (const r of records) {
       stmt.run(
@@ -773,7 +998,9 @@ export class Store {
         JSON.stringify(r.tools), JSON.stringify(r.filePaths ?? []),
         r.thinkingBlocks,
         r.serviceTier, r.inferenceGeo, r.ephemeral5mCacheTokens, r.ephemeral1hCacheTokens,
-        r.promptText ?? null, r.toolErrorCount ?? 0
+        r.promptText ?? null, r.toolErrorCount ?? 0,
+        r.isTurnStart ? 1 : 0, r.webSearchRequests ?? 0, r.webFetchRequests ?? 0,
+        r.isThrottled ? 1 : 0
       );
     }
   }
@@ -1291,26 +1518,24 @@ export class Store {
    * Any bound (since/until/projectPath/repoUrl) falls back to the Build-1 seek
    * path (getMessageTotalsRaw), which is unchanged.
    */
-  getMessageTotals(filters: {
-    projectPath?: string;
-    repoUrl?: string;
-    accountUuid?: string;
-    entrypoint?: string;
-    since?: number;
-    until?: number;
-  } = {}): MessageTotalRow[] {
+  getMessageTotals(filters: MessageFilter = {}): MessageTotalRow[] {
     // An account/entrypoint filter is a session-scoped bound just like
     // project/repo: it must take the raw seek path (getMessageTotalsRaw), never
     // the fully-unbounded message_hourly rollup (which has no session dimension
     // and would return every account's totals). This is what lets an
     // account-filtered get_stats headline reconcile with its byAccount split.
+    // includeCI/includeDeleted are session-scoped bounds too: the rollup has no
+    // session dimension, so an explicit `false` must fall through to the raw
+    // seek or the fast path would silently ignore the narrowing.
     const fullyUnbounded =
       filters.since === undefined &&
       filters.until === undefined &&
       !filters.projectPath &&
       !filters.repoUrl &&
       !filters.accountUuid &&
-      !filters.entrypoint;
+      !filters.entrypoint &&
+      filters.includeCI !== false &&
+      filters.includeDeleted !== false;
     if (fullyUnbounded && this.isMessageHourlyFresh()) return this.getMessageTotalsFromRollup();
     return this.getMessageTotalsRaw(filters);
   }
@@ -1335,20 +1560,27 @@ export class Store {
     return stmt.all() as unknown as MessageTotalRow[];
   }
 
-  private getMessageTotalsRaw(filters: {
-    projectPath?: string;
-    repoUrl?: string;
-    accountUuid?: string;
-    entrypoint?: string;
-    since?: number;
-    until?: number;
-  } = {}): MessageTotalRow[] {
-    // Period is filtered on the MESSAGE timestamp (messages SENT in the period),
-    // which seeks idx_messages_timestamp. Session-scoped filters (project/repo)
-    // stay in an always-emitted membership subquery — this preserves the prior
-    // inner join's orphan-message drop (a message whose session_id is absent
-    // from `sessions` matches neither form). Outer (m.timestamp) params are
-    // bound before the subquery params to match the `?` order in the SQL.
+  /**
+   * Shared WHERE construction for every message-scoped aggregate.
+   *
+   * Period is filtered on the MESSAGE timestamp (messages SENT in the period),
+   * which seeks idx_messages_timestamp. Session-scoped filters (project/repo)
+   * stay in an always-emitted membership subquery — this preserves the prior
+   * inner join's orphan-message drop (a message whose session_id is absent
+   * from `sessions` matches neither form). Outer (m.timestamp) params are
+   * bound before the subquery params to match the `?` order in the SQL, so
+   * callers must interpolate `outerWhere` before `sessionAnd`.
+   *
+   * Every message-scoped read MUST go through this, so that the headline, the
+   * per-day/per-hour/per-project splits and the per-account split all select
+   * exactly the same message set and therefore reconcile by construction.
+   *
+   * Returns the two condition groups separately because the two query shapes
+   * consume them differently: an EXISTS-subquery form (keeps the timestamp
+   * index seek) and an INNER JOIN form (needs `s.*` columns in GROUP BY). Both
+   * bind outer params before session params.
+   */
+  private buildMessageFilter(filters: MessageFilter): { outer: string[]; session: string[]; params: unknown[] } {
     const outerConditions: string[] = [];
     const sessionConditions: string[] = [];
     const params: unknown[] = [];
@@ -1380,13 +1612,121 @@ export class Store {
       sessionConditions.push("s.entrypoint = ?");
       params.push(filters.entrypoint);
     }
+    // CI / deleted symmetry. `getSessions` narrows the SESSION set on these two
+    // flags; if the message-scoped reads ignore them, the two halves of every
+    // aggregate describe different work again — cost would keep counting a CI
+    // session that `rows` has already excluded, and a project whose only
+    // session is CI would still appear in byProject under includeCI=false.
+    // Explicit-false only (undefined = no narrowing), which is exactly what
+    // `getSessions` does for the values buildDashboard passes it.
+    if (filters.includeCI === false) {
+      sessionConditions.push("s.is_interactive = 1");
+    }
+    if (filters.includeDeleted === false) {
+      sessionConditions.push("s.source_deleted = 0");
+    }
 
+    return { outer: outerConditions, session: sessionConditions, params };
+  }
+
+  /** EXISTS-subquery WHERE clause (keeps the m.timestamp index seek). */
+  private messageWhereExists(f: { outer: string[]; session: string[] }): string {
+    const sessionAnd = f.session.length ? ` AND ${f.session.join(" AND ")}` : "";
+    const outerAnd = f.outer.length ? `${f.outer.join(" AND ")} AND ` : "";
+    return `${outerAnd}EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = m.session_id${sessionAnd})`;
+  }
+
+  /** INNER-JOIN WHERE clause, for aggregates that GROUP BY a `sessions` column. */
+  private messageWhereJoin(f: { outer: string[]; session: string[] }): string {
+    const all = [...f.outer, ...f.session];
+    return all.length ? all.join(" AND ") : "1=1";
+  }
+
+  /**
+   * Width of the time bucket `getMessageTotalsByBucket` groups into: 15 minutes.
+   *
+   * Buckets are UTC-aligned but consumed as tz-LOCAL day/hour buckets, so the
+   * width must divide every real-world UTC offset — those include :30 (e.g.
+   * Asia/Kolkata) and :45 (e.g. Asia/Kathmandu). 15 min is the coarsest width
+   * that can never straddle a local day OR local hour boundary; an hour-wide
+   * bucket (what `message_hourly` uses) would misplace tokens for half-hour
+   * offset zones.
+   */
+  private static readonly BUCKET_MS = 900_000;
+
+  /**
+   * Per-time-bucket, per-model token totals for messages SENT in the window —
+   * the same message set as `getMessageTotals`, just grouped by time as well as
+   * model. Callers fold the buckets into tz-local days/hours.
+   *
+   * `bucket_start` is the epoch-ms start of the bucket, or null for messages
+   * with no timestamp (only reachable when the caller passes no since/until,
+   * since a period filter drops them).
+   *
+   * Σ over buckets == `getMessageTotals` for identical filters BY CONSTRUCTION
+   * (same filter builder, same membership subquery) — that is what makes the
+   * dashboard's byDay/byHour reconcile with its headline.
+   */
+  getMessageTotalsByBucket(filters: MessageFilter = {}): MessageBucketTotalRow[] {
+    const f = this.buildMessageFilter(filters);
+    const sql = `
+      SELECT
+        (m.timestamp / ${Store.BUCKET_MS}) * ${Store.BUCKET_MS} AS bucket_start,
+        m.model AS model,
+        SUM(m.input_tokens) AS input_tokens,
+        SUM(m.output_tokens) AS output_tokens,
+        SUM(m.cache_read_tokens) AS cache_read_tokens,
+        SUM(m.cache_creation_tokens) AS cache_creation_tokens,
+        COUNT(*) AS msg_count,
+        SUM(m.is_turn_start) AS prompt_count
+      FROM messages m
+      WHERE ${this.messageWhereExists(f)}
+      GROUP BY bucket_start, m.model
+    `;
+    const params = f.params;
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(...params) as MessageBucketTotalRow[];
+  }
+
+  /**
+   * Per-project, per-model token totals for messages SENT in the window — the
+   * message-scoped counterpart of the session-row `byProject` accumulation.
+   * Σ over projects == `getMessageTotals` for identical filters.
+   */
+  getMessageTotalsByProject(filters: MessageFilter = {}): MessageProjectTotalRow[] {
+    const f = this.buildMessageFilter(filters);
+    // INNER JOIN reproduces the EXISTS orphan-drop exactly (one row per
+    // qualifying message, `sessions.session_id` being unique) while making
+    // s.project_path available to GROUP BY.
+    const sql = `
+      SELECT
+        s.project_path AS project_path,
+        m.model AS model,
+        SUM(m.input_tokens) AS input_tokens,
+        SUM(m.output_tokens) AS output_tokens,
+        SUM(m.cache_read_tokens) AS cache_read_tokens,
+        SUM(m.cache_creation_tokens) AS cache_creation_tokens,
+        COUNT(*) AS msg_count,
+        SUM(m.is_turn_start) AS prompt_count
+      FROM messages m
+      JOIN sessions s ON s.session_id = m.session_id
+      WHERE ${this.messageWhereJoin(f)}
+      GROUP BY s.project_path, m.model
+    `;
+    const params = f.params;
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(...params) as MessageProjectTotalRow[];
+  }
+
+  private getMessageTotalsRaw(filters: MessageFilter = {}): MessageTotalRow[] {
+    const f = this.buildMessageFilter(filters);
+    const params = f.params;
     // EXISTS (not IN): preserves orphan-drop AND lets the m.timestamp filter
     // seek idx_messages_timestamp. An `IN (SELECT all session_ids)` would make
     // the planner iterate every session_id via idx_messages_session instead,
     // defeating the timestamp seek.
-    const sessionAnd = sessionConditions.length ? ` AND ${sessionConditions.join(" AND ")}` : "";
-    const outerWhere = outerConditions.length ? `${outerConditions.join(" AND ")} AND ` : "";
     const sql = `
       SELECT
         m.model,
@@ -1395,9 +1735,7 @@ export class Store {
         SUM(m.cache_read_tokens) AS cache_read_tokens,
         SUM(m.cache_creation_tokens) AS cache_creation_tokens
       FROM messages m
-      WHERE ${outerWhere}EXISTS (
-        SELECT 1 FROM sessions s WHERE s.session_id = m.session_id${sessionAnd}
-      )
+      WHERE ${this.messageWhereExists(f)}
       GROUP BY m.model
     `;
     const stmt = this.db.prepare(sql);
@@ -1423,41 +1761,11 @@ export class Store {
    * `getMessageTotalsRaw`'s EXISTS orphan-drop exactly (one row per qualifying
    * message), so orphan messages are dropped identically in both.
    */
-  getMessageTotalsByAccount(filters: {
-    projectPath?: string;
-    repoUrl?: string;
-    accountUuid?: string;
-    entrypoint?: string;
-    since?: number;
-    until?: number;
-  } = {}): AccountModelTotalRow[] {
-    const conditions: string[] = [];
-    const params: unknown[] = [];
-    if (filters.since !== undefined) {
-      conditions.push("m.timestamp >= ?");
-      params.push(filters.since);
-    }
-    if (filters.until !== undefined) {
-      conditions.push("m.timestamp < ?");
-      params.push(filters.until);
-    }
-    if (filters.projectPath) {
-      conditions.push("s.project_path = ?");
-      params.push(filters.projectPath);
-    }
-    if (filters.repoUrl) {
-      conditions.push("s.repo_url = ?");
-      params.push(filters.repoUrl);
-    }
-    if (filters.accountUuid) {
-      conditions.push("s.account_uuid = ?");
-      params.push(filters.accountUuid);
-    }
-    if (filters.entrypoint) {
-      conditions.push("s.entrypoint = ?");
-      params.push(filters.entrypoint);
-    }
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  getMessageTotalsByAccount(filters: MessageFilter = {}): AccountModelTotalRow[] {
+    // Shares buildMessageFilter with the headline (it used to duplicate the
+    // condition list, which is how it silently missed includeCI/includeDeleted).
+    const f = this.buildMessageFilter(filters);
+    const params = f.params;
     const sql = `
       SELECT s.account_uuid AS account_uuid, m.model AS model,
         SUM(m.input_tokens) AS input_tokens,
@@ -1466,7 +1774,7 @@ export class Store {
         SUM(m.cache_creation_tokens) AS cache_creation_tokens
       FROM messages m
       JOIN sessions s ON s.session_id = m.session_id
-      ${where}
+      WHERE ${this.messageWhereJoin(f)}
       GROUP BY s.account_uuid, m.model
     `;
     const stmt = this.db.prepare(sql);
@@ -1483,12 +1791,22 @@ export class Store {
     since?: number;
     /**
      * Include sessions that were ACTIVE at/after this epoch-ms — i.e. their last
-     * message lands in the period even if the session STARTED before it. Filters
-     * on `COALESCE(last_timestamp, first_timestamp) >= activeSince`, so a session
-     * straddling the period boundary (e.g. one running across midnight) is
-     * counted. Use this instead of `since` when the count must agree with
+     * message lands in the period even if the session STARTED before it, so a
+     * session straddling the period boundary (e.g. one running across midnight)
+     * is counted. Use this instead of `since` when the count must agree with
      * message-timestamp-filtered metrics (cost/energy). Mutually complementary
      * with `since` (start-in-period); pass one or the other, not both.
+     *
+     * Membership is satisfied EITHER by the session's own aggregate columns
+     * (`COALESCE(last_timestamp, first_timestamp) >= activeSince`) OR by having a
+     * MESSAGE in the window. The message clause is what makes this predicate
+     * agree with the message-scoped reads (getMessageTotals, getMessageTimestamps)
+     * by construction rather than by coincidence: whenever those attribute cost
+     * to the period, the owning session is in this set too. Without it a session
+     * whose aggregates drift from its messages — historically a NULL
+     * `last_timestamp` beside an early `first_timestamp` — is dropped here while
+     * its cost still lands in the headline, rendering "0 sessions" beside a
+     * non-zero cost.
      */
     activeSince?: number;
     until?: number;
@@ -1526,11 +1844,22 @@ export class Store {
       params.push(filters.since);
     }
     if (filters.activeSince !== undefined) {
-      // Session overlaps [activeSince, ∞): its last activity is at/after the
-      // period start. COALESCE so sessions with a null last_timestamp fall back
-      // to their start time rather than being dropped.
-      conditions.push("COALESCE(last_timestamp, first_timestamp) >= ?");
-      params.push(filters.activeSince);
+      // Session overlaps [activeSince, until): either its own aggregate columns
+      // say so, or it owns a message in the window. The second arm is the
+      // authoritative one — it is the same predicate the message-scoped reads
+      // use, so this set can never fall out of sync with the headline totals
+      // even when a session's cached first/last_timestamp are wrong or NULL.
+      const msgConds = ["m.session_id = sessions.session_id", "m.timestamp >= ?"];
+      const msgParams: unknown[] = [filters.activeSince];
+      if (filters.until !== undefined) {
+        msgConds.push("m.timestamp < ?");
+        msgParams.push(filters.until);
+      }
+      conditions.push(
+        `(COALESCE(last_timestamp, first_timestamp) >= ?
+          OR EXISTS (SELECT 1 FROM messages m WHERE ${msgConds.join(" AND ")}))`
+      );
+      params.push(filters.activeSince, ...msgParams);
     }
     if (filters.until !== undefined) {
       conditions.push("first_timestamp < ?");
@@ -2850,12 +3179,48 @@ export interface SessionMessageTotalRow {
   cache_creation_tokens: number;
 }
 
+/**
+ * Filter accepted by every message-scoped aggregate. Deliberately mirrors the
+ * `getSessions` filters that narrow the session set, so a caller can pass the
+ * SAME values to both and have the two reconcile. Adding a narrowing dimension
+ * to `getSessions` without adding it here is how the halves drift apart.
+ */
+export interface MessageFilter {
+  projectPath?: string;
+  repoUrl?: string;
+  accountUuid?: string;
+  entrypoint?: string;
+  since?: number;
+  until?: number;
+  /** Explicit `false` excludes non-interactive (CI) sessions. */
+  includeCI?: boolean;
+  /** Explicit `false` excludes sessions whose transcript was deleted. */
+  includeDeleted?: boolean;
+}
+
 export interface MessageTotalRow {
   model: string;
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+}
+
+/** One 15-minute time bucket × model of in-window message totals. */
+export interface MessageBucketTotalRow extends MessageTotalRow {
+  /** Epoch-ms start of the bucket; null for messages with no timestamp. */
+  bucket_start: number | null;
+  msg_count: number;
+  /** Real user turns started in this bucket (Σ is_turn_start). */
+  prompt_count: number;
+}
+
+/** One project × model of in-window message totals. */
+export interface MessageProjectTotalRow extends MessageTotalRow {
+  project_path: string;
+  msg_count: number;
+  /** Real user turns started in this project in the window (Σ is_turn_start). */
+  prompt_count: number;
 }
 
 export interface AccountModelTotalRow {

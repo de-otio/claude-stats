@@ -209,9 +209,11 @@ export function createMcpServer(store: Store): McpServer {
     "Get your Claude Code usage stats for a period — tokens, cost, sessions, velocity, cache efficiency, streaks. " +
       "Also returns `planAdvice` (plan-utilization metrics + actionable recommendations, or null with no data), " +
       "reusing the same numbers the dashboard Plan tab shows. `planAdvice.planUtilization.byAccount` never carries " +
-      "a raw email address — only `accountId` and `emailPresent`. `byAccount` (and `byModel`) token/cost figures are " +
-      "scoped to the requested window (in-window); the top-level `summary` token totals are session-LIFETIME sums, " +
-      "so per-account in-window tokens and summary lifetime tokens can differ for a boundary-straddling session.",
+      "a raw email address — only `accountId` and `emailPresent`. Every token, prompt and cost figure — `summary`, " +
+      "`byAccount`, `byModel`, `byDay`, `byHour`, `byProject` — is scoped to the requested window and derived from the " +
+      "same per-message data, so each breakdown sums exactly to the headline. Only `sessions` is session-scoped: a " +
+      "session counts in every period it was active and is attributed to the day it STARTED, while its tokens are " +
+      "attributed to when they were actually sent.",
     {
       ...dateRangeShape,
       account: z.string().optional()

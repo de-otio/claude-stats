@@ -2,7 +2,7 @@
  * Dashboard — builds pre-aggregated JSON for visualization tools.
  * See plans/11-dashboard-export.md for design.
  */
-import type { Store, SessionRow } from "../store/index.js";
+import type { Store, SessionRow, MessageFilter } from "../store/index.js";
 import type { ReportOptions } from "../reporter/index.js";
 import { periodRange } from "../reporter/index.js";
 import { estimateCost, lookupPlanFee, PLAN_FEES } from "@claude-stats/core/pricing";
@@ -233,10 +233,10 @@ export interface DashboardData {
       // Per-account token detail + per-model split, mirroring the top-level
       // `byModel` shape. These are IN-WINDOW (sourced from the bounded
       // msgTotalsBySession), so Σ byAccount tokens == top-level byModel tokens.
-      // NOTE (§2): the sibling `summary.inputTokens` et al. are session-LIFETIME
-      // totals (summed from session columns), so per-account in-window tokens
-      // and summary lifetime tokens intentionally differ for any
-      // boundary-straddling session — see the get_stats tool description.
+      // `summary.inputTokens` et al. are in-window too now, so Σ byAccount also
+      // equals the headline. (It previously did NOT: the summary summed
+      // session-LIFETIME columns, so a boundary-straddling session made the two
+      // differ by its entire pre-window history.)
       inputTokens: number;
       outputTokens: number;
       cacheReadTokens: number;
@@ -504,12 +504,41 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     includeDeleted: opts.includeDeleted ?? true,
   });
 
+  // The SINGLE filter every message-scoped read uses. Declared once, next to the
+  // `getSessions` call it must agree with, so the two halves of the dashboard
+  // cannot be narrowed differently — a message-scoped read that quietly omitted
+  // includeCI kept pricing CI work the session set had already dropped, and made
+  // a CI-only project reappear in byProject under includeCI=false.
+  const msgFilter: MessageFilter = {
+    projectPath: opts.projectPath,
+    repoUrl: opts.repoUrl,
+    accountUuid: opts.accountUuid,
+    entrypoint: opts.entrypoint,
+    since: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
+    includeCI: opts.includeCI ?? true,
+    includeDeleted: opts.includeDeleted ?? true,
+  };
+
   // ── Summary aggregation ──────────────────────────────────────────────────
+  // Token totals are MESSAGE-scoped (assigned further down from `messageTotals`),
+  // never summed from `rows`. Two reasons, both load-bearing:
+  //
+  //  1. Period correctness. The `sessions` token columns are LIFETIME totals for
+  //     the whole session, so a session straddling the period boundary would
+  //     contribute its entire history to the window — a week-long session dumped
+  //     7.1 BILLION cache reads into a single day before this changed.
+  //  2. Reconciliation. Cost is priced from `messages`; sourcing tokens from the
+  //     same read makes "tokens" and "cost" describe the same work by
+  //     construction rather than by coincidence.
+  //
+  // Prompts are message-scoped too, via `is_turn_start` — the per-message flag
+  // marking an assistant message that answered a real user prompt rather than a
+  // tool result. Without it there was no way to count prompts IN a window
+  // (`messages` holds only assistant rows), so the summary summed session
+  // lifetime `prompt_count`, which both over-counted (tool results counted as
+  // prompts: 227 for ~4 real ones) and ignored the period entirely.
   let totalPrompts = 0;
-  let totalInput = 0;
-  let totalOutput = 0;
-  let totalCacheRead = 0;
-  let totalCacheCreate = 0;
   let totalDurationMs = 0;
 
   const dayFmt = new Intl.DateTimeFormat("en-CA", {
@@ -525,56 +554,38 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     hour12: false,
   });
 
-  // Accumulators for grouping
-  const dayMap = new Map<string, { sessions: number; prompts: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }>();
-  const hourMap = new Map<number, { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }>();
-  const projectMap = new Map<string, { sessions: number; prompts: number; inputTokens: number; outputTokens: number; thinkingBlocks: number; workProfile: { exploring: number; editing: number; running: number; researching: number; planning: number } }>();
+  // Accumulators for grouping. Token fields are filled from the message-scoped
+  // reads below; only genuinely session-level fields (session counts, prompts,
+  // thinking blocks, the tool-derived work profile) accumulate from `rows`.
+  type TokenBucket = { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number; estimatedCost: number };
+  const emptyTokens = (): TokenBucket => ({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, estimatedCost: 0 });
+  const dayMap = new Map<string, { sessions: number; prompts: number } & TokenBucket>();
+  const hourMap = new Map<number, TokenBucket>();
+  const projectMap = new Map<string, { sessions: number; prompts: number; thinkingBlocks: number; workProfile: { exploring: number; editing: number; running: number; researching: number; planning: number } } & TokenBucket>();
   const entrypointMap = new Map<string, number>();
 
   for (const row of rows) {
-    totalPrompts += row.prompt_count;
-    totalInput += row.input_tokens;
-    totalOutput += row.output_tokens;
-    totalCacheRead += row.cache_read_tokens;
-    totalCacheCreate += row.cache_creation_tokens;
     if (row.first_timestamp != null && row.last_timestamp != null) {
       totalDurationMs += Math.abs(row.last_timestamp - row.first_timestamp);
     }
 
-    // byDay
+    // byDay — a session is counted on the day it STARTED (a session-level fact);
+    // its tokens are placed per-message below, so a session spanning midnight
+    // contributes one session count here but token counts on each day it ran.
     const dateStr = row.first_timestamp != null
       ? dayFmt.format(new Date(row.first_timestamp))
       : "unknown";
-    const dayEntry = dayMap.get(dateStr) ?? { sessions: 0, prompts: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 };
+    const dayEntry = dayMap.get(dateStr) ?? { sessions: 0, prompts: 0, ...emptyTokens() };
     dayEntry.sessions++;
-    dayEntry.prompts += row.prompt_count;
-    dayEntry.inputTokens += row.input_tokens;
-    dayEntry.outputTokens += row.output_tokens;
-    dayEntry.cacheReadTokens += row.cache_read_tokens;
-    dayEntry.cacheCreationTokens += row.cache_creation_tokens;
     dayMap.set(dateStr, dayEntry);
-
-    // byHour (only for "day" period, or a custom range that collapses to a
-    // single day — gets the same richer hourly display a period=day request gets)
-    if ((opts.period === "day" || (until - since) <= 86_400_000) && row.first_timestamp != null) {
-      const h = parseInt(hourFmt.format(new Date(row.first_timestamp)), 10) % 24;
-      const hourEntry = hourMap.get(h) ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 };
-      hourEntry.inputTokens += row.input_tokens;
-      hourEntry.outputTokens += row.output_tokens;
-      hourEntry.cacheReadTokens += row.cache_read_tokens;
-      hourEntry.cacheCreationTokens += row.cache_creation_tokens;
-      hourMap.set(h, hourEntry);
-    }
 
     // byProject
     const projEntry = projectMap.get(row.project_path) ?? {
-      sessions: 0, prompts: 0, inputTokens: 0, outputTokens: 0, thinkingBlocks: 0,
+      sessions: 0, prompts: 0, thinkingBlocks: 0,
       workProfile: { exploring: 0, editing: 0, running: 0, researching: 0, planning: 0 },
+      ...emptyTokens(),
     };
     projEntry.sessions++;
-    projEntry.prompts += row.prompt_count;
-    projEntry.inputTokens += row.input_tokens;
-    projEntry.outputTokens += row.output_tokens;
     projEntry.thinkingBlocks += row.thinking_blocks;
     const toolCounts: Array<{ name: string; count: number }> = JSON.parse(row.tool_use_counts || "[]");
     for (const tc of toolCounts) {
@@ -588,17 +599,63 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     entrypointMap.set(ep, (entrypointMap.get(ep) ?? 0) + 1);
   }
 
+  // ── Per-day / per-hour tokens + cost, message-scoped ─────────────────────
+  // 15-minute UTC buckets are narrow enough that none can straddle a tz-local
+  // day or hour boundary (real offsets include :30 and :45), so folding them
+  // with the same Intl formatters used above is exact.
+  const wantHourly = opts.period === "day" || (until - since) <= 86_400_000;
+  for (const b of store.getMessageTotalsByBucket(msgFilter)) {
+    const { cost } = estimateCost(b.model, b.input_tokens, b.output_tokens, b.cache_read_tokens, b.cache_creation_tokens);
+    const dateStr = b.bucket_start != null ? dayFmt.format(new Date(b.bucket_start)) : "unknown";
+    const dayEntry = dayMap.get(dateStr) ?? { sessions: 0, prompts: 0, ...emptyTokens() };
+    dayEntry.inputTokens += b.input_tokens;
+    dayEntry.outputTokens += b.output_tokens;
+    dayEntry.cacheReadTokens += b.cache_read_tokens;
+    dayEntry.cacheCreationTokens += b.cache_creation_tokens;
+    dayEntry.estimatedCost += cost;
+    dayEntry.prompts += b.prompt_count;
+    totalPrompts += b.prompt_count;
+    dayMap.set(dateStr, dayEntry);
+
+    if (wantHourly && b.bucket_start != null) {
+      const h = parseInt(hourFmt.format(new Date(b.bucket_start)), 10) % 24;
+      const hourEntry = hourMap.get(h) ?? emptyTokens();
+      hourEntry.inputTokens += b.input_tokens;
+      hourEntry.outputTokens += b.output_tokens;
+      hourEntry.cacheReadTokens += b.cache_read_tokens;
+      hourEntry.cacheCreationTokens += b.cache_creation_tokens;
+      hourEntry.estimatedCost += cost;
+      hourMap.set(h, hourEntry);
+    }
+  }
+
+  // ── Per-project tokens + cost, message-scoped ────────────────────────────
+  for (const p of store.getMessageTotalsByProject(msgFilter)) {
+    const { cost } = estimateCost(p.model, p.input_tokens, p.output_tokens, p.cache_read_tokens, p.cache_creation_tokens);
+    const entry = projectMap.get(p.project_path) ?? {
+      sessions: 0, prompts: 0, thinkingBlocks: 0,
+      workProfile: { exploring: 0, editing: 0, running: 0, researching: 0, planning: 0 },
+      ...emptyTokens(),
+    };
+    entry.inputTokens += p.input_tokens;
+    entry.outputTokens += p.output_tokens;
+    entry.cacheReadTokens += p.cache_read_tokens;
+    entry.cacheCreationTokens += p.cache_creation_tokens;
+    entry.estimatedCost += cost;
+    entry.prompts += p.prompt_count;
+    projectMap.set(p.project_path, entry);
+  }
+
   // ── Cost from per-message model data ─────────────────────────────────────
-  const messageTotals = store.getMessageTotals({
-    projectPath: opts.projectPath,
-    repoUrl: opts.repoUrl,
-    accountUuid: opts.accountUuid,
-    entrypoint: opts.entrypoint,
-    since: since > 0 ? since : undefined,
-    until: isCustomRange ? until : undefined,
-  });
+  const messageTotals = store.getMessageTotals(msgFilter);
 
   let totalCost = 0;
+  // The headline token totals come from this same read, so "tokens" and "cost"
+  // are guaranteed to describe the same messages (see the note above `totalPrompts`).
+  let totalInput = 0;
+  let totalOutput = 0;
+  let totalCacheRead = 0;
+  let totalCacheCreate = 0;
   const byModel: DashboardData["byModel"] = [];
   for (const mt of messageTotals) {
     const result = estimateCost(
@@ -609,6 +666,10 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       mt.cache_creation_tokens,
     );
     totalCost += result.cost;
+    totalInput += mt.input_tokens;
+    totalOutput += mt.output_tokens;
+    totalCacheRead += mt.cache_read_tokens;
+    totalCacheCreate += mt.cache_creation_tokens;
     byModel.push({
       model: mt.model,
       inputTokens: mt.input_tokens,
@@ -628,15 +689,19 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       const dateStr = dayFmt.format(cursor);
       if (dateStr > untilStr) break;
       if (!dayMap.has(dateStr)) {
-        dayMap.set(dateStr, { sessions: 0, prompts: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 });
+        dayMap.set(dateStr, { sessions: 0, prompts: 0, ...emptyTokens() });
       }
       cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
     }
   }
 
-  // ── Compute per-day cost from byModel is impractical without per-day messages,
-  //    so we distribute total cost proportionally by output tokens per day ────
-  const totalOutputForCost = totalOutput || 1; // avoid division by zero
+  // ── byDay / byProject ────────────────────────────────────────────────────
+  // Cost is priced per bucket from that bucket's own model mix, not smeared
+  // across the period in proportion to output tokens. The old proportional
+  // split mispriced any day whose model mix differed from the period average
+  // (an Opus-heavy day next to a Haiku-heavy one), and it silently inherited
+  // whatever the session-lifetime token sums said. Σ byDay cost == headline
+  // cost now holds because both price the same per-model message groups.
   const byDay: DashboardData["byDay"] = Array.from(dayMap.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, d]) => ({
@@ -647,10 +712,9 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       outputTokens: d.outputTokens,
       cacheReadTokens: d.cacheReadTokens,
       cacheCreationTokens: d.cacheCreationTokens,
-      estimatedCost: Math.round((d.outputTokens / totalOutputForCost) * totalCost * 100) / 100,
+      estimatedCost: Math.round(d.estimatedCost * 100) / 100,
     }));
 
-  // ── Per-project cost: distribute proportionally by output tokens ──────────
   const byProject: DashboardData["byProject"] = Array.from(projectMap.entries())
     .sort(([, a], [, b]) => b.inputTokens - a.inputTokens)
     .map(([projectPath, p]) => ({
@@ -659,7 +723,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       prompts: p.prompts,
       inputTokens: p.inputTokens,
       outputTokens: p.outputTokens,
-      estimatedCost: Math.round((p.outputTokens / totalOutputForCost) * totalCost * 100) / 100,
+      estimatedCost: Math.round(p.estimatedCost * 100) / 100,
       thinkingBlocks: p.thinkingBlocks,
       workProfile: p.workProfile,
     }));
@@ -683,10 +747,16 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     .map(([entrypoint, sessions]) => ({ entrypoint, sessions }));
 
   // ── Hourly breakdown (day period, or a custom range collapsed to a single day) ──
-  const byHour: DashboardData["byHour"] = (opts.period === "day" || (until - since) <= 86_400_000)
+  const byHour: DashboardData["byHour"] = wantHourly
     ? Array.from({ length: 24 }, (_, h) => {
-        const e = hourMap.get(h) ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 };
-        return { hour: String(h).padStart(2, "0"), ...e };
+        const e = hourMap.get(h) ?? emptyTokens();
+        return {
+          hour: String(h).padStart(2, "0"),
+          inputTokens: e.inputTokens,
+          outputTokens: e.outputTokens,
+          cacheReadTokens: e.cacheReadTokens,
+          cacheCreationTokens: e.cacheCreationTokens,
+        };
       })
     : [];
 
@@ -931,14 +1001,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       byModel: Map<string, { inputTokens: number; outputTokens: number; estimatedCost: number }>;
     };
     const accountTokens = new Map<string, AcctTokens>();
-    const acctModelTotals = store.getMessageTotalsByAccount({
-      projectPath: opts.projectPath,
-      repoUrl: opts.repoUrl,
-      accountUuid: opts.accountUuid,
-      entrypoint: opts.entrypoint,
-      since: since > 0 ? since : undefined,
-      until: isCustomRange ? until : undefined,
-    });
+    const acctModelTotals = store.getMessageTotalsByAccount(msgFilter);
     for (const mt of acctModelTotals) {
       const acctKey = mt.account_uuid ?? "(unknown)";
       const entry = accountTokens.get(acctKey) ?? {
