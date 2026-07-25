@@ -2,7 +2,7 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
-## Unreleased
+## 0.18.1 — 2026-07-25
 
 ### Fixed — Token, prompt and cost figures are now correct per period
 
