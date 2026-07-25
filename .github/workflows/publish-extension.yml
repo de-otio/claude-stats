@@ -10,9 +10,22 @@ on:
         description: "Package only; do not publish"
         type: boolean
         default: false
+      publish_from_run:
+        # Retrying a failed publish should not cost five platform rebuilds.
+        # The packaging matrix spans macOS (10x billing multiplier) and two
+        # Windows runners (2x), so a rebuild-to-retry costs orders of
+        # magnitude more billed minutes than the publish it is retrying —
+        # and the VSIXes it produces are identical to the ones already
+        # sitting on the failed run. Point this at that run instead and the
+        # retry is a single ubuntu job.
+        description: "Publish VSIXes from this existing run id instead of rebuilding (cheap retry). Artifacts expire after 30 days."
+        type: string
+        default: ""
 
 permissions:
   contents: write
+  # Reading another run's artifacts goes through the Actions API.
+  actions: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,6 +34,11 @@ concurrency:
 jobs:
   package:
     name: Package VSIX (${{ matrix.target }})
+    # Skipped entirely when reusing a previous run's artifacts. Written as an
+    # explicit event test rather than relying on `inputs.x == ''` being true
+    # when the inputs context is absent: if that coercion ever changed, a tag
+    # push would silently skip packaging and publish nothing.
+    if: github.event_name != 'workflow_dispatch' || inputs.publish_from_run == ''
     strategy:
       fail-fast: false
       matrix:
@@ -123,7 +141,14 @@ jobs:
     # Slightly above the publish step's own 20-minute ceiling, so the step
     # timeout is what fires first and names the culprit in the log.
     timeout-minutes: 25
-    if: github.event_name == 'push' || inputs.dry_run != true
+    # `needs: package` would normally skip this job when package is skipped,
+    # which is exactly the publish_from_run case — hence the explicit
+    # success-or-skipped test. !cancelled() rather than always() so a
+    # cancelled run does not go on to publish.
+    if: >-
+      !cancelled()
+      && (needs.package.result == 'success' || needs.package.result == 'skipped')
+      && (github.event_name == 'push' || inputs.dry_run != true)
 
     steps:
       - name: Checkout repository
@@ -145,9 +170,23 @@ jobs:
         with:
           path: artifacts
           pattern: claude-stats-vscode-*
+          # Defaults to this run; publish_from_run points it at an earlier
+          # one. Reading across runs requires the token.
+          run-id: ${{ inputs.publish_from_run || github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: List downloaded VSIXes
-        run: find artifacts -name '*.vsix' -print
+        run: |
+          set -euo pipefail
+          find artifacts -name '*.vsix' -print
+          n=$(find artifacts -name '*.vsix' | wc -l | tr -d ' ')
+          echo "found $n VSIX(es) to publish"
+          # Without this the publish loop iterates zero times and reports
+          # success, which would read as "released" having shipped nothing.
+          if [ "$n" -eq 0 ]; then
+            echo "::error::no VSIXes found. If using publish_from_run, check the run id is right and its artifacts have not passed the 30-day retention window."
+            exit 1
+          fi
 
       - name: Publish each per-target VSIX
         # Ceiling for the whole loop. Without it a wedged upload would sit
@@ -228,7 +267,7 @@ jobs:
           if [ ${#failed[@]} -gt 0 ]; then
             echo "::error::${#failed[@]} target(s) failed to publish:"
             printf '  %s\n' "${failed[@]}"
-            echo "Re-run this job once the marketplace recovers — already-published targets are skipped."
+            echo "Re-run with publish_from_run=${{ github.run_id }} once the marketplace recovers — already-published targets are skipped and nothing is rebuilt."
             exit 1
           fi
           echo "All targets published or already current."
@@ -251,6 +290,8 @@ jobs:
         with:
           path: artifacts
           pattern: claude-stats-vscode-*
+          run-id: ${{ inputs.publish_from_run || github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Flatten VSIX layout
         run: |
