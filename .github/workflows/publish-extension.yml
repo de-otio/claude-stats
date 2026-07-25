@@ -159,20 +159,26 @@ jobs:
           set -euo pipefail
 
           # This loop publishes one VSIX per target platform, and it must be
-          # safe to re-run. Two failure modes made the naive version wedge a
-          # release:
+          # safe to re-run. Three failure modes wedged the 0.18.1 release:
           #
-          #  1. The marketplace intermittently answers a perfectly valid
-          #     upload with TF400898 ("An Internal Error Occurred"). It is
-          #     service-side and clears on its own, so it is worth retrying.
-          #  2. A failure part-way through the loop left earlier targets
-          #     published. Re-running then died on "already exists" before
-          #     reaching the un-published ones, so the only way out was a
-          #     version bump. Treating an already-published target as done
-          #     makes the whole job idempotent and re-runnable.
+          #  1. The marketplace intermittently rejects a perfectly valid
+          #     upload — observed as both TF400898 ("An Internal Error
+          #     Occurred") and "Request timeout: /_apis/gallery/...". These
+          #     are service-side and clear on their own.
+          #  2. A failure part-way through left earlier targets published.
+          #     Re-running died on "already exists" before reaching the
+          #     un-published ones, so the only way out was a version bump.
+          #  3. The loop aborted on the first failing target, so the targets
+          #     behind it were never attempted — a single flaky upload cost a
+          #     whole run's worth of minutes and published nothing new.
           #
-          # Anything else fails fast — a bad manifest or a rejected PAT will
-          # not fix itself, and retrying it just wastes minutes.
+          # Hence: retry by DEFAULT and treat only a known-fatal set as
+          # terminal. An allow-list of transient errors is the wrong shape
+          # here — we do not control the marketplace's error vocabulary, and
+          # guessing it wrong (as an earlier revision did with "Request
+          # timeout") turns a retryable blip into a failed release.
+          FATAL='invalid.*token|unauthorized|forbidden|40[13] |authentication failed|manifest|not a valid extension'
+
           publish_one() {
             local vsix="$1" attempt log backoff
             for attempt in 1 2 3; do
@@ -183,13 +189,16 @@ jobs:
               fi
               cat "$log"
 
+              # Already on the marketplace at this version: nothing to do.
+              # This is what makes the job idempotent and re-runnable.
               if grep -qiE 'already exists|already published' "$log"; then
                 echo "note: this target is already at this version — nothing to do"
                 return 0
               fi
 
-              if ! grep -qiE 'TF400898|internal error|ECONNRESET|ETIMEDOUT|socket hang up|50[0-9] ' "$log"; then
-                echo "::error::non-transient publish failure for $vsix — not retrying"
+              # A rejected PAT or a bad package will not fix itself.
+              if grep -qiE "$FATAL" "$log"; then
+                echo "::error::fatal publish failure for $vsix — not retrying"
                 return 1
               fi
 
@@ -203,11 +212,26 @@ jobs:
             return 1
           }
 
+          # Attempt every target even if an earlier one fails, so a single
+          # flaky upload cannot strand the rest. Combined with the
+          # already-published check above, each run makes forward progress
+          # and a re-run only retries what is genuinely still missing.
+          failed=()
           for vsix in $(find artifacts -name '*.vsix'); do
             echo "::group::Publishing $vsix"
-            publish_one "$vsix"
+            if ! publish_one "$vsix"; then
+              failed+=("$vsix")
+            fi
             echo "::endgroup::"
           done
+
+          if [ ${#failed[@]} -gt 0 ]; then
+            echo "::error::${#failed[@]} target(s) failed to publish:"
+            printf '  %s\n' "${failed[@]}"
+            echo "Re-run this job once the marketplace recovers — already-published targets are skipped."
+            exit 1
+          fi
+          echo "All targets published or already current."
 
   release:
     name: Create GitHub Release
