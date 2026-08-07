@@ -28,6 +28,9 @@
  *     raw string `common:insight.cost.thisPreiod` on the card.
  */
 import { describe, it, expect } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as insight from "@claude-stats/core/insight";
 import {
   answerBought,
@@ -56,8 +59,32 @@ const deT: InsightT = (key, options) => de.t(key, options as never) as unknown a
 const ja = await initI18n({ lng: "ja", ns: ["common"] });
 const jaT: InsightT = (key, options) => ja.t(key, options as never) as unknown as string;
 
-/** Returns its key unchanged, so the caller can see WHICH keys were used. */
-const rawT: InsightT = (key) => key;
+/**
+ * Returns its key unchanged — AND the values it was handed, appended.
+ *
+ * The values matter as much as the key. A formatter that writes
+ * `t("…caveat.x", { unit: "dev-hours" })` has delegated the SENTENCE and kept
+ * the WORD, and the word renders in English in all ten locales. A translator
+ * that returned only the key made that invisible: the residue check never saw
+ * the interpolated text at all. (Proven by mutation — with `(key) => key`,
+ * replacing `t("…efficiency.hygiene", { percent })` with
+ * `{ percent: `${percent} of total spend` }` passed the entire 2,692-test
+ * suite.)
+ *
+ * Only the values are appended, never the parameter NAMES: the names are
+ * English words (`money`, `percent`, `previous`) and would themselves read as
+ * residue.
+ *
+ * Every emission is wrapped in `|`. Formatters concatenate results with no
+ * delimiter (`clauses.join(t("…clauseJoin"))`), and a key that runs straight
+ * into the next one confuses `KEY_TOKEN`'s boundary — leaving half a key
+ * behind as false residue. The bars cost nothing (`|` is not a letter, so it
+ * never reads as prose) and make every token's edges explicit.
+ */
+const rawT: InsightT = (key, options) => {
+  const values = options ? Object.values(options).map((v) => String(v)) : [];
+  return `|${key}${values.map((v) => ` ${v}`).join("")}|`;
+};
 
 /**
  * Caller-supplied strings. Deliberately free of ASCII letters: the residue
@@ -309,6 +336,77 @@ describe("the guard covers every formatter the module exports", () => {
   });
 });
 
+// ─── Tooth 4: no surface keeps a second copy of a keyed sentence ─────────────
+//
+// The identity translator can only see the formatters it drives. A SURFACE that
+// re-states one of these sentences as its own English literal is invisible to
+// it — and that is not hypothetical: `mcp/index.ts` held two identical copies
+// of "No usage recorded for this period.", Lane F1 keyed one and left the
+// other, and nothing in the suite noticed (proven by mutation: reverting the
+// keyed one to its literal passed all 2,692 tests). Once a sentence is a key,
+// a verbatim copy of it anywhere in the source is by definition a string that
+// will render in English while its twin renders translated.
+
+describe("no surface keeps a second, un-keyed copy of a sentence that is now a key", () => {
+  const SRC_ROOTS = ["packages/core/src", "packages/cli/src"];
+  const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+
+  /** Every `insight.*` value that is a whole sentence with no placeholders —
+   *  those are the ones a surface can copy verbatim. */
+  function keyedSentences(): Array<[string, string]> {
+    const bundle = JSON.parse(
+      fs.readFileSync(path.join(REPO_ROOT, "packages/core/src/locales/en/common.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    const out: Array<[string, string]> = [];
+    const walk = (node: unknown, prefix: string): void => {
+      if (typeof node === "string") {
+        if (!node.includes("{{") && node.length >= 15) out.push([prefix, node]);
+        return;
+      }
+      if (node && typeof node === "object") {
+        for (const [k, v] of Object.entries(node)) walk(v, prefix ? `${prefix}.${k}` : k);
+      }
+    };
+    walk((bundle as { insight: unknown }).insight, "insight");
+    return out;
+  }
+
+  function sourceFiles(dir: string, acc: string[] = []): string[] {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      // Tests quote these sentences on purpose (that is what the byte-identity
+      // assertions above ARE), and `locales/` is where they are supposed to be.
+      if (entry.isDirectory()) {
+        if (entry.name === "__tests__" || entry.name === "locales" || entry.name === "node_modules") continue;
+        sourceFiles(full, acc);
+      } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) {
+        acc.push(full);
+      }
+    }
+    return acc;
+  }
+
+  it("finds no keyed sentence surviving as a literal in any non-test source file", () => {
+    const sentences = keyedSentences();
+    // Not vacuous: the corpus it scans for must be non-trivial, and so must the
+    // haystack. Both are asserted rather than assumed.
+    expect(sentences.length).toBeGreaterThan(10);
+    const files = SRC_ROOTS.flatMap((r) => sourceFiles(path.join(REPO_ROOT, r)));
+    expect(files.length).toBeGreaterThan(50);
+
+    const offences: string[] = [];
+    for (const file of files) {
+      const text = fs.readFileSync(file, "utf-8");
+      for (const [key, sentence] of sentences) {
+        if (text.includes(sentence)) {
+          offences.push(`${path.relative(REPO_ROOT, file)} still spells out "${key}" verbatim`);
+        }
+      }
+    }
+    expect(offences).toEqual([]);
+  });
+});
+
 // ─── Tooth 3: every key revealed must actually resolve ───────────────────────
 
 describe("every key the formatters reach for exists in `en`", () => {
@@ -416,6 +514,29 @@ describe("the real `en` translator reproduces the sentences these formatters shi
     expect(a.answer.endsWith("。")).toBe(true);
     expect(a.answer).not.toContain(" — ");
     expect(a.answer).toContain("、");
+  });
+
+  // There are FOUR punctuation keys and `answerCost` reaches only two of them.
+  // Checking one formatter certified the other two: hardcoding `", "` in
+  // `answerBought`'s join passed the whole 2,692-test suite, and a Japanese
+  // reader would have seen an ASCII comma splicing two Japanese clauses. Each
+  // key gets a formatter that actually exercises it.
+  it("carries that discipline into the list and dot joiners too, not just the clause joiner", () => {
+    // listJoin — `answerBought` joins its clauses with it. ja: "、", not ", ".
+    const bought = answerBought(jaT, {
+      completedTasks: 41,
+      coverage: coverage(),
+      topTicket: { key: "PROJ-123", cost: 41.2 },
+    });
+    expect(bought.answer).toContain("、");
+    expect(bought.answer).not.toContain(", ");
+    expect(bought.answer.endsWith("。")).toBe(true);
+
+    // dotJoin — `confidenceCaveat` separates the confidence tiers with it.
+    // ja: "・", not " · ".
+    const caveat = confidenceCaveat(jaT, coverage());
+    expect(caveat).toContain("・");
+    expect(caveat).not.toContain(" · ");
   });
 
   // ── Caller text is data, not a template ────────────────────────────────────
