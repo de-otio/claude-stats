@@ -171,6 +171,31 @@ describe("buildHygieneReport", () => {
     expect(unsuppressed.digest.active.find((d) => d.detectorId === "retry-loop")).toBeDefined();
   });
 
+  it("reports hygieneRatio as null, never 0, when there is no spend to divide by", () => {
+    // I1: a bare 0 reads as "audited, found no waste". An empty window was
+    // never audited at all, and the two must not render the same.
+    const report = buildHygieneReport(store, {});
+    expect(report.totalCost).toBe(0);
+    expect(report.hygieneRatio).toBeNull();
+  });
+
+  it("looks only BEFORE `since` for the previous window — never back over the current one", () => {
+    // Nothing precedes the window, so the trend figure must be null. A
+    // previous-window query whose upper bound leaked forward to `until` would
+    // re-price the current window's own waste and report it as "last week".
+    const start = FIXED_NOW;
+    store.upsertSession(session("s1"));
+    store.upsertMessages([
+      message("s1-m0", "s1", { timestamp: start, toolErrorCount: 1 }),
+      message("s1-m1", "s1", { timestamp: start + 1000, toolErrorCount: 1 }),
+      message("s1-m2", "s1", { timestamp: start + 2000, toolErrorCount: 1 }),
+    ]);
+
+    const report = buildHygieneReport(store, { since: start, until: start + 3600_000 });
+    expect(report.digest.totalFindings).toBe(1); // the current window DID find waste
+    expect(report.previousHygieneRatio).toBeNull();
+  });
+
   it("computes previousHygieneRatio over the immediately preceding equal-length window", () => {
     // Previous window: a retry loop (waste). Current window: clean.
     const prevStart = FIXED_NOW - 3600_000;
@@ -205,6 +230,16 @@ describe("get_efficiency_hints (MCP)", () => {
       message("s1-m1", "s1", { timestamp: FIXED_NOW + 1000, toolErrorCount: 1, inputTokens: 1000, outputTokens: 100 }),
       message("s1-m2", "s1", { timestamp: FIXED_NOW + 2000, toolErrorCount: 1, inputTokens: 1000, outputTokens: 100 }),
     ]);
+
+    // A clean session on a NAMED account, so `account` scoping has something
+    // to include and something to exclude.
+    store.upsertAccount({
+      accountUuid: "acct-aaaa-0000", organizationUuid: null, emailHash: null, emailLabel: null,
+      organizationType: null, rateLimitTier: null, userRateLimitTier: null, seatTier: null,
+      billingType: null, subscriptionType: null, firstObservedAt: FIXED_NOW, lastObservedAt: FIXED_NOW,
+    });
+    store.upsertSession(session("s2", "/w/beta", { accountUuid: "acct-aaaa-0000" }));
+    store.upsertMessages([message("s2-m0", "s2", { timestamp: FIXED_NOW, inputTokens: 1000, outputTokens: 500 })]);
 
     const server = createMcpServer(store);
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -241,9 +276,70 @@ describe("get_efficiency_hints (MCP)", () => {
     expect((findings[0]!["sessionIds"] as string[])).toEqual(["s1"]);
   });
 
+  it("actually APPLIES the resolved account filter — a scoped call excludes the other account's sessions", async () => {
+    // The tool description promises "Filter to a specific account UUID". A
+    // handler that resolves the account and then forgets to pass it through
+    // still answers, still looks well-formed, and quietly reports every
+    // account's waste — a silent no-op no other test in this file would see.
+    const result = await client.callTool({
+      name: "get_efficiency_hints",
+      arguments: { period: "all", account: "acct-aaaa-0000" },
+    });
+    const data = textOf(result);
+    const detectors = data["detectors"] as Array<Record<string, unknown>>;
+    const retryLoop = detectors.find((d) => d["detectorId"] === "retry-loop")!;
+    expect(retryLoop["findings"]).toEqual([]); // honest empty, not the other account's finding
+    expect(data["totalFindings"]).toBe(0);
+    // ...and the denominator is scoped too, not the whole store's spend.
+    const scopedCost = data["totalCost"] as number;
+    const allAccounts = textOf(await client.callTool({ name: "get_efficiency_hints", arguments: { period: "all" } }));
+    expect(scopedCost).toBeGreaterThan(0);
+    expect(scopedCost).toBeLessThan(allAccounts["totalCost"] as number);
+  });
+
   it("rejects an empty/blank account filter with an honest error, not a silent all-accounts fallback", async () => {
     const result = await client.callTool({ name: "get_efficiency_hints", arguments: { period: "all", account: "  " } });
     const data = textOf(result);
     expect(data).toHaveProperty("error");
+  });
+
+  it("summarises a window that DID have spend with money and a percentage, both via insight.ts's formatters", async () => {
+    const data = textOf(await client.callTool({ name: "get_efficiency_hints", arguments: { period: "all" } }));
+    expect(data["summary"]).toMatch(/^\$[\d,.]+ of \$[\d,.]+ self-audited as recoverable waste \(\d+%\)\.$/);
+  });
+});
+
+// ─── MCP: the empty window ──────────────────────────────────────────────────
+
+describe("get_efficiency_hints (MCP) — no usage at all", () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "claude-stats-mcp-hygiene-empty-"));
+  let store: Store;
+  let client: Client;
+
+  beforeAll(async () => {
+    store = new Store(join(tmpDir, "test.db"));
+    const server = createMcpServer(store);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    client = new Client({ name: "test-client-empty", version: "1.0.0" });
+    await client.connect(clientTransport);
+  });
+
+  afterAll(() => {
+    store.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("says there was no usage rather than quoting a fabricated $0.00 / 0% audit result", async () => {
+    // I1: "we looked and found no waste" and "there was nothing to look at"
+    // are different claims. A `$0.00 … (0%)` summary asserts the first on the
+    // evidence of the second.
+    const result = await client.callTool({ name: "get_efficiency_hints", arguments: { period: "all" } });
+    const content = (result as { content: Array<{ text: string }> }).content;
+    const data = JSON.parse(content[0]!.text) as Record<string, unknown>;
+    expect(data["summary"]).toBe("No usage recorded for this period.");
+    expect(data["hygieneRatio"]).toBeNull();
+    expect(data["totalCost"]).toBe(0);
+    expect(data["totalFindings"]).toBe(0);
   });
 });

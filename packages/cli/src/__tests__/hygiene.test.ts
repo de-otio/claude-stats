@@ -13,6 +13,7 @@ import {
   DEFAULT_HYGIENE_THRESHOLDS,
   type HygieneMessageRow,
 } from "@claude-stats/core/hygiene";
+import { estimateCost } from "@claude-stats/core/pricing";
 
 const T0 = 1_767_571_200_000; // FIXED_NOW, matches fixtures/synthetic.ts
 
@@ -47,6 +48,29 @@ describe("detectCacheChurn", () => {
     // The card must carry a checkable rule/threshold, not just an accusation.
     expect(result!.findings[0]!.rule).toMatch(/ratio/i);
     expect(result!.findings[0]!.threshold).toMatch(/cache-creation tokens/);
+  });
+
+  it("estimates only the EXCESS over the threshold ratio, never the whole cache-write bill", () => {
+    // Pins the "conservative by construction" promise on HygieneFinding —
+    // `estimatedWaste > 0` alone would let the figure silently inflate to the
+    // full cache-creation cost, which is exactly the over-claim I1 forbids.
+    const rows: HygieneMessageRow[] = [
+      row({ sessionId: "s1", uuid: "m0", timestamp: T0, cacheCreationTokens: 90_000, cacheReadTokens: 0 }),
+      row({ sessionId: "s1", uuid: "m1", timestamp: T0 + 60_000, cacheCreationTokens: 90_000, cacheReadTokens: 5_000 }),
+      row({ sessionId: "s1", uuid: "m2", timestamp: T0 + 120_000, cacheCreationTokens: 90_000, cacheReadTokens: 5_000 }),
+    ];
+    const [result] = runHygieneDetectors(rows, {});
+    const waste = result!.findings[0]!.estimatedWaste;
+
+    const creation = 270_000;
+    const read = 10_000;
+    const creationCost = estimateCost("claude-sonnet-5", 0, 0, 0, creation).cost;
+    const ratio = creation / (creation + read);
+    const { ratio: threshold } = DEFAULT_HYGIENE_THRESHOLDS.cacheChurn;
+    const expected = creationCost * ((ratio - threshold) / (1 - threshold));
+
+    expect(waste).toBeLessThan(creationCost);
+    expect(waste).toBeCloseTo(expected, 8);
   });
 
   it("does NOT fire on a single-turn session with a big first-write cache (nothing to read back yet)", () => {
@@ -293,6 +317,21 @@ describe("detectAbandonedSpend", () => {
     expect(result!.findings).toHaveLength(0);
   });
 
+  it("STILL fires when the only follow-up in the grace window is in a DIFFERENT project", () => {
+    // The rule text promises a "same-project" successor check. Without this
+    // case, a successor scan that ignores `projectPath` passes every other
+    // test — and would silently swallow real abandoned spend whenever the
+    // developer happened to open any other project within the grace window.
+    const rows: HygieneMessageRow[] = [
+      row({ sessionId: "s6", uuid: "m0", timestamp: T0, inputTokens: 500_000, outputTokens: 50_000 }),
+      row({ sessionId: "s6", uuid: "m1", timestamp: T0 + 60_000, toolErrorCount: 1, inputTokens: 1_000, outputTokens: 100 }),
+      row({ sessionId: "other-project", uuid: "o0", projectPath: "/w/beta", timestamp: T0 + 60_000 + 10 * 60_000, inputTokens: 100, outputTokens: 50 }),
+    ];
+    const [, , result] = runHygieneDetectors(rows, {});
+    expect(result!.findings).toHaveLength(1);
+    expect(result!.findings[0]!.sessionIds).toEqual(["s6"]);
+  });
+
   it("does NOT fire on a session that ends cleanly, however costly and however isolated", () => {
     const rows: HygieneMessageRow[] = [
       row({ sessionId: "s3", uuid: "m0", timestamp: T0, inputTokens: 500_000, outputTokens: 50_000 }),
@@ -359,12 +398,27 @@ describe("suppression and digest", () => {
     // retry-loop's (a few hundred cheap tokens) once both are present.
     const wasteFor = (id: string) =>
       digest.active.find((r) => r.detectorId === id)!.findings.reduce((n, f) => n + f.estimatedWaste, 0);
-    if (digest.active.some((r) => r.detectorId === "abandoned-spend") && digest.active.some((r) => r.detectorId === "retry-loop")) {
-      expect(wasteFor("abandoned-spend")).toBeGreaterThan(wasteFor("retry-loop"));
-      const abandonedIdx = digest.active.findIndex((r) => r.detectorId === "abandoned-spend");
-      const retryIdx = digest.active.findIndex((r) => r.detectorId === "retry-loop");
-      expect(abandonedIdx).toBeLessThan(retryIdx);
-    }
+    // Assert the precondition rather than guarding on it: wrapped in an `if`,
+    // this whole test goes silently vacuous the moment the fixture stops
+    // firing both detectors.
+    expect(digest.active.map((r) => r.detectorId)).toEqual(
+      expect.arrayContaining(["abandoned-spend", "retry-loop"]),
+    );
+    expect(wasteFor("abandoned-spend")).toBeGreaterThan(wasteFor("retry-loop"));
+    const abandonedIdx = digest.active.findIndex((r) => r.detectorId === "abandoned-spend");
+    const retryIdx = digest.active.findIndex((r) => r.detectorId === "retry-loop");
+    expect(abandonedIdx).toBeLessThan(retryIdx);
+  });
+
+  it("excludes a suppressed detector's waste from totalEstimatedWaste, not just from `active`", () => {
+    const results = runHygieneDetectors(errorRun, { suppressions: ["retry-loop"] });
+    const digest = buildHygieneDigest(results);
+    // retry-loop is the only detector that fires on this fixture, so once it
+    // is suppressed the headline total must be exactly 0 — a total that still
+    // counted withheld findings would quote a number the reader cannot see.
+    expect(results.find((r) => r.detectorId === "retry-loop")!.findings[0]!.estimatedWaste).toBeGreaterThan(0);
+    expect(digest.totalEstimatedWaste).toBe(0);
+    expect(digest.totalFindings).toBe(0);
   });
 });
 

@@ -2,9 +2,14 @@
 import { estimateCost, type RateOverrides } from "../pricing.js";
 import type { HygieneMessageRow } from "./types.js";
 
-/** One session's messages, sorted ascending by timestamp (nulls last, stable
- *  otherwise — matches SQL's `ORDER BY timestamp ASC` with NULLs floating to
- *  the end on SQLite, so a caller passing an already-sorted array is a no-op). */
+/** One session's messages in the caller's row order — grouping never reorders.
+ *  The store hands rows over already sorted by `ORDER BY m.timestamp ASC`,
+ *  which on SQLite sorts NULL timestamps FIRST (verified: SQLite treats NULL
+ *  as smaller than any value). That ordering is what the order-sensitive
+ *  detectors rely on: a null-timestamp row landing at the FRONT leaves each
+ *  session's last row a real, timestamped message, which is what
+ *  `abandonedSpend` reads. Do not "fix" the query to `NULLS LAST` without
+ *  revisiting that detector. */
 export interface SessionGroup {
   sessionId: string;
   projectPath: string;
