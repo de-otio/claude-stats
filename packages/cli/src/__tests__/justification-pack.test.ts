@@ -36,7 +36,8 @@ import {
   renderNonTicketCsv,
   type RawPackTicketRow,
 } from "@claude-stats/core/pack";
-import { formatDevTime, costCaveat } from "@claude-stats/core/insight";
+import { formatDevTime, costCaveat, confidenceCaveat } from "@claude-stats/core/insight";
+import { getTicketCostReport } from "../ticketing/index.js";
 import type { TicketCoverage } from "@claude-stats/core/types/insight";
 import type { JustificationPackModel } from "@claude-stats/core/types/pack";
 
@@ -87,6 +88,10 @@ describe("parseSections", () => {
 
   it("dedupes repeated tokens", () => {
     expect(parseSections("tickets,tickets,tickets")).toEqual(["tickets"]);
+  });
+
+  it("accepts tokens in any case (a typo in casing must not silently shrink the pack)", () => {
+    expect(parseSections("HEADLINE, Tickets ,NonTicket")).toEqual(["headline", "tickets", "nonticket"]);
   });
 });
 
@@ -298,6 +303,95 @@ describe("renderJustificationPackHtml — escaping", () => {
   });
 });
 
+// ─── The headline's honesty obligations must reach the DOCUMENT ─────────────
+// Building the model right is only half of it: every one of these figures and
+// caveats can be silently dropped in the renderer without any model-level test
+// noticing. Each assertion below was verified to fail against a mutation that
+// removes exactly the thing it names.
+
+describe("renderJustificationPackHtml — headline", () => {
+  const METHODOLOGY = {
+    pricingVerifiedDate: "2026-07-03",
+    taskClassVersion: 2,
+    languageMode: "metered" as const,
+    policyEvents: [],
+  };
+  const render = (over: Partial<Parameters<typeof buildPackHeadline>[0]> = {}) =>
+    renderJustificationPackHtml(
+      buildJustificationPackModel({
+        generatedAt: FIXED_NOW,
+        period: { since: 0, until: 1, label: "2026-01" },
+        sections: ["headline"],
+        headline: {
+          mode: "metered",
+          currency: "USD",
+          coverage: COVERAGE,
+          hourlyRate: 100,
+          ...over,
+        },
+        methodology: METHODOLOGY,
+      }),
+    );
+
+  it("renders the total WITH its currency symbol, and honours a non-USD currency", () => {
+    expect(render()).toContain(`<div class="figure">$100.00</div>`);
+    expect(render({ currency: "EUR" })).toContain(`<div class="figure">€100.00</div>`);
+  });
+
+  it("renders the coverage denominator, numerically equal to coverage.ratio (I1)", () => {
+    const m = /([\d.]+)% of spend is ticket-attributable/.exec(render());
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeCloseTo(COVERAGE.ratio! * 100, 1);
+  });
+
+  it("renders the confidence-tier caveat verbatim from confidenceCaveat (I1)", () => {
+    const caveat = confidenceCaveat(COVERAGE);
+    expect(caveat).not.toBeNull();
+    expect(render()).toContain(caveat!);
+  });
+
+  it("renders the dev-time equivalence line quoted from formatDevTime", () => {
+    expect(render()).toContain(formatDevTime(COVERAGE.totalCost, 100));
+  });
+
+  it("renders the fallback-rate caveat rather than asserting 'Actual metered cost.'", () => {
+    expect(render({ anyFallbackRates: true })).toContain(
+      costCaveat("metered", { reconciledRatio: null, anyFallbackRates: true }),
+    );
+    expect(render({ anyFallbackRates: true })).not.toContain("Actual metered cost.");
+    expect(render({ anyFallbackRates: false })).toContain("Actual metered cost.");
+  });
+
+  it("states the reconciliation verdict the right way round, with the configured tolerance", () => {
+    // totalCost 100 vs invoice 200 → ratio 50%: outside ±5%, inside ±80%.
+    const strict = render({ reconciledInvoiceTotal: 200, reconciliationTolerance: 0.05 });
+    expect(strict).toContain("does not reconcile within ±5%.");
+
+    const loose = render({ reconciledInvoiceTotal: 200, reconciliationTolerance: 0.8 });
+    expect(loose).toContain("— reconciles within ±80%.");
+    expect(loose).not.toContain("does not reconcile");
+  });
+});
+
+describe("renderJustificationPackHtml — unavailable sections carry the RIGHT heading", () => {
+  it("pairs each opted-in placeholder with its own heading, never another section's", () => {
+    const html = renderJustificationPackHtml(
+      buildJustificationPackModel({
+        generatedAt: FIXED_NOW,
+        period: { since: 0, until: 1, label: "2026-01" },
+        sections: ["constraint"],
+        headline: { mode: "metered", currency: "USD", coverage: COVERAGE },
+        methodology: { pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] },
+      }),
+    );
+    expect(html).toContain("<h2>Constraint impact</h2>");
+    expect(html).not.toContain("<h2>Calibration</h2>");
+    expect(html).not.toContain("<h2>Hygiene trend</h2>");
+    // …and the placeholder under that heading is the constraint one.
+    expect(html.slice(html.indexOf("<h2>Constraint impact</h2>"))).toContain("Constraint-impact before/after");
+  });
+});
+
 // ─── CSV escaping ─────────────────────────────────────────────────────────────
 
 describe("CSV bundle rendering", () => {
@@ -330,6 +424,58 @@ describe("CSV bundle rendering", () => {
     const lines = renderTicketsCsv(model).trim().split("\r\n");
     expect(lines[0]).toBe("ticketKey,period,cost,inputTokens,outputTokens,cacheReadTokens,cacheCreationTokens,sessionCount,confidence");
     expect(lines[1]).toBe("PROJ-9,2026-05,12.50,100,50,10,5,3,medium");
+  });
+
+  it("doubles an embedded quote rather than emitting malformed CSV", () => {
+    const model: JustificationPackModel = {
+      generatedAt: FIXED_NOW,
+      period: { since: 0, until: 1, label: `2026-01 "Q1"` },
+      sections: ["tickets"],
+      headline: buildPackHeadline({ mode: "metered", currency: "USD", coverage: COVERAGE }),
+      tickets: [{ ticketKey: "PROJ-1", cost: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, sessionCount: 1, confidence: "high" }],
+      nonTicket: null,
+      methodology: buildPackMethodology({ pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] }),
+      unavailableSections: { hygiene: null, constraint: null, calibration: null },
+    };
+    expect(renderTicketsCsv(model)).toContain(`"2026-01 ""Q1"""`);
+  });
+
+  // The two CSVs below had no content assertion at all: emptying either of
+  // them left every other test green.
+  it("summary.csv carries the headline figures, not just a header row", () => {
+    const model = buildJustificationPackModel({
+      generatedAt: FIXED_NOW,
+      period: { since: 0, until: 1, label: "2026-04" },
+      sections: ["headline"],
+      headline: {
+        mode: "metered",
+        currency: "USD",
+        coverage: COVERAGE,
+        reconciledInvoiceTotal: 200,
+        reconciliationTolerance: 0.05,
+      },
+      methodology: { pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] },
+    });
+    const lines = renderSummaryCsv(model).trim().split("\r\n");
+    expect(lines[0]).toBe("period,mode,currency,totalCost,coverageRatio,reconciledInvoiceTotal,reconciledRatio,withinTolerance");
+    expect(lines[1]).toBe("2026-04,metered,USD,100.00,0.6000,200.00,0.5000,false");
+  });
+
+  it("nonticket.csv carries one row per task class, not just a header row", () => {
+    const model = buildJustificationPackModel({
+      generatedAt: FIXED_NOW,
+      period: { since: 0, until: 1, label: "2026-04" },
+      sections: ["nonticket"],
+      headline: { mode: "metered", currency: "USD", coverage: COVERAGE },
+      nonTicketByClass: new Map([
+        ["explore", { cost: 12.5, sessionCount: 4 }],
+        ["debug", { cost: 3, sessionCount: 1 }],
+      ]),
+      methodology: { pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] },
+    });
+    const lines = renderNonTicketCsv(model).trim().split("\r\n");
+    expect(lines[0]).toBe("taskClass,period,cost,sessionCount");
+    expect(lines.slice(1)).toEqual(["explore,2026-04,12.50,4", "debug,2026-04,3.00,1"]);
   });
 });
 
@@ -503,6 +649,130 @@ describe("justification pack — generated against a seeded store", () => {
     expect(result.model.sections).toEqual(["headline", "tickets", "nonticket"]);
     expect(result.html).not.toContain("Hygiene trend");
     expect(result.html).not.toContain("Constraint impact");
+  });
+
+  it("ARITHMETIC: the non-ticket breakdown is the REMAINDER, so the two tables sum to the headline", () => {
+    // The non-ticket table's whole claim is that it explains the gap between
+    // attributed spend and the total. Without this identity, a bug that let
+    // already-attributed sessions back into the breakdown double-counts the
+    // month and nothing else notices.
+    const result = buildJustificationPack(store, config, {
+      period: "2026-01",
+      timezone: "UTC",
+      sections: [...ALL_PACK_SECTIONS],
+      now: () => FIXED_NOW,
+    });
+    const window = resolvePackPeriod("2026-01", "UTC");
+    const report = getTicketCostReport(store, { since: window.since, until: window.until });
+    const nonTicketSum = result.model.nonTicket!.reduce((s, r) => s + r.cost, 0);
+
+    expect(report.unattributedSessions.length).toBeGreaterThan(0);
+    expect(report.unattributedSessions.length).toBeLessThan(
+      new Set(report.tickets.flatMap((t) => t.sessionIds)).size + report.unattributedSessions.length,
+    );
+    expect(report.coverage.attributedCost + nonTicketSum).toBeCloseTo(result.model.headline.totalCost, 8);
+  });
+
+  it("takes the reconciliation tolerance from config, not a hardcoded one", () => {
+    const opts = { period: "2026-01", timezone: "UTC", now: () => FIXED_NOW } as const;
+    const strict = buildJustificationPack(store, config, opts); // tolerancePercent: 5
+    const loose = buildJustificationPack(
+      store,
+      { ...config, reconciliation: { invoiceTotal: 500, tolerancePercent: 100 } },
+      opts,
+    );
+    expect(strict.model.headline.reconciliation!.tolerancePercent).toBe(5);
+    expect(strict.model.headline.reconciliation!.withinTolerance).toBe(false);
+    expect(loose.model.headline.reconciliation!.tolerancePercent).toBe(100);
+    expect(loose.model.headline.reconciliation!.withinTolerance).toBe(true);
+  });
+
+  it("infers plan mode from a configured plan fee, and says so instead of claiming metered cost", () => {
+    const planned = buildJustificationPack(
+      store,
+      { ...config, plan: { monthly_fee: 200 } },
+      { period: "2026-01", timezone: "UTC", now: () => FIXED_NOW },
+    );
+    expect(planned.model.headline.mode).toBe("plan");
+    expect(planned.model.headline.costCaveatText).toBe(costCaveat("plan"));
+    expect(planned.html).toContain("Equivalent API cost");
+    // A flat-rate plan has no invoice to reconcile a bottom-up total against.
+    expect(planned.model.headline.reconciliation).toBeNull();
+
+    const metered = buildJustificationPack(store, config, { period: "2026-01", timezone: "UTC", now: () => FIXED_NOW });
+    expect(metered.model.headline.mode).toBe("metered");
+    expect(metered.html).not.toContain("Equivalent API cost");
+  });
+
+  it("carries the fallback-rate provenance through to the pack's caveat (I1)", () => {
+    // "anthropic.claude-opus-5" is a Bedrock model id that prices via the
+    // first-party fallback (see dashboard.test.ts's equivalent assertion).
+    // The pack must not present that as exact metered cost.
+    const window = resolvePackPeriod("2026-01", "UTC");
+    store.upsertSession({
+      sessionId: "s-bedrock-pack",
+      projectPath: "/p",
+      sourceFile: "/p/s.jsonl",
+      firstTimestamp: window.since + 5_000,
+      lastTimestamp: window.since + 6_000,
+      claudeVersion: "2.1.70",
+      entrypoint: "claude-cli",
+      gitBranch: null,
+      permissionMode: "default",
+      isInteractive: true,
+      promptCount: 1,
+      assistantMessageCount: 1,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      webSearchRequests: 0,
+      webFetchRequests: 0,
+      toolUseCounts: [],
+      models: ["anthropic.claude-opus-5"],
+      repoUrl: null,
+      accountUuid: null,
+      organizationUuid: null,
+      subscriptionType: null,
+      thinkingBlocks: 0,
+      parentSessionId: null,
+      isSubagent: false,
+      sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: 1000,
+      medianResponseTimeMs: 4000,
+    });
+    store.upsertMessages([
+      {
+        uuid: "s-bedrock-pack-m0",
+        sessionId: "s-bedrock-pack",
+        timestamp: window.since + 5_000,
+        claudeVersion: "2.1.70",
+        model: "anthropic.claude-opus-5",
+        stopReason: "end_turn",
+        inputTokens: 10_000,
+        outputTokens: 2_000,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+        tools: [],
+        thinkingBlocks: 0,
+        serviceTier: null,
+        inferenceGeo: null,
+        ephemeral5mCacheTokens: 0,
+        ephemeral1hCacheTokens: 0,
+        promptText: null,
+      },
+    ]);
+
+    const withFallback = buildJustificationPack(store, config, { period: "2026-01", timezone: "UTC", now: () => FIXED_NOW });
+    expect(withFallback.model.headline.costCaveatText).toBe(
+      costCaveat("metered", { reconciledRatio: null, anyFallbackRates: true }),
+    );
+    expect(withFallback.html).not.toContain("Actual metered cost.");
+
+    // A window with no partner-priced usage keeps the plain caveat.
+    const clean = buildJustificationPack(store, config, { period: "2020-01", timezone: "UTC", now: () => FIXED_NOW });
+    expect(clean.model.headline.costCaveatText).toBe("Actual metered cost.");
   });
 
   it("an empty period is an honest empty state, not a stub or an error", () => {
