@@ -8,6 +8,7 @@ import { Store, validateTag } from "../store/index.js";
 import { printSummary, printStatus, printSearchResults, printSessionList, printSessionDetail, printTrend, printSpendingReport, printTicketReport, periodRange } from "../reporter/index.js";
 import { searchHistory } from "../history/index.js";
 import { loadConfig, saveConfig, createJudgeProviderFromConfig, ticketProjectKeys } from "../config.js";
+import { generateJustificationPack, parseSections } from "../pack/index.js";
 import { checkThresholds } from "../alerts.js";
 import { formatCost } from "@claude-stats/core/pricing";
 import { buildDashboard } from "../dashboard/index.js";
@@ -217,6 +218,73 @@ export async function buildCli(): Promise<Command> {
         } catch (err) {
           if (err instanceof RangeError) {
             console.error(t("cli:errors.invalidDateRange", { message: err.message }));
+            process.exitCode = 1;
+            return;
+          }
+          throw err;
+        } finally {
+          store.close();
+        }
+      }
+    );
+
+  program
+    .command("pack")
+    .description(t("cli:commands.pack"))
+    .requiredOption("--period <yyyy-mm>", t("cli:commands.packPeriod"))
+    .option("--timezone <tz>", t("cli:commands.reportTimezone"))
+    .option("--sections <list>", t("cli:commands.packSections"))
+    .option("--project <path>", t("cli:commands.reportProject"))
+    .option("--account <uuid>", t("cli:commands.reportAccount"))
+    .option("--out <dir>", t("cli:commands.packOut"))
+    .option("--json", t("cli:commands.packJson"))
+    .action(
+      async (opts: {
+        period: string;
+        timezone?: string;
+        sections?: string;
+        project?: string;
+        account?: string;
+        out?: string;
+        json?: boolean;
+      }) => {
+        loadCachedPricing();
+        const config = loadConfig();
+        const store = new Store();
+        try {
+          const written = generateJustificationPack(
+            store,
+            config,
+            {
+              period: opts.period,
+              timezone: opts.timezone,
+              sections: parseSections(opts.sections),
+              projectPath: opts.project,
+              accountUuid: opts.account,
+            },
+            opts.out ?? process.cwd()
+          );
+          if (opts.json) {
+            console.log(
+              JSON.stringify(
+                {
+                  dir: written.dir,
+                  htmlPath: written.htmlPath,
+                  ticketsCsvPath: written.ticketsCsvPath,
+                  nonTicketCsvPath: written.nonTicketCsvPath,
+                  summaryCsvPath: written.summaryCsvPath,
+                  sections: written.model.sections,
+                },
+                null,
+                2
+              )
+            );
+          } else {
+            console.log(t("cli:report.wrotePack", { dir: written.dir }));
+          }
+        } catch (err) {
+          if (err instanceof RangeError) {
+            console.error(t("cli:errors.invalidPackPeriod", { message: err.message }));
             process.exitCode = 1;
             return;
           }

@@ -134,6 +134,11 @@
     "reportTicket": "Show cost/tokens/sessions attributed to one ticket key (e.g. PROJ-123), plus the period's coverage",
     "reportSession": "Show detailed view of a single session",
     "reportHtml": "Write a self-contained HTML report to a file",
+    "pack": "Generate the justification pack: a self-contained HTML document plus a CSV bundle for one calendar month, for a reader who does not run claude-stats",
+    "packPeriod": "Calendar month to report on, YYYY-MM (required)",
+    "packSections": "Comma-separated sections to include: headline,tickets,nonticket,hygiene,constraint,calibration (default: headline,tickets,nonticket)",
+    "packOut": "Directory to write the pack bundle into (default: current directory)",
+    "packJson": "Print the written file paths as JSON instead of a summary line",
     "status": "Show database size, row counts, and last collection time",
     "export": "Export data to CSV or JSON",
     "exportFormat": "Output format: csv or json (default: json)",
@@ -234,6 +239,7 @@
     "resultsFound_one": "{{count}} result found.",
     "resultsFound_other": "{{count}} results found.",
     "wroteFile": "Wrote {{file}}",
+    "wrotePack": "Wrote justification pack to {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
     "planValueUsed": "Plan: {{planFee}}/mo → {{percent}}% of plan value used this period",
     "trendColumnDay": "Day",
     "trendColumnWeek": "Week",
@@ -358,7 +364,8 @@
   "errors": {
     "cannotCombineHtml": "Cannot combine --html with --trend or --detail",
     "cannotCombineTrendDetail": "Cannot combine --trend and --detail",
-    "invalidDateRange": "Invalid date range: {{message}}"
+    "invalidDateRange": "Invalid date range: {{message}}",
+    "invalidPackPeriod": "Invalid pack period: {{message}}"
   },
   "archive": {
     "description": "Manage transcript archives.",

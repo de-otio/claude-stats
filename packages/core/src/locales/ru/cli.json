@@ -133,6 +133,11 @@
     "reportTag": "Фильтр сессий по тегу",
     "reportSession": "Показать подробный вид одной сессии",
     "reportHtml": "Записать автономный HTML-отчёт в файл",
+    "pack": "Сформировать обосновывающий пакет: автономный HTML-документ и набор CSV-файлов за один календарный месяц для читателя, у которого нет claude-stats",
+    "packPeriod": "Календарный месяц отчёта, ГГГГ-ММ (обязательно)",
+    "packSections": "Разделы для включения через запятую: headline,tickets,nonticket,hygiene,constraint,calibration (по умолчанию: headline,tickets,nonticket)",
+    "packOut": "Каталог для записи пакета (по умолчанию: текущий каталог)",
+    "packJson": "Вывести пути записанных файлов в формате JSON вместо строки сводки",
     "status": "Показать размер базы данных, количество записей и время последнего сбора",
     "export": "Экспорт данных в CSV или JSON",
     "exportFormat": "Формат вывода: csv или json (по умолчанию: json)",
@@ -234,6 +239,7 @@
     "resultsFound_one": "Найден {{count}} результат.",
     "resultsFound_other": "Найдено {{count}} результатов.",
     "wroteFile": "Записан файл {{file}}",
+    "wrotePack": "Обосновывающий пакет записан в {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
     "planValueUsed": "План: {{planFee}}/мес → использовано {{percent}}% ценности плана за этот период",
     "trendColumnDay": "День",
     "trendColumnWeek": "Неделя",
@@ -336,7 +342,8 @@
   "errors": {
     "cannotCombineHtml": "Нельзя совмещать --html с --trend или --detail",
     "cannotCombineTrendDetail": "Нельзя совмещать --trend и --detail",
-    "invalidDateRange": "Недопустимый диапазон дат: {{message}}"
+    "invalidDateRange": "Недопустимый диапазон дат: {{message}}",
+    "invalidPackPeriod": "Недопустимый период пакета: {{message}}"
   },
   "repair": {
     "description": "Восстановление производных данных, которые обычный сбор не может исправить задним числом.",

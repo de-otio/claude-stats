@@ -133,6 +133,11 @@
     "reportTag": "按标签筛选会话",
     "reportSession": "显示单个会话的详情视图",
     "reportHtml": "将自包含的 HTML 报告写入文件",
+    "pack": "生成说明材料包：为一个日历月生成自包含的 HTML 文档及 CSV 数据包，供不使用 claude-stats 的读者查看",
+    "packPeriod": "要生成报告的日历月，YYYY-MM（必填）",
+    "packSections": "要包含的部分，以逗号分隔：headline,tickets,nonticket,hygiene,constraint,calibration（默认：headline,tickets,nonticket）",
+    "packOut": "写入材料包的目录（默认：当前目录）",
+    "packJson": "以 JSON 形式输出已写入的文件路径，而非摘要行",
     "status": "显示数据库大小、行数及上次收集时间",
     "export": "将数据导出为 CSV 或 JSON",
     "exportFormat": "输出格式: csv 或 json（默认: json）",
@@ -234,6 +239,7 @@
     "resultsFound_one": "找到 {{count}} 条结果。",
     "resultsFound_other": "找到 {{count}} 条结果。",
     "wroteFile": "已写入 {{file}}",
+    "wrotePack": "说明材料包已写入 {{dir}}（report.html、tickets.csv、nonticket.csv、summary.csv）",
     "planValueUsed": "套餐: {{planFee}}/月 → 本期已使用套餐价值的 {{percent}}%",
     "trendColumnDay": "日",
     "trendColumnWeek": "周",
@@ -336,7 +342,8 @@
   "errors": {
     "cannotCombineHtml": "--html 不能与 --trend 或 --detail 组合使用",
     "cannotCombineTrendDetail": "--trend 和 --detail 不能组合使用",
-    "invalidDateRange": "无效的日期范围：{{message}}"
+    "invalidDateRange": "无效的日期范围：{{message}}",
+    "invalidPackPeriod": "无效的材料包时间段：{{message}}"
   },
   "repair": {
     "description": "修复常规采集无法追溯修正的派生数据。",

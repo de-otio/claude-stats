@@ -133,6 +133,11 @@
     "reportTag": "Filtre les sessions par tag",
     "reportSession": "Affiche la vue détaillée d'une seule session",
     "reportHtml": "Écrit un rapport HTML autonome dans un fichier",
+    "pack": "Génère le dossier de justification : un document HTML autonome plus un lot de fichiers CSV pour un mois calendaire, destiné à un lecteur qui n'utilise pas claude-stats",
+    "packPeriod": "Mois calendaire à traiter, AAAA-MM (obligatoire)",
+    "packSections": "Sections à inclure, séparées par des virgules : headline,tickets,nonticket,hygiene,constraint,calibration (par défaut : headline,tickets,nonticket)",
+    "packOut": "Répertoire où écrire le lot de fichiers (par défaut : répertoire courant)",
+    "packJson": "Affiche les chemins des fichiers écrits en JSON plutôt qu'une ligne récapitulative",
     "status": "Affiche la taille de la base, le nombre de lignes et la dernière collecte",
     "export": "Exporte les données en CSV ou JSON",
     "exportFormat": "Format de sortie : csv ou json (par défaut : json)",
@@ -234,6 +239,7 @@
     "resultsFound_one": "{{count}} résultat trouvé.",
     "resultsFound_other": "{{count}} résultats trouvés.",
     "wroteFile": "{{file}} écrit",
+    "wrotePack": "Dossier de justification écrit dans {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
     "planValueUsed": "Forfait : {{planFee}}/mois → {{percent}}% de la valeur du forfait utilisée cette période",
     "trendColumnDay": "Jour",
     "trendColumnWeek": "Semaine",
@@ -336,7 +342,8 @@
   "errors": {
     "cannotCombineHtml": "Impossible de combiner --html avec --trend ou --detail",
     "cannotCombineTrendDetail": "Impossible de combiner --trend et --detail",
-    "invalidDateRange": "Plage de dates invalide : {{message}}"
+    "invalidDateRange": "Plage de dates invalide : {{message}}",
+    "invalidPackPeriod": "Période de dossier invalide : {{message}}"
   },
   "repair": {
     "description": "Réparer les données dérivées que la collecte normale ne peut pas corriger rétroactivement.",

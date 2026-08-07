@@ -123,6 +123,14 @@
     "./taskClass": {
       "types": "./dist/taskClass/index.d.ts",
       "default": "./dist/taskClass/index.js"
+    },
+    "./pack": {
+      "types": "./dist/pack.d.ts",
+      "default": "./dist/pack.js"
+    },
+    "./types/pack": {
+      "types": "./dist/types/pack.d.ts",
+      "default": "./dist/types/pack.js"
     }
   },
   "scripts": {

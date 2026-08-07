@@ -184,6 +184,23 @@ export interface TicketCostReport {
   /** Sorted by cost, descending. */
   tickets: TicketCostRow[];
   coverage: TicketCoverage;
+  /**
+   * True when any priced message in the window fell back to first-party rates
+   * (`estimateCost(...).rateBasis === "first_party_fallback"`) — a Bedrock or
+   * Vertex account with no partner rate override. Consumers (the cost caveat,
+   * the justification pack's headline) must surface this rather than presenting
+   * the figure as exact metered cost (I1 — see `phase-1-result.md` item 2).
+   */
+  anyFallbackRates: boolean;
+  /**
+   * Sessions in the window with no active ticket link, each with its own
+   * priced cost — the numerator gap the "non-ticket work" breakdown reports on
+   * (`ticket-attribution/04 §4.2` rule 3). Derived from the same
+   * `sessionCosts` map `totalCost` is summed from, so
+   * `sum(tickets[].cost dedup by session) + sum(unattributedSessions[].cost)`
+   * accounts for every session exactly once when there is no ambiguity.
+   */
+  unattributedSessions: Array<{ sessionId: string; cost: number }>;
 }
 
 /**
@@ -219,6 +236,7 @@ export function getTicketCostReport(store: Store, filters: TicketReportFilters =
     { input: number; output: number; cacheRead: number; cacheCreation: number }
   >();
   let unknownTokens = 0;
+  let anyFallbackRates = false;
 
   for (const row of perSessionRows) {
     const priced = estimateCost(
@@ -228,6 +246,7 @@ export function getTicketCostReport(store: Store, filters: TicketReportFilters =
       row.cache_read_tokens,
       row.cache_creation_tokens,
     );
+    if (priced.rateBasis === "first_party_fallback") anyFallbackRates = true;
     if (priced.known) {
       sessionCosts.set(row.session_id, (sessionCosts.get(row.session_id) ?? 0) + priced.cost);
     } else {
@@ -286,5 +305,10 @@ export function getTicketCostReport(store: Store, filters: TicketReportFilters =
     };
   });
 
-  return { totalCost, unknownTokens, tickets: rows, coverage };
+  const coveredSessionIds = new Set(tickets.flatMap((t) => t.sessionIds));
+  const unattributedSessions = sessionIds
+    .filter((sid) => !coveredSessionIds.has(sid))
+    .map((sid) => ({ sessionId: sid, cost: sessionCosts.get(sid) ?? 0 }));
+
+  return { totalCost, unknownTokens, tickets: rows, coverage, anyFallbackRates, unattributedSessions };
 }

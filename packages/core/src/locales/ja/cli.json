@@ -133,6 +133,11 @@
     "reportTag": "タグでセッションをフィルタリング",
     "reportSession": "単一セッションの詳細を表示",
     "reportHtml": "自己完結型の HTML レポートをファイルに書き出し",
+    "pack": "説明資料パックを生成: 1 か月分の自己完結型 HTML ドキュメントと CSV バンドルを、claude-stats を使わない読み手向けに作成",
+    "packPeriod": "対象とする暦月、YYYY-MM（必須）",
+    "packSections": "含めるセクション（カンマ区切り）: headline,tickets,nonticket,hygiene,constraint,calibration（デフォルト: headline,tickets,nonticket）",
+    "packOut": "パックの書き出し先ディレクトリ（デフォルト: カレントディレクトリ）",
+    "packJson": "サマリー行の代わりに、書き出したファイルパスを JSON で出力",
     "status": "データベースサイズ、行数、最終収集時刻を表示",
     "export": "CSV または JSON にデータをエクスポート",
     "exportFormat": "出力形式: csv または json（デフォルト: json）",
@@ -234,6 +239,7 @@
     "resultsFound_one": "{{count}} 件の結果が見つかりました。",
     "resultsFound_other": "{{count}} 件の結果が見つかりました。",
     "wroteFile": "{{file}} を書き出しました",
+    "wrotePack": "説明資料パックを {{dir}} に書き出しました（report.html、tickets.csv、nonticket.csv、summary.csv）",
     "planValueUsed": "プラン: {{planFee}}/月 → この期間にプラン価値の {{percent}}% を使用",
     "trendColumnDay": "日",
     "trendColumnWeek": "週",
@@ -336,7 +342,8 @@
   "errors": {
     "cannotCombineHtml": "--html は --trend や --detail と組み合わせられません",
     "cannotCombineTrendDetail": "--trend と --detail は組み合わせられません",
-    "invalidDateRange": "無効な日付範囲です: {{message}}"
+    "invalidDateRange": "無効な日付範囲です: {{message}}",
+    "invalidPackPeriod": "無効なパック期間です: {{message}}"
   },
   "repair": {
     "description": "通常の収集では遡って修正できない派生データを修復します。",

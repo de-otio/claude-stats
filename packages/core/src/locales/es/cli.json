@@ -133,6 +133,11 @@
     "reportTag": "Filtra sesiones por etiqueta",
     "reportSession": "Muestra la vista detallada de una sola sesión",
     "reportHtml": "Escribe un informe HTML autocontenido en un archivo",
+    "pack": "Genera el paquete de justificación: un documento HTML autocontenido más un paquete CSV para un mes calendario, para un lector que no usa claude-stats",
+    "packPeriod": "Mes calendario a informar, AAAA-MM (obligatorio)",
+    "packSections": "Secciones a incluir, separadas por comas: headline,tickets,nonticket,hygiene,constraint,calibration (por defecto: headline,tickets,nonticket)",
+    "packOut": "Directorio donde escribir el paquete (por defecto: directorio actual)",
+    "packJson": "Imprime las rutas de los archivos escritos como JSON en lugar de una línea de resumen",
     "status": "Muestra el tamaño de la base de datos, el número de filas y la última recopilación",
     "export": "Exporta los datos a CSV o JSON",
     "exportFormat": "Formato de salida: csv o json (por defecto: json)",
@@ -234,6 +239,7 @@
     "resultsFound_one": "{{count}} resultado encontrado.",
     "resultsFound_other": "{{count}} resultados encontrados.",
     "wroteFile": "Se escribió {{file}}",
+    "wrotePack": "Paquete de justificación escrito en {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
     "planValueUsed": "Plan: {{planFee}}/mes → {{percent}}% del valor del plan usado este periodo",
     "trendColumnDay": "Día",
     "trendColumnWeek": "Semana",
@@ -336,7 +342,8 @@
   "errors": {
     "cannotCombineHtml": "No se puede combinar --html con --trend o --detail",
     "cannotCombineTrendDetail": "No se puede combinar --trend y --detail",
-    "invalidDateRange": "Rango de fechas no válido: {{message}}"
+    "invalidDateRange": "Rango de fechas no válido: {{message}}",
+    "invalidPackPeriod": "Período de paquete no válido: {{message}}"
   },
   "repair": {
     "description": "Repara los datos derivados que la recopilación normal no puede corregir de forma retroactiva.",
