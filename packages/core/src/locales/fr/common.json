@@ -74,7 +74,8 @@
       "sentence": "{{text}}.",
       "clauseJoin": " — ",
       "listJoin": ", ",
-      "dotJoin": " · "
+      "dotJoin": " · ",
+      "caveatJoin": " "
     },
     "devTime": {
       "minutes": "{{value}} minutes-développeur",
@@ -142,6 +143,20 @@
       "more_one": "{{lead}} (+{{count}} autre).",
       "more_many": "{{lead}} (+{{count}} autres).",
       "more_other": "{{lead}} (+{{count}} autres)."
+    },
+    "calibration": {
+      "measured": {
+        "attribution": "L'attribution automatique a été confirmée pour {{percent}} des {{n}} liens que vous avez tranchés (IC à 95 % {{lo}}–{{hi}}) — il s'agit du taux d'accord sur les liens que vous avez choisi d'examiner, et non d'une précision globale ; il paraît faible parce que l'on examine surtout ce qui semble erroné.",
+        "outcome": "La détection des résultats correspondait à votre étiquette pour {{percent}} des {{n}} tâches que vous avez étiquetées (IC à 95 % {{lo}}–{{hi}}) — il s'agit du taux d'accord sur les tâches que vous avez choisi d'étiqueter, et non d'une précision globale ; il paraît faible parce que l'on étiquette surtout ce qui semble erroné."
+      },
+      "uncalibrated": {
+        "attribution": "La confiance de l'attribution n'est pas calibrée — {{n}} des {{minN}} décisions explicites nécessaires pour qu'un taux d'accord ait un sens.",
+        "outcome": "La détection des résultats n'est pas calibrée — {{n}} des {{minN}} étiquettes de résultat nécessaires pour qu'un taux d'accord ait un sens."
+      },
+      "enablement": {
+        "attribution": "Confirmez ou corrigez un lien automatique avec `claude-stats ticket <session-id> <key>`, ou annulez-en un erroné avec `--negate` ; chaque décision explicite agrandit l'échantillon.",
+        "outcome": "Étiquetez le travail terminé avec `claude-stats task-outcome <item> <success|partial|fail>` ; chaque étiquette agrandit l'échantillon."
+      }
     }
   },
   "actions": {

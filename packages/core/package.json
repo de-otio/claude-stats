@@ -112,6 +112,10 @@
       "types": "./dist/attribution.d.ts",
       "default": "./dist/attribution.js"
     },
+    "./calibration": {
+      "types": "./dist/calibration.d.ts",
+      "default": "./dist/calibration.js"
+    },
     "./insight": {
       "types": "./dist/insight.d.ts",
       "default": "./dist/insight.js"

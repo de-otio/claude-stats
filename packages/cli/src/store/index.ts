@@ -2495,6 +2495,38 @@ export class Store {
       .all() as Array<{ session_id: string; ticket_key: string; source: string; confidence: string }>;
   }
 
+  /**
+   * Every `ticket_links` row, **tombstones included**, reduced to the grading
+   * columns. The calibration input (`cli/src/calibration/`).
+   *
+   * Deliberately NOT `getActiveTicketLinks`: that method's two-clause rule
+   * filters tombstoned pairs out, and a tombstone is precisely the evidence
+   * calibration needs — it is the user's explicit "the automatic pass got this
+   * wrong". Calibrating on the active set would measure agreement over the rows
+   * that survived disagreement, which is a rate of 100% by construction.
+   *
+   * Whole-store, not period-scoped: calibration is a property of the mechanism,
+   * not of a reporting window, and an already-scarce sample cut down to one
+   * month would sit under the minimum forever. Callers surface it as such.
+   *
+   * Ordered by the table's own PRIMARY KEY, so the result is a deterministic
+   * total order (no two rows can tie).
+   */
+  getTicketLinkGrades(): Array<{
+    session_id: string;
+    ticket_key: string;
+    source: string;
+    negated: number;
+  }> {
+    return this.db
+      .prepare(
+        `SELECT session_id, ticket_key, source, negated
+           FROM ticket_links
+          ORDER BY session_id, ticket_key, source`,
+      )
+      .all() as Array<{ session_id: string; ticket_key: string; source: string; negated: number }>;
+  }
+
   // ─── Task classes (schema V21) ─────────────────────────────────────────────
   //
   // Storage seam only. The classifier itself is pure and lives in

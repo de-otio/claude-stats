@@ -75,7 +75,8 @@
       "sentence": "{{text}}.",
       "clauseJoin": " — ",
       "listJoin": ", ",
-      "dotJoin": " · "
+      "dotJoin": " · ",
+      "caveatJoin": " "
     },
     "devTime": {
       "minutes": "{{value}} minut pracy programisty",
@@ -147,6 +148,20 @@
       "more_few": "{{lead}} (+{{count}} więcej).",
       "more_many": "{{lead}} (+{{count}} więcej).",
       "more_other": "{{lead}} (+{{count}} więcej)."
+    },
+    "calibration": {
+      "measured": {
+        "attribution": "Automatyczne przypisanie zostało utrzymane w {{percent}} z {{n}} ocenionych przez Ciebie powiązań (95% CI {{lo}}–{{hi}}) — to zgodność na powiązaniach wybranych do przeglądu, a nie ogólna dokładność, i wypada nisko, ponieważ ludzie sprawdzają to, co wygląda na błędne.",
+        "outcome": "Wykrywanie rezultatów zgadzało się z Twoją etykietą w {{percent}} z {{n}} oznaczonych przez Ciebie zadań (95% CI {{lo}}–{{hi}}) — to zgodność na zadaniach wybranych do oznaczenia, a nie ogólna dokładność, i wypada nisko, ponieważ ludzie oznaczają to, co wygląda na błędne."
+      },
+      "uncalibrated": {
+        "attribution": "Pewność przypisania nie jest skalibrowana — {{n}} z {{minN}} jawnych ocen potrzebnych, aby wskaźnik zgodności cokolwiek znaczył.",
+        "outcome": "Wykrywanie rezultatów nie jest skalibrowane — {{n}} z {{minN}} etykiet rezultatu potrzebnych, aby wskaźnik zgodności cokolwiek znaczył."
+      },
+      "enablement": {
+        "attribution": "Potwierdź lub popraw automatyczne powiązanie poleceniem `claude-stats ticket <session-id> <key>` albo usuń błędne za pomocą `--negate`; każda jawna ocena powiększa próbę.",
+        "outcome": "Oznaczaj ukończoną pracę poleceniem `claude-stats task-outcome <item> <success|partial|fail>`; każda etykieta powiększa próbę."
+      }
     }
   },
   "actions": {

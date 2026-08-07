@@ -73,7 +73,8 @@
       "sentence": "{{text}}.",
       "clauseJoin": " — ",
       "listJoin": ", ",
-      "dotJoin": " · "
+      "dotJoin": " · ",
+      "caveatJoin": " "
     },
     "devTime": {
       "minutes": "{{value}} Entwicklerminuten",
@@ -137,6 +138,20 @@
       "withImpact": "{{title}} — {{impact}}",
       "more_one": "{{lead}} (+{{count}} weiterer).",
       "more_other": "{{lead}} (+{{count}} weitere)."
+    },
+    "calibration": {
+      "measured": {
+        "attribution": "Die automatische Zuordnung wurde bei {{percent}} der {{n}} von Ihnen beurteilten Verknüpfungen bestätigt (95 %-KI {{lo}}–{{hi}}) — das ist die Übereinstimmung bei Verknüpfungen, die Sie zur Prüfung ausgewählt haben, nicht die Gesamtgenauigkeit, und sie fällt niedrig aus, weil man das prüft, was falsch aussieht.",
+        "outcome": "Die Ergebniserkennung stimmte bei {{percent}} der {{n}} von Ihnen gekennzeichneten Aufgaben mit Ihrer Kennzeichnung überein (95 %-KI {{lo}}–{{hi}}) — das ist die Übereinstimmung bei Aufgaben, die Sie zum Kennzeichnen ausgewählt haben, nicht die Gesamtgenauigkeit, und sie fällt niedrig aus, weil man das kennzeichnet, was falsch aussieht."
+      },
+      "uncalibrated": {
+        "attribution": "Die Zuordnungskonfidenz ist unkalibriert — {{n}} von {{minN}} ausdrücklichen Beurteilungen, die nötig sind, damit ein Übereinstimmungswert aussagekräftig wäre.",
+        "outcome": "Die Ergebniserkennung ist unkalibriert — {{n}} von {{minN}} Ergebniskennzeichnungen, die nötig sind, damit ein Übereinstimmungswert aussagekräftig wäre."
+      },
+      "enablement": {
+        "attribution": "Bestätigen oder korrigieren Sie eine automatische Verknüpfung mit `claude-stats ticket <session-id> <key>` oder heben Sie eine falsche mit `--negate` auf; jede ausdrückliche Beurteilung vergrößert die Stichprobe.",
+        "outcome": "Kennzeichnen Sie abgeschlossene Arbeit mit `claude-stats task-outcome <item> <success|partial|fail>`; jede Kennzeichnung vergrößert die Stichprobe."
+      }
     }
   },
   "actions": {

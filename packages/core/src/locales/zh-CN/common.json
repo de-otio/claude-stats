@@ -73,7 +73,8 @@
       "sentence": "{{text}}。",
       "clauseJoin": "，",
       "listJoin": "，",
-      "dotJoin": " · "
+      "dotJoin": " · ",
+      "caveatJoin": ""
     },
     "devTime": {
       "minutes": "{{value}} 开发分钟",
@@ -137,6 +138,20 @@
       "withImpact": "{{title}} — {{impact}}",
       "more_one": "{{lead}}（还有 {{count}} 项）。",
       "more_other": "{{lead}}（还有 {{count}} 项）。"
+    },
+    "calibration": {
+      "measured": {
+        "attribution": "在你裁定过的 {{n}} 条关联中，自动关联有 {{percent}} 被判定成立（95% 置信区间 {{lo}}–{{hi}}）——这只是你选择复核的那些关联上的一致率，并非整体准确率；由于人们往往只复核看起来有问题的部分，该数值会偏低。",
+        "outcome": "在你标注过的 {{n}} 个任务中，结果检测有 {{percent}} 与你的标注一致（95% 置信区间 {{lo}}–{{hi}}）——这只是你选择标注的那些任务上的一致率，并非整体准确率；由于人们往往只标注看起来有问题的部分，该数值会偏低。"
+      },
+      "uncalibrated": {
+        "attribution": "关联置信度尚未校准——目前有 {{n}} 条明确裁定，需要达到 {{minN}} 条，一致率才有意义。",
+        "outcome": "结果检测尚未校准——目前有 {{n}} 个结果标注，需要达到 {{minN}} 个，一致率才有意义。"
+      },
+      "enablement": {
+        "attribution": "使用 `claude-stats ticket <session-id> <key>` 确认或更正自动关联，或用 `--negate` 撤销错误的关联；每次明确裁定都会扩大样本量。",
+        "outcome": "使用 `claude-stats task-outcome <item> <success|partial|fail>` 标注已完成的工作；每个标注都会扩大样本量。"
+      }
     }
   },
   "actions": {

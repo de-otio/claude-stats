@@ -14,6 +14,7 @@ export default defineConfig({
       "@claude-stats/core/types/pack": path.resolve(__dirname, "packages/core/src/types/pack.ts"),
       "@claude-stats/core/tickets": path.resolve(__dirname, "packages/core/src/tickets.ts"),
       "@claude-stats/core/attribution": path.resolve(__dirname, "packages/core/src/attribution.ts"),
+      "@claude-stats/core/calibration": path.resolve(__dirname, "packages/core/src/calibration.ts"),
       "@claude-stats/core/insight": path.resolve(__dirname, "packages/core/src/insight.ts"),
       "@claude-stats/core/pack": path.resolve(__dirname, "packages/core/src/pack.ts"),
       "@claude-stats/core/taskClass": path.resolve(__dirname, "packages/core/src/taskClass/index.ts"),

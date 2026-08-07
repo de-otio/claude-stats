@@ -36,6 +36,7 @@
  * Design: doc/analysis/gui-redesign/02 §2.2, 03 §3.4;
  *         doc/analysis/ticket-attribution/05 §5.3.
  */
+import type { CalibrationEstimate } from "./calibration.js";
 import type {
   AccountMode,
   Confidence,
@@ -271,6 +272,69 @@ export function confidenceCaveat(t: InsightT, coverage: TicketCoverage): string 
     : t("common:insight.coverage.mix", { parts: joined });
 }
 
+// ─── Calibration (the "is this confidence tier earned?" obligation) ───────────
+//
+// Keys are held in explicit records rather than built with a template literal.
+// A closed union interpolated into a key string is greppable to a reader but not
+// to `grep`, and a subject added without its sentences would then fail at
+// runtime in one language rather than at review.
+
+const CALIBRATION_MEASURED_KEY: Readonly<Record<CalibrationEstimate["subject"], string>> = {
+  attribution: "common:insight.calibration.measured.attribution",
+  outcome: "common:insight.calibration.measured.outcome",
+};
+
+const CALIBRATION_UNCALIBRATED_KEY: Readonly<Record<CalibrationEstimate["subject"], string>> = {
+  attribution: "common:insight.calibration.uncalibrated.attribution",
+  outcome: "common:insight.calibration.uncalibrated.outcome",
+};
+
+const CALIBRATION_ENABLEMENT_KEY: Readonly<Record<CalibrationEstimate["subject"], string>> = {
+  attribution: "common:insight.calibration.enablement.attribution",
+  outcome: "common:insight.calibration.enablement.outcome",
+};
+
+/**
+ * State a mechanism's measured agreement, or state that it has none.
+ *
+ * The measured sentence carries four things that must never be separated from
+ * the percentage: the denominator `n`, the 95% interval, the fact that the
+ * denominator is a self-selected review subset, and the direction of the
+ * resulting bias. A rate stripped of any of them reads as "attribution is X%
+ * accurate", which is not what was measured (see `calibration.ts`'s header) and
+ * is the exact claim-stronger-than-its-basis failure I1 exists to stop.
+ *
+ * The uncalibrated sentence states the gap to the floor rather than an apology.
+ * Below the floor there is no number to render, so the sentence IS the answer.
+ */
+export function calibrationCaveat(t: InsightT, estimate: CalibrationEstimate): string {
+  if (estimate.state === "uncalibrated") {
+    return t(CALIBRATION_UNCALIBRATED_KEY[estimate.subject], {
+      n: estimate.n,
+      minN: estimate.minN,
+    });
+  }
+  return t(CALIBRATION_MEASURED_KEY[estimate.subject], {
+    percent: formatPercent(estimate.rate),
+    n: estimate.n,
+    lo: formatPercent(estimate.interval?.lo ?? null),
+    hi: formatPercent(estimate.interval?.hi ?? null),
+  });
+}
+
+/**
+ * The labelling nudge: what the user would have to do to make calibration
+ * possible. Null once measured — a nudge that keeps nagging after the sample is
+ * sufficient is noise, and the caveat already carries the figure.
+ *
+ * This is the enablement path I1 requires. "Uncalibrated" without it tells the
+ * reader a number is missing and leaves them no way to produce it.
+ */
+export function calibrationEnablement(t: InsightT, estimate: CalibrationEstimate): string | null {
+  if (estimate.state === "measured") return null;
+  return t(CALIBRATION_ENABLEMENT_KEY[estimate.subject]);
+}
+
 // ─── The five answers ─────────────────────────────────────────────────────────
 
 /** Inputs for Q1 — "What did AI cost?" */
@@ -337,6 +401,21 @@ export interface BoughtAnswerInput {
   topTicket: { key: string; cost: number } | null;
   currency?: string;
   previousCoverageRatio?: number | null;
+  /**
+   * Calibration for the mechanisms this card's figures rest on, appended to the
+   * confidence caveat.
+   *
+   * Q2 is where it belongs because Q2 is where both live: `completedTasks` is
+   * outcome detection's output, and the coverage percentage is graded by
+   * attribution confidence. Quoting either beside a confidence tier that nothing
+   * has ever checked is the defect Lane K exists to close, so the tiers and
+   * their calibration state travel together on one caveat rather than one
+   * appearing without the other.
+   *
+   * Absent/empty leaves the caveat exactly as it was — a caller that has not
+   * gathered calibration must not be made to imply it has.
+   */
+  calibration?: readonly CalibrationEstimate[] | null;
 }
 
 export function answerBought(t: InsightT, input: BoughtAnswerInput): InsightAnswer {
@@ -365,12 +444,22 @@ export function answerBought(t: InsightT, input: BoughtAnswerInput): InsightAnsw
     );
   }
 
+  // The confidence mix and the calibration of that mix are one honesty
+  // obligation, so they are one caveat string. Composed here (rather than the
+  // surfaces each concatenating) for the same reason every other sentence is:
+  // the dashboard and the exported pack must not be free to render different
+  // halves of it.
+  const caveatParts = [
+    confidenceCaveat(t, input.coverage),
+    ...(input.calibration ?? []).map((e) => calibrationCaveat(t, e)),
+  ].filter((s): s is string => s !== null && s.length > 0);
+
   return {
     question: "bought",
     answer: sentence(t, clauses.join(t("common:insight.punctuation.listJoin"))),
     value: formatPercent(input.coverage.ratio),
     trend: trendOf(input.coverage.ratio ?? 0, input.previousCoverageRatio ?? null),
-    caveat: confidenceCaveat(t, input.coverage),
+    caveat: caveatParts.length > 0 ? caveatParts.join(t("common:insight.punctuation.caveatJoin")) : null,
     evidenceLink: "tickets-and-value",
   };
 }

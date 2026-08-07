@@ -73,7 +73,8 @@
       "sentence": "{{text}}。",
       "clauseJoin": "、",
       "listJoin": "、",
-      "dotJoin": "・"
+      "dotJoin": "・",
+      "caveatJoin": ""
     },
     "devTime": {
       "minutes": "開発者 {{value}} 分",
@@ -137,6 +138,20 @@
       "withImpact": "{{title}} — {{impact}}",
       "more_one": "{{lead}}（ほか {{count}} 件）。",
       "more_other": "{{lead}}（ほか {{count}} 件）。"
+    },
+    "calibration": {
+      "measured": {
+        "attribution": "自動ひも付けは、あなたが判定した {{n}} 件のリンクのうち {{percent}} で支持されました（95% 信頼区間 {{lo}}–{{hi}}）。これはレビュー対象に選んだリンクでの一致率であり、全体の精度ではありません。誤っていそうなものをレビューする傾向があるため、低めに出ます。",
+        "outcome": "成果の自動検出は、あなたがラベルを付けた {{n}} 件のタスクのうち {{percent}} であなたのラベルと一致しました（95% 信頼区間 {{lo}}–{{hi}}）。これはラベル付け対象に選んだタスクでの一致率であり、全体の精度ではありません。誤っていそうなものにラベルを付ける傾向があるため、低めに出ます。"
+      },
+      "uncalibrated": {
+        "attribution": "ひも付けの信頼度は未校正です。一致率が意味を持つには {{minN}} 件の明示的な判定が必要ですが、現在は {{n}} 件です。",
+        "outcome": "成果の検出は未校正です。一致率が意味を持つには {{minN}} 件の成果ラベルが必要ですが、現在は {{n}} 件です。"
+      },
+      "enablement": {
+        "attribution": "`claude-stats ticket <session-id> <key>` で自動リンクを承認または修正し、誤ったリンクは `--negate` で取り消せます。明示的な判定ごとにサンプルが増えます。",
+        "outcome": "完了した作業には `claude-stats task-outcome <item> <success|partial|fail>` でラベルを付けてください。ラベルごとにサンプルが増えます。"
+      }
     }
   },
   "actions": {

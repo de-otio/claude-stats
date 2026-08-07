@@ -24,6 +24,8 @@ import {
 import { attributeToolCosts, groupByMcpServer, detectAnomalies, aggregateMcpServerUsage } from "../spending.js";
 import type { CostPerTaskReport, CostPerTaskOptions } from "../cost-per-task/index.js";
 import type { CalibrationReport } from "../cost-per-task/calibration.js";
+import type { CalibrationEstimate } from "@claude-stats/core/calibration";
+import { buildAttributionCalibration } from "../calibration/index.js";
 import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor, modelClass } from "@claude-stats/core/energy";
 import type { ModelClass } from "@claude-stats/core/energy";
 import { decodeHtmlEntities } from "@claude-stats/core/sanitize";
@@ -359,6 +361,16 @@ export interface DashboardInsights {
   hourlyRate: number | null;
   /** `config.rate.currency`, defaulting to USD. Never auto-converted. */
   currency: string;
+  /**
+   * How well the automatic attribution pass has agreed with the user's explicit
+   * rulings, gated at the minimum sample (Lane K).
+   *
+   * Whole-store, unlike `ticketCoverage` — calibration is a property of the
+   * mechanism, not of this window, and a per-window cut of an already-scarce
+   * sample would read "uncalibrated" forever regardless of how much the user
+   * had reviewed. Null only when the gather itself failed.
+   */
+  attributionCalibration: CalibrationEstimate | null;
 }
 
 export interface Recommendation {
@@ -1489,12 +1501,23 @@ export function attachInsights(
     topTicket = null;
   }
 
+  // Gathered in its OWN try: a pre-V19 store or a failed ticket report must not
+  // also blank the calibration state, and vice versa. Sharing one catch would
+  // make either failure look like the other's honest-empty answer.
+  let attributionCalibration: CalibrationEstimate | null = null;
+  try {
+    attributionCalibration = buildAttributionCalibration(store).estimate;
+  } catch {
+    attributionCalibration = null;
+  }
+
   data.insights = {
     vocabulary: resolveDashboardCostVocabulary(data, config),
     ticketCoverage,
     topTicket,
     hourlyRate,
     currency,
+    attributionCalibration,
   };
   return data;
 }
