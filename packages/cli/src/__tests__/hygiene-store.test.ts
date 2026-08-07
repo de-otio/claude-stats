@@ -4,7 +4,7 @@
  *
  * Design: doc/analysis/efficiency-hygiene/README.md.
  */
-import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from "vitest";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
@@ -18,6 +18,18 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { SessionRecord, MessageRecord } from "@claude-stats/core/types";
 import { FIXED_NOW } from "./fixtures/synthetic.js";
+import type { Config } from "../config.js";
+
+// D-2: `get_efficiency_hints` is the ONLY code path that reads
+// `config.hygiene.suppressions` — a mutation that severs the wire from
+// `loadConfig()` to `buildHygieneReport`'s `suppressions` argument left
+// every other hygiene test green. `loadConfig` reads a real file off disk by
+// default, so it must be mocked to prove the wiring end-to-end.
+const loadConfigMock = vi.fn<() => Config>(() => ({}));
+vi.mock("../config.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../config.js")>();
+  return { ...actual, loadConfig: () => loadConfigMock() };
+});
 
 function tmpDb(): string {
   return path.join(os.tmpdir(), `cs-hygiene-${process.pid}-${Math.random().toString(36).slice(2)}.db`);
@@ -110,6 +122,36 @@ describe("Store.getMessagesForHygiene", () => {
     const rows = store.getMessagesForHygiene({});
     expect(rows.map((r) => r.uuid)).toEqual(["s1-m0", "s1-m1"]);
   });
+
+  // D-4: two messages with the SAME timestamp had no tie-breaker before this
+  // fix, so SQLite's tie order was unspecified — order-sensitive detectors
+  // (retryLoop/reEntryBurn adjacency, abandonedSpend's "last message") could
+  // see either arrangement across runs. `m.uuid` pins it deterministically.
+  it("breaks a timestamp tie deterministically by uuid, regardless of insert order", () => {
+    store.upsertSession(session("s1", "/w/alpha"));
+    store.upsertMessages([
+      message("s1-mz", "s1", { timestamp: FIXED_NOW }),
+      message("s1-ma", "s1", { timestamp: FIXED_NOW }),
+    ]);
+    const rows = store.getMessagesForHygiene({});
+    expect(rows.map((r) => r.uuid)).toEqual(["s1-ma", "s1-mz"]);
+  });
+
+  // D-5: `util.ts`'s SessionGroup doc claims SQLite's `ORDER BY ts ASC`
+  // returns NULL timestamps FIRST, and `abandonedSpend` depends on that —
+  // it reads the group's LAST row as "the session's last message" and bails
+  // when that row's timestamp is null. Verify the real store honors the
+  // claim: a null-timestamp row seeded ahead of a real-timestamp row must
+  // still come out first, so the real (non-null) row lands last.
+  it("returns a null-timestamp row FIRST relative to real-timestamp rows in the same session (SQLite NULLS FIRST under ASC)", () => {
+    store.upsertSession(session("s1", "/w/alpha"));
+    store.upsertMessages([
+      message("s1-real", "s1", { timestamp: FIXED_NOW }),
+      message("s1-null", "s1", { timestamp: null }),
+    ]);
+    const rows = store.getMessagesForHygiene({});
+    expect(rows.map((r) => r.uuid)).toEqual(["s1-null", "s1-real"]);
+  });
 });
 
 // ─── CLI glue: buildHygieneReport ───────────────────────────────────────────
@@ -144,6 +186,29 @@ describe("buildHygieneReport", () => {
     expect(report.hygieneRatio).not.toBeNull();
     expect(report.hygieneRatio!).toBeGreaterThan(0);
     expect(report.hygieneRatio!).toBeLessThanOrEqual(1);
+  });
+
+  // D-5: end-to-end through the real store (not the pure-function unit
+  // test), which is the part the earlier review COULD NOT check — it
+  // depends on SQLite's real NULL-ordering behavior, not an assumption about
+  // it. A null-timestamp message is seeded so it would sort chronologically
+  // between the two real-timestamp messages if timestamps were compared
+  // naively; under the documented (and now store-verified) NULLS-FIRST
+  // convention it lands at the FRONT of the group instead, so the session's
+  // real last message — the one with the tool error — is still read as
+  // "last" and the detector still fires.
+  it("still detects abandoned spend when the session has a null-timestamp message (store-level, real SQLite ordering)", () => {
+    store.upsertSession(session("s1"));
+    store.upsertMessages([
+      message("s1-m0", "s1", { timestamp: FIXED_NOW, inputTokens: 500_000, outputTokens: 50_000 }),
+      message("s1-mnull", "s1", { timestamp: null, inputTokens: 100, outputTokens: 50 }),
+      message("s1-m1", "s1", { timestamp: FIXED_NOW + 60_000, toolErrorCount: 1, inputTokens: 1_000, outputTokens: 100 }),
+    ]);
+
+    const report = buildHygieneReport(store, {});
+    const abandoned = report.digest.active.find((d) => d.detectorId === "abandoned-spend");
+    expect(abandoned).toBeDefined();
+    expect(abandoned!.findings[0]!.sessionIds).toEqual(["s1"]);
   });
 
   it("returns an honest empty digest (never a fabricated finding) for a clean store", () => {
@@ -253,6 +318,10 @@ describe("get_efficiency_hints (MCP)", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  afterEach(() => {
+    loadConfigMock.mockReturnValue({});
+  });
+
   function textOf(result: unknown): Record<string, unknown> {
     const content = (result as { content: unknown }).content as Array<{ type: string; text: string }>;
     expect(content).toHaveLength(1);
@@ -306,6 +375,28 @@ describe("get_efficiency_hints (MCP)", () => {
   it("summarises a window that DID have spend with money and a percentage, both via insight.ts's formatters", async () => {
     const data = textOf(await client.callTool({ name: "get_efficiency_hints", arguments: { period: "all" } }));
     expect(data["summary"]).toMatch(/^\$[\d,.]+ of \$[\d,.]+ self-audited as recoverable waste \(\d+%\)\.$/);
+  });
+
+  it("honors config.hygiene.suppressions end-to-end — D-2: the only reader of this field must actually wire it through", async () => {
+    // Unsuppressed: retry-loop is the only detector that fires on the seeded
+    // store (see beforeAll), so it must appear here.
+    const unsuppressed = textOf(await client.callTool({ name: "get_efficiency_hints", arguments: { period: "all" } }));
+    const unsuppressedDetectors = unsuppressed["detectors"] as Array<Record<string, unknown>>;
+    expect(unsuppressedDetectors.some((d) => d["detectorId"] === "retry-loop")).toBe(true);
+    expect(unsuppressed["suppressedDetectors"]).toEqual([]);
+
+    // A developer suppresses it in ~/.claude-stats/config.json.
+    loadConfigMock.mockReturnValue({ hygiene: { suppressions: ["retry-loop"] } });
+
+    const suppressed = textOf(await client.callTool({ name: "get_efficiency_hints", arguments: { period: "all" } }));
+    const suppressedDetectors = suppressed["detectors"] as Array<Record<string, unknown>>;
+    // Withheld from the active list...
+    expect(suppressedDetectors.some((d) => d["detectorId"] === "retry-loop")).toBe(false);
+    // ...but the tool must say so, not silently drop it — a suppressed
+    // detector that vanishes without a trace is indistinguishable from one
+    // that never fired, which is exactly the failure mode a severed wire
+    // produces.
+    expect(suppressed["suppressedDetectors"]).toEqual(["retry-loop"]);
   });
 });
 

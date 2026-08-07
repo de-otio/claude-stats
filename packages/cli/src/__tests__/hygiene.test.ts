@@ -306,6 +306,20 @@ describe("detectAbandonedSpend", () => {
     expect(result!.findings[0]!.sessionIds).toEqual(["s1"]);
   });
 
+  it("D-3: prints the cost with a currency symbol via formatMoney, not a bare number", () => {
+    // A reader sees "cost 12.34" with no unit; `threshold` on the same
+    // finding already prints a `$`, so `detail` must match. Regression guard
+    // for a mutation that reverts to `cost.toFixed(2)` — the digit run alone
+    // (e.g. "12.34") would satisfy a substring check that doesn't also
+    // assert the `$` is present right before it.
+    const rows: HygieneMessageRow[] = [
+      row({ sessionId: "s1", uuid: "m0", timestamp: T0, inputTokens: 500_000, outputTokens: 50_000 }),
+      row({ sessionId: "s1", uuid: "m1", timestamp: T0 + 60_000, toolErrorCount: 1, inputTokens: 1_000, outputTokens: 100 }),
+    ];
+    const [, , result] = runHygieneDetectors(rows, {});
+    expect(result!.findings[0]!.detail).toMatch(/cost \$[\d,.]+;/);
+  });
+
   it("does NOT fire when a same-project session starts again within the grace window (continuation, not abandonment)", () => {
     const rows: HygieneMessageRow[] = [
       row({ sessionId: "s2", uuid: "m0", timestamp: T0, inputTokens: 500_000, outputTokens: 50_000 }),

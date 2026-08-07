@@ -320,6 +320,76 @@ describe("filter symmetry — getSessions vs buildMessageFilter", () => {
   });
 });
 
+// ─── D-1: getMessagesForHygiene must narrow on includeCI/includeDeleted too ─
+//
+// `getMessagesForHygiene` used to hand-roll its own WHERE clause with no
+// includeCI/includeDeleted narrowing at all — the hygiene digest and its
+// `hygieneRatio` denominator priced CI and deleted sessions that a caller
+// explicitly asked to exclude, while `getSessions` (and every other
+// message-scoped read) honored the same request. This proves the two halves
+// agree once `getMessagesForHygiene` is routed through `buildMessageFilter`.
+describe("filter symmetry — getMessagesForHygiene vs getSessions on includeCI/includeDeleted", () => {
+  let store: Store;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+
+    const mk = (id: string, overrides: Partial<SessionRecord>): SessionRecord => ({
+      ...session(id, "/w/alpha", T0),
+      ...overrides,
+    });
+    store.upsertSession(mk("normal", {}));
+    store.upsertSession(mk("ci", { isInteractive: false }));
+    store.upsertSession(mk("deleted", { sourceDeleted: true }));
+
+    for (const id of ["normal", "ci", "deleted"]) {
+      store.upsertMessages([message(`${id}-m0`, id, T0)]);
+    }
+  });
+
+  afterEach(() => {
+    store.close();
+    try {
+      fs.unlinkSync(dbPath);
+    } catch {
+      /* best effort */
+    }
+  });
+
+  it("excludes CI sessions from both halves when includeCI is explicitly false", () => {
+    const hygieneSessionIds = new Set(
+      store.getMessagesForHygiene({ includeCI: false, includeDeleted: true }).map((r) => r.session_id),
+    );
+    const sessionIds = new Set(
+      store.getSessions({ includeCI: false, includeDeleted: true }).map((s) => s.session_id),
+    );
+    expect(hygieneSessionIds.has("ci")).toBe(false);
+    expect(sessionIds.has("ci")).toBe(false);
+    expect(hygieneSessionIds.has("normal")).toBe(true);
+    expect(hygieneSessionIds.has("deleted")).toBe(true);
+  });
+
+  it("excludes deleted sessions from both halves when includeDeleted is explicitly false", () => {
+    const hygieneSessionIds = new Set(
+      store.getMessagesForHygiene({ includeCI: true, includeDeleted: false }).map((r) => r.session_id),
+    );
+    const sessionIds = new Set(
+      store.getSessions({ includeCI: true, includeDeleted: false }).map((s) => s.session_id),
+    );
+    expect(hygieneSessionIds.has("deleted")).toBe(false);
+    expect(sessionIds.has("deleted")).toBe(false);
+    expect(hygieneSessionIds.has("normal")).toBe(true);
+    expect(hygieneSessionIds.has("ci")).toBe(true);
+  });
+
+  it("includes everything when includeCI/includeDeleted are omitted (undefined = no narrowing, the existing default)", () => {
+    const hygieneSessionIds = new Set(store.getMessagesForHygiene({}).map((r) => r.session_id));
+    expect(hygieneSessionIds).toEqual(new Set(["normal", "ci", "deleted"]));
+  });
+});
+
 describe("ticket-link storage seam", () => {
   let store: Store;
   let dbPath: string;

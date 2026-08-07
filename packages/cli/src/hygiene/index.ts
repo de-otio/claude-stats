@@ -28,6 +28,10 @@ export interface HygieneReportFilters {
   projectPath?: string;
   repoUrl?: string;
   accountUuid?: string;
+  /** Explicit `false` excludes non-interactive (CI) sessions. Mirrors `MessageFilter`. */
+  includeCI?: boolean;
+  /** Explicit `false` excludes sessions whose transcript was deleted. Mirrors `MessageFilter`. */
+  includeDeleted?: boolean;
   thresholds?: Partial<{ [K in keyof HygieneThresholds]: Partial<HygieneThresholds[K]> }>;
   suppressions?: readonly string[];
   rateOverrides?: RateOverrides;
@@ -96,6 +100,8 @@ export function buildHygieneReport(store: Store, filters: HygieneReportFilters =
     accountUuid: filters.accountUuid,
     since: filters.since,
     until: filters.until,
+    includeCI: filters.includeCI,
+    includeDeleted: filters.includeDeleted,
   });
   const rows = storeRows.map(toHygieneMessageRow);
   const totalCost = totalCostOf(rows, filters.rateOverrides);
@@ -113,6 +119,8 @@ export function buildHygieneReport(store: Store, filters: HygieneReportFilters =
           accountUuid: filters.accountUuid,
           since: filters.since - span,
           until: filters.since,
+          includeCI: filters.includeCI,
+          includeDeleted: filters.includeDeleted,
         })
         .map(toHygieneMessageRow);
       const prevTotalCost = totalCostOf(prevRows, filters.rateOverrides);
