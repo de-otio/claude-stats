@@ -140,7 +140,7 @@ describe("extractTicketLinks", () => {
     expect(links).toHaveLength(0);
   });
 
-  it("normalizes case and dedupes so one key never yields two rows from one source", () => {
+  it("dedupes so one key never yields two rows from one source", () => {
     const links = extractTicketLinks({
       sessionId: "s1",
       branches: [{ text: "PROJ-1 and PROJ-1 again in the same branch string" }],
@@ -149,6 +149,38 @@ describe("extractTicketLinks", () => {
       allowlist: ["PROJ"],
     });
     expect(links).toHaveLength(1);
+  });
+
+  // Characterization, NOT an endorsement: the scan regex anchors on `[A-Z]`, so
+  // `parseTicketKey`'s own `.toUpperCase()` is unreachable from this path and a
+  // lowercase/mixed-case key is invisible. That silently zero-attributes the
+  // very common `feature/proj-42-…` branch convention. Pinned here so the
+  // behavior is a deliberate decision (relaxing it trades false negatives for
+  // false positives — `utf-8`, `sha-1`, `covid-19` in prompt text would all
+  // start matching) rather than an accident nothing asserts either way.
+  it("does NOT match a lowercase or mixed-case key (current, deliberate limitation)", () => {
+    for (const branch of ["feature/proj-1-work", "feature/Proj-1-work"]) {
+      expect(
+        extractTicketLinks({
+          sessionId: "s1",
+          branches: [{ text: branch }],
+          commits: [],
+          prompts: [],
+          allowlist: ["PROJ"],
+        }),
+      ).toHaveLength(0);
+    }
+    // …while the all-caps form on the same branch shape does match, so the
+    // assertion above is about CASE, not about the branch pattern.
+    expect(
+      extractTicketLinks({
+        sessionId: "s1",
+        branches: [{ text: "feature/PROJ-1-work" }],
+        commits: [],
+        prompts: [],
+        allowlist: ["PROJ"],
+      }),
+    ).toHaveLength(1);
   });
 
   // ── Properties ──────────────────────────────────────────────────────────
@@ -349,6 +381,87 @@ describe("runTicketExtraction (write path)", () => {
     expect(links[0]).toMatchObject({ ticket_key: "PROJ-1", source: "branch", confidence: "high", negated: 0 });
   });
 
+  // The branch rung is covered above. These two cover the OTHER two rungs
+  // through `runTicketExtraction` itself — i.e. the wiring from the store /
+  // git reader into `extractTicketLinks`, not just the pure function. Without
+  // them, gutting either signal-gathering line in `runTicketExtraction`
+  // (`commits = []`, or dropping `prompt_text`) leaves the whole suite green.
+
+  it("picks up a prompt-sourced key from the session's stored messages (rung 4 wiring)", () => {
+    seedSession("s-prompt", { gitBranch: null });
+    store.upsertMessages([
+      {
+        uuid: "s-prompt-m0",
+        sessionId: "s-prompt",
+        timestamp: FIXED_NOW,
+        claudeVersion: "2.1.70",
+        model: "claude-sonnet-5",
+        stopReason: "end_turn",
+        inputTokens: 100,
+        outputTokens: 10,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+        tools: [],
+        thinkingBlocks: 0,
+        serviceTier: null,
+        inferenceGeo: null,
+        ephemeral5mCacheTokens: 0,
+        ephemeral1hCacheTokens: 0,
+        promptText: "can you look at PROJ-7 while you're in here",
+      },
+    ]);
+
+    runTicketExtraction(store, store.findSession("s-prompt")!, { allowlist: ["PROJ"] });
+
+    const links = store.getTicketLinksForSession("s-prompt");
+    expect(links).toHaveLength(1);
+    // Uncorroborated prompt mention → low, and message-granular (the prompt is
+    // tied to exactly one message uuid).
+    expect(links[0]).toMatchObject({
+      ticket_key: "PROJ-7",
+      source: "prompt",
+      confidence: "low",
+      granularity: "messages",
+      first_uuid: "s-prompt-m0",
+      last_uuid: "s-prompt-m0",
+    });
+  });
+
+  it("picks up a commit-sourced key from the project's real git log (rung 3 wiring)", () => {
+    const repoDir = mkdtempSync(join(tmpdir(), "claude-stats-ticket-commit-wiring-"));
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: repoDir });
+      execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir });
+      writeFileSync(join(repoDir, "a.txt"), "hello");
+      execFileSync("git", ["add", "a.txt"], { cwd: repoDir });
+      execFileSync("git", ["commit", "-q", "-m", "PROJ-8: land the fix"], { cwd: repoDir });
+
+      const now = Date.now();
+      // No branch signal, so anything extracted must have come from the commit.
+      seedSession("s-commit", {
+        gitBranch: null,
+        projectPath: repoDir,
+        firstTimestamp: now - 60_000,
+        lastTimestamp: now,
+      });
+
+      runTicketExtraction(store, store.findSession("s-commit")!, { allowlist: ["PROJ"] });
+
+      const links = store.getTicketLinksForSession("s-commit");
+      expect(links).toHaveLength(1);
+      expect(links[0]).toMatchObject({
+        ticket_key: "PROJ-8",
+        source: "commit",
+        confidence: "medium",
+        granularity: "session",
+        evidence: "PROJ-8: land the fix",
+      });
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
   it("property: a manual (tag) link survives any number of automatic extraction passes", () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 5 }), (passes) => {
@@ -449,10 +562,27 @@ describe("getTicketCostReport (query path)", () => {
   });
 
   it("scopes to the given project/period — a session outside the filter contributes to neither total nor coverage", () => {
-    seedStore(store, { sessions: 6, seed: 3 });
+    const corpus = seedStore(store, { sessions: 6, seed: 3 });
+    // The fixture spreads sessions round-robin over PROJECTS, so /w/alpha owns
+    // SOME but not ALL of them — guard that, or the assertions below could pass
+    // vacuously on an empty or an unfiltered set.
+    const alphaIds = new Set(corpus.sessions.filter((s) => s.projectPath === "/w/alpha").map((s) => s.sessionId));
+    expect(alphaIds.size).toBeGreaterThan(0);
+    expect(alphaIds.size).toBeLessThan(corpus.sessions.length);
+
     const all = getTicketCostReport(store, {});
     const scoped = getTicketCostReport(store, { projectPath: "/w/alpha" });
-    expect(scoped.coverage.totalCost).toBeLessThanOrEqual(all.coverage.totalCost);
+
+    // STRICTLY less, and strictly positive: `<=` alone is satisfied by a filter
+    // that is silently ignored (scoped === all) and by one that matches nothing
+    // (scoped === 0). Both are real bugs this test exists to catch.
+    expect(scoped.coverage.totalCost).toBeGreaterThan(0);
+    expect(scoped.coverage.totalCost).toBeLessThan(all.coverage.totalCost);
+
+    // And every session the scoped report attributed must belong to /w/alpha.
+    for (const row of scoped.tickets) {
+      for (const sid of row.sessionIds) expect(alphaIds.has(sid)).toBe(true);
+    }
   });
 });
 
