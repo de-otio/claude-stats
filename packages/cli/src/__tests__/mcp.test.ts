@@ -503,13 +503,14 @@ afterAll(() => {
 
 describe("MCP Server", () => {
   describe("tools/list", () => {
-    it("returns all 15 tools", async () => {
+    it("returns all 16 tools", async () => {
       const result = await client.listTools();
       const names = result.tools.map((t) => t.name).sort();
       expect(names).toEqual([
         "generate_justification_pack",
         "get_account_info",
         "get_calibration",
+        "get_constraint_impact",
         "get_cost_per_task",
         "get_cost_per_ticket",
         "get_efficiency_hints",

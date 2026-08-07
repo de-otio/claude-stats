@@ -1001,6 +1001,105 @@ export function createMcpServer(store: Store): McpServer {
     },
   );
 
+  // ── get_constraint_impact ──────────────────────────────────────────────────
+  server.tool(
+    "get_constraint_impact",
+    "Measure what a DECLARED constraint (a budget cap, a model-tier removal, a quota change — " +
+      "`config.policyEvents`) actually cost or saved, comparing the windows either side of it, PER TASK CLASS " +
+      "(never in aggregate — a workload shift would otherwise masquerade as policy damage).\n\n" +
+      "TWO-SIDED BY CONSTRUCTION: report BOTH what the constraint saved (`totalTokenSavings`) and what it cost " +
+      "in dev-time (`totalDevTimeCost`, priced only when `config.rate.hourly` is set — otherwise " +
+      "`netEffectAvailable` is false and dev-time stays in minutes, never an invented dollar figure). A report " +
+      "that only shows the cost is advocacy, not measurement — lead with whichever side is true, including a " +
+      "favourable or negligible result.\n\n" +
+      "EVIDENCE, NOT PROOF (read `confoundNote`): a policy change is not a controlled experiment — workload, " +
+      "team and codebase all move too. Comparing within task class reduces the confound; it does not eliminate " +
+      "it. Check `classes[].modelsBefore`/`modelsAfter` for a model-VERSION change riding along with the policy " +
+      "before quoting a class's delta to anyone outside the team.\n\n" +
+      "Each class row carries a `verdict`: `insufficient-data` classes are returned, not dropped (a class below " +
+      "`minSessionsPerClass` on either side abstains rather than asserting a delta on noise) — report them as " +
+      "'too little data to compare', not silence. `direction` is `unknown` whenever `netEffectAtAfterVolume` is " +
+      "null; never infer favourable/unfavourable from cost alone.\n\n" +
+      "SCOPE (see `notMeasured`): this does not compute a recap-task-grained 'attempts per successful task' — " +
+      "the outcome model behind it is not calibrated at session grain (see `get_calibration`), and the recap " +
+      "task unit has no identity across a months-long boundary. `avgTurnsBefore/After` and " +
+      "`toolErrorRateBefore/After` are the stated proxy for rework instead, matching the tier-mismatch detector.",
+    {
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+        .describe("Which declared policy event to compare around — must match a `date` in config.policyEvents. Omit to use the most recently declared event."),
+      since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+        .describe("Bound how far back the BEFORE window looks. Omit for the full available history before the boundary."),
+      until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+        .describe("Bound how far forward the AFTER window looks. Omit for the full available history after the boundary."),
+      project: z.string().optional()
+        .describe("Filter to a specific project path"),
+      account: z.string().optional()
+        .describe("Filter to a specific account UUID (full or prefix match)"),
+      minSessionsPerClass: z.number().int().positive().optional()
+        .describe("Sample-size floor per class, per side. A class below this on either side reports verdict 'insufficient-data' rather than a delta computed on noise."),
+    },
+    async ({ date, since, until, project, account, minSessionsPerClass }) => {
+      const resolved = resolveAccountFilter(store, account);
+      if (!resolved.ok) return formatResult({ error: resolved.error });
+
+      const { loadConfig } = await import("../config.js");
+      const { buildConstraintImpactReport } = await import("../constraintImpact/index.js");
+      const config = loadConfig();
+      const events = config.policyEvents ?? [];
+
+      if (events.length === 0) {
+        return formatResult({
+          error:
+            "No policy events declared. This report compares the windows either side of a DECLARED policy " +
+            "boundary and never infers one from the data (constraint-impact/03 §3.1) — nothing to compare yet.",
+          enablementPath:
+            'Add an entry to config.policyEvents, e.g. { "date": "2026-05-01", "kind": "model-removal", ' +
+            '"detail": "opus", "scope": "org" }, then call this tool again.',
+        });
+      }
+
+      const policyEvent = date ? events.find((e) => e.date === date) : events[events.length - 1];
+      if (!policyEvent) {
+        return formatResult({
+          error: `No declared policy event with date "${date}". Declared dates: ${events.map((e) => e.date).join(", ")}.`,
+        });
+      }
+
+      const toBoundMs = (d: string | undefined): number | undefined =>
+        d ? Date.parse(`${d}T00:00:00.000Z`) : undefined;
+
+      const { report, coverage } = buildConstraintImpactReport(store, policyEvent, {
+        projectPath: project,
+        accountUuid: resolved.accountUuid,
+        since: toBoundMs(since),
+        until: toBoundMs(until),
+        minSessionsPerClass,
+        rateOverrides: config.pricing?.rates,
+        hourlyRate: config.rate?.hourly ?? null,
+        currency: config.rate?.currency ?? "USD",
+      });
+
+      return formatResult({
+        declaredPolicyEvents: events,
+        policyEvent,
+        boundary: new Date(report.boundaryMs).toISOString(),
+        coverage,
+        confoundNote: report.confoundNote,
+        notMeasured: report.notMeasured,
+        minSessionsPerClass: report.minSessionsPerClass,
+        hourlyRate: report.hourlyRate,
+        currency: report.currency,
+        netEffectAvailable: report.netEffectAvailable,
+        classesCompared: report.classesCompared,
+        classesInsufficientData: report.classesInsufficientData,
+        totalTokenSavings: report.totalTokenSavings,
+        totalDevTimeCost: report.totalDevTimeCost,
+        totalNetEffect: report.totalNetEffect,
+        classes: report.classes,
+      });
+    },
+  );
+
   return server;
 }
 

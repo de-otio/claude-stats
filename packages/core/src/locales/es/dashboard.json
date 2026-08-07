@@ -51,6 +51,7 @@
     "tokenBreakdown": "Desglose de tokens",
     "cacheUsage": "Uso de caché",
     "cumulativeApiValue": "Valor API acumulado vs cuota del plan",
+    "policyEvents": "Eventos de política",
     "topProjects": "Proyectos principales",
     "tokensByProject": "Cuota de tokens por proyecto",
     "energyByProject": "Consumo de energía por proyecto",

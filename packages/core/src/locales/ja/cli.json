@@ -189,7 +189,11 @@
     "ticketNegate": "このキーをセッションでトゥームストーン化します (抽出が一致し続けても抑制されます)",
     "ticketRemove": "このキーの手動リンクを削除します (無効化のトゥームストーンには影響しません)",
     "ticketList": "変更を適用する前にセッションのチケットリンクを一覧表示します",
-    "packInvoiceCsv": "突き合わせに使用する Cost Explorer の CSV エクスポート (または同等のファイル) へのパス — この実行に限り config.reconciliation.invoiceTotal を上書きします"
+    "packInvoiceCsv": "突き合わせに使用する Cost Explorer の CSV エクスポート (または同等のファイル) へのパス — この実行に限り config.reconciliation.invoiceTotal を上書きします",
+    "constraintImpact": "宣言されたポリシー変更 (予算上限、モデル階層の削除) がタスククラスごとにどれだけのコストまたは節約になったか — JSON 出力、jq へパイプしてください",
+    "constraintImpactDate": "比較の基準とする宣言済みポリシーイベント (config.policyEvents の日付と一致させる必要があります)。デフォルト: 最新のもの",
+    "constraintImpactCsv": "クラス別テーブルをこの CSV パスにも書き出します",
+    "constraintImpactMinSessions": "クラスごと・片側ごとの最小セッション数のしきい値 (デフォルト: 8)"
   },
   "collection": {
     "collecting": "収集中...",

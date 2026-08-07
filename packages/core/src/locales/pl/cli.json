@@ -189,7 +189,11 @@
     "ticketNegate": "Oznacz ten klucz jako usunięty dla sesji (ukrywa go, nawet jeśli ekstrakcja nadal go dopasowuje)",
     "ticketRemove": "Usuń ręczne powiązanie dla tego klucza (nie wpływa na znacznik negacji)",
     "ticketList": "Wyświetl powiązania zgłoszeń dla sesji przed zastosowaniem jakiejkolwiek zmiany",
-    "packInvoiceCsv": "Ścieżka do eksportu CSV z Cost Explorer (lub odpowiednika) do uzgodnienia — zastępuje config.reconciliation.invoiceTotal tylko dla tego uruchomienia"
+    "packInvoiceCsv": "Ścieżka do eksportu CSV z Cost Explorer (lub odpowiednika) do uzgodnienia — zastępuje config.reconciliation.invoiceTotal tylko dla tego uruchomienia",
+    "constraintImpact": "Co zadeklarowana zmiana polityki (limit budżetu, usunięcie poziomu modelu) kosztowała lub zaoszczędziła, w podziale na klasę zadań — wyjście JSON; przekieruj do jq",
+    "constraintImpactDate": "Które zadeklarowane zdarzenie polityki ma być punktem porównania (musi odpowiadać dacie w config.policyEvents). Domyślnie: najnowsze",
+    "constraintImpactCsv": "Zapisz też tabelę klas pod tą ścieżką CSV",
+    "constraintImpactMinSessions": "Minimalna liczba sesji na klasę i stronę (domyślnie: 8)"
   },
   "collection": {
     "collecting": "Zbieranie...",

@@ -189,7 +189,11 @@
     "ticketNegate": "Diesen Schlüssel für die Session als Tombstone markieren (unterdrückt ihn, auch wenn die Extraktion weiterhin passt)",
     "ticketRemove": "Eine manuelle Verknüpfung für diesen Schlüssel entfernen (betrifft den Negations-Tombstone nicht)",
     "ticketList": "Ticket-Verknüpfungen der Session auflisten, bevor Änderungen angewendet werden",
-    "packInvoiceCsv": "Pfad zu einem Cost Explorer-CSV-Export (oder gleichwertig) für den Abgleich – überschreibt config.reconciliation.invoiceTotal nur für diesen Durchlauf"
+    "packInvoiceCsv": "Pfad zu einem Cost Explorer-CSV-Export (oder gleichwertig) für den Abgleich – überschreibt config.reconciliation.invoiceTotal nur für diesen Durchlauf",
+    "constraintImpact": "Was eine deklarierte Richtlinienänderung (Budgetgrenze, Entfernung einer Modellstufe) pro Aufgabenklasse gekostet oder eingespart hat – JSON-Ausgabe; an jq weiterleiten",
+    "constraintImpactDate": "Welches deklarierte Policy-Ereignis als Vergleichspunkt dient (muss einem Datum in config.policyEvents entsprechen). Standard: das jüngste",
+    "constraintImpactCsv": "Die Klassen-Tabelle zusätzlich in diesen CSV-Pfad schreiben",
+    "constraintImpactMinSessions": "Mindestanzahl Sessions pro Klasse und Seite (Standard: 8)"
   },
   "collection": {
     "collecting": "Erfassung läuft...",

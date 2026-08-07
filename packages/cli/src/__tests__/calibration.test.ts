@@ -37,6 +37,7 @@ import {
   buildAttributionCalibration,
   calibrationJson,
   outcomeCalibrationFrom,
+  renameAccuracyField,
 } from "../calibration/index.js";
 import { calibrationMetrics } from "../cost-per-task/calibration.js";
 import type { CalibrationMetrics, CalibrationReport, LabelledPair } from "../cost-per-task/calibration.js";
@@ -747,6 +748,35 @@ describe("calibrationJson", () => {
   });
 });
 
+// ─── renameAccuracyField (verified finding: `cost-per-task --calibrate` was
+// naming a field "accuracy" for the same self-selected-sample number this
+// module exists to stop being read as one) ────────────────────────────────
+
+describe("renameAccuracyField", () => {
+  it("carries the SAME number under agreementOnReviewedSubset, never the literal key 'accuracy'", () => {
+    const metrics = calibrationMetrics([
+      { predicted: "success", actual: "success", score: 1 },
+      { predicted: "failed", actual: "success", score: -1 },
+    ]);
+    expect(metrics.accuracy).toBeCloseTo(0.5, 10);
+
+    const renamed = renameAccuracyField(metrics);
+    expect(renamed.agreementOnReviewedSubset).toBeCloseTo(0.5, 10);
+    expect(Object.keys(renamed)).not.toContain("accuracy");
+    // Every other field passes through untouched.
+    expect(renamed.n).toBe(metrics.n);
+    expect(renamed.hits).toBe(metrics.hits);
+    expect(renamed.brier).toBe(metrics.brier);
+    expect(renamed.meetsFailedFloor).toBe(metrics.meetsFailedFloor);
+  });
+
+  it("preserves a null rate (no pairs) as null, not as a fabricated number", () => {
+    const metrics = calibrationMetrics([]);
+    expect(metrics.accuracy).toBeNull();
+    expect(renameAccuracyField(metrics).agreementOnReviewedSubset).toBeNull();
+  });
+});
+
 // ─── The outcome denominator at its SOURCE ────────────────────────────────────
 
 describe("calibrationMetrics.hits", () => {
@@ -827,6 +857,31 @@ describe("attachInsights", () => {
       expect(e!.n).toBe(2);
       // Still under the floor, so still no number — the state, not a rate.
       expect(e!.state).toBe("uncalibrated");
+    } finally {
+      store.close();
+    }
+  });
+
+  it("passes config.policyEvents through to the dashboard for timeline annotation", () => {
+    const store = new Store(tmpDb());
+    try {
+      const events = [{ date: "2026-05-01", kind: "model-removal" as const, detail: "opus" }];
+      const data = attachInsights(store, bareData(), { period: "all" } as never, { policyEvents: events });
+      expect(data.policyEvents).toEqual(events);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("attaches an empty array, not undefined, when no policy events are configured", () => {
+    // "Not yet attached" (undefined) and "attached, none declared" (empty
+    // array) are different states — a renderer keying off `undefined` to
+    // decide whether attachInsights ran at all must not see an empty
+    // config collapse into the same value.
+    const store = new Store(tmpDb());
+    try {
+      const data = attachInsights(store, bareData(), { period: "all" } as never, {});
+      expect(data.policyEvents).toEqual([]);
     } finally {
       store.close();
     }

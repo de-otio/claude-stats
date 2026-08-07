@@ -189,7 +189,11 @@
     "ticketNegate": "Neutraliser cette clé pour la session (la masque même si l'extraction continue de la détecter)",
     "ticketRemove": "Supprimer un lien manuel pour cette clé (sans affecter la neutralisation)",
     "ticketList": "Lister les liens de tickets de la session avant d'appliquer une modification",
-    "packInvoiceCsv": "Chemin vers un export CSV Cost Explorer (ou équivalent) à utiliser pour le rapprochement — remplace config.reconciliation.invoiceTotal pour cette exécution uniquement"
+    "packInvoiceCsv": "Chemin vers un export CSV Cost Explorer (ou équivalent) à utiliser pour le rapprochement — remplace config.reconciliation.invoiceTotal pour cette exécution uniquement",
+    "constraintImpact": "Ce qu'un changement de politique déclaré (plafond budgétaire, retrait d'un niveau de modèle) a coûté ou fait économiser, par classe de tâche — sortie JSON ; à rediriger vers jq",
+    "constraintImpactDate": "Quel événement de politique déclaré utiliser comme point de comparaison (doit correspondre à une date de config.policyEvents). Par défaut : le plus récent",
+    "constraintImpactCsv": "Écrire aussi le tableau par classe dans ce chemin CSV",
+    "constraintImpactMinSessions": "Seuil minimal de sessions par classe et par côté (par défaut : 8)"
   },
   "collection": {
     "collecting": "Collecte en cours...",

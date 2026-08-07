@@ -35,6 +35,10 @@ export type {
 } from "./types.js";
 export { DEFAULT_HYGIENE_THRESHOLDS } from "./types.js";
 export { computeTierParity, detectTierMismatch, type TierParityComparison, type TierParityVerdict } from "./tierMismatch.js";
+// Shared row-grouping/costing helpers — re-exported so a sibling comparison
+// (constraint-impact) can build the same per-session shape from the same
+// message rows without a second implementation to drift from this one.
+export { groupBySession, messageCost, sumCost, type SessionGroup } from "./util.js";
 
 const TITLES: Record<HygieneDetectorId, string> = {
   "cache-churn": "Cache churn",
