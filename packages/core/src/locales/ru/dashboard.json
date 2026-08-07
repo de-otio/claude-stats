@@ -501,5 +501,49 @@
     "removeAction": "Удалить",
     "linkAction": "Привязать",
     "keyPlaceholder": "PROJ-123"
+  },
+  "views": {
+    "insights": "Выводы",
+    "cost-and-controlling": "Затраты и контроллинг",
+    "tickets-and-value": "Тикеты и ценность",
+    "efficiency-and-hygiene": "Эффективность и гигиена",
+    "plan-and-policy": "План и политики",
+    "sessions": "Сессии",
+    "energy": "Энергия",
+    "settings": "Параметры"
+  },
+  "filters": {
+    "legend": "Сузить это представление",
+    "scopeNote": "Фильтры перезапускают весь отчёт, поэтому они сужают все представления — не только это.",
+    "project": "Проект:",
+    "ticket": "Тикет:",
+    "taskClass": "Класс задачи:",
+    "any": "Любой",
+    "ticketPlaceholder": "например, PROJ-123",
+    "apply": "Применить фильтры",
+    "clear": "Очистить",
+    "active_one": "Активен {{count}} фильтр",
+    "active_other": "Активно {{count}} фильтра",
+    "modelUnavailable": "Фильтрация по модели пока недоступна — она сузила бы суммы токенов, но не сессии, к которым они относятся.",
+    "active_few": "Активно {{count}} фильтра",
+    "active_many": "Активно {{count}} фильтров"
+  },
+  "taskClasses": {
+    "debug": "Отладка",
+    "greenfield": "Новая функция",
+    "refactor-multi-file": "Рефакторинг",
+    "config-chore": "Конфигурация / рутина",
+    "review": "Ревью",
+    "explore": "Исследование",
+    "unknown": "Без классификации"
+  },
+  "costQuality": {
+    "title": "Качество затрат",
+    "frontierLayer": "Положение расходов относительно фронтира",
+    "perTaskLayer": "Сколько стоила успешная задача",
+    "calibrationLayer": "Насколько можно доверять меткам результатов",
+    "calibrationReady": "Метки результатов откалиброваны — узнать как",
+    "calibrationNotReady": "Метки результатов ещё не откалиброваны — узнать почему",
+    "calibrationNoLabels": "Метки результатов не откалиброваны — пока ничего не размечено"
   }
 }

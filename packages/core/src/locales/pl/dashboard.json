@@ -501,5 +501,49 @@
     "removeAction": "Usuń",
     "linkAction": "Powiąż",
     "keyPlaceholder": "PROJ-123"
+  },
+  "views": {
+    "insights": "Wnioski",
+    "cost-and-controlling": "Koszty i kontroling",
+    "tickets-and-value": "Zgłoszenia i wartość",
+    "efficiency-and-hygiene": "Wydajność i higiena",
+    "plan-and-policy": "Plan i zasady",
+    "sessions": "Sesje",
+    "energy": "Energia",
+    "settings": "Ustawienia"
+  },
+  "filters": {
+    "legend": "Zawęź ten widok",
+    "scopeNote": "Filtry uruchamiają ponownie cały raport, więc zawężają każdy widok — nie tylko ten.",
+    "project": "Projekt:",
+    "ticket": "Zgłoszenie:",
+    "taskClass": "Klasa zadania:",
+    "any": "Dowolne",
+    "ticketPlaceholder": "np. PROJ-123",
+    "apply": "Zastosuj filtry",
+    "clear": "Wyczyść",
+    "active_one": "{{count}} aktywny filtr",
+    "active_other": "{{count}} aktywnych filtrów",
+    "modelUnavailable": "Filtrowanie według modelu nie jest jeszcze dostępne — zawężałoby sumy tokenów, nie zawężając sesji, do których należą.",
+    "active_few": "{{count}} aktywne filtry",
+    "active_many": "{{count}} aktywnych filtrów"
+  },
+  "taskClasses": {
+    "debug": "Debugowanie",
+    "greenfield": "Nowa funkcja",
+    "refactor-multi-file": "Refaktoryzacja",
+    "config-chore": "Konfiguracja / porządki",
+    "review": "Przegląd",
+    "explore": "Eksploracja",
+    "unknown": "Niesklasyfikowane"
+  },
+  "costQuality": {
+    "title": "Jakość kosztów",
+    "frontierLayer": "Jak wydatki wypadają względem granicy efektywności",
+    "perTaskLayer": "Ile kosztowało udane zadanie",
+    "calibrationLayer": "Na ile ufać etykietom wyników",
+    "calibrationReady": "Etykiety wyników są skalibrowane — zobacz jak",
+    "calibrationNotReady": "Etykiety wyników nie są jeszcze skalibrowane — zobacz dlaczego",
+    "calibrationNoLabels": "Etykiety wyników nie są skalibrowane — nic jeszcze nie oznaczono"
   }
 }

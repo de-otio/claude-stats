@@ -770,10 +770,13 @@ describe("evidence links reach a tab that exists", () => {
 // ─── Both hosts, on the real page ─────────────────────────────────────────────
 
 describe("the served page", () => {
-  it("makes Insights the default tab and renders its five cards into the active panel", () => {
+  it("makes Insights the default view and renders its five cards into the active panel", () => {
     const html = renderDashboard(goldenData, t);
+    // Since the domain-view regrouping the nav bar holds VIEWS; Insights is
+    // both the first view and its own single section, so it is still the id on
+    // the button and on the pre-activated panel.
     expect(html).toMatch(/<button class="tab-btn active" data-tab="insights">/);
-    const panelStart = html.indexOf('<div class="tab-panel active" id="tab-insights">');
+    const panelStart = html.indexOf('<div class="tab-panel active" id="tab-insights" data-view="insights">');
     expect(panelStart).toBeGreaterThan(-1);
     const panel = html.slice(panelStart, html.indexOf('id="tab-overview"'));
     for (const q of ["cost", "bought", "efficiency", "setup", "change"]) {
@@ -855,14 +858,23 @@ describe("the served page", () => {
     expect(q4).not.toContain("using less than your plan covers");
   });
 
-  it("carries the tab label through t(), not as a hardcoded literal", () => {
+  it("carries the nav label through t(), not as a hardcoded literal", () => {
     expect(renderDashboard(goldenData, t)).toContain('data-tab="insights">Insights<');
-    expect(renderDashboard(goldenData, rawT)).toContain('data-tab="insights">dashboard:tabs.insights<');
+    // The nav bar now labels VIEWS, so the key it must resolve is
+    // dashboard:views.insights — `tabs.insights` still exists and still labels
+    // the section, which is why the raw-translator check has to name the right
+    // one: with the old key asserted, a nav bar that had reverted to sections
+    // would pass.
+    expect(renderDashboard(goldenData, rawT)).toContain('data-tab="insights">dashboard:views.insights<');
   });
 
-  it("declares the default tab from the nav definition and listens for evidence-link hash changes", () => {
+  it("declares the default view from the nav definition and listens for evidence-link hash changes", () => {
     const html = renderDashboard(goldenData, t);
-    expect(html).toContain("var defaultTab = 'insights';");
+    expect(html).toContain("var defaultView = 'insights';");
     expect(html).toContain("window.addEventListener('hashchange'");
+    // An evidence href still names a SECTION ('#spending'); the handler has to
+    // resolve it to the view that now shows it, or the two-click evidence
+    // promise breaks silently.
+    expect(html).toContain("function resolveHashTarget(target)");
   });
 });

@@ -501,5 +501,48 @@
     "removeAction": "Supprimer",
     "linkAction": "Lier",
     "keyPlaceholder": "PROJ-123"
+  },
+  "views": {
+    "insights": "Analyses",
+    "cost-and-controlling": "Coûts et pilotage",
+    "tickets-and-value": "Tickets et valeur",
+    "efficiency-and-hygiene": "Efficacité et hygiène",
+    "plan-and-policy": "Forfait et politique",
+    "sessions": "Sessions",
+    "energy": "Énergie",
+    "settings": "Paramètres"
+  },
+  "filters": {
+    "legend": "Affiner cette vue",
+    "scopeNote": "Les filtres relancent l'intégralité du rapport : ils affinent donc toutes les vues, pas seulement celle-ci.",
+    "project": "Projet :",
+    "ticket": "Ticket :",
+    "taskClass": "Type de tâche :",
+    "any": "Tous",
+    "ticketPlaceholder": "ex. PROJ-123",
+    "apply": "Appliquer les filtres",
+    "clear": "Effacer",
+    "active_one": "{{count}} filtre actif",
+    "active_other": "{{count}} filtres actifs",
+    "modelUnavailable": "Le filtrage par modèle n'est pas encore disponible : il affinerait les totaux de tokens sans affiner les sessions auxquelles ils appartiennent.",
+    "active_many": "{{count}} filtres actifs"
+  },
+  "taskClasses": {
+    "debug": "Débogage",
+    "greenfield": "Nouvelle fonctionnalité",
+    "refactor-multi-file": "Refactorisation",
+    "config-chore": "Config / maintenance",
+    "review": "Revue",
+    "explore": "Exploration",
+    "unknown": "Non classé"
+  },
+  "costQuality": {
+    "title": "Qualité des coûts",
+    "frontierLayer": "Position de la dépense par rapport à la frontière",
+    "perTaskLayer": "Coût d'une tâche réussie",
+    "calibrationLayer": "Quel crédit accorder aux libellés de résultat",
+    "calibrationReady": "Libellés de résultat calibrés — voir comment",
+    "calibrationNotReady": "Libellés de résultat pas encore calibrés — voir pourquoi",
+    "calibrationNoLabels": "Libellés de résultat non calibrés — aucun libellé pour l'instant"
   }
 }

@@ -501,5 +501,47 @@
     "removeAction": "移除",
     "linkAction": "关联",
     "keyPlaceholder": "PROJ-123"
+  },
+  "views": {
+    "insights": "洞察",
+    "cost-and-controlling": "成本与管控",
+    "tickets-and-value": "工单与价值",
+    "efficiency-and-hygiene": "效率与健康度",
+    "plan-and-policy": "套餐与策略",
+    "sessions": "会话",
+    "energy": "能耗",
+    "settings": "设置"
+  },
+  "filters": {
+    "legend": "缩小此视图范围",
+    "scopeNote": "筛选器会重新运行整个报告，因此会缩小所有视图的范围，而不只是当前视图。",
+    "project": "项目：",
+    "ticket": "工单：",
+    "taskClass": "任务类别：",
+    "any": "任意",
+    "ticketPlaceholder": "例如 PROJ-123",
+    "apply": "应用筛选器",
+    "clear": "清除",
+    "active_one": "已启用 {{count}} 个筛选条件",
+    "active_other": "已启用 {{count}} 个筛选条件",
+    "modelUnavailable": "暂不支持按模型筛选 — 这只会缩小 token 总量，却无法同时缩小其所属 session 的范围。"
+  },
+  "taskClasses": {
+    "debug": "调试",
+    "greenfield": "新功能",
+    "refactor-multi-file": "重构",
+    "config-chore": "配置 / 杂务",
+    "review": "评审",
+    "explore": "探索",
+    "unknown": "未分类"
+  },
+  "costQuality": {
+    "title": "成本质量",
+    "frontierLayer": "支出相对效率前沿的位置",
+    "perTaskLayer": "一次成功任务的成本",
+    "calibrationLayer": "结果标签的可信程度",
+    "calibrationReady": "结果标签已校准 — 查看方式",
+    "calibrationNotReady": "结果标签尚未校准 — 查看原因",
+    "calibrationNoLabels": "结果标签未校准 — 尚无已标注数据"
   }
 }

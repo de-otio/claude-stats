@@ -393,15 +393,18 @@ export function buildAlerts(data: DashboardData, t: TranslateFn): InsightAlert[]
 // ─── Rendering ────────────────────────────────────────────────────────────────
 
 /**
- * Where each answer's evidence lives **today**.
+ * Which SECTION holds each answer's evidence.
  *
  * The formatters return domain-view ids (`"cost-and-controlling"`) because that
- * is the destination the IA describes — but those views are G2/G3 in Phase 3
- * and do not exist yet. The evidence itself does: it is in the current tabs.
- * Mapping here keeps the canonical id on the element (as `data-evidence-link`,
- * which is what a later lane re-points) while the href reaches a tab that is
- * actually on the page. A link to a non-existent anchor would be the "two-click
- * evidence" promise silently broken.
+ * is the destination the IA describes. Those views now exist — but this map
+ * deliberately still resolves to a section, not to the view id, because a
+ * section is the more precise landing place: `#spending` opens Cost &
+ * Controlling AND scrolls to the Spending half of it, where `#cost-and-
+ * controlling` would drop the reader at the top of a two-section screen and
+ * leave them to hunt. The page's `resolveHashTarget` maps the section hash back
+ * to its owning view, so both forms work; this one is the better of the two.
+ *
+ * The canonical domain id stays on the element as `data-evidence-link`.
  */
 export const EVIDENCE_TAB: Readonly<Record<string, NavTabId>> = {
   "cost-and-controlling": "spending",

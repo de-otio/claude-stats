@@ -501,5 +501,47 @@
     "removeAction": "Entfernen",
     "linkAction": "Verknüpfen",
     "keyPlaceholder": "PROJ-123"
+  },
+  "views": {
+    "insights": "Erkenntnisse",
+    "cost-and-controlling": "Kosten & Controlling",
+    "tickets-and-value": "Tickets & Wert",
+    "efficiency-and-hygiene": "Effizienz & Hygiene",
+    "plan-and-policy": "Plan & Richtlinien",
+    "sessions": "Sessions",
+    "energy": "Energie",
+    "settings": "Einstellungen"
+  },
+  "filters": {
+    "legend": "Diese Ansicht eingrenzen",
+    "scopeNote": "Filter führen den gesamten Bericht neu aus und grenzen daher jede Ansicht ein – nicht nur diese.",
+    "project": "Projekt:",
+    "ticket": "Ticket:",
+    "taskClass": "Aufgabenklasse:",
+    "any": "Beliebig",
+    "ticketPlaceholder": "z. B. PROJ-123",
+    "apply": "Filter anwenden",
+    "clear": "Zurücksetzen",
+    "active_one": "{{count}} Filter aktiv",
+    "active_other": "{{count}} Filter aktiv",
+    "modelUnavailable": "Das Filtern nach Modell ist noch nicht verfügbar – es würde die Token-Summen eingrenzen, nicht aber die zugehörigen Sessions."
+  },
+  "taskClasses": {
+    "debug": "Debugging",
+    "greenfield": "Neues Feature",
+    "refactor-multi-file": "Refactoring",
+    "config-chore": "Konfiguration / Wartung",
+    "review": "Review",
+    "explore": "Exploration",
+    "unknown": "Nicht klassifiziert"
+  },
+  "costQuality": {
+    "title": "Kostenqualität",
+    "frontierLayer": "Wo die Ausgaben im Verhältnis zur Effizienzgrenze liegen",
+    "perTaskLayer": "Was eine erfolgreiche Aufgabe gekostet hat",
+    "calibrationLayer": "Wie sehr den Ergebnis-Labels zu trauen ist",
+    "calibrationReady": "Ergebnis-Labels sind kalibriert – Details anzeigen",
+    "calibrationNotReady": "Ergebnis-Labels sind noch nicht kalibriert – Gründe anzeigen",
+    "calibrationNoLabels": "Ergebnis-Labels sind nicht kalibriert – noch nichts gelabelt"
   }
 }

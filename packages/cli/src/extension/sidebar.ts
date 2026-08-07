@@ -7,20 +7,28 @@
 import * as vscode from "vscode";
 import { getNonce, escapeHtml } from "./utils.js";
 import { t } from "./i18n.js";
-import { NAV_TAB_IDS, DEFAULT_NAV_TAB } from "../server/nav.js";
+import { NAV_VIEWS, NAV_VIEW_IDS, DEFAULT_NAV_VIEW, type NavViewId } from "../server/nav.js";
 
-/** Known tab IDs for help content lookup — derived from the single nav
- *  definition in `server/nav.ts` so this list can't drift from the tab bar
- *  the dashboard actually renders (doc/analysis/gui-redesign/03 §3.3 item 2). */
-const TAB_IDS = NAV_TAB_IDS;
+/** Known view IDs for help content lookup — derived from the single nav
+ *  definition in `server/nav.ts` so this list can't drift from the nav bar
+ *  the dashboard actually renders (doc/analysis/gui-redesign/03 §3.3 item 2).
+ *
+ *  Views, not sections, since the domain-view regrouping: the dashboard posts
+ *  the id of the thing the user clicked, and what the user clicks is a view. */
+const VIEW_IDS = NAV_VIEW_IDS;
+
+/** Sections of a view, for composing its help body. */
+const SECTIONS_OF = new Map<NavViewId, readonly string[]>(
+  NAV_VIEWS.map((v) => [v.id as NavViewId, v.sections as readonly string[]]),
+);
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = "claude-stats.dashboardView";
 
   private view?: vscode.WebviewView;
-  // The help panel opens on whatever tab the dashboard opens on; hardcoding
-  // "overview" here would show Overview help beside the Insights tab.
-  private currentTab: string = DEFAULT_NAV_TAB;
+  // The help panel opens on whatever view the dashboard opens on; hardcoding
+  // "overview" here would show Overview help beside the Insights view.
+  private currentTab: string = DEFAULT_NAV_VIEW;
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -55,26 +63,42 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private render(): void {
     if (!this.view) return;
 
-    const tabId = TAB_IDS.includes(this.currentTab as typeof TAB_IDS[number]) ? this.currentTab : DEFAULT_NAV_TAB;
-    const helpTitle = t(`extension:tabHelp.${tabId}.title`);
-    const sections = t(`extension:tabHelp.${tabId}.sections`, { returnObjects: true }) as unknown as Array<{ heading: string; body: string }>;
+    const viewId = (VIEW_IDS.includes(this.currentTab as NavViewId) ? this.currentTab : DEFAULT_NAV_VIEW) as NavViewId;
+    // The view's own localized name for the header, and its SECTIONS' existing
+    // help for the body. Composing rather than authoring new per-view copy is
+    // deliberate: a view is exactly the sections it groups, so the help it owes
+    // the reader is those sections' help — and a fifth parallel description of
+    // the same screens is one more thing to drift (03 §3.3 item 2).
+    const helpTitle = t(`dashboard:views.${viewId}`);
+    const sectionIds = SECTIONS_OF.get(viewId) ?? [];
     const nonce = getNonce();
 
-    const sectionsHtml = (Array.isArray(sections) ? sections : [])
-      .map(
-        (s) =>
-          `<div class="section">
-            <h3>${escapeHtml(s.heading)}</h3>
+    // A single-section view (Insights, Sessions, Energy, Settings) shows its
+    // section's help with no extra heading — the pill above already names it.
+    // A multi-section view prefixes each block with the section's own name, so
+    // the reader can tell which half of the view a paragraph is about.
+    const sectionsHtml = sectionIds
+      .flatMap((sectionId) => {
+        const blocks = t(`extension:tabHelp.${sectionId}.sections`, { returnObjects: true }) as unknown as Array<{
+          heading: string;
+          body: string;
+        }>;
+        const prefix = sectionIds.length > 1 ? `${t(`dashboard:tabs.${sectionId}`)} — ` : "";
+        return (Array.isArray(blocks) ? blocks : []).map(
+          (s) =>
+            `<div class="section">
+            <h3>${escapeHtml(prefix + s.heading)}</h3>
             <p>${escapeHtml(s.body)}</p>
           </div>`,
-      )
+        );
+      })
       .join("\n");
 
-    // Build tab indicator pills
-    const tabPills = TAB_IDS
+    // Build view indicator pills
+    const tabPills = VIEW_IDS
       .map(
         (id) =>
-          `<span class="pill${id === this.currentTab ? " active" : ""}">${escapeHtml(t(`extension:tabHelp.${id}.title`))}</span>`,
+          `<span class="pill${id === viewId ? " active" : ""}">${escapeHtml(t(`dashboard:views.${id}`))}</span>`,
       )
       .join("");
 

@@ -50,6 +50,13 @@ export class DashboardPanel {
   private since: string | undefined;
   private until: string | undefined;
   private accountUuid: string | undefined;
+  // The domain views' local filters (gui-redesign/02 §2.5). Panel state rather
+  // than URL state, because a webview has no URL: the served host puts these in
+  // query params, this host remembers them across refreshes. Both end up in the
+  // same `ReportOptions` fields, so the narrowing is identical in both hosts.
+  private filterProject: string | undefined;
+  private filterTicket: string | undefined;
+  private filterTaskClass: string | undefined;
   private activeTab: string = DEFAULT_NAV_TAB;
   // The AutoCollector fires refreshIfVisible() on every ~/.claude/projects/
   // write, which is constant during an active session. A full webview.html
@@ -105,7 +112,7 @@ export class DashboardPanel {
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
     this.panel.webview.onDidReceiveMessage(
-      (msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; signature?: unknown; value?: string }) => this.handleMessage(msg),
+      (msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; signature?: unknown; value?: string; project?: string; ticket?: string; taskClass?: string }) => this.handleMessage(msg),
       null,
       this.disposables,
     );
@@ -143,6 +150,9 @@ export class DashboardPanel {
         since: this.since,
         until: this.until,
         accountUuid: this.accountUuid,
+        projectPath: this.filterProject,
+        ticket: this.filterTicket,
+        taskClass: this.filterTaskClass,
         accountFees: cfg.accountFees,
       };
       const data = buildDashboard(store, dashOpts);
@@ -171,7 +181,7 @@ export class DashboardPanel {
     }
   }
 
-  private handleMessage(msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean; assignments?: unknown; action?: string; payload?: unknown; sessionId?: string; key?: string }): void {
+  private handleMessage(msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean; assignments?: unknown; action?: string; payload?: unknown; sessionId?: string; key?: string; project?: string; ticket?: string; taskClass?: string }): void {
     if (msg.command === "changePeriod" && msg.period) {
       this.period = msg.period as ReportOptions["period"];
       // Mutual exclusivity per the toolbar contract: a preset pick clears any
@@ -195,6 +205,17 @@ export class DashboardPanel {
     } else if (msg.command === "changeAccount") {
       // Empty string from the dropdown means "all accounts combined".
       this.accountUuid = msg.accountUuid ? msg.accountUuid : undefined;
+      void this.refresh();
+    } else if (msg.command === "changeFilters") {
+      // The webview's half of the local-filter bar. Empty string is "cleared",
+      // mapped to undefined exactly as the served host's parseOpts does — a
+      // filter on the empty key would narrow to nothing and show a page of
+      // zeroes rather than an unfiltered dashboard.
+      const clean = (v: unknown): string | undefined =>
+        typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined;
+      this.filterProject = clean(msg.project);
+      this.filterTicket = clean(msg.ticket);
+      this.filterTaskClass = clean(msg.taskClass);
       void this.refresh();
     } else if (msg.command === "refresh") {
       void this.refresh();
@@ -741,6 +762,39 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
         vscode.postMessage({ command: command, sessionId: ticketSessionId, key: key });
       });
     });
+  }
+
+  // Local-filter bar (gui-redesign/02 §2.5). The served page navigates with
+  // query params; a webview has no URL, so the same two buttons post the filter
+  // values to the extension, which holds them and rebuilds. window.applyFilters
+  // / clearFilters are overridden too, since the served page's own listeners
+  // are already attached to these buttons and would otherwise ALSO navigate the
+  // webview's document to a file:// URL with query params.
+  window.applyFilters = function () {
+    var proj = document.getElementById('filter-project');
+    var cls = document.getElementById('filter-taskclass');
+    var tkt = document.getElementById('filter-ticket');
+    vscode.postMessage({
+      command: 'changeFilters',
+      project: proj ? proj.value : '',
+      taskClass: cls ? cls.value : '',
+      ticket: tkt ? tkt.value : ''
+    });
+  };
+  window.clearFilters = function () {
+    vscode.postMessage({ command: 'changeFilters', project: '', taskClass: '', ticket: '' });
+  };
+  var applyFiltersBtn = document.getElementById('filter-apply');
+  if (applyFiltersBtn) {
+    var freshApply = applyFiltersBtn.cloneNode(true);
+    applyFiltersBtn.parentNode.replaceChild(freshApply, applyFiltersBtn);
+    freshApply.addEventListener('click', function () { window.applyFilters(); });
+  }
+  var clearFiltersBtn = document.getElementById('filter-clear');
+  if (clearFiltersBtn) {
+    var freshClear = clearFiltersBtn.cloneNode(true);
+    clearFiltersBtn.parentNode.replaceChild(freshClear, clearFiltersBtn);
+    freshClear.addEventListener('click', function () { window.clearFilters(); });
   }
 
   // Signal-activation toggle: flip config.experimentalSignals and re-render.
