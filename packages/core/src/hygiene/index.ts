@@ -53,8 +53,12 @@ export interface RunHygieneDetectorsOptions {
   /**
    * Per-session task classification (`store.getTaskClass()`, mapped by
    * sessionId), the join key tier-mismatch needs that the message rows don't
-   * carry. Omitted (e.g. the classifier hasn't run) means tier-mismatch
-   * reports zero findings — an honest "no data", not a guess.
+   * carry. `undefined` means the classifier has NEVER run (the caller found
+   * no `session_task_class` rows at all) — tier-mismatch reports
+   * `computed: false` rather than an empty finding list, so "no mismatch"
+   * and "nothing to compare yet" stay distinguishable (I1). A defined map —
+   * even an empty one, e.g. the classifier ran but nothing in THIS window
+   * matched — is a real "computed, found nothing" result.
    */
   taskClassBySession?: ReadonlyMap<string, TierMismatchClassification>;
 }
@@ -83,25 +87,34 @@ export function runHygieneDetectors(
   const t = mergeThresholds(opts.thresholds);
   const suppressed = new Set(opts.suppressions ?? []);
 
-  const byDetector: Array<[HygieneDetectorId, HygieneFinding[]]> = [
-    ["cache-churn", detectCacheChurn(rows, t.cacheChurn, opts.rateOverrides)],
-    ["retry-loop", detectRetryLoop(rows, t.retryLoop, opts.rateOverrides)],
-    ["abandoned-spend", detectAbandonedSpend(rows, t.abandonedSpend, opts.rateOverrides)],
-    ["context-bloat", detectContextBloat(rows, t.contextBloat, opts.rateOverrides)],
-    ["re-entry-burn", detectReEntryBurn(rows, t.reEntryBurn, opts.rateOverrides)],
+  // Tier-mismatch is the one detector with an input every other detector
+  // doesn't need (the task classifier's output) — its `computed` flag is
+  // keyed on that map being defined at all (see `taskClassBySession` doc);
+  // the other five only ever need the message rows, so they're always
+  // computed.
+  const tierMismatchComputed = opts.taskClassBySession !== undefined;
+
+  const byDetector: Array<[HygieneDetectorId, HygieneFinding[], boolean, string | undefined]> = [
+    ["cache-churn", detectCacheChurn(rows, t.cacheChurn, opts.rateOverrides), true, undefined],
+    ["retry-loop", detectRetryLoop(rows, t.retryLoop, opts.rateOverrides), true, undefined],
+    ["abandoned-spend", detectAbandonedSpend(rows, t.abandonedSpend, opts.rateOverrides), true, undefined],
+    ["context-bloat", detectContextBloat(rows, t.contextBloat, opts.rateOverrides), true, undefined],
+    ["re-entry-burn", detectReEntryBurn(rows, t.reEntryBurn, opts.rateOverrides), true, undefined],
     [
       "tier-mismatch",
-      opts.taskClassBySession
-        ? detectTierMismatch(rows, opts.taskClassBySession, t.tierMismatch, opts.rateOverrides)
-        : [],
+      tierMismatchComputed ? detectTierMismatch(rows, opts.taskClassBySession!, t.tierMismatch, opts.rateOverrides) : [],
+      tierMismatchComputed,
+      tierMismatchComputed ? undefined : "Run the `task-class` command at least once to enable tier-mismatch reporting.",
     ],
   ];
 
-  return byDetector.map(([detectorId, findings]) => ({
+  return byDetector.map(([detectorId, findings, computed, enablementPath]) => ({
     detectorId,
     title: TITLES[detectorId],
     findings,
     suppressed: suppressed.has(detectorId),
+    computed,
+    ...(enablementPath !== undefined ? { enablementPath } : {}),
   }));
 }
 

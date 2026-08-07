@@ -722,6 +722,11 @@ export function createMcpServer(store: Store): McpServer {
         detectors: report.digest.active.map((d) => ({
           detectorId: d.detectorId,
           title: d.title,
+          // `computed: false` means this detector could not run for lack of
+          // a required input (see `enablementPath`) — distinct from
+          // `findings: []`, which means it ran and found nothing (I1).
+          computed: d.computed,
+          ...(d.enablementPath !== undefined ? { enablementPath: d.enablementPath } : {}),
           findings: d.findings.map((f) => ({
             sessionIds: f.sessionIds,
             estimatedWaste: f.estimatedWaste,

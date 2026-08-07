@@ -207,6 +207,17 @@ export function computeTierParity(
       } else {
         errorRatio = (errorRateMid ?? 0) / errorRateTop!;
       }
+      // Deliberately ONE-SIDED (adversarial review D2-1): this only rejects
+      // the mid tier being WORSE than the top tier by more than the
+      // tolerance. A class where the mid tier is dramatically BETTER (fewer
+      // turns, fewer errors) also passes — and correctly so, since the
+      // detector's purpose is "is the top tier's extra cost buying anything
+      // on this class", and a mid tier that outperforms answers that
+      // question even more strongly than an exact tie would. The verdict
+      // name "parity" is loose (it does not require the two tiers to be
+      // *close*, only that mid is not worse) — the finding's `rule` text
+      // spells this out explicitly so a reader doesn't infer symmetry that
+      // was never tested.
       const parity = turnsRatio <= 1 + thresholds.maxRelativeGap && errorRatio <= 1 + thresholds.maxRelativeGap;
       verdict = parity ? "parity" : "top-tier-favored";
     }
@@ -257,7 +268,12 @@ export function detectTierMismatch(
   const findings: HygieneFinding[] = [];
 
   for (const c of comparisons) {
-    if (c.verdict !== "parity" || c.nTop === 0) continue;
+    // No `|| c.nTop === 0` guard here (removed — D2-3, confirmed dead):
+    // `computeTierParity` already forces `insufficient-data` whenever
+    // `nTop === 0` (its own `nTop === 0 || nMid === 0 || …` branch above),
+    // so `verdict === "parity"` already implies `nTop > 0`. A second guard
+    // for the same invariant just obscures that the first check is load-bearing.
+    if (c.verdict !== "parity") continue;
 
     const label = labelFor(c);
     const estimatedWaste = Math.max(0, c.nTop * ((c.avgCostTop ?? 0) - (c.avgCostMid ?? 0)));
@@ -267,8 +283,10 @@ export function detectTierMismatch(
       sessionIds: c.topSessionIds,
       estimatedWaste,
       rule:
-        `Top-tier and mid-tier sessions classified as "${label}" show comparable turns and tool-error rate ` +
-        `over this history — correlation within your own usage, not a controlled comparison.`,
+        `Mid-tier sessions classified as "${label}" took no meaningfully more turns and errored no more often ` +
+        `than top-tier sessions on the same class, over this history — correlation within your own usage, not a ` +
+        `controlled comparison. (This is a one-sided check: it does not claim the tiers performed identically, ` +
+        `only that the mid tier was not measurably worse.)`,
       threshold:
         `≥${thresholds.minSessionsPerTier} sessions per tier; turns and error-rate gap within ` +
         `${Math.round(thresholds.maxRelativeGap * 100)}%`,

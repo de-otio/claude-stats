@@ -180,6 +180,42 @@ describe("computeTierParity", () => {
     expect(c!.verdict).toBe("top-tier-favored");
   });
 
+  it("verdicts PARITY (one-sided, D2-1) when the mid tier is DRAMATICALLY BETTER than the top tier on both metrics", () => {
+    // Adversarial review D2-1's exact repro: avgTurnsTop 25 vs avgTurnsMid 5
+    // (mid takes a fifth of the turns), errorRateTop 20% vs errorRateMid 0%
+    // (top errors, mid never does). The band only rejects the mid tier being
+    // WORSE than the top tier by more than `maxRelativeGap` — it does not
+    // require the two to be close, so this passes. That is intentional (see
+    // the `parity` comment in tierMismatch.ts): the mid tier outperforming
+    // answers "does the top tier's cost buy anything here" even more
+    // strongly than an exact tie would. What must NOT happen is the finding
+    // claiming the tiers were "comparable" — see the `rule`-text assertion
+    // in `detectTierMismatch` below.
+    const rows: HygieneMessageRow[] = [];
+    const taskClassBySession = new Map<string, TierMismatchClassification>();
+    for (let i = 0; i < T.minSessionsPerTier; i++) {
+      const topId = `top-${i}`;
+      const midId = `mid-${i}`;
+      // Top: 25 turns, 1 in 5 turns errors (20% error rate).
+      rows.push(...session(topId, "claude-opus-5", 25, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0]));
+      // Mid: 5 turns, never errors.
+      rows.push(...session(midId, "claude-sonnet-5", 5));
+      taskClassBySession.set(topId, cls("debug", "diagnose", "high"));
+      taskClassBySession.set(midId, cls("debug", "diagnose", "high"));
+    }
+    const [c] = computeTierParity(rows, taskClassBySession, T);
+    expect(c!.avgTurnsTop).toBe(25);
+    expect(c!.avgTurnsMid).toBe(5);
+    expect(c!.errorRateTop).toBeCloseTo(0.2, 8);
+    expect(c!.errorRateMid).toBe(0);
+    expect(c!.verdict).toBe("parity");
+
+    // MUTATION CHECK (documented, not asserted here): flipping the band to
+    // two-sided (`Math.abs(turnsRatio - 1) <= gap`) makes this assert
+    // "top-tier-favored" instead — proving this test actually pins the
+    // one-sided behavior rather than passing vacuously either way.
+  });
+
   it("verdicts INSUFFICIENT-DATA below the per-tier sample floor, even when the shapes look identical", () => {
     const { rows, taskClassBySession } = buildParitySessions(T.minSessionsPerTier - 1);
     const [c] = computeTierParity(rows, taskClassBySession, T);
@@ -447,7 +483,11 @@ describe("detectTierMismatch", () => {
     expect(f.sessionIds.sort()).toEqual(
       Array.from({ length: T.minSessionsPerTier }, (_, i) => `top-${i}`).sort(),
     );
-    expect(f.rule).toMatch(/comparable/i);
+    // D2-1: the rule text must describe what the one-sided test actually
+    // establishes (mid tier not measurably worse), not an unsupported
+    // two-sided "comparable" claim.
+    expect(f.rule).toMatch(/not measurably worse|no meaningfully more/i);
+    expect(f.rule).not.toMatch(/\bcomparable\b/i);
     expect(f.remedy).toMatch(/mid tier/i);
     expect(f.detail).toContain(`n(top)=${T.minSessionsPerTier}`);
     expect(f.detail).toContain(`n(mid)=${T.minSessionsPerTier}`);
@@ -599,12 +639,34 @@ describe("detectTierMismatch", () => {
 // ─── runHygieneDetectors wiring ──────────────────────────────────────────────
 
 describe("runHygieneDetectors — tier-mismatch wiring", () => {
-  it("reports an honest empty result when taskClassBySession is omitted (classifier hasn't run / not wired) — never guesses", () => {
+  it("reports NOT COMPUTED (not a zero-finding pass) when taskClassBySession is omitted (D2-2: the classifier has never run) — never a silent 'no mismatch'", () => {
     const { rows } = buildParitySessions(T.minSessionsPerTier);
     const results = runHygieneDetectors(rows, {});
     const tierMismatch = results.find((r) => r.detectorId === "tier-mismatch");
     expect(tierMismatch).toBeDefined();
     expect(tierMismatch!.findings).toEqual([]);
+    // D2-2: `findings: []` alone is indistinguishable from "ran, found
+    // nothing" — `computed` is the bit that must say "didn't run at all".
+    expect(tierMismatch!.computed).toBe(false);
+    expect(tierMismatch!.enablementPath).toMatch(/task-class/);
+
+    // MUTATION CHECK: reverting `computed` to always-`true` (dropping the
+    // `undefined`-map branch) makes this `expect(tierMismatch!.computed).toBe(false)`
+    // fail — confirmed manually, then reverted; not left in the suite as a
+    // no-op assertion.
+  });
+
+  it("reports COMPUTED with zero findings when taskClassBySession is an empty (but DEFINED) map — the classifier ran, this window just has no matches", () => {
+    // The other half of D2-2's distinction: a defined-but-empty map means
+    // the classifier DID run — this is a real "computed, found nothing"
+    // result, not "never ran". Must not collapse into the same `computed:
+    // false` as the omitted case above.
+    const { rows } = buildParitySessions(T.minSessionsPerTier);
+    const results = runHygieneDetectors(rows, { taskClassBySession: new Map() });
+    const tierMismatch = results.find((r) => r.detectorId === "tier-mismatch");
+    expect(tierMismatch!.findings).toEqual([]);
+    expect(tierMismatch!.computed).toBe(true);
+    expect(tierMismatch!.enablementPath).toBeUndefined();
   });
 
   it("surfaces a tier-mismatch finding once taskClassBySession is supplied, on the same parity fixture", () => {
@@ -614,6 +676,17 @@ describe("runHygieneDetectors — tier-mismatch wiring", () => {
     expect(tierMismatch).toBeDefined();
     expect(tierMismatch!.findings).toHaveLength(1);
     expect(tierMismatch!.title).toBe("Tier mismatch");
+    expect(tierMismatch!.computed).toBe(true);
+  });
+
+  it("the other five detectors are always `computed: true` — they only need message rows, never the classifier map", () => {
+    const { rows } = buildParitySessions(T.minSessionsPerTier);
+    const results = runHygieneDetectors(rows, {}); // no taskClassBySession at all
+    for (const r of results) {
+      if (r.detectorId === "tier-mismatch") continue;
+      expect(r.computed).toBe(true);
+      expect(r.enablementPath).toBeUndefined();
+    }
   });
 
   it("honors tierMismatch threshold overrides (a looser minSessionsPerTier fires below the default floor)", () => {
