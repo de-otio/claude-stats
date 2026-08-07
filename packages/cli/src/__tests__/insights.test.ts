@@ -73,7 +73,7 @@ const emptyData: DashboardData = {
   byDay: [], byProject: [], byModel: [], byEntrypoint: [], stopReasons: [], byHour: [],
   byWindow: [], byConversationCost: [], byWeek: [],
   planUtilization: null, feeAttribution: null, modelEfficiency: null, contextAnalysis: null,
-  spending: null, energy: null, costPerTask: null, calibration: null,
+  spending: null, energy: null, costPerTask: null, calibration: null, calibrationScope: null,
   experimentalSignalsEnabled: false, recommendations: [], availableAccounts: [],
   selectedAccountUuid: null, insights: null,
 };
@@ -351,7 +351,7 @@ describe("Q2 carries calibration for exactly the figures it states", () => {
       withCalibration({
         insights: {
           ...goldenData.insights!,
-          attributionCalibration: calibrate("attribution", { agreed: 2, disagreed: 1 }),
+          attributionCalibration: calibrate("attribution", { agreed: 2, disagreed: 1 }, { scope: "whole-store" }),
         },
         costPerTask: null,
       }),
@@ -369,7 +369,7 @@ describe("Q2 carries calibration for exactly the figures it states", () => {
         insights: {
           ...goldenData.insights!,
           ticketCoverage: null,
-          attributionCalibration: calibrate("attribution", { agreed: 40, disagreed: 0 }),
+          attributionCalibration: calibrate("attribution", { agreed: 40, disagreed: 0 }, { scope: "whole-store" }),
         },
         calibration: { n: 40, floor: 0.7, proxyOnly: { n: 40, hits: 40 }, withSignals: { n: 40, hits: 40 } } as unknown as DashboardData["calibration"],
       }),
@@ -394,13 +394,58 @@ describe("Q2 carries calibration for exactly the figures it states", () => {
     const expected = t("common:insight.calibration.measured.outcome", {
       percent: "68%", n: 40, lo: "52%", hi: "80%",
     });
-    const withCount = boughtCaveat(withCalibration({ calibration: report }));
+    const withCount = boughtCaveat(withCalibration({ calibration: report, calibrationScope: "month" }));
     expect(withCount).toContain(expected);
 
     // `costPerTask: null` means no success count is rendered, so outcome
     // detection qualifies nothing on this card.
-    const withoutCount = boughtCaveat(withCalibration({ calibration: report, costPerTask: null }));
+    const withoutCount = boughtCaveat(
+      withCalibration({ calibration: report, calibrationScope: "month", costPerTask: null }),
+    );
     expect(withoutCount).not.toContain(expected);
+  });
+
+  it("names the window each subject was counted over, and the two differ", () => {
+    // The verified defect: attribution is gathered whole-store, outcome over the
+    // surface's period, and both rode on the same period-scoped card with
+    // nothing saying so. The two clauses must both be present AND be different —
+    // one clause, or two identical ones, is the state this closes.
+    const caveat = boughtCaveat(
+      withCalibration({
+        insights: {
+          ...goldenData.insights!,
+          attributionCalibration: calibrate("attribution", { agreed: 30, disagreed: 10 }, { scope: "whole-store" }),
+        },
+        calibration: {
+          n: 40, floor: 0.7,
+          proxyOnly: { n: 40, hits: 27 },
+          withSignals: { n: 40, hits: 27 },
+        } as unknown as DashboardData["calibration"],
+        calibrationScope: "month",
+      }),
+    )!;
+    const wholeStore = t("common:insight.calibration.scope.wholeStore");
+    const month = t("common:insight.calibration.scope.month");
+    expect(wholeStore).not.toBe(month);
+    expect(caveat).toContain(wholeStore);
+    expect(caveat).toContain(month);
+  });
+
+  it("withholds the outcome estimate when the window it was gathered over is unknown", () => {
+    // `calibrationScope` is set by the same call that sets `calibration`, so in
+    // practice this never fires — but a scope guessed here would be a claim
+    // about scope with no basis, on the one figure whose subject IS scope.
+    const report = {
+      n: 40, floor: 0.7,
+      proxyOnly: { n: 40, hits: 27 },
+      withSignals: { n: 40, hits: 27 },
+    } as unknown as DashboardData["calibration"];
+    const caveat = boughtCaveat(withCalibration({ calibration: report, calibrationScope: null }))!;
+    expect(caveat).not.toContain(t("common:insight.calibration.measured.outcome", {
+      percent: "68%", n: 40, lo: "52%", hi: "80%",
+    }));
+    // …and it withholds the whole clause rather than rendering a scopeless one.
+    expect(caveat).not.toContain(t("common:insight.calibration.scope.month"));
   });
 
   it("leaves Q2's caveat unchanged when nothing has been calibrated", () => {
@@ -426,7 +471,7 @@ describe("Q2 carries calibration for exactly the figures it states", () => {
     const data = withCalibration({
       insights: {
         ...goldenData.insights!,
-        attributionCalibration: calibrate("attribution", { agreed: 2, disagreed: 1 }),
+        attributionCalibration: calibrate("attribution", { agreed: 2, disagreed: 1 }, { scope: "whole-store" }),
       },
     });
     const boughtCard = card(renderTab(data), "insight-bought");

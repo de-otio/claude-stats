@@ -308,13 +308,13 @@ function allFragments(tr: InsightT): Array<[string, string | null]> {
     // eight distinct keys, so a formatter that resolved the wrong one would
     // still be caught by `calibration.test.ts`'s key-identity assertions, and a
     // formatter that stated anything in English of its own is caught here.
-    ["calibration/measuredAttribution", calibrationCaveat(tr, calibrate("attribution", { agreed: 27, disagreed: 3 }))],
-    ["calibration/measuredOutcome", calibrationCaveat(tr, calibrate("outcome", { agreed: 27, disagreed: 3 }))],
-    ["calibration/uncalAttribution", calibrationCaveat(tr, calibrate("attribution", { agreed: 2, disagreed: 1 }))],
-    ["calibration/uncalOutcome", calibrationCaveat(tr, calibrate("outcome", { agreed: 2, disagreed: 1 }))],
-    ["calibration/enableAttribution", calibrationEnablement(tr, calibrate("attribution", { agreed: 2, disagreed: 1 }))],
-    ["calibration/enableOutcome", calibrationEnablement(tr, calibrate("outcome", { agreed: 2, disagreed: 1 }))],
-    ["calibration/enableMeasured", calibrationEnablement(tr, calibrate("outcome", { agreed: 30, disagreed: 0 }))],
+    ["calibration/measuredAttribution", calibrationCaveat(tr, calibrate("attribution", { agreed: 27, disagreed: 3 }, { scope: "whole-store" }))],
+    ["calibration/measuredOutcome", calibrationCaveat(tr, calibrate("outcome", { agreed: 27, disagreed: 3 }, { scope: "month" }))],
+    ["calibration/uncalAttribution", calibrationCaveat(tr, calibrate("attribution", { agreed: 2, disagreed: 1 }, { scope: "whole-store" }))],
+    ["calibration/uncalOutcome", calibrationCaveat(tr, calibrate("outcome", { agreed: 2, disagreed: 1 }, { scope: "month" }))],
+    ["calibration/enableAttribution", calibrationEnablement(tr, calibrate("attribution", { agreed: 2, disagreed: 1 }, { scope: "whole-store" }))],
+    ["calibration/enableOutcome", calibrationEnablement(tr, calibrate("outcome", { agreed: 2, disagreed: 1 }, { scope: "month" }))],
+    ["calibration/enableMeasured", calibrationEnablement(tr, calibrate("outcome", { agreed: 30, disagreed: 0 }, { scope: "month" }))],
   ];
 }
 

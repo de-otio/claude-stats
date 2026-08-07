@@ -36,12 +36,14 @@
  * Design: doc/analysis/gui-redesign/02 §2.2, 03 §3.4;
  *         doc/analysis/ticket-attribution/05 §5.3.
  */
-import type { CalibrationEstimate } from "./calibration.js";
+import type { CalibrationEstimate, CalibrationScope } from "./calibration.js";
 import type {
   AccountMode,
   Confidence,
   InsightAnswer,
   InsightQuestion,
+  Reconciliation,
+  ReconciliationCause,
   TicketCoverage,
 } from "./types/insight.js";
 
@@ -262,6 +264,125 @@ export function costCaveat(
   return t("common:insight.caveat.metered");
 }
 
+// ─── Invoice reconciliation, in full ──────────────────────────────────────────
+
+/** One labelled figure in the reconciliation panel. */
+export interface ReconciliationLine {
+  /** Stable, unlocalized id — what a test or a CSV column keys on. */
+  readonly id: "bottomUp" | "invoiceTotal" | "residual" | "tolerance";
+  readonly label: string;
+  readonly value: string;
+}
+
+/**
+ * Everything a surface needs to render a reconciliation, already localized and
+ * already formatted. No surface composes any of it.
+ */
+export interface ReconciliationDetail {
+  /** "Reconciles / does not reconcile", as a complete sentence. */
+  readonly verdict: string;
+  /** The four figures, in reading order. */
+  readonly lines: readonly ReconciliationLine[];
+  /** Heading for the cause list; null when there is nothing to explain. */
+  readonly causesLabel: string | null;
+  /** Named candidate causes, localized. Empty when within tolerance. */
+  readonly causes: readonly string[];
+  /** What the invoice covers — the user's own note, or the sentence saying it
+   *  was never stated. Never null: an unstated scope is itself information. */
+  readonly scope: string;
+}
+
+const RECONCILIATION_CAUSE_KEY: Readonly<Record<ReconciliationCause, string>> = {
+  "unpriced-usage": "common:insight.reconciliation.cause.unpricedUsage",
+  "fallback-rates": "common:insight.reconciliation.cause.fallbackRates",
+  "scope-mismatch": "common:insight.reconciliation.cause.scopeMismatch",
+  unexplained: "common:insight.reconciliation.cause.unexplained",
+};
+
+/**
+ * Expand a {@link Reconciliation} into the panel a surface renders.
+ *
+ * This exists because the dashboard PROMISED it and did not have it. The
+ * `reconciliation-drift` alert tells the reader, in ten languages, to "see the
+ * cost card's caveat for the residual and its candidate causes" — and the caveat
+ * `costCaveat` produces carries only the ratio. The residual, the invoice total,
+ * the tolerance band and the named causes were computed by
+ * `computeReconciliation`, stored on `DashboardData`, and rendered nowhere. An
+ * alert that points at a caveat that does not exist is worse than no alert: it
+ * spends the reader's trust and then sends them looking for something that was
+ * never there.
+ *
+ * The residual is rendered as a MAGNITUDE plus a direction sentence rather than
+ * a signed number. `residual = invoiceTotal - bottomUp`, so the sign encodes
+ * which side is higher — and "$-49.40" makes the reader do that decoding, on the
+ * one figure in the panel that decides whether the estimate is under- or
+ * over-counting. The two directions are two different findings and they read as
+ * two different sentences.
+ */
+export function reconciliationDetail(
+  t: InsightT,
+  rec: Reconciliation,
+  currency = "USD",
+): ReconciliationDetail {
+  const money = (n: number) => formatMoney(n, currency, { precise: true });
+  const residualIsInvoiceHigher = rec.residual >= 0;
+
+  const lines: ReconciliationLine[] = [
+    {
+      id: "bottomUp",
+      label: t("common:insight.reconciliation.label.bottomUp"),
+      value: money(rec.bottomUp),
+    },
+    {
+      id: "invoiceTotal",
+      label: t("common:insight.reconciliation.label.invoiceTotal"),
+      value: money(rec.invoiceTotal),
+    },
+    {
+      id: "residual",
+      label: t("common:insight.reconciliation.label.residual"),
+      value: t(
+        residualIsInvoiceHigher
+          ? "common:insight.reconciliation.residualInvoiceHigher"
+          : "common:insight.reconciliation.residualLocalHigher",
+        {
+          // Magnitudes: the direction is in the sentence, so a minus sign here
+          // would state it twice and contradict itself half the time.
+          money: money(Math.abs(rec.residual)),
+          percent: formatPercent(Math.abs(rec.residualRatio)),
+        },
+      ),
+    },
+    {
+      id: "tolerance",
+      label: t("common:insight.reconciliation.label.tolerance"),
+      value: t("common:insight.reconciliation.toleranceBand", {
+        percent: rec.tolerancePercent,
+      }),
+    },
+  ];
+
+  return {
+    verdict: t(
+      rec.withinTolerance
+        ? "common:insight.reconciliation.verdict.within"
+        : "common:insight.reconciliation.verdict.outside",
+      { ratio: formatPercent(rec.ratio) },
+    ),
+    lines,
+    // Gated on the cause list rather than on `withinTolerance`, so the label
+    // cannot outlive the list it heads: `computeReconciliation` leaves
+    // `candidateCauses` empty exactly when there is nothing to explain, and a
+    // heading over an empty list would read as a finding that was withheld.
+    causesLabel:
+      rec.candidateCauses.length > 0 ? t("common:insight.reconciliation.causesLabel") : null,
+    causes: rec.candidateCauses.map((c) => t(RECONCILIATION_CAUSE_KEY[c])),
+    scope: rec.scopeNote
+      ? tLiteral(t, "common:insight.reconciliation.scopeStated", {}, { note: rec.scopeNote })
+      : t("common:insight.reconciliation.scopeUnstated"),
+  };
+}
+
 /**
  * Confidence-tier summary, e.g. "72% high · 21% medium · 7% low confidence".
  *
@@ -317,6 +438,34 @@ const CALIBRATION_ENABLEMENT_KEY: Readonly<Record<CalibrationEstimate["subject"]
 };
 
 /**
+ * The window clause, one complete sentence per scope.
+ *
+ * Whole records rather than a key built from the union member for the same
+ * reason as the three above: a scope added without its sentence must fail at
+ * review, not at runtime in one language.
+ */
+const CALIBRATION_SCOPE_KEY: Readonly<Record<CalibrationScope, string>> = {
+  "whole-store": "common:insight.calibration.scope.wholeStore",
+  day: "common:insight.calibration.scope.day",
+  week: "common:insight.calibration.scope.week",
+  month: "common:insight.calibration.scope.month",
+  "custom-range": "common:insight.calibration.scope.customRange",
+};
+
+/**
+ * State which window an estimate was gathered over.
+ *
+ * Separate from {@link calibrationCaveat}'s body rather than folded into its
+ * sentences: the scope varies independently of subject AND of state, so folding
+ * would multiply five windows × two subjects × two states into twenty
+ * sentences a translator has to keep consistent. As its own clause it is five
+ * keys, and the join is the locale's.
+ */
+export function calibrationScopeNote(t: InsightT, scope: CalibrationScope): string {
+  return t(CALIBRATION_SCOPE_KEY[scope]);
+}
+
+/**
  * State a mechanism's measured agreement, or state that it has none.
  *
  * The measured sentence carries four things that must never be separated from
@@ -328,20 +477,32 @@ const CALIBRATION_ENABLEMENT_KEY: Readonly<Record<CalibrationEstimate["subject"]
  *
  * The uncalibrated sentence states the gap to the floor rather than an apology.
  * Below the floor there is no number to render, so the sentence IS the answer.
+ *
+ * The scope clause is appended in BOTH states, not only the measured one. "12 of
+ * the 30 labels needed" over a week and over three years are different reports
+ * on how far away a figure is, and a reader deciding whether to keep labelling
+ * needs to know which they are looking at.
  */
 export function calibrationCaveat(t: InsightT, estimate: CalibrationEstimate): string {
-  if (estimate.state === "uncalibrated") {
-    return t(CALIBRATION_UNCALIBRATED_KEY[estimate.subject], {
-      n: estimate.n,
-      minN: estimate.minN,
-    });
-  }
-  return t(CALIBRATION_MEASURED_KEY[estimate.subject], {
-    percent: formatPercent(estimate.rate),
-    n: estimate.n,
-    lo: formatPercent(estimate.interval?.lo ?? null),
-    hi: formatPercent(estimate.interval?.hi ?? null),
-  });
+  const body =
+    estimate.state === "uncalibrated"
+      ? t(CALIBRATION_UNCALIBRATED_KEY[estimate.subject], {
+          n: estimate.n,
+          minN: estimate.minN,
+        })
+      : t(CALIBRATION_MEASURED_KEY[estimate.subject], {
+          percent: formatPercent(estimate.rate),
+          n: estimate.n,
+          lo: formatPercent(estimate.interval?.lo ?? null),
+          hi: formatPercent(estimate.interval?.hi ?? null),
+        });
+  // The same separator `answerBought` uses to stack caveat clauses, so the
+  // scope clause sits in a caveat exactly as every other clause does — and it
+  // is a locale's separator, empty in ja/zh where a space between sentences is
+  // wrong.
+  return [body, calibrationScopeNote(t, estimate.scope)].join(
+    t("common:insight.punctuation.caveatJoin"),
+  );
 }
 
 /**

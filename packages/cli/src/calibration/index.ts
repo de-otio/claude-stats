@@ -31,6 +31,7 @@ import {
   reviewAttributionLinks,
   type AttributionReview,
   type CalibrationEstimate,
+  type CalibrationScope,
   type TicketLinkGrade,
 } from "@claude-stats/core/calibration";
 import { calibrationCaveat, calibrationEnablement } from "@claude-stats/core/insight";
@@ -68,7 +69,12 @@ export function buildAttributionCalibration(store: Store): AttributionCalibratio
     });
   }
   const review = reviewAttributionLinks(rows);
-  return { estimate: calibrate("attribution", review), review };
+  // `getTicketLinkGrades()` takes no date bound, so this counts every ruling in
+  // the store — including rulings made long before the window the caller is
+  // rendering. That is the deliberate choice (a per-window cut of a scarce
+  // sample would read "uncalibrated" forever), and stating it here is what makes
+  // it a choice rather than an accident the reader absorbs as "this period".
+  return { estimate: calibrate("attribution", review, { scope: "whole-store" }), review };
 }
 
 /**
@@ -83,12 +89,20 @@ export function buildAttributionCalibration(store: Store): AttributionCalibratio
  * `null` in (the report failed to build, or was never attached) yields an
  * uncalibrated estimate at n = 0 — the same honest state as "no labels yet",
  * because from the reader's side it is the same state: no measurement exists.
+ *
+ * `scope` is required and has no default. Unlike attribution's, this subject's
+ * window is decided by the CALLER — `attachCalibration` passes the dashboard's
+ * period (capping `all` at a month for performance), the MCP tool passes a
+ * month outright. Only the caller knows which, so only the caller may say.
  */
-export function outcomeCalibrationFrom(report: CalibrationReport | null | undefined): CalibrationEstimate {
+export function outcomeCalibrationFrom(
+  report: CalibrationReport | null | undefined,
+  scope: CalibrationScope,
+): CalibrationEstimate {
   const m = report?.proxyOnly;
   const agreed = m?.hits ?? 0;
   const disagreed = m ? m.n - m.hits : 0;
-  return calibrate("outcome", { agreed, disagreed });
+  return calibrate("outcome", { agreed, disagreed }, { scope });
 }
 
 // ─── Machine-readable shape (MCP) ─────────────────────────────────────────────
@@ -106,6 +120,10 @@ export const CALIBRATION_MEASURES = "agreement-on-reviewed-subset" as const;
 
 export interface CalibrationJson {
   readonly subject: CalibrationEstimate["subject"];
+  /** The window the rulings were gathered over. A machine token, like
+   *  `measures` — a calling agent comparing two subjects' rates must be able to
+   *  see they were not counted over the same span without parsing prose. */
+  readonly scope: CalibrationEstimate["scope"];
   readonly state: CalibrationEstimate["state"];
   readonly n: number;
   readonly agreed: number;
@@ -137,6 +155,7 @@ export function calibrationJson(
 ): CalibrationJson {
   return {
     subject: estimate.subject,
+    scope: estimate.scope,
     state: estimate.state,
     n: estimate.n,
     agreed: estimate.agreed,

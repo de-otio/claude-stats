@@ -158,7 +158,39 @@
       "enablement": {
         "attribution": "Confirme ou corrija um vínculo automático com `claude-stats ticket <session-id> <key>`, ou anule um incorreto com `--negate`; cada avaliação explícita amplia a amostra.",
         "outcome": "Rotule o trabalho concluído com `claude-stats task-outcome <item> <success|partial|fail>`; cada rótulo amplia a amostra."
+      },
+      "scope": {
+        "wholeStore": "Contabilizado sobre tudo o que foi registrado, não apenas o período exibido.",
+        "day": "Contabilizado apenas no último dia, não no período exibido.",
+        "week": "Contabilizado apenas na última semana, não no período exibido.",
+        "month": "Contabilizado apenas no último mês, não no período exibido.",
+        "customRange": "Contabilizado no intervalo de datas selecionado."
       }
+    },
+    "reconciliation": {
+      "title": "Conciliação com a sua fatura",
+      "verdict": {
+        "within": "Concilia com a fatura: a estimativa local é {{ratio}} do total importado, dentro da sua faixa de tolerância.",
+        "outside": "Não concilia com a fatura: a estimativa local é {{ratio}} do total importado, fora da sua faixa de tolerância."
+      },
+      "label": {
+        "bottomUp": "Estimativa local",
+        "invoiceTotal": "Total da fatura importada",
+        "residual": "Residual",
+        "tolerance": "Faixa de tolerância"
+      },
+      "residualInvoiceHigher": "{{money}} ({{percent}}) a mais na fatura do que a estimativa local considera",
+      "residualLocalHigher": "{{money}} ({{percent}}) a mais na estimativa local do que a fatura cobra",
+      "toleranceBand": "±{{percent}}%",
+      "causesLabel": "O que pode explicar a diferença",
+      "cause": {
+        "unpricedUsage": "Uso sem preço — alguns tokens não tinham tarifa para serem precificados.",
+        "fallbackRates": "Tarifas de fallback — uso em plataformas parceiras precificado com tarifas de primeira parte.",
+        "scopeMismatch": "Escopo divergente — a fatura pode não cobrir as mesmas contas ou datas desta visualização; nenhum escopo foi informado.",
+        "unexplained": "Sem explicação — nenhuma das causas conhecidas justifica essa diferença."
+      },
+      "scopeStated": "A fatura cobre: {{note}}",
+      "scopeUnstated": "O que a fatura cobre nunca foi informado — defina reconciliation.scopeNote para poder confirmar ou descartar uma divergência."
     }
   },
   "actions": {

@@ -25,7 +25,7 @@ import {
 import { attributeToolCosts, groupByMcpServer, detectAnomalies, aggregateMcpServerUsage } from "../spending.js";
 import type { CostPerTaskReport, CostPerTaskOptions } from "../cost-per-task/index.js";
 import type { CalibrationReport } from "../cost-per-task/calibration.js";
-import type { CalibrationEstimate } from "@claude-stats/core/calibration";
+import type { CalibrationEstimate, CalibrationScope } from "@claude-stats/core/calibration";
 import { buildAttributionCalibration } from "../calibration/index.js";
 import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor, modelClass } from "@claude-stats/core/energy";
 import type { ModelClass } from "@claude-stats/core/energy";
@@ -281,6 +281,16 @@ export interface DashboardData {
    * toggle). Sync signals only (no per-refresh LLM-judge calls).
    */
   calibration: CalibrationReport | null;
+  /**
+   * The window `calibration` above was actually gathered over — set by the same
+   * call that sets `calibration`, and null whenever that is null.
+   *
+   * Separate from `period` because the two genuinely differ: `attachCalibration`
+   * caps an `all` period at a month for performance, so a dashboard headed "all
+   * time" carries an outcome figure counted over one month. Anything quoting the
+   * figure must be able to say which, and the report itself does not carry it.
+   */
+  calibrationScope: CalibrationScope | null;
   /** Whether the experimental accuracy signals are currently enabled (config). */
   experimentalSignalsEnabled: boolean;
   recommendations: Recommendation[];
@@ -1433,6 +1443,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     energy,
     costPerTask: null,
     calibration: null,
+    calibrationScope: null,
     experimentalSignalsEnabled: false,
     recommendations,
     availableAccounts: (() => {
@@ -1669,9 +1680,21 @@ export async function attachCalibration(
     // custom-range opt-out of that cap.
     const isCustomRange = Boolean(opts.since && opts.until);
     const dashPeriod = opts.period ?? "all";
-    const period = isCustomRange
+    // Typed as the three windows this actually produces rather than as
+    // `CostPerTaskOptions["period"]`, whose union still contains `"all"`. The
+    // fold below removes `"all"`, and saying so in the type is what lets the
+    // scope be derived from this local instead of re-deriving (and possibly
+    // re-deciding) the same fold a second time.
+    const period: "day" | "week" | "month" | undefined = isCustomRange
       ? undefined
-      : (dashPeriod === "all" ? "month" : dashPeriod) as CostPerTaskOptions["period"];
+      : dashPeriod === "all"
+        ? "month"
+        : dashPeriod;
+    // Derived from the SAME two locals the query below is built from, so the
+    // stated scope and the queried window cannot drift. A custom range left
+    // `period` undefined — which is exactly the case the "all time" heading
+    // would otherwise hide.
+    const scope: CalibrationScope = isCustomRange ? "custom-range" : (period ?? "month");
     data.calibration = await buildCalibrationReport(store, {
       period,
       since: isCustomRange ? opts.since : undefined,
@@ -1685,8 +1708,12 @@ export async function attachCalibration(
       digestDeps: extra?.digestDeps,
       correctionsClient: extra?.correctionsClient,
     });
+    // Set only after the await resolves, so a throw leaves BOTH fields null
+    // rather than a scope describing a report that was never built.
+    data.calibrationScope = scope;
   } catch {
     data.calibration = null;
+    data.calibrationScope = null;
   }
   return data;
 }

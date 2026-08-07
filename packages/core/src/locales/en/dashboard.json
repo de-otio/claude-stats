@@ -481,7 +481,7 @@
     },
     "alerts": {
       "fallbackRates": "Some usage was priced at first-party rates on a partner platform (Bedrock or Vertex). Every cost figure here is an estimate until partner rates are configured.",
-      "reconciliationDrift": "Bottom-up cost does not reconcile with the configured invoice total — see the cost card's caveat for the residual and its candidate causes.",
+      "reconciliationDrift": "Bottom-up cost does not reconcile with the configured invoice total — the reconciliation panel below shows the residual and its candidate causes.",
       "action": "Review"
     },
     "verdict": {

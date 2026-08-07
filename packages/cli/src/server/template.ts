@@ -16,6 +16,7 @@ import {
   INSIGHTS_CSS,
 } from "./insights.js";
 import { renderTicketAttributionCard, TICKET_CARD_CSS } from "./ticketCard.js";
+import { RECONCILIATION_CSS } from "./reconciliationPanel.js";
 
 export { DashboardData };
 
@@ -411,7 +412,14 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     currency: data.insights?.currency ?? "USD",
     verdictSentence: planVerdictSentence,
   });
-  const insightsHtml = renderInsightsTab(insightAnswers, buildAlerts(data, t), t);
+  const insightsHtml = renderInsightsTab(insightAnswers, buildAlerts(data, t), t, {
+    reconciliation: data.insights?.reconciliation ?? null,
+    // The SAME currency the answers above were formatted with, read from the
+    // same field — a panel formatting the residual in a different currency to
+    // the headline it explains would be the drift the shared formatters exist
+    // to stop.
+    currency: data.insights?.currency ?? "USD",
+  });
   const ticketCardHtml = renderTicketAttributionCard(data.currentSessionTicket, t);
   // The Overview cost card and the Insights Q1 card are the SAME answer object,
   // rendered twice. Phase 1 of the migration is additive — nothing moves yet —
@@ -543,6 +551,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
 ${CARD_TOKENS_CSS}
 ${CARD_CSS}
 ${INSIGHTS_CSS}
+${RECONCILIATION_CSS}
 ${TICKET_CARD_CSS}
   </style>
 </head>

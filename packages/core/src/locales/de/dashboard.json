@@ -482,7 +482,7 @@
     "alerts": {
       "fallbackRates": "Ein Teil der Nutzung wurde auf einer Partner-Plattform (Bedrock oder Vertex) zu Erstanbieter-Preisen berechnet. Alle Kostenangaben hier sind Schätzungen, bis Partner-Preise konfiguriert sind.",
       "action": "Prüfen",
-      "reconciliationDrift": "Die Bottom-up-Kosten stimmen nicht mit der konfigurierten Rechnungssumme überein – Hinweise zur Restdifferenz und deren möglichen Ursachen finden Sie im Vorbehalt der Kostenkarte."
+      "reconciliationDrift": "Die Bottom-up-Kosten stimmen nicht mit der konfigurierten Rechnungssumme überein – die Abgleichstafel weiter unten zeigt die Restdifferenz und deren mögliche Ursachen."
     },
     "verdict": {
       "goodValue": "Ihr Abo ist bei dieser Nutzung ein gutes Preis-Leistungs-Verhältnis",

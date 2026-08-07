@@ -153,7 +153,39 @@
       "enablement": {
         "attribution": "Bestätigen oder korrigieren Sie eine automatische Verknüpfung mit `claude-stats ticket <session-id> <key>` oder heben Sie eine falsche mit `--negate` auf; jede ausdrückliche Beurteilung vergrößert die Stichprobe.",
         "outcome": "Kennzeichnen Sie abgeschlossene Arbeit mit `claude-stats task-outcome <item> <success|partial|fail>`; jede Kennzeichnung vergrößert die Stichprobe."
+      },
+      "scope": {
+        "wholeStore": "Über alle erfassten Daten gezählt, nicht nur über den angezeigten Zeitraum.",
+        "day": "Nur über den letzten Tag gezählt, nicht über den angezeigten Zeitraum.",
+        "week": "Nur über die letzte Woche gezählt, nicht über den angezeigten Zeitraum.",
+        "month": "Nur über den letzten Monat gezählt, nicht über den angezeigten Zeitraum.",
+        "customRange": "Über den ausgewählten Zeitraum gezählt."
       }
+    },
+    "reconciliation": {
+      "title": "Abgleich mit Ihrer Rechnung",
+      "verdict": {
+        "within": "Stimmt mit der Rechnung überein: Die lokale Schätzung beträgt {{ratio}} der importierten Gesamtsumme und liegt innerhalb Ihres Toleranzbereichs.",
+        "outside": "Stimmt nicht mit der Rechnung überein: Die lokale Schätzung beträgt {{ratio}} der importierten Gesamtsumme und liegt außerhalb Ihres Toleranzbereichs."
+      },
+      "label": {
+        "bottomUp": "Lokale Schätzung",
+        "invoiceTotal": "Importierte Rechnungssumme",
+        "residual": "Restdifferenz",
+        "tolerance": "Toleranzbereich"
+      },
+      "residualInvoiceHigher": "{{money}} ({{percent}}) mehr auf der Rechnung, als die lokale Schätzung erklärt",
+      "residualLocalHigher": "{{money}} ({{percent}}) mehr in der lokalen Schätzung, als die Rechnung berechnet",
+      "toleranceBand": "±{{percent}} %",
+      "causesLabel": "Mögliche Ursachen für die Abweichung",
+      "cause": {
+        "unpricedUsage": "Nicht bepreiste Nutzung – für einige Token lag kein Tarif zur Preisberechnung vor.",
+        "fallbackRates": "Ersatztarife – Nutzung über Partnerplattformen zu Erstanbieter-Tarifen berechnet.",
+        "scopeMismatch": "Abweichender Geltungsbereich – die Rechnung deckt möglicherweise nicht dieselben Konten oder Zeiträume ab wie diese Ansicht; es wurde kein Geltungsbereich angegeben.",
+        "unexplained": "Ungeklärt – keine der bekannten Ursachen erklärt diese Abweichung."
+      },
+      "scopeStated": "Rechnung umfasst: {{note}}",
+      "scopeUnstated": "Es wurde nie angegeben, was die Rechnung umfasst – legen Sie reconciliation.scopeNote fest, damit eine Abweichung aus- oder eingeschlossen werden kann."
     }
   },
   "actions": {

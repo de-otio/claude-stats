@@ -153,7 +153,39 @@
       "enablement": {
         "attribution": "`claude-stats ticket <session-id> <key>` で自動リンクを承認または修正し、誤ったリンクは `--negate` で取り消せます。明示的な判定ごとにサンプルが増えます。",
         "outcome": "完了した作業には `claude-stats task-outcome <item> <success|partial|fail>` でラベルを付けてください。ラベルごとにサンプルが増えます。"
+      },
+      "scope": {
+        "wholeStore": "表示中の期間だけでなく、記録されたすべてのデータを対象に集計しています。",
+        "day": "表示中の期間ではなく、直近 1 日のみを対象に集計しています。",
+        "week": "表示中の期間ではなく、直近 1 週間のみを対象に集計しています。",
+        "month": "表示中の期間ではなく、直近 1 か月のみを対象に集計しています。",
+        "customRange": "選択した期間を対象に集計しています。"
       }
+    },
+    "reconciliation": {
+      "title": "請求書との照合",
+      "verdict": {
+        "within": "請求書と整合しています: ローカル推定値はインポートした合計の {{ratio}} で、許容範囲内です。",
+        "outside": "請求書と整合していません: ローカル推定値はインポートした合計の {{ratio}} で、許容範囲外です。"
+      },
+      "label": {
+        "bottomUp": "ローカル推定値",
+        "invoiceTotal": "インポートした請求書の合計",
+        "residual": "残差",
+        "tolerance": "許容範囲"
+      },
+      "residualInvoiceHigher": "請求書の方が {{money}} ({{percent}}) 多く、ローカル推定値では説明できません",
+      "residualLocalHigher": "ローカル推定値の方が請求額より {{money}} ({{percent}}) 多くなっています",
+      "toleranceBand": "±{{percent}}%",
+      "causesLabel": "差の考えられる原因",
+      "cause": {
+        "unpricedUsage": "価格未設定の使用 — 一部の token に適用できる単価がありませんでした。",
+        "fallbackRates": "フォールバック単価 — パートナープラットフォームの使用を一次提供元の単価で計算しています。",
+        "scopeMismatch": "対象範囲の不一致 — 請求書がこのビューと同じアカウントや期間を対象としていない可能性があります。対象範囲は指定されていません。",
+        "unexplained": "原因不明 — 既知の原因では、この差を説明できません。"
+      },
+      "scopeStated": "請求書の対象範囲: {{note}}",
+      "scopeUnstated": "請求書の対象範囲が指定されていません。不一致の有無を判断できるよう reconciliation.scopeNote を設定してください。"
     }
   },
   "actions": {

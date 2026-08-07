@@ -482,7 +482,7 @@
     "alerts": {
       "fallbackRates": "Część użycia wyceniono stawkami first-party na platformie partnerskiej (Bedrock lub Vertex). Wszystkie kwoty tutaj są szacunkami, dopóki nie skonfigurujesz stawek partnera.",
       "action": "Sprawdź",
-      "reconciliationDrift": "Koszt liczony oddolnie nie zgadza się ze skonfigurowaną sumą na fakturze — zobacz zastrzeżenie na karcie kosztów, aby poznać różnicę i jej możliwe przyczyny."
+      "reconciliationDrift": "Koszt liczony oddolnie nie zgadza się ze skonfigurowaną sumą na fakturze — panel uzgodnienia poniżej pokazuje różnicę i jej możliwe przyczyny."
     },
     "verdict": {
       "goodValue": "Twój plan jest opłacalny przy tym poziomie użycia",

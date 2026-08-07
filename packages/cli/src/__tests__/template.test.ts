@@ -124,6 +124,7 @@ const mockData: DashboardData = {
   energy: null,
   costPerTask: null,
   calibration: null,
+  calibrationScope: null,
   experimentalSignalsEnabled: false,
   recommendations: [],
   availableAccounts: [],
