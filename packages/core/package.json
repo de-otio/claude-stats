@@ -103,7 +103,19 @@
     "./locales/pt-BR/*.json": "./dist/locales/pt-BR/*.json",
     "./locales/pl/*.json": "./dist/locales/pl/*.json",
     "./locales/uk/*.json": "./dist/locales/uk/*.json",
-    "./locales/ru/*.json": "./dist/locales/ru/*.json"
+    "./locales/ru/*.json": "./dist/locales/ru/*.json",
+    "./tickets": {
+      "types": "./dist/tickets.d.ts",
+      "default": "./dist/tickets.js"
+    },
+    "./insight": {
+      "types": "./dist/insight.d.ts",
+      "default": "./dist/insight.js"
+    },
+    "./types/insight": {
+      "types": "./dist/types/insight.d.ts",
+      "default": "./dist/types/insight.js"
+    }
   },
   "scripts": {
     "build": "tsc && node scripts/copy-locales.mjs",

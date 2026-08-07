@@ -2,6 +2,7 @@
  * Cost estimation from token usage and model pricing.
  * Prices represent equivalent API cost — not what subscription plans actually charge.
  */
+import type { PricingSource } from "./types/insight.js";
 
 export interface ModelPricing {
   inputPerMillion: number;
@@ -13,6 +14,12 @@ export interface ModelPricing {
 // Default pricing table — used as fallback when auto-fetched cache is unavailable.
 // Verified against https://platform.claude.com/docs/en/about-claude/pricing
 const DEFAULT_PRICING: Record<string, ModelPricing> = {
+  // Fable 5 / Mythos 5 — the top capability tier, priced above Opus.
+  "claude-fable-5":    { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 1.00, cacheWritePerMillion: 12.50 },
+  "claude-mythos-5":   { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 1.00, cacheWritePerMillion: 12.50 },
+  // Claude Opus 5 — same rates as Opus 4.8. Missing this row meant current-
+  // generation Opus usage costed zero with `known: true` nowhere to be seen.
+  "claude-opus-5":     { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25 },
   "claude-opus-4-8":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25 },
   "claude-opus-4-6":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25 },
   "claude-opus-4-5":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25 },
@@ -57,16 +64,139 @@ export function applyPricingCache(
 // Keys sorted longest-first so "claude-opus-4-6" matches before "claude-opus-4"
 let _sortedKeys = Object.keys(PRICING).sort((a, b) => b.length - a.length);
 
+// ─── Model-id normalization (first-party / Bedrock / Vertex) ─────────────────
+
 /**
- * Look up pricing for a model name using startsWith matching, longest key first.
+ * A model id split into the canonical first-party id used for rate lookup and
+ * the platform that served it.
  */
-export function lookupPricing(modelName: string): ModelPricing | null {
-  for (const key of _sortedKeys) {
-    if (modelName.startsWith(key)) {
-      return PRICING[key]!;
-    }
+export interface NormalizedModel {
+  /** Canonical first-party id, e.g. `claude-opus-5`. */
+  canonical: string;
+  source: PricingSource;
+  /** The input string, unchanged. */
+  raw: string;
+}
+
+/** Cross-region inference-profile prefixes on Bedrock (`us.`, `eu.`, `apac.`, …). */
+const BEDROCK_REGION_PREFIX = /^(us|eu|apac|us-gov|ca|sa|jp|au)\./;
+/** Legacy Bedrock InvokeModel version suffix, e.g. `-v1:0`, `-v2:0`. */
+const BEDROCK_VERSION_SUFFIX = /-v\d+:\d+$/;
+/** Vertex dated-snapshot separator, e.g. `claude-opus-4-5@20251101`. */
+const VERTEX_SNAPSHOT_SUFFIX = /@\d{8}$/;
+
+/**
+ * Reduce any served model id to the canonical first-party id, and report which
+ * platform it came from.
+ *
+ * Four id families reach this function, and before this existed only the first
+ * one priced at all — `lookupPricing` matches `startsWith("claude-…")`, so every
+ * Bedrock and Vertex id fell through to "unknown model" and silently costed
+ * nothing. That is the single highest-impact defect for metered/Enterprise
+ * users, who are exactly the audience for whom these figures are real money.
+ *
+ *   first-party      `claude-opus-5`, `claude-haiku-4-5-20251001`
+ *   Bedrock (Mantle) `anthropic.claude-opus-5`
+ *   Bedrock (legacy) `us.anthropic.claude-3-5-sonnet-20241022-v2:0`
+ *   Vertex           `claude-opus-4-5@20251101`
+ *
+ * Unrecognised strings pass through unchanged as `first_party`; the caller still
+ * gets `known: false` from `estimateCost` rather than a silent zero.
+ */
+export function normalizeModelId(raw: string): NormalizedModel {
+  let id = raw.trim();
+  let source: PricingSource = "first_party";
+
+  if (BEDROCK_REGION_PREFIX.test(id)) {
+    id = id.replace(BEDROCK_REGION_PREFIX, "");
+    source = "bedrock";
+  }
+  if (id.startsWith("anthropic.")) {
+    id = id.slice("anthropic.".length);
+    source = "bedrock";
+  }
+  if (BEDROCK_VERSION_SUFFIX.test(id)) {
+    id = id.replace(BEDROCK_VERSION_SUFFIX, "");
+    source = "bedrock";
+  }
+  if (VERTEX_SNAPSHOT_SUFFIX.test(id)) {
+    id = id.replace(VERTEX_SNAPSHOT_SUFFIX, "");
+    // A region prefix already proved Bedrock; a bare `@date` means Vertex.
+    if (source === "first_party") source = "vertex";
+  }
+
+  return { canonical: id, source, raw };
+}
+
+/**
+ * Per-source rate overrides, keyed by canonical model-id prefix (same
+ * longest-prefix matching as the built-in table).
+ *
+ * Bedrock and Vertex are partner-operated and priced SEPARATELY from
+ * first-party rates — and Bedrock rates additionally vary by region. We ship no
+ * partner rate table (it would go stale silently and we cannot verify it per
+ * region), so a metered partner account prices at first-party rates and the
+ * result is flagged `rateBasis: "first_party_fallback"`. Surfaces must render
+ * that as an estimate and point at this config; a reconciliation report must
+ * treat it as the likely residual cause before blaming anything else.
+ */
+export type RateOverrides = Partial<Record<PricingSource, Record<string, ModelPricing>>>;
+
+/** How a rate was arrived at — carried into every cost figure. */
+export type RateBasis = "first_party" | "configured" | "first_party_fallback";
+
+/** Longest-prefix lookup over an arbitrary rate table. */
+function lookupIn(table: Record<string, ModelPricing>, modelName: string): ModelPricing | null {
+  const keys = Object.keys(table).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    if (modelName.startsWith(key)) return table[key]!;
   }
   return null;
+}
+
+/**
+ * Look up pricing for a model name using startsWith matching, longest key first.
+ *
+ * Accepts any of the four id families (normalizes first). Pass `overrides` to
+ * consult a configured partner rate table before the built-in first-party one.
+ */
+export function lookupPricing(modelName: string, overrides?: RateOverrides): ModelPricing | null {
+  return resolvePricing(modelName, overrides).pricing;
+}
+
+/** Pricing plus the provenance of the rate that was used. */
+export interface ResolvedPricing {
+  pricing: ModelPricing | null;
+  source: PricingSource;
+  rateBasis: RateBasis;
+  canonical: string;
+}
+
+/**
+ * Resolve a rate and say where it came from. The provenance is not decoration:
+ * a metered figure priced from a fallback rate must not be presented with the
+ * same confidence as one priced from a configured partner rate.
+ */
+export function resolvePricing(modelName: string, overrides?: RateOverrides): ResolvedPricing {
+  const { canonical, source } = normalizeModelId(modelName);
+
+  const configured = overrides?.[source];
+  if (configured) {
+    const hit = lookupIn(configured, canonical);
+    if (hit) return { pricing: hit, source, rateBasis: "configured", canonical };
+  }
+
+  for (const key of _sortedKeys) {
+    if (canonical.startsWith(key)) {
+      return {
+        pricing: PRICING[key]!,
+        source,
+        rateBasis: source === "first_party" ? "first_party" : "first_party_fallback",
+        canonical,
+      };
+    }
+  }
+  return { pricing: null, source, rateBasis: "first_party", canonical };
 }
 
 /**
@@ -79,17 +209,21 @@ export function estimateCost(
   outputTokens: number,
   cacheReadTokens: number,
   cacheCreationTokens: number,
-): { cost: number; known: boolean } {
-  const pricing = lookupPricing(model);
+  overrides?: RateOverrides,
+): { cost: number; known: boolean; source: PricingSource; rateBasis: RateBasis } {
+  const { pricing, source, rateBasis } = resolvePricing(model, overrides);
   if (!pricing) {
-    return { cost: 0, known: false };
+    // Unknown model: report zero AND `known: false`. Callers must surface the
+    // unknown share rather than letting it vanish into a total — a silently
+    // zero-costed model is indistinguishable from free usage.
+    return { cost: 0, known: false, source, rateBasis };
   }
   const cost =
     (inputTokens / 1_000_000) * pricing.inputPerMillion +
     (outputTokens / 1_000_000) * pricing.outputPerMillion +
     (cacheReadTokens / 1_000_000) * pricing.cacheReadPerMillion +
     (cacheCreationTokens / 1_000_000) * pricing.cacheWritePerMillion;
-  return { cost, known: true };
+  return { cost, known: true, source, rateBasis };
 }
 
 /**

@@ -23,9 +23,30 @@ import type {
   OwnerTarget,
 } from "@claude-stats/core/types";
 import { estimateCost } from "@claude-stats/core/pricing";
+import { requireTicketKey } from "@claude-stats/core/tickets";
 import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
-const SCHEMA_VERSION = 18;
+const SCHEMA_VERSION = 20;
+
+/**
+ * SQL narrowing a session-id column to sessions attributed to one ticket key.
+ *
+ * Two clauses, not one: a session qualifies when at least one NON-negated link
+ * names the key, AND no tombstone row negates it. The tombstone arm is what
+ * makes a user's "not this ticket" correction authoritative over any number of
+ * agreeing automatic links — the discrediting failure mode for a justification
+ * report is a single visibly-wrong row, so the correction has to win.
+ *
+ * Parameterised by column so the SAME predicate serves both halves of the
+ * filter-symmetry contract: `session_id` in `getSessions` (unaliased `sessions`)
+ * and `s.session_id` in `buildMessageFilter` (aliased). Two hand-written copies
+ * would be free to drift, which is precisely the bug the contract exists to
+ * prevent. Binds two params, both the ticket key.
+ */
+function ticketPredicate(col: string): string {
+  return `${col} IN (SELECT tl.session_id FROM ticket_links tl WHERE tl.ticket_key = ? AND tl.negated = 0)
+    AND ${col} NOT IN (SELECT tn.session_id FROM ticket_links tn WHERE tn.ticket_key = ? AND tn.negated = 1)`;
+}
 
 export class Store {
   private db: DatabaseSync;
@@ -76,6 +97,8 @@ export class Store {
     if (current < 16) this.migrateToV16();
     if (current < 17) this.migrateToV17();
     if (current < 18) this.migrateToV18();
+    if (current < 19) this.migrateToV19();
+    if (current < 20) this.migrateToV20();
 
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
@@ -567,6 +590,77 @@ export class Store {
       this.db.exec("ROLLBACK");
       throw err;
     }
+  }
+
+  /**
+   * V19 — ticket attribution links (`doc/analysis/ticket-attribution/02 §2.2`).
+   *
+   * One row per (session, ticket key, evidence source), so a session can
+   * accumulate CORROBORATING rows — a branch-name link and a commit-subject
+   * link for the same key are two rows, and agreement between independent
+   * sources is what upgrades the effective confidence. Collapsing them to one
+   * row per (session, key) would throw away exactly the signal the accuracy
+   * ladder is built on.
+   *
+   * `negated` is the tombstone: a user-authored row with `negated = 1`
+   * suppresses that key for that session no matter how many automatic rows
+   * agree. It exists because the discrediting failure mode for a justification
+   * report is one visibly-wrong attribution, and the user must be able to kill
+   * it without deleting evidence.
+   *
+   * `evidence` (the matched branch name / commit subject) is LOCAL-ONLY: it is
+   * free text and therefore can never be added to an org-plane sync shape
+   * (`doc/analysis/05-privacy-security.md` — the "no field capable of carrying
+   * free text" guarantee is structural, not a filter).
+   *
+   * Additive + idempotent; zero backfill (extraction runs in `collect`).
+   */
+  private migrateToV19(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ticket_links (
+        session_id  TEXT NOT NULL,
+        ticket_key  TEXT NOT NULL,
+        source      TEXT NOT NULL,
+        confidence  TEXT NOT NULL,
+        granularity TEXT NOT NULL DEFAULT 'session',
+        first_uuid  TEXT,
+        last_uuid   TEXT,
+        evidence    TEXT,
+        negated     INTEGER NOT NULL DEFAULT 0,
+        created_at  INTEGER NOT NULL,
+        PRIMARY KEY (session_id, ticket_key, source),
+        FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ticket_links_key ON ticket_links (ticket_key);
+      CREATE INDEX IF NOT EXISTS idx_ticket_links_session ON ticket_links (session_id);
+    `);
+  }
+
+  /**
+   * V20 — per-message git branch (`doc/analysis/ticket-attribution/02 §2.3`).
+   *
+   * `sessions.git_branch` is first-seen-only (`parser/session.ts:188` keeps the
+   * first non-empty value), so a session that switches branches mid-way
+   * mis-attributes every message after the switch — and long-lived sessions are
+   * exactly the expensive ones. This column lets attribution split a session at
+   * its branch boundaries.
+   *
+   * NULLABLE with NO backfill, deliberately. Backfill requires re-reading the
+   * transcript, and V18's docstring records why a migration must not force that
+   * (~0.7 GB re-parse, stalled the collector past its timeouts). Historical rows
+   * therefore stay NULL and fall back to the session-level branch, which readers
+   * must treat as `granularity: 'session'` evidence. Backfilling where the
+   * transcript or archive still exists is an explicit, resumable, opt-in command
+   * — not a side effect of opening the database.
+   */
+  private migrateToV20(): void {
+    const addColumn = (table: string, column: string, def: string): void => {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === column)) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+      }
+    };
+    addColumn("messages", "git_branch", "TEXT");
   }
 
   /**
@@ -1612,6 +1706,19 @@ export class Store {
       sessionConditions.push("s.entrypoint = ?");
       params.push(filters.entrypoint);
     }
+    // Ticket / tag symmetry. Both narrow the SESSION set in `getSessions`; a
+    // message-scoped read that ignored them would price a different set of work
+    // than the session list shows — "12 sessions" beside a cost covering 40.
+    // `tag` was asymmetric before this: it filtered session lists only, so
+    // tag-scoped token/cost aggregates did not exist at all.
+    if (filters.ticket) {
+      sessionConditions.push(ticketPredicate("s.session_id"));
+      params.push(filters.ticket, filters.ticket);
+    }
+    if (filters.tag) {
+      sessionConditions.push("s.session_id IN (SELECT session_id FROM session_tags WHERE tag = ?)");
+      params.push(filters.tag);
+    }
     // CI / deleted symmetry. `getSessions` narrows the SESSION set on these two
     // flags; if the message-scoped reads ignore them, the two halves of every
     // aggregate describe different work again — cost would keep counting a CI
@@ -1788,6 +1895,13 @@ export class Store {
     accountUuid?: string;
     entrypoint?: string;
     tag?: string;
+    /**
+     * Narrow to sessions attributed to this work-item key. Negated (tombstoned)
+     * links are excluded, so a user's "not this ticket" correction wins over any
+     * number of agreeing automatic links. Mirrored in `MessageFilter` — see the
+     * symmetry contract there.
+     */
+    ticket?: string;
     since?: number;
     /**
      * Include sessions that were ACTIVE at/after this epoch-ms — i.e. their last
@@ -1838,6 +1952,10 @@ export class Store {
     if (filters.tag) {
       conditions.push("session_id IN (SELECT session_id FROM session_tags WHERE tag = ?)");
       params.push(filters.tag);
+    }
+    if (filters.ticket) {
+      conditions.push(ticketPredicate("session_id"));
+      params.push(filters.ticket, filters.ticket);
     }
     if (filters.since !== undefined) {
       conditions.push("first_timestamp >= ?");
@@ -2056,6 +2174,145 @@ export class Store {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = (stmt.all as (...args: any[]) => unknown[])(tag) as Array<{ session_id: string }>;
     return rows.map(r => r.session_id);
+  }
+
+  /**
+   * Session ids owning at least one message selected by `filters` — i.e. the
+   * SESSION set implied by the message-scoped half of the filter contract.
+   *
+   * Exists so the two halves can be compared directly: every session the
+   * message half prices must appear in `getSessions` under the same filter.
+   * That property is asserted as a test, and this is the read it asserts
+   * against. Also the natural basis for a coverage denominator (which sessions
+   * contributed cost in the window).
+   */
+  getSessionIdsWithMessages(filters: MessageFilter = {}): string[] {
+    const f = this.buildMessageFilter(filters);
+    const where = this.messageWhereExists(f);
+    const stmt = this.db.prepare(
+      `SELECT DISTINCT m.session_id AS session_id FROM messages m WHERE ${where} ORDER BY m.session_id`,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (stmt.all as (...args: any[]) => unknown[])(...f.params) as Array<{ session_id: string }>;
+    return rows.map((r) => r.session_id);
+  }
+
+  // ─── Ticket links ──────────────────────────────────────────────────────────
+  //
+  // Storage seam only. The extraction pass (which sources to scan, how to grade
+  // and upgrade confidence) is a separate concern and lives outside the store —
+  // it is a pure function of already-parsed data, and keeping it out of here is
+  // what lets it be property-tested without a database.
+
+  /**
+   * Record one attribution link. Idempotent per (session, key, source): a
+   * re-run of extraction refreshes the row rather than duplicating it.
+   *
+   * A MANUAL row is never overwritten by an automatic one. Extraction re-runs
+   * on every collect, so without that rule a user's correction would silently
+   * revert the next time the branch name was re-scanned — the single most
+   * corrosive bug this feature could ship, because it would look like the tool
+   * ignoring the user.
+   */
+  addTicketLink(link: {
+    sessionId: string;
+    ticketKey: string;
+    source: string;
+    confidence: string;
+    granularity?: string;
+    firstUuid?: string | null;
+    lastUuid?: string | null;
+    evidence?: string | null;
+    negated?: boolean;
+  }): void {
+    const key = requireTicketKey(link.ticketKey);
+    this.db
+      .prepare(
+        `INSERT INTO ticket_links
+           (session_id, ticket_key, source, confidence, granularity,
+            first_uuid, last_uuid, evidence, negated, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (session_id, ticket_key, source) DO UPDATE SET
+           confidence  = excluded.confidence,
+           granularity = excluded.granularity,
+           first_uuid  = excluded.first_uuid,
+           last_uuid   = excluded.last_uuid,
+           evidence    = excluded.evidence,
+           negated     = excluded.negated
+         WHERE ticket_links.source != 'tag'`,
+      )
+      .run(
+        link.sessionId,
+        key,
+        link.source,
+        link.confidence,
+        link.granularity ?? "session",
+        link.firstUuid ?? null,
+        link.lastUuid ?? null,
+        link.evidence ?? null,
+        link.negated ? 1 : 0,
+        Date.now(),
+      );
+  }
+
+  /** Remove one link. Used to undo a manual assignment. */
+  removeTicketLink(sessionId: string, ticketKey: string, source: string): void {
+    this.db
+      .prepare("DELETE FROM ticket_links WHERE session_id = ? AND ticket_key = ? AND source = ?")
+      .run(sessionId, requireTicketKey(ticketKey), source);
+  }
+
+  /**
+   * Tombstone a key for a session: "this session is NOT this ticket". Written
+   * at the `tag` (manual) source so it outranks every automatic row, and so a
+   * later extraction pass cannot resurrect the wrong link.
+   */
+  negateTicketLink(sessionId: string, ticketKey: string): void {
+    const key = requireTicketKey(ticketKey);
+    this.db
+      .prepare(
+        `INSERT INTO ticket_links
+           (session_id, ticket_key, source, confidence, granularity, negated, created_at)
+         VALUES (?, ?, 'tag', 'high', 'session', 1, ?)
+         ON CONFLICT (session_id, ticket_key, source) DO UPDATE SET negated = 1`,
+      )
+      .run(sessionId, key, Date.now());
+  }
+
+  /** All links for one session, tombstones included (callers decide). */
+  getTicketLinksForSession(sessionId: string): TicketLinkRow[] {
+    const stmt = this.db.prepare(
+      "SELECT * FROM ticket_links WHERE session_id = ? ORDER BY ticket_key, source",
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(sessionId) as TicketLinkRow[];
+  }
+
+  /**
+   * Distinct ticket keys present in the store, with their session counts.
+   *
+   * Applies the same two-clause tombstone rule as `ticketPredicate`: a
+   * (session, key) pair counts only when some row affirms it AND no row negates
+   * it. Checking `negated = 0` alone would keep counting a session whose branch
+   * name still says `PROJ-9` after the user explicitly said it isn't — the
+   * correction has to hold everywhere the key is reported, not just where it is
+   * filtered.
+   */
+  getTicketKeys(): Array<{ ticket_key: string; session_count: number }> {
+    return this.db
+      .prepare(
+        `SELECT ticket_key, COUNT(DISTINCT session_id) AS session_count
+           FROM ticket_links tl
+          WHERE tl.negated = 0
+            AND NOT EXISTS (
+              SELECT 1 FROM ticket_links tn
+               WHERE tn.session_id = tl.session_id
+                 AND tn.ticket_key = tl.ticket_key
+                 AND tn.negated = 1
+            )
+          GROUP BY ticket_key ORDER BY session_count DESC, ticket_key`,
+      )
+      .all() as Array<{ ticket_key: string; session_count: number }>;
   }
 
   // ─── Usage windows ──────────────────────────────────────────────────────────
@@ -3170,6 +3427,20 @@ export interface MessageRow {
   account_uuid?: string | null;
 }
 
+/** A raw `ticket_links` row (schema V19). */
+export interface TicketLinkRow {
+  session_id: string;
+  ticket_key: string;
+  source: string;
+  confidence: string;
+  granularity: string;
+  first_uuid: string | null;
+  last_uuid: string | null;
+  evidence: string | null;
+  negated: number;
+  created_at: number;
+}
+
 export interface SessionMessageTotalRow {
   session_id: string;
   model: string;
@@ -3190,6 +3461,14 @@ export interface MessageFilter {
   repoUrl?: string;
   accountUuid?: string;
   entrypoint?: string;
+  /**
+   * Work-item key (schema V19 `ticket_links`). Excludes tombstoned links, and
+   * uses the same `ticketPredicate` SQL as `getSessions` so the two halves
+   * cannot diverge.
+   */
+  ticket?: string;
+  /** Session tag (schema V5 `session_tags`). Mirrors `getSessions({tag})`. */
+  tag?: string;
   since?: number;
   until?: number;
   /** Explicit `false` excludes non-interactive (CI) sessions. */
