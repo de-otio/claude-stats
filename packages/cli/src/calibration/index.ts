@@ -36,7 +36,7 @@ import {
 import { calibrationCaveat, calibrationEnablement } from "@claude-stats/core/insight";
 import type { AttributionSource } from "@claude-stats/core/types/insight";
 import type { Store } from "../store/index.js";
-import type { CalibrationReport } from "../cost-per-task/calibration.js";
+import type { CalibrationReport, CalibrationMetrics } from "../cost-per-task/calibration.js";
 
 /** The four sources the extractor and the manual surfaces can write. */
 const KNOWN_SOURCES: ReadonlySet<string> = new Set<AttributionSource>(["tag", "branch", "commit", "prompt"]);
@@ -89,6 +89,40 @@ export function outcomeCalibrationFrom(report: CalibrationReport | null | undefi
   const agreed = m?.hits ?? 0;
   const disagreed = m ? m.n - m.hits : 0;
   return calibrate("outcome", { agreed, disagreed });
+}
+
+/**
+ * `CalibrationMetrics.accuracy` renamed for any JSON surface that echoes it
+ * directly — `cost-per-task --calibrate`'s raw dump was doing exactly that,
+ * naming a field "accuracy" for an exact-match rate computed over the SAME
+ * self-selected corrections sample this module's `outcomeCalibrationFrom`
+ * calibrates the outcome subject against. This module's whole point is that a
+ * number from that sample must never be read as accuracy (see this file's
+ * header and `core/calibration.ts`'s); a sibling surface naming the number
+ * "accuracy" contradicted it in the same product.
+ *
+ * Renamed at this boundary rather than at `CalibrationMetrics`' declaration in
+ * `cost-per-task/calibration.ts`: that type also feeds the Phase-A
+ * combiner-selection gate (`meetsFailedFloor`), an internal, config-gated
+ * comparison (`config.experimentalSignals`) this rename has no reason to
+ * touch — same number, same computation, just never handed to a JSON
+ * consumer under the honesty-violating name.
+ */
+export interface CalibrationMetricsJson {
+  readonly n: number;
+  readonly hits: number;
+  /** Was `accuracy`. Same number — see this function's doc for why the name changed. */
+  readonly agreementOnReviewedSubset: number | null;
+  readonly observableN: number;
+  readonly perClass: CalibrationMetrics["perClass"];
+  readonly brier: number | null;
+  readonly failedPrecision: number | null;
+  readonly meetsFailedFloor: boolean;
+}
+
+export function renameAccuracyField(m: CalibrationMetrics): CalibrationMetricsJson {
+  const { accuracy, ...rest } = m;
+  return { ...rest, agreementOnReviewedSubset: accuracy };
 }
 
 // ─── Machine-readable shape (MCP) ─────────────────────────────────────────────

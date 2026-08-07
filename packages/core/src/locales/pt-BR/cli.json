@@ -189,7 +189,11 @@
     "ticketNegate": "Marca esta chave como tombstone na sessão (suprime mesmo que a extração continue correspondendo)",
     "ticketRemove": "Remove um vínculo manual desta chave (não afeta o tombstone de negação)",
     "ticketList": "Lista os vínculos de ticket da sessão antes de aplicar qualquer alteração",
-    "packInvoiceCsv": "Caminho para uma exportação CSV do Cost Explorer (ou equivalente) a ser usada na reconciliação — substitui config.reconciliation.invoiceTotal apenas nesta execução"
+    "packInvoiceCsv": "Caminho para uma exportação CSV do Cost Explorer (ou equivalente) a ser usada na reconciliação — substitui config.reconciliation.invoiceTotal apenas nesta execução",
+    "constraintImpact": "O que uma mudança de política declarada (limite de orçamento, remoção de um nível de modelo) custou ou economizou, por classe de tarefa — saída JSON; encaminhe para o jq",
+    "constraintImpactDate": "Qual evento de política declarado usar como ponto de comparação (deve corresponder a uma data em config.policyEvents). Padrão: o mais recente",
+    "constraintImpactCsv": "Também grava a tabela por classe neste caminho CSV",
+    "constraintImpactMinSessions": "Limite mínimo de sessões por classe e lado (padrão: 8)"
   },
   "collection": {
     "collecting": "Coletando...",

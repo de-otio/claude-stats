@@ -136,6 +136,10 @@
       "types": "./dist/hygiene/index.d.ts",
       "default": "./dist/hygiene/index.js"
     },
+    "./constraintImpact": {
+      "types": "./dist/constraintImpact.d.ts",
+      "default": "./dist/constraintImpact.js"
+    },
     "./pack": {
       "types": "./dist/pack.d.ts",
       "default": "./dist/pack.js"

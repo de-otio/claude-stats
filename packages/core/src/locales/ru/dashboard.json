@@ -51,6 +51,7 @@
     "tokenBreakdown": "Разбивка токенов",
     "cacheUsage": "Использование кэша",
     "cumulativeApiValue": "Накопленная API-ценность и стоимость плана",
+    "policyEvents": "События политики",
     "topProjects": "Топ проектов",
     "tokensByProject": "Доля токенов по проектам",
     "energyByProject": "Энергопотребление по проектам",

@@ -333,6 +333,102 @@ export async function buildCli(): Promise<Command> {
     );
 
   program
+    .command("constraint-impact")
+    .description(t("cli:commands.constraintImpact"))
+    .option("--date <yyyy-mm-dd>", t("cli:commands.constraintImpactDate"))
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
+    .option("--project <path>", t("cli:commands.reportProject"))
+    .option("--account <uuid>", t("cli:commands.reportAccount"))
+    .option("--min-sessions <n>", t("cli:commands.constraintImpactMinSessions"))
+    .option("--csv <path>", t("cli:commands.constraintImpactCsv"))
+    .action(async (opts: {
+      date?: string;
+      since?: string;
+      until?: string;
+      project?: string;
+      account?: string;
+      minSessions?: string;
+      csv?: string;
+    }) => {
+      loadCachedPricing();
+      const config = loadConfig();
+      const events = config.policyEvents ?? [];
+      if (events.length === 0) {
+        console.error(
+          "No policy events declared. This report compares the windows either side of a DECLARED " +
+            "policy boundary and never infers one from the data (constraint-impact/03 §3.1) — add an " +
+            'entry to config.policyEvents, e.g. { "date": "2026-05-01", "kind": "model-removal", ' +
+            '"detail": "opus" }.',
+        );
+        process.exitCode = 1;
+        return;
+      }
+      const policyEvent = opts.date ? events.find((e) => e.date === opts.date) : events[events.length - 1];
+      if (!policyEvent) {
+        console.error(
+          `No declared policy event with date "${opts.date}". Declared dates: ${events.map((e) => e.date).join(", ")}.`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+
+      const { buildConstraintImpactReport } = await import("../constraintImpact/index.js");
+      const { renderConstraintImpactCsv } = await import("@claude-stats/core/constraintImpact");
+      const toBoundMs = (d: string | undefined): number | undefined =>
+        d ? Date.parse(`${d}T00:00:00.000Z`) : undefined;
+
+      const store = new Store();
+      await collect(store, { ticketAllowlist: ticketProjectKeys(config) });
+      try {
+        const { report, coverage } = buildConstraintImpactReport(store, policyEvent, {
+          projectPath: opts.project,
+          accountUuid: opts.account,
+          since: toBoundMs(opts.since),
+          until: toBoundMs(opts.until),
+          minSessionsPerClass: opts.minSessions ? Number(opts.minSessions) : undefined,
+          rateOverrides: config.pricing?.rates,
+          hourlyRate: config.rate?.hourly ?? null,
+          currency: config.rate?.currency ?? "USD",
+        });
+
+        if (opts.csv) {
+          fs.writeFileSync(opts.csv, renderConstraintImpactCsv(report), "utf-8");
+        }
+
+        // JSON-only, same precedent as `cost-per-task --calibrate`: this is a
+        // structured diagnostic with no localized prose to translate — pipe to jq.
+        process.stdout.write(
+          JSON.stringify(
+            {
+              declaredPolicyEvents: events,
+              policyEvent,
+              boundary: new Date(report.boundaryMs).toISOString(),
+              coverage,
+              confoundNote: report.confoundNote,
+              notMeasured: report.notMeasured,
+              minSessionsPerClass: report.minSessionsPerClass,
+              hourlyRate: report.hourlyRate,
+              currency: report.currency,
+              netEffectAvailable: report.netEffectAvailable,
+              classesCompared: report.classesCompared,
+              classesInsufficientData: report.classesInsufficientData,
+              totalTokenSavings: report.totalTokenSavings,
+              totalDevTimeCost: report.totalDevTimeCost,
+              totalNetEffect: report.totalNetEffect,
+              classes: report.classes,
+              ...(opts.csv ? { csvPath: opts.csv } : {}),
+            },
+            null,
+            2,
+          ) + "\n",
+        );
+      } finally {
+        store.close();
+      }
+    });
+
+  program
     .command("spending")
     .description(t("cli:commands.spending"))
     .option("--period <period>", t("cli:commands.spendingPeriod"), "day")
@@ -452,8 +548,34 @@ export async function buildCli(): Promise<Command> {
         if (opts.calibrate) {
           // Diagnostic: agreement of the proxy/combiner with the user's labels.
           // JSON-only so there is no localized prose to translate; pipe to jq.
+          //
+          // `outcome` is K's vocabulary (`calibration/index.ts`): gated on the
+          // n=30 floor, `rate` (not "accuracy"), and K's caveat sentence — the
+          // same shape `get_calibration`'s MCP tool returns. `diagnostics` keeps
+          // the richer proxy-vs-combiner comparison the Phase-A signals gate
+          // needs (per-class precision/recall, Brier, `meetsFailedFloor`), with
+          // its own `accuracy` field renamed at this boundary — see
+          // `renameAccuracyField`'s doc: that field is the SAME self-selected-
+          // sample number K's module exists to stop being read as accuracy.
           const calibration = await buildCalibrationReport(store, common);
-          process.stdout.write(JSON.stringify(calibration, null, 2) + "\n");
+          const { outcomeCalibrationFrom, calibrationJson, renameAccuracyField } =
+            await import("../calibration/index.js");
+          const estimate = outcomeCalibrationFrom(calibration);
+          process.stdout.write(
+            JSON.stringify(
+              {
+                outcome: calibrationJson(t, estimate),
+                diagnostics: {
+                  n: calibration.n,
+                  floor: calibration.floor,
+                  proxyOnly: renameAccuracyField(calibration.proxyOnly),
+                  withSignals: renameAccuracyField(calibration.withSignals),
+                },
+              },
+              null,
+              2,
+            ) + "\n",
+          );
           return;
         }
         const report = await buildCostPerTaskReport(store, {

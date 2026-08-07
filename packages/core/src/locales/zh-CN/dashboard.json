@@ -51,6 +51,7 @@
     "tokenBreakdown": "Token 构成",
     "cacheUsage": "缓存使用情况",
     "cumulativeApiValue": "累计 API 价值 vs 套餐费用",
+    "policyEvents": "策略事件",
     "topProjects": "热门项目",
     "tokensByProject": "按项目分布的 Token 占比",
     "energyByProject": "按项目分布的能耗",

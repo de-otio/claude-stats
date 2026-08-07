@@ -51,6 +51,7 @@
     "tokenBreakdown": "トークン内訳",
     "cacheUsage": "キャッシュ使用量",
     "cumulativeApiValue": "累積 API 価値 vs プラン料金",
+    "policyEvents": "ポリシーイベント",
     "topProjects": "トッププロジェクト",
     "tokensByProject": "プロジェクト別トークンシェア",
     "energyByProject": "プロジェクト別エネルギー使用量",

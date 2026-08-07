@@ -189,7 +189,11 @@
     "ticketNegate": "为该会话屏蔽此标识（即使提取仍能匹配也会将其抑制）",
     "ticketRemove": "移除此标识的手动链接（不影响屏蔽标记）",
     "ticketList": "在应用任何更改前列出该会话的工单链接",
-    "packInvoiceCsv": "用于对账的 Cost Explorer CSV 导出文件（或同类文件）的路径 — 仅对本次运行覆盖 config.reconciliation.invoiceTotal"
+    "packInvoiceCsv": "用于对账的 Cost Explorer CSV 导出文件（或同类文件）的路径 — 仅对本次运行覆盖 config.reconciliation.invoiceTotal",
+    "constraintImpact": "按任务类别列出一项已声明的策略变更（预算上限、移除某个模型档位）造成的成本或节省 — JSON 输出；可管道传给 jq",
+    "constraintImpactDate": "以哪个已声明的策略事件作为比较基准（必须匹配 config.policyEvents 中的某个日期）。默认：最近的一个",
+    "constraintImpactCsv": "同时将按类别的表格写入此 CSV 路径",
+    "constraintImpactMinSessions": "每个类别每一侧的最小会话数阈值（默认：8）"
   },
   "collection": {
     "collecting": "收集中...",

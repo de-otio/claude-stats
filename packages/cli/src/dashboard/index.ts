@@ -12,7 +12,7 @@ import { readClaudeAccount } from "../account.js";
 import { resolveAccountFee, type Config } from "../config.js";
 import { getTicketCostReport } from "../ticketing/index.js";
 import { resolveDashboardCostVocabulary, type VocabularyResolution } from "../server/insights.js";
-import type { Reconciliation, TicketCoverage } from "@claude-stats/core/types/insight";
+import type { Reconciliation, TicketCoverage, PolicyEvent } from "@claude-stats/core/types/insight";
 import { computeReconciliation } from "@claude-stats/core/reconciliation";
 import { buildFeeAttribution, type FeeAttribution } from "./fee-attribution.js";
 import {
@@ -321,6 +321,17 @@ export interface DashboardData {
    * the card corrects attribution regardless of which period is on screen.
    */
   currentSessionTicket?: CurrentSessionTicket | null;
+  /**
+   * Declared policy boundaries (`config.policyEvents`), for annotating the
+   * `byDay` timeline (constraint-impact/02 §2.2 point 3: "annotate the
+   * timeline with everything else that changed"). Undefined until {@link
+   * attachInsights} runs (matching {@link insights}'s precedent); an empty
+   * array once it has, when the config declares none — never a reason to
+   * hide a chart, just nothing to mark on it. The full analysis lives behind
+   * `get_constraint_impact`/`constraint-impact`; this is the passive
+   * annotation, not the comparison.
+   */
+  policyEvents?: readonly PolicyEvent[];
 }
 
 /** One row of {@link DashboardData.currentSessionTicket}'s `links` list. */
@@ -1553,6 +1564,13 @@ export function attachInsights(
     attributionCalibration,
     reconciliation,
   };
+  // Passive timeline annotation, not a comparison — `constraint-impact`/
+  // `get_constraint_impact` is where the before/after analysis lives. Every
+  // declared event, unfiltered by the displayed window: the list is small
+  // (`MAX_POLICY_EVENTS`-bounded) and a chart outside the window has nothing
+  // to mark, so filtering here would only add a second place the window
+  // logic could disagree with `byDay`'s own.
+  data.policyEvents = config.policyEvents ?? [];
   return data;
 }
 

@@ -165,6 +165,25 @@ describe("renderDashboard", () => {
     expect(html).toContain('id="chart-cache"');
   });
 
+  it("renders declared policy events as a timeline annotation under the daily chart", () => {
+    const withEvents: DashboardData = {
+      ...mockData,
+      policyEvents: [{ date: "2026-05-01", kind: "model-removal", detail: "opus", scope: "org" }],
+    };
+    const html = renderDashboard(withEvents, t);
+    expect(html).toContain("2026-05-01");
+    expect(html).toContain("model-removal");
+    expect(html).toContain("opus");
+    expect(html).toContain(t("dashboard:charts.policyEvents"));
+  });
+
+  it("renders nothing extra when no policy events are declared or attached", () => {
+    const noEvents = renderDashboard({ ...mockData, policyEvents: [] }, t);
+    const undeclared = renderDashboard({ ...mockData, policyEvents: undefined }, t);
+    expect(noEvents).not.toContain(t("dashboard:charts.policyEvents"));
+    expect(undeclared).not.toContain(t("dashboard:charts.policyEvents"));
+  });
+
   it("handles empty byDay array without crashing", () => {
     const emptyDay: DashboardData = {
       ...mockData,

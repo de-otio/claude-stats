@@ -70,6 +70,7 @@
     "tokenBreakdown": "Token Breakdown",
     "cacheUsage": "Cache Usage",
     "cumulativeApiValue": "Cumulative API Value vs Plan Fee",
+    "policyEvents": "Policy events",
     "topProjects": "Top Projects",
     "tokensByProject": "Token Share by Project",
     "energyByProject": "Energy Usage by Project",

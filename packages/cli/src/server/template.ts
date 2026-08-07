@@ -16,6 +16,8 @@ import {
   INSIGHTS_CSS,
 } from "./insights.js";
 import { renderTicketAttributionCard, TICKET_CARD_CSS } from "./ticketCard.js";
+import { escapeHtml } from "./utils.js";
+import type { PolicyEvent } from "@claude-stats/core/types/insight";
 
 export { DashboardData };
 
@@ -24,6 +26,30 @@ export type TranslateFn = (key: string, options?: Record<string, unknown>) => st
 
 /** Default passthrough translator — returns the key as-is (fallback for non-i18n callers). */
 const defaultT: TranslateFn = (key: string) => key;
+
+/**
+ * Passive timeline annotation under the daily chart — the visible half of
+ * constraint-impact/02 §2.2 point 3 ("annotate the timeline with everything
+ * else that changed"). The comparison itself lives behind `constraint-impact`
+ * / `get_constraint_impact`; this is only a marker list, never a verdict.
+ * `kind` renders as the raw config enum value (like a task-class name
+ * elsewhere on this dashboard) rather than through `t()` — it is a value the
+ * USER wrote into their own config, not product-authored prose.
+ */
+function policyEventsHtml(events: readonly PolicyEvent[] | undefined, t: TranslateFn): string {
+  if (!events || events.length === 0) return "";
+  const rows = events
+    .map((e) => {
+      const detail = e.detail ? ` — ${escapeHtml(e.detail)}` : "";
+      return `<li>${escapeHtml(e.date)}: ${escapeHtml(e.kind)}${detail}</li>`;
+    })
+    .join("");
+  return `
+        <div style="margin-top:0.5rem;font-size:0.72rem;color:#b0b0b0;">
+          <span style="text-transform:uppercase;letter-spacing:0.05em;color:#888;">${escapeHtml(t("dashboard:charts.policyEvents"))}</span>
+          <ul style="margin:0.2rem 0 0 1rem;padding:0;">${rows}</ul>
+        </div>`;
+}
 
 /**
  * Renders a complete self-contained HTML dashboard page.
@@ -678,6 +704,7 @@ ${TICKET_CARD_CSS}
       <div class="chart-card">
         <h2 id="chart-daily-title">${data.period === "day" ? t("dashboard:charts.hourlyTokenUsage") : t("dashboard:charts.dailyTokenUsage")}</h2>
         <canvas id="chart-daily"></canvas>
+        ${policyEventsHtml(data.policyEvents, t)}
       </div>
       <div class="chart-card">
         <h2>${t("dashboard:charts.tokenBreakdown")}</h2>

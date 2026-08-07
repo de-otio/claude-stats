@@ -189,7 +189,11 @@
     "ticketKeyArg": "Ticket key (e.g. PROJ-123). Omitted with no other flag: lists current links",
     "ticketNegate": "Tombstone this key for the session (suppresses it even if extraction keeps matching)",
     "ticketRemove": "Remove a manual link for this key (does not affect the negation tombstone)",
-    "ticketList": "List ticket links for the session before applying any change"
+    "ticketList": "List ticket links for the session before applying any change",
+    "constraintImpact": "What a declared policy change (budget cap, model-tier removal) cost or saved, per task class — JSON output; pipe to jq",
+    "constraintImpactDate": "Which declared policy event to compare around (must match a config.policyEvents date). Default: the most recent",
+    "constraintImpactCsv": "Also write the per-class table to this CSV path",
+    "constraintImpactMinSessions": "Sample-size floor per class, per side (default: 8)"
   },
   "collection": {
     "collecting": "Collecting...",
