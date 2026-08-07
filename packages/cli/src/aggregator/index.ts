@@ -236,6 +236,10 @@ export async function collect(
         }
       }
 
+      if (parsed.apiErrorEvents.length > 0) {
+        store.upsertApiErrorEvents(parsed.apiErrorEvents);
+      }
+
       if (parsed.errors.length > 0) {
         store.addToQuarantine(parsed.errors);
       }

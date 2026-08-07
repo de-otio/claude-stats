@@ -154,6 +154,19 @@
         "attribution": "`claude-stats ticket <session-id> <key>` で自動リンクを承認または修正し、誤ったリンクは `--negate` で取り消せます。明示的な判定ごとにサンプルが増えます。",
         "outcome": "完了した作業には `claude-stats task-outcome <item> <success|partial|fail>` でラベルを付けてください。ラベルごとにサンプルが増えます。"
       }
+    },
+    "apiThrottle": {
+      "rejection": {
+        "summary_one": "この期間中、Claude の API によるレート制限が {{count}} 回発生しました。",
+        "summary_other": "この期間中、Claude の API によるレート制限が {{count}} 回発生しました。",
+        "caveatMetered": "Claude Code はレート制限による拒否が発生したことのみを記録し、その継続時間は記録しません。これは時間コストではなく、下限を示すシグナルとして扱ってください。アカウントの API または Bedrock のレート制限ティアを確認してください。",
+        "caveatPlan": "Claude Code はレート制限による拒否が発生したことのみを記録し、その継続時間は記録しません。これは時間コストではなく、下限を示すシグナルとして扱ってください。これはリクエスト単位の制限であり、プランの 5 時間の使用枠とは別のものです。"
+      },
+      "overload": {
+        "summary_one": "この期間中、Claude の API が {{count}} 回過負荷となり、計測された再試行の待機時間が {{time}} 増加しました。",
+        "summary_other": "この期間中、Claude の API が {{count}} 回過負荷となり、計測された再試行の待機時間が {{time}} 増加しました。",
+        "caveat": "これはアカウントのレート制限や組織のポリシーではなく、Anthropic 自体のインフラの可用性を反映したものです。どのアカウントでも発生する可能性があり、制約によるコストではありません。"
+      }
     }
   },
   "actions": {

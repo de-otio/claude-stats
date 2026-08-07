@@ -41,10 +41,10 @@
  * silent omission; `NOT_MEASURED` names it so a report consumer sees the gap
  * rather than inferring completeness (I1).
  */
-import type { PolicyEvent } from "./types/insight.js";
-import type { TaskClass, CoarseTaskClass, Confidence } from "./types/insight.js";
-import { classificationGrain } from "./taskClass/index.js";
-import { trendOf } from "./insight.js";
+import type { PolicyEvent } from "../types/insight.js";
+import type { TaskClass, CoarseTaskClass, Confidence } from "../types/insight.js";
+import { classificationGrain } from "../taskClass/index.js";
+import { trendOf } from "../insight.js";
 
 // ─── Scope + defaults ──────────────────────────────────────────────────────────
 

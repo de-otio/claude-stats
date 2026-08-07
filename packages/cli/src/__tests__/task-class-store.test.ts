@@ -56,12 +56,15 @@ describe("schema V21 migration", () => {
   beforeEach(() => { dbPath = tmpDb(); });
   afterEach(() => { try { fs.unlinkSync(dbPath); } catch { /* best effort */ } });
 
-  it("creates the table on a fresh database and reports version 21", () => {
+  it("creates the table on a fresh database (current schema version, V21+)", () => {
     const store = new Store(dbPath);
     store.close();
     const raw = new DatabaseSync(dbPath);
     const { value } = raw.prepare("SELECT value FROM metadata WHERE key='schema_version'").get() as { value: string };
-    expect(value).toBe("21");
+    // A fresh DB always lands on the CURRENT schema version, not V21
+    // specifically — later migrations (e.g. V22) bump this. What this test
+    // actually guards is V21's table, asserted below.
+    expect(parseInt(value, 10)).toBeGreaterThanOrEqual(21);
     const tbl = raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='session_task_class'").get();
     expect(tbl).toBeDefined();
     raw.close();

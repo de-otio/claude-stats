@@ -81,6 +81,19 @@
       "hours": "{{value}} dev-hours",
       "days": "{{value}} dev-days"
     },
+    "apiThrottle": {
+      "rejection": {
+        "summary_one": "Claude's API rate-limited you {{count}} time this period.",
+        "summary_other": "Claude's API rate-limited you {{count}} times this period.",
+        "caveatMetered": "Claude Code does not log how long a rate-limit rejection lasted, only that it happened — treat this as a lower-bound signal, not a time cost. Check your account's API or Bedrock rate-limit tier.",
+        "caveatPlan": "Claude Code does not log how long a rate-limit rejection lasted, only that it happened — treat this as a lower-bound signal, not a time cost. This is a request-level limit, separate from your plan's 5-hour usage window."
+      },
+      "overload": {
+        "summary_one": "Claude's API was overloaded {{count}} time this period, adding {{time}} of measured retry wait.",
+        "summary_other": "Claude's API was overloaded {{count}} times this period, adding {{time}} of measured retry wait.",
+        "caveat": "This reflects Anthropic's own infrastructure availability, not your account's rate limit or any org policy — it applies to any account and is not a constraint cost."
+      }
+    },
     "confidence": {
       "high": "high",
       "medium": "medium",

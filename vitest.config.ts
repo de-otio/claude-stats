@@ -20,7 +20,7 @@ export default defineConfig({
       "@claude-stats/core/pack": path.resolve(__dirname, "packages/core/src/pack.ts"),
       "@claude-stats/core/taskClass": path.resolve(__dirname, "packages/core/src/taskClass/index.ts"),
       "@claude-stats/core/hygiene": path.resolve(__dirname, "packages/core/src/hygiene/index.ts"),
-      "@claude-stats/core/constraintImpact": path.resolve(__dirname, "packages/core/src/constraintImpact.ts"),
+      "@claude-stats/core/constraintImpact": path.resolve(__dirname, "packages/core/src/constraintImpact/index.ts"),
       "@claude-stats/core/bundle": path.resolve(__dirname, "packages/core/src/bundle/index.ts"),
       "@claude-stats/core/types": path.resolve(__dirname, "packages/core/src/types.ts"),
       "@claude-stats/core/pricing": path.resolve(__dirname, "packages/core/src/pricing.ts"),

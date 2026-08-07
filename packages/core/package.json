@@ -137,8 +137,8 @@
       "default": "./dist/hygiene/index.js"
     },
     "./constraintImpact": {
-      "types": "./dist/constraintImpact.d.ts",
-      "default": "./dist/constraintImpact.js"
+      "types": "./dist/constraintImpact/index.d.ts",
+      "default": "./dist/constraintImpact/index.js"
     },
     "./pack": {
       "types": "./dist/pack.d.ts",

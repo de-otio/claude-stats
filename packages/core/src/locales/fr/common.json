@@ -159,6 +159,21 @@
         "attribution": "Confirmez ou corrigez un lien automatique avec `claude-stats ticket <session-id> <key>`, ou annulez-en un erroné avec `--negate` ; chaque décision explicite agrandit l'échantillon.",
         "outcome": "Étiquetez le travail terminé avec `claude-stats task-outcome <item> <success|partial|fail>` ; chaque étiquette agrandit l'échantillon."
       }
+    },
+    "apiThrottle": {
+      "rejection": {
+        "summary_one": "L'API de Claude vous a imposé une limite de débit {{count}} fois sur cette période.",
+        "summary_other": "L'API de Claude vous a imposé une limite de débit {{count}} fois sur cette période.",
+        "caveatMetered": "Claude Code ne consigne pas la durée d'un rejet pour limite de débit, seulement qu'il a eu lieu — à considérer comme un signal minimal, pas comme un coût en temps. Vérifiez le palier de limite de débit de votre compte API ou Bedrock.",
+        "caveatPlan": "Claude Code ne consigne pas la durée d'un rejet pour limite de débit, seulement qu'il a eu lieu — à considérer comme un signal minimal, pas comme un coût en temps. Il s'agit d'une limite au niveau des requêtes, distincte de la fenêtre d'utilisation de 5 heures de votre forfait.",
+        "summary_many": "L'API de Claude vous a imposé une limite de débit {{count}} fois sur cette période."
+      },
+      "overload": {
+        "summary_one": "L'API de Claude a été surchargée {{count}} fois sur cette période, ajoutant {{time}} d'attente mesurée avant nouvelle tentative.",
+        "summary_other": "L'API de Claude a été surchargée {{count}} fois sur cette période, ajoutant {{time}} d'attente mesurée avant nouvelle tentative.",
+        "caveat": "Cela reflète la disponibilité de l'infrastructure d'Anthropic elle-même, et non la limite de débit de votre compte ni une politique d'organisation — cela s'applique à n'importe quel compte et ne constitue pas un coût de contrainte.",
+        "summary_many": "L'API de Claude a été surchargée {{count}} fois sur cette période, ajoutant {{time}} d'attente mesurée avant nouvelle tentative."
+      }
     }
   },
   "actions": {
