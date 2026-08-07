@@ -313,6 +313,25 @@ describe("answer formatters", () => {
     expect(a.answer).toContain("+1 more");
   });
 
+  // Regression: "+N more" was derived from a `slice(0, 3)`, so it capped at
+  // "+2 more" while `value` kept reporting the full count — two contradicting
+  // numbers on one card. Every existing case had ≤3 recommendations, where the
+  // two counts coincide, so nothing noticed.
+  it("counts every recommendation beyond the lead, not just those in a top-N slice", () => {
+    const a = answerChange({
+      recommendations: Array.from({ length: 7 }, (_, i) => ({ title: `Recommendation ${i}` })),
+    });
+    expect(a.value).toBe("7");
+    expect(a.answer).toBe("Recommendation 0 (+6 more).");
+  });
+
+  it("names no companions at all when there is exactly one recommendation", () => {
+    const a = answerChange({ recommendations: [{ title: "Only one thing" }] });
+    expect(a.value).toBe("1");
+    expect(a.answer).toBe("Only one thing.");
+    expect(a.answer).not.toContain("more");
+  });
+
   it("handles a missing efficiency frontier honestly", () => {
     const a = answerEfficiency({ recoverableWaste: null, cost: 100 });
     expect(a.unavailable?.reason).toBe("no-data");

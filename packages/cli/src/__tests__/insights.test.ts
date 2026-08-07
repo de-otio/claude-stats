@@ -31,7 +31,7 @@ import { renderDashboard } from "../server/template.js";
 import { answerCost } from "@claude-stats/core/insight";
 import { NAV_TAB_IDS } from "../server/nav.js";
 import type { DashboardData } from "../dashboard/index.js";
-import type { Config } from "../config.js";
+import { resolveAccountMode, type Config } from "../config.js";
 import type { TranslateFn } from "../server/template.js";
 import { initI18n } from "@claude-stats/core/i18n";
 import { createRequire } from "node:module";
@@ -229,6 +229,21 @@ describe("Insights tab — the rendered figures do not move", () => {
   it("is deterministic — the same payload renders byte-identically", () => {
     expect(renderTab(goldenData)).toBe(renderTab(goldenData));
   });
+
+  // Every card asserted above is found by its DOM id, which says nothing about
+  // whether the TITLE above it belongs to that question. Swapping two entries
+  // of `QUESTION_TITLE_KEY` mislabels a card — "What did AI cost?" over the
+  // coverage percentage — while every figure assertion stays green (verified by
+  // mutation). The identity translator makes the key itself visible, so this
+  // also proves each title went through `t()`.
+  it("titles every card with its OWN question's key, never a neighbour's", () => {
+    const raw = renderInsightsTab(buildInsightAnswers(goldenData, buildOpts), [], rawT);
+    for (const q of ["cost", "bought", "efficiency", "setup", "change"] as const) {
+      expect(card(raw, `insight-${q}`)).toContain(
+        `<div class="cs-card-title">dashboard:insights.cards.${q}</div>`,
+      );
+    }
+  });
 });
 
 // ─── Honest-empty states: the most important part of the lane ─────────────────
@@ -392,6 +407,44 @@ describe("cost vocabulary — resolving one answer for a dashboard spanning N ac
     });
   });
 
+  // `resolveDashboardCostVocabulary` reimplements the per-account rule rather
+  // than calling `resolveAccountMode`, and it has to: `config.pricing.mode` is
+  // already consumed above it, so passing the config down would collapse every
+  // account to the same declared answer and make the N-account loop pointless.
+  // The cost is that two functions now decide one fact about one account, with
+  // nothing holding them together — the drift the shared-formatter rule exists
+  // to prevent, one level down. This pins them.
+  it("agrees with resolveAccountMode on the subscription-type axis, so one account cannot get two answers", () => {
+    for (const subscriptionType of ["pro", "max_5x", "max_20x", "team", "enterprise", null]) {
+      const one: DashboardData = {
+        ...goldenData,
+        planUtilization: null, // force the availableAccounts path: type only, no fee
+        availableAccounts: [acct("a", subscriptionType)],
+      };
+      expect(
+        resolveDashboardCostVocabulary(one, noConfig).vocabulary,
+        `subscriptionType=${subscriptionType}`,
+      ).toBe(resolveAccountMode(noConfig, subscriptionType));
+    }
+  });
+
+  it("documents the ONE axis on which the two deliberately differ — a fee only the dashboard can see", () => {
+    // `resolveAccountMode` takes a subscription type and nothing else, so it
+    // cannot know about a hand-configured `accountFees` entry. The dashboard
+    // can, and treats it as plan billing. Asserted so the divergence is a
+    // recorded decision rather than a latent surprise.
+    const fee: DashboardData = {
+      ...goldenData,
+      availableAccounts: [acct("a", null)],
+      planUtilization: {
+        ...goldenData.planUtilization!,
+        byAccount: [{ accountId: "a", subscriptionType: null, detectedPlanFee: 100 }],
+      } as unknown as DashboardData["planUtilization"],
+    };
+    expect(resolveDashboardCostVocabulary(fee, noConfig).vocabulary).toBe("plan");
+    expect(resolveAccountMode(noConfig, null)).toBe("metered");
+  });
+
   it("suppresses the plan multiplier inside the shared formatter, not at the call site", () => {
     // Asserted directly on `answerCost` because the caller passes planFee and
     // planMultiplier UNCONDITIONALLY: if the caller gated them instead, this
@@ -468,6 +521,67 @@ describe("alerts strip — precision over recall", () => {
     expect(buildAlerts(mixedData, t)).toEqual([]);
   });
 
+  // An alert is "one line + one action link" (02 §2.3). Both halves of that
+  // were unasserted: nothing checked an alert's severity — which is the only
+  // thing separating the red critical rail from the amber warning rail — and
+  // nothing checked where "Review" actually goes. Downgrading every critical
+  // alert to `warning`, and routing the fallback-rates alert away from
+  // Settings (where the fix lives) to the Efficiency tab, both left the suite
+  // green.
+  it("carries each alert's severity and action destination into the rendered strip", () => {
+    const data: DashboardData = {
+      ...goldenData, summary: { ...goldenData.summary, anyFallbackRates: true },
+    };
+    // The fact-based alert leads, and each one keeps its own severity and the
+    // tab on which the reader can act.
+    expect(buildAlerts(data, t).map((a) => [a.id, a.severity, a.tab])).toEqual([
+      ["fallback-rates", "warning", "settings"],
+      ["rec:model-tier-waste", "critical", "efficiency"],
+    ]);
+
+    const html = renderTab(data);
+    const stripStart = html.indexOf('<div class="cs-alerts"');
+    expect(stripStart).toBeGreaterThan(-1);
+    // Sliced: the cards below carry `data-evidence-link` attributes of their
+    // own, so a page-wide search for an href would find the wrong element.
+    const strip = html.slice(stripStart, html.indexOf('<div class="cs-insights-grid">'));
+    expect(strip).toContain('<div class="cs-alert cs-alert-warning" data-alert-id="fallback-rates">');
+    expect(strip).toContain('<div class="cs-alert cs-alert-critical" data-alert-id="rec:model-tier-waste">');
+    expect(strip).toContain('href="#settings" data-evidence-link="settings"');
+    expect(strip).toContain('href="#efficiency" data-evidence-link="efficiency"');
+  });
+
+  // `insights.ts` keeps its own escaper (deliberately independent of
+  // `card.ts`'s), and nothing exercised it: replacing it with the identity
+  // function left every test green. Recommendation titles and impacts are
+  // engine-composed strings that interpolate plan labels and figures, so this
+  // is defence in depth rather than a live injection — but an unexercised
+  // escaper is one refactor away from not being one.
+  it("escapes recommendation text and alert ids rather than trusting them as markup", () => {
+    const hostile: DashboardData = {
+      ...goldenData,
+      summary: { ...goldenData.summary, anyFallbackRates: false },
+      recommendations: [
+        {
+          id: 'x" onload="alert(1)',
+          severity: "critical",
+          title: "<img src=x onerror=alert(1)>",
+          body: "…",
+          impact: '"><script>alert(2)</script>',
+        },
+      ],
+    };
+    const html = renderTab(hostile);
+    expect(html).not.toContain("<img src=x onerror=alert(1)>");
+    expect(html).not.toContain("<script>alert(2)</script>");
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(html).toContain("&lt;script&gt;alert(2)&lt;/script&gt;");
+    // The id lands in a quoted attribute, where an unescaped `"` breaks out of
+    // the attribute rather than merely rendering a stray tag.
+    expect(html).toContain('data-alert-id="rec:x&quot; onload=&quot;alert(1)"');
+    expect(html.match(/\bdata-alert-id="/g)).toHaveLength(1);
+  });
+
   it("localizes its own copy through t(), rather than hardcoding English", () => {
     const data: DashboardData = {
       ...goldenData, recommendations: [], summary: { ...goldenData.summary, anyFallbackRates: true },
@@ -534,6 +648,64 @@ describe("the served page", () => {
     expect(sentenceOf(overview)).toBe(sentenceOf(q1));
     const caveatOf = (c: string) => c.match(/<div class="cs-card-caveat">([^<]*)</)?.[1] ?? null;
     expect(caveatOf(overview)).toBe(caveatOf(q1));
+  });
+
+  // Everything above renders `renderInsightsTab` directly with a hand-built
+  // `InsightBuildOptions`, which leaves the wiring in `template.ts` — the code
+  // that DECIDES those options — completely unasserted. Deleting the
+  // resolver's result from that call site and reverting to the `planFee > 0`
+  // proxy, and separately nulling the configured hourly rate and flipping the
+  // plan verdict, all left the suite green (verified by mutation). These two
+  // tests assert the decisions, on the real page.
+  it("takes the cost vocabulary from the resolver, not from the planFee proxy it replaced", () => {
+    // Two accounts, one plan seat and one metered, and NO manually configured
+    // plan fee — the case the proxy gets wrong. `planFee === 0` makes the proxy
+    // say "metered", so the page would print "Actual metered cost." over a
+    // figure that is half plan-equivalent value: precisely the confidently
+    // wrong claim I1 forbids.
+    const mixed: DashboardData = {
+      ...goldenData,
+      availableAccounts: [acct("a", "max_20x"), acct("b", null)],
+      insights: {
+        ...goldenData.insights!,
+        vocabulary: { vocabulary: "mixed", basis: "mixed-accounts", planAccounts: 1, meteredAccounts: 1 },
+      },
+    };
+    expect(mixed.summary.planFee).toBe(0);
+    const c = card(renderDashboard(mixed, t), "insight-cost");
+    expect(c).toContain("Mixed billing across the accounts in view");
+    expect(c).not.toContain("Actual metered cost.");
+
+    // The converse, and the more common one: a Max subscriber who never typed
+    // a fee into Settings. The proxy calls that metered too.
+    const plan: DashboardData = {
+      ...goldenData,
+      availableAccounts: [acct("a", "max_20x")],
+      insights: {
+        ...goldenData.insights!,
+        vocabulary: { vocabulary: "plan", basis: "accounts", planAccounts: 1, meteredAccounts: 0 },
+      },
+    };
+    const p = card(renderDashboard(plan, t), "insight-cost");
+    expect(p).toContain("Equivalent API cost — not what your plan charges.");
+    expect(p).not.toContain("Actual metered cost.");
+  });
+
+  it("feeds the cards the configured rate, currency and plan verdict from the payload", () => {
+    const html = renderDashboard(goldenData, t);
+    // $312.40 at the configured $90/h → 3.5 dev-hours. Asserted on the PAGE,
+    // so the rate is proven to travel data.insights → template.ts → the card,
+    // not merely to survive `buildInsightAnswers` when a test hands it over.
+    const q1 = card(html, "insight-cost");
+    expect(q1).toContain("≈ 3.5 dev-hours at your configured rate");
+    expect(headlineValue(q1)).toBe("$312"); // USD from the payload, not a stray default
+    // Q4 renders `planUtilization.currentPlanVerdict` translated by the host;
+    // the golden verdict is "good-value", and the two other branches read
+    // completely differently to a manager.
+    const q4 = card(html, "insight-setup");
+    expect(q4).toContain("Your plan is good value for how much you use it.");
+    expect(q4).not.toContain("No plan detected");
+    expect(q4).not.toContain("using less than your plan covers");
   });
 
   it("carries the tab label through t(), not as a hardcoded literal", () => {
