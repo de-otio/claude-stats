@@ -488,5 +488,16 @@
       "underusing": "Wykorzystujesz mniej, niż obejmuje Twój plan",
       "noPlan": "Nie wykryto planu — koszty są traktowane jako rozliczenie za zużycie"
     }
+  },
+  "ticketCard": {
+    "title": "Przypisanie zgłoszeń",
+    "noSession": "Nie zarejestrowano jeszcze żadnych sesji — nie ma czego powiązać.",
+    "session": "Bieżąca sesja: {{sessionId}}…",
+    "noLinks": "Brak powiązanych zgłoszeń dla tej sesji.",
+    "negatedBadge": "zanegowane",
+    "negateAction": "Zaneguj",
+    "removeAction": "Usuń",
+    "linkAction": "Powiąż",
+    "keyPlaceholder": "PROJ-123"
   }
 }

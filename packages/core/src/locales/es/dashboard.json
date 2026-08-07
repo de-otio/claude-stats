@@ -488,5 +488,16 @@
       "underusing": "Estás usando menos de lo que cubre tu plan",
       "noPlan": "No se detectó ningún plan — los costes se leen como uso medido"
     }
+  },
+  "ticketCard": {
+    "title": "Atribución de tickets",
+    "noSession": "Aún no hay sesiones registradas: nada que vincular.",
+    "session": "Sesión actual: {{sessionId}}…",
+    "noLinks": "No hay tickets vinculados a esta sesión.",
+    "negatedBadge": "anulado",
+    "negateAction": "Anular",
+    "removeAction": "Quitar",
+    "linkAction": "Vincular",
+    "keyPlaceholder": "PROJ-123"
   }
 }

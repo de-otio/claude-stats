@@ -146,3 +146,68 @@ describe("webview path — the Insights tab, in the VS Code host", () => {
     expect(webview).toContain("--vscode-inputValidation-warningBorder");
   });
 });
+
+describe("webview path — the ticket attribution card (Lane L)", () => {
+  const withTicket: DashboardData = {
+    ...populatedData,
+    currentSessionTicket: {
+      sessionId: "abc12345-6789",
+      links: [
+        { ticketKey: "PROJ-1", source: "branch", confidence: "high", granularity: "session", negated: false },
+        { ticketKey: "PROJ-2", source: "tag", confidence: "high", granularity: "session", negated: true },
+      ],
+    },
+  };
+
+  it("renders the card with the session id and both links, and the click-handler wiring is present and correctly targeted", () => {
+    const webview = patchForWebview(
+      renderDashboard(withTicket), "vscode-webview://abc", "vscode-resource://chart.js");
+
+    expect(webview).toContain('data-session-id="abc12345-6789"');
+    expect(webview).toContain("PROJ-1");
+    expect(webview).toContain("PROJ-2");
+    // The webview-only bridge script (panel.ts) must be present and reference
+    // all three commands the card's buttons can send.
+    expect(webview).toContain("'linkTicket'");
+    expect(webview).toContain("'negateTicket'");
+    expect(webview).toContain("'removeTicket'");
+    // Source==='tag' gets a Remove button (PROJ-2); source==='branch' does not
+    // (PROJ-1) — removing an automatic row would just have it reappear on the
+    // next collect.
+    const removeButtons = (webview.match(/data-ticket-action="remove"/g) ?? []).length;
+    expect(removeButtons).toBe(1);
+    const negateButtons = (webview.match(/data-ticket-action="negate"/g) ?? []).length;
+    expect(negateButtons).toBe(2);
+  });
+
+  it("the markup's session-id attribute name and the bridge script's own selector agree exactly", () => {
+    const webview = patchForWebview(
+      renderDashboard(withTicket), "vscode-webview://abc", "vscode-resource://chart.js");
+    // A mismatch here (e.g. markup emits `data-session-id` but the script
+    // reads `data-sessionid`) would leave every button silently inert —
+    // `ticketSessionId` would be null and every click handler's early-return
+    // would fire — with no visible symptom short of clicking and nothing
+    // happening. Assert the exact strings on both sides of the seam, not
+    // just "each exists somewhere on the page".
+    expect(webview).toContain('data-session-id="abc12345-6789"');
+    expect(webview).toContain("ticketCard.getAttribute('data-session-id')");
+  });
+
+  it("renders the honest empty state, with no click-target ids, when there is no current session", () => {
+    const webview = patchForWebview(
+      renderDashboard({ ...populatedData, currentSessionTicket: null }),
+      "vscode-webview://abc", "vscode-resource://chart.js");
+    // Card-scoped slice: the bridge script (embedded on every page) also
+    // mentions "ticket-key-input" as an id lookup, so a page-wide search
+    // would pass even if the card wrongly rendered the input.
+    const cardStart = webview.indexOf('id="ticket-attribution-card"');
+    expect(cardStart).toBeGreaterThan(-1);
+    // The empty-card branch (ticketCard.ts) is two short divs — slicing to
+    // the next 300 chars comfortably covers it without needing a full HTML
+    // parser, and the assertions below would fail loudly if it didn't.
+    const cardHtml = webview.slice(webview.lastIndexOf("<div", cardStart), cardStart + 300);
+    expect(cardHtml).not.toContain("data-session-id=");
+    expect(cardHtml).not.toContain("ticket-key-input");
+    expect(cardHtml).toContain("dashboard:ticketCard.noSession");
+  });
+});

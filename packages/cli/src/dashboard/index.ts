@@ -307,6 +307,31 @@ export interface DashboardData {
    * and "attached but empty" are both real states.
    */
   insights?: DashboardInsights | null;
+  /**
+   * The most recently active session's ticket attribution — what the
+   * link/negate card (Lane L) renders and corrects. Undefined until {@link
+   * attachTicketAttribution} runs (matching {@link insights}'s precedent, so
+   * pre-existing `DashboardData` literals keep compiling); null when the
+   * store holds no sessions at all. "Current session" means the same
+   * most-recently-active session {@link Store.getMostRecentSessionId}
+   * defines — not the window this dashboard happens to be filtered to, since
+   * the card corrects attribution regardless of which period is on screen.
+   */
+  currentSessionTicket?: CurrentSessionTicket | null;
+}
+
+/** One row of {@link DashboardData.currentSessionTicket}'s `links` list. */
+export interface CurrentSessionTicketLink {
+  ticketKey: string;
+  source: string;
+  confidence: string;
+  granularity: string;
+  negated: boolean;
+}
+
+export interface CurrentSessionTicket {
+  sessionId: string;
+  links: readonly CurrentSessionTicketLink[];
 }
 
 /**
@@ -1471,6 +1496,34 @@ export function attachInsights(
     hourlyRate,
     currency,
   };
+  return data;
+}
+
+/**
+ * Populate `data.currentSessionTicket` — the link/negate card's input.
+ * Synchronous and cheap: one indexed lookup for the most recent session id,
+ * one indexed lookup for its links. Never throws — any failure (empty store,
+ * pre-V19 schema) leaves the field null, which the card renders as its
+ * honest empty state rather than omitting itself.
+ */
+export function attachTicketAttribution(store: Store, data: DashboardData): DashboardData {
+  try {
+    const sessionId = store.getMostRecentSessionId();
+    if (!sessionId) {
+      data.currentSessionTicket = null;
+      return data;
+    }
+    const links = store.getTicketLinksForSession(sessionId).map((l) => ({
+      ticketKey: l.ticket_key,
+      source: l.source,
+      confidence: l.confidence,
+      granularity: l.granularity,
+      negated: l.negated !== 0,
+    }));
+    data.currentSessionTicket = { sessionId, links };
+  } catch {
+    data.currentSessionTicket = null;
+  }
   return data;
 }
 

@@ -488,5 +488,16 @@
       "underusing": "プランの範囲より少なく利用しています",
       "noPlan": "プランを検出できません — 費用は従量課金として扱われます"
     }
+  },
+  "ticketCard": {
+    "title": "チケット割り当て",
+    "noSession": "記録されたセッションがまだありません — リンクする対象がありません。",
+    "session": "現在のセッション: {{sessionId}}…",
+    "noLinks": "このセッションにチケットのリンクはありません。",
+    "negatedBadge": "無効化済み",
+    "negateAction": "無効化",
+    "removeAction": "削除",
+    "linkAction": "リンク",
+    "keyPlaceholder": "PROJ-123"
   }
 }

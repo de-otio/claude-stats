@@ -538,10 +538,13 @@ export function createMcpServer(store: Store): McpServer {
       "Pass `ticket` to drill into ONE key's evidence (which sessions, which source, " +
       "which branch/commit matched) instead of the whole-window table — the CLI " +
       "equivalent is `claude-stats report --ticket <KEY>`.\n\n" +
-      "READ-ONLY, and attribution is fully automatic today: there is no CLI or MCP " +
-      "surface yet to manually link a session to a ticket, or to negate a wrong " +
-      "automatic one. If a linked key is wrong, say so rather than instructing the " +
-      "user to run a command that does not exist.",
+      "This tool itself is READ-ONLY, but a wrong automatic link CAN be corrected: " +
+      "`claude-stats ticket <session> <KEY>` manually links a session to a key " +
+      "(wins over any automatic link), `claude-stats ticket <session> <KEY> --negate` " +
+      "tombstones a wrong automatic link so re-extraction cannot resurrect it, and " +
+      "`claude-stats ticket <session> --list` shows a session's current links with " +
+      "their source and confidence. If a linked key looks wrong, suggest the " +
+      "relevant command rather than telling the user nothing can be done.",
     {
       ...dateRangeShape,
       project: z.string().optional()

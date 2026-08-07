@@ -448,6 +448,72 @@ describe('openCorrections', () => {
       client.close();
     }
   });
+
+  // ─── 'ticket' kind (Lane L) ─────────────────────────────────────────────────
+
+  it("ticket round-trip: add, query by signature returns the ticket action", () => {
+    const dbPath = tmpDbPath();
+    tmpFiles.push(dbPath);
+    const client = openCorrections({ dbPath });
+    try {
+      const sig = makeSig();
+      client.add(sig, { kind: 'ticket', key: 'PROJ-123' });
+      const actions = client.forSignature(sig);
+      expect(actions).toHaveLength(1);
+      expect(actions[0]).toMatchObject({ kind: 'ticket', key: 'PROJ-123' });
+    } finally {
+      client.close();
+    }
+  });
+
+  it("ticket: rejects a malformed key (SR-6 trust boundary, matches store.addTicketLink)", () => {
+    const dbPath = tmpDbPath();
+    tmpFiles.push(dbPath);
+    const client = openCorrections({ dbPath });
+    try {
+      const sig = makeSig();
+      expect(() => client.add(sig, { kind: 'ticket', key: 'not a ticket' })).toThrow();
+      // Mutation check: the throw must actually prevent the write, not just
+      // report an error after persisting — a caller that catches the throw
+      // and continues must not find a corrupt row later.
+      expect(client.forSignature(sig)).toHaveLength(0);
+    } finally {
+      client.close();
+    }
+  });
+
+  it("ticket remove: subsequent forSignature no longer contains it", () => {
+    const dbPath = tmpDbPath();
+    tmpFiles.push(dbPath);
+    const client = openCorrections({ dbPath });
+    try {
+      const sig = makeSig();
+      const action: CorrectionAction = { kind: 'ticket', key: 'PROJ-9' };
+      client.add(sig, action);
+      expect(client.forSignature(sig)).toHaveLength(1);
+
+      client.remove(sig, action);
+      expect(client.forSignature(sig)).toHaveLength(0);
+    } finally {
+      client.close();
+    }
+  });
+
+  it("mixed actions: hide + ticket coexist for one signature", () => {
+    const dbPath = tmpDbPath();
+    tmpFiles.push(dbPath);
+    const client = openCorrections({ dbPath });
+    try {
+      const sig = makeSig();
+      client.add(sig, { kind: 'hide' });
+      client.add(sig, { kind: 'ticket', key: 'PROJ-7' });
+
+      const actions = client.forSignature(sig);
+      expect(actions.map((a) => a.kind)).toEqual(['hide', 'ticket']);
+    } finally {
+      client.close();
+    }
+  });
 });
 
 // ─── latestOutcome helper ─────────────────────────────────────────────────────

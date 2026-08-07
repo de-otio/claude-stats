@@ -182,7 +182,13 @@
     "costPerTaskLlmJudgeUnconfigured": "--llm-judge solicitado, mas llmJudge.endpoint/model não estão configurados; ignorando o juiz.",
     "reportTicket": "Mostra custo/tokens/sessões atribuídos a uma chave de ticket (ex.: PROJ-123), além da cobertura do período",
     "taskClass": "Classificar sessions em classes de tarefa e mostrar a distribuição",
-    "taskClassLimit": "Classificar no máximo esta quantidade de sessions nesta execução (retomável)"
+    "taskClassLimit": "Classificar no máximo esta quantidade de sessions nesta execução (retomável)",
+    "ticket": "Vincula, nega ou lista atribuições manuais de ticket para uma sessão",
+    "ticketSessionArg": "ID da sessão (ou prefixo)",
+    "ticketKeyArg": "Chave do ticket (ex.: PROJ-123). Omitida sem outra flag: lista os vínculos atuais",
+    "ticketNegate": "Marca esta chave como tombstone na sessão (suprime mesmo que a extração continue correspondendo)",
+    "ticketRemove": "Remove um vínculo manual desta chave (não afeta o tombstone de negação)",
+    "ticketList": "Lista os vínculos de ticket da sessão antes de aplicar qualquer alteração"
   },
   "collection": {
     "collecting": "Coletando...",
@@ -460,5 +466,14 @@
     "mixedVersions": "⚠  As sessions foram classificadas por mais de uma versão do classificador ({{versions}}). Execute 'task-class' novamente antes de comparar classes ao longo de um período.",
     "confidenceMix": "confiança: {{high}} alta, {{medium}} média, {{low}} baixa",
     "caveat": "Ressalva: a concordância foi medida em relação a um corpus gerado — a intenção do gerador, não rótulos humanos em sessions reais. As classes granulares só têm qualidade de relatório sob essa ressalva; cite qualquer valor por classe sempre junto com ela e com a distribuição de confiança acima, ou use as classes amplas."
+  },
+  "ticket": {
+    "sessionNoLinks": "Sessão {{sessionId}}: nenhum vínculo de ticket",
+    "sessionLinks": "Sessão {{sessionId}}:",
+    "activeLabel": "ativo",
+    "negatedLabel": "negado",
+    "linked": "{{key}} vinculado à sessão {{sessionId}}",
+    "negated": "{{key}} negado para a sessão {{sessionId}} (marcado como tombstone; a extração automática não o restaurará)",
+    "removed": "Vínculo manual {{key}} removido da sessão {{sessionId}}"
   }
 }

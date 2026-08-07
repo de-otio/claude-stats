@@ -182,7 +182,13 @@
     "costPerTaskLlmJudgeUnconfigured": "--llm-judge angefordert, aber llmJudge.endpoint/model sind nicht gesetzt; Richter wird übersprungen.",
     "reportTicket": "Kosten/Tokens/Sessions anzeigen, die einem Ticket-Key (z. B. PROJ-123) zugeordnet sind, samt Abdeckung des Zeitraums",
     "taskClass": "Sessions in Aufgabenklassen klassifizieren und die Verteilung anzeigen",
-    "taskClassLimit": "Höchstens so viele Sessions in diesem Durchlauf klassifizieren (fortsetzbar)"
+    "taskClassLimit": "Höchstens so viele Sessions in diesem Durchlauf klassifizieren (fortsetzbar)",
+    "ticket": "Manuelle Ticket-Zuordnungen für eine Session verknüpfen, negieren oder auflisten",
+    "ticketSessionArg": "Session-ID (oder Präfix)",
+    "ticketKeyArg": "Ticket-Schlüssel (z. B. PROJ-123). Ohne weitere Flags: listet aktuelle Verknüpfungen auf",
+    "ticketNegate": "Diesen Schlüssel für die Session als Tombstone markieren (unterdrückt ihn, auch wenn die Extraktion weiterhin passt)",
+    "ticketRemove": "Eine manuelle Verknüpfung für diesen Schlüssel entfernen (betrifft den Negations-Tombstone nicht)",
+    "ticketList": "Ticket-Verknüpfungen der Session auflisten, bevor Änderungen angewendet werden"
   },
   "collection": {
     "collecting": "Erfassung läuft...",
@@ -460,5 +466,14 @@
     "mixedVersions": "⚠  Sessions wurden mit mehr als einer Klassifizierer-Version ({{versions}}) klassifiziert. Führen Sie 'task-class' erneut aus, bevor Sie Klassen über einen Zeitraum hinweg vergleichen.",
     "confidenceMix": "Konfidenz: {{high}} hoch, {{medium}} mittel, {{low}} niedrig",
     "caveat": "Vorbehalt: Die Übereinstimmung wurde anhand eines generierten Korpus gemessen — gegen die Absicht des Generators, nicht gegen menschliche Labels aus echten Sessions. Die feingranularen Klassen sind nur unter diesem Vorbehalt berichtsfähig; nennen Sie jede klassenspezifische Zahl stets zusammen mit ihm und mit der obigen Konfidenzverteilung, oder verwenden Sie die groben Klassen."
+  },
+  "ticket": {
+    "sessionNoLinks": "Session {{sessionId}}: keine Ticket-Verknüpfungen",
+    "sessionLinks": "Session {{sessionId}}:",
+    "activeLabel": "aktiv",
+    "negatedLabel": "negiert",
+    "linked": "{{key}} mit Session {{sessionId}} verknüpft",
+    "negated": "{{key}} für Session {{sessionId}} negiert (Tombstone gesetzt; automatische Extraktion stellt ihn nicht wieder her)",
+    "removed": "Manuelle Verknüpfung {{key}} aus Session {{sessionId}} entfernt"
   }
 }

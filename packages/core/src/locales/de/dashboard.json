@@ -488,5 +488,16 @@
       "underusing": "Sie nutzen weniger, als Ihr Abo abdeckt",
       "noPlan": "Kein Abo erkannt — Kosten werden als nutzungsbasierte Abrechnung gelesen"
     }
+  },
+  "ticketCard": {
+    "title": "Ticket-Zuordnung",
+    "noSession": "Noch keine Sessions erfasst – nichts zu verknüpfen.",
+    "session": "Aktuelle Session: {{sessionId}}…",
+    "noLinks": "Keine Ticket-Verknüpfungen für diese Session.",
+    "negatedBadge": "negiert",
+    "negateAction": "Negieren",
+    "removeAction": "Entfernen",
+    "linkAction": "Verknüpfen",
+    "keyPlaceholder": "PROJ-123"
   }
 }

@@ -16,6 +16,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { SegmentId } from './types.js';
 import { ensurePrivateDir } from './fs-secure.js';
+import { requireTicketKey, isTicketKey } from '@claude-stats/core/tickets';
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -32,7 +33,15 @@ export type CorrectionAction =
   | { kind: 'split'; segmentId: SegmentId }
   | { kind: 'rename'; label: string }
   | { kind: 'hide' }
-  | { kind: 'outcome'; value: OutcomeValue };
+  | { kind: 'outcome'; value: OutcomeValue }
+  /**
+   * Assign a work-item key to a digest item (ticket-attribution/02 §2.4's
+   * manual path). `key` is validated (`requireTicketKey`) at `add()` time, the
+   * same trust boundary the store's `addTicketLink` enforces — this action
+   * only labels the digest item; the CLI handler that adds it is what writes
+   * the real `ticket_links` row(s) so cost aggregation actually sees it.
+   */
+  | { kind: 'ticket'; key: string };
 
 export interface CorrectionsClient {
   add(sig: CorrectionSignature, action: CorrectionAction): void;
@@ -154,6 +163,14 @@ function rowToEntry(row: CorrectionsRow): {
       action = { kind: 'outcome', value: v };
       break;
     }
+    case 'ticket': {
+      const key = payload['key'];
+      // Defensive re-validation on read, matching 'outcome' above — a row
+      // written by an older/different version should never crash a reader.
+      if (typeof key !== 'string' || !isTicketKey(key)) return null;
+      action = { kind: 'ticket', key };
+      break;
+    }
     default:
       throw new Error(`Unknown correction kind: ${row.action_kind}`);
   }
@@ -176,6 +193,8 @@ function actionToKindAndPayload(action: CorrectionAction): {
       return { kind: 'hide', payload: {} };
     case 'outcome':
       return { kind: 'outcome', payload: { value: action.value } };
+    case 'ticket':
+      return { kind: 'ticket', payload: { key: action.key } };
   }
 }
 
@@ -242,6 +261,11 @@ export function openCorrections(opts?: { dbPath?: string }): CorrectionsClient {
       // Validate label for rename actions (SR-6)
       if (action.kind === 'rename') {
         validateLabel(action.label);
+      }
+      // Same trust boundary as `store.addTicketLink` — throws with a clear
+      // message rather than silently storing an unparsable key (SR-6).
+      if (action.kind === 'ticket') {
+        requireTicketKey(action.key);
       }
 
       const { kind, payload } = actionToKindAndPayload(action);

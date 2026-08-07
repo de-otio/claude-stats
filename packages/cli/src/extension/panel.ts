@@ -10,7 +10,7 @@ import * as fs from "node:fs";
 import * as vscode from "vscode";
 import { Store } from "../store/index.js";
 import { getNonce, escapeHtml } from "./utils.js";
-import { buildDashboard, attachCostPerTask, attachCalibration, attachInsights } from "../dashboard/index.js";
+import { buildDashboard, attachCostPerTask, attachCalibration, attachInsights, attachTicketAttribution } from "../dashboard/index.js";
 import { renderDashboard } from "../server/template.js";
 import { DEFAULT_NAV_TAB } from "../server/nav.js";
 import { loadConfig, saveConfig, mergeConfig, buildAccountsForConfig, type Config } from "../config.js";
@@ -158,6 +158,7 @@ export class DashboardPanel {
       // Insights tab inputs (ticket coverage, hourly rate, cost vocabulary).
       // Synchronous and cheap; needs the config the two attaches above do not.
       attachInsights(store, data, dashOpts, cfg);
+      attachTicketAttribution(store, data);
       const html = renderDashboard(data, t);
       this.panel.webview.html = patchForWebview(
         html,
@@ -170,7 +171,7 @@ export class DashboardPanel {
     }
   }
 
-  private handleMessage(msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean; assignments?: unknown; action?: string; payload?: unknown }): void {
+  private handleMessage(msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean; assignments?: unknown; action?: string; payload?: unknown; sessionId?: string; key?: string }): void {
     if (msg.command === "changePeriod" && msg.period) {
       this.period = msg.period as ReportOptions["period"];
       // Mutual exclusivity per the toolbar contract: a preset pick clears any
@@ -251,6 +252,12 @@ export class DashboardPanel {
       void this.handleBackupAction(msg.action, msg.payload, msg.callbackId);
     } else if (msg.command === "getClusters" && msg.callbackId) {
       this.getClusters(msg.callbackId);
+    } else if (msg.command === "linkTicket" && typeof msg.sessionId === "string" && typeof msg.key === "string") {
+      this.correctTicketLink(msg.sessionId, msg.key, "link");
+    } else if (msg.command === "negateTicket" && typeof msg.sessionId === "string" && typeof msg.key === "string") {
+      this.correctTicketLink(msg.sessionId, msg.key, "negate");
+    } else if (msg.command === "removeTicket" && typeof msg.sessionId === "string" && typeof msg.key === "string") {
+      this.correctTicketLink(msg.sessionId, msg.key, "remove");
     } else if (msg.command === "applyClassification") {
       // Fire-and-forget: apply writes rules + reattributes, then refresh()
       // re-renders every tab with the new attribution (and re-fetches the
@@ -454,6 +461,32 @@ export class DashboardPanel {
     void this.refresh();
   }
 
+  /**
+   * Link, negate, or remove a ticket link for a session, then refresh.
+   * Webview-only — same trust plane as {@link setOutcome}: the served HTTP
+   * path has no message channel and never reaches this handler. `key` is
+   * whatever the input box held; `store.addTicketLink`/`negateTicketLink`
+   * validate it via `requireTicketKey` and throw on a malformed key, which
+   * this treats as best-effort UI (swallowed, panel stays responsive).
+   */
+  private correctTicketLink(sessionId: string, key: string, action: "link" | "negate" | "remove"): void {
+    const store = new Store();
+    try {
+      if (action === "link") {
+        store.addTicketLink({ sessionId, ticketKey: key, source: "tag", confidence: "high" });
+      } else if (action === "negate") {
+        store.negateTicketLink(sessionId, key);
+      } else {
+        store.removeTicketLink(sessionId, key, "tag");
+      }
+    } catch {
+      // Invalid key shape or similar — best-effort UI, swallowed like setOutcome.
+    } finally {
+      store.close();
+    }
+    void this.refresh();
+  }
+
   private dispose(): void {
     DashboardPanel.instance = undefined;
     for (const d of this.disposables) d.dispose();
@@ -653,6 +686,33 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
       vscode.postMessage({ command: 'setOutcome', signature: task.signature, value: b.getAttribute('data-cpt-value') });
     });
   });
+
+  // Wire up the ticket attribution card (webview-only, same reasoning as the
+  // cost-per-task controls above): link/negate/remove buttons read the
+  // session id off the card root and the key off either the input box (link)
+  // or the row's own data attribute (negate/remove).
+  var ticketCard = document.getElementById('ticket-attribution-card');
+  if (ticketCard) {
+    var ticketSessionId = ticketCard.getAttribute('data-session-id');
+    var linkBtn = document.getElementById('ticket-link-btn');
+    var keyInput = document.getElementById('ticket-key-input');
+    if (linkBtn && keyInput && ticketSessionId) {
+      linkBtn.addEventListener('click', function() {
+        var key = keyInput.value.trim();
+        if (!key) return;
+        vscode.postMessage({ command: 'linkTicket', sessionId: ticketSessionId, key: key });
+      });
+    }
+    ticketCard.querySelectorAll('[data-ticket-action]').forEach(function(b) {
+      b.addEventListener('click', function() {
+        var key = b.getAttribute('data-ticket-key');
+        var action = b.getAttribute('data-ticket-action');
+        if (!key || !ticketSessionId) return;
+        var command = action === 'negate' ? 'negateTicket' : 'removeTicket';
+        vscode.postMessage({ command: command, sessionId: ticketSessionId, key: key });
+      });
+    });
+  }
 
   // Signal-activation toggle: flip config.experimentalSignals and re-render.
   var sigToggle = document.getElementById('signals-toggle');

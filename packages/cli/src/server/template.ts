@@ -15,6 +15,7 @@ import {
   EVIDENCE_TAB,
   INSIGHTS_CSS,
 } from "./insights.js";
+import { renderTicketAttributionCard, TICKET_CARD_CSS } from "./ticketCard.js";
 
 export { DashboardData };
 
@@ -410,6 +411,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     verdictSentence: planVerdictSentence,
   });
   const insightsHtml = renderInsightsTab(insightAnswers, buildAlerts(data, t), t);
+  const ticketCardHtml = renderTicketAttributionCard(data.currentSessionTicket, t);
   // The Overview cost card and the Insights Q1 card are the SAME answer object,
   // rendered twice. Phase 1 of the migration is additive — nothing moves yet —
   // so both surfaces exist for one release, and the only way two renderings of
@@ -540,6 +542,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
 ${CARD_TOKENS_CSS}
 ${CARD_CSS}
 ${INSIGHTS_CSS}
+${TICKET_CARD_CSS}
   </style>
 </head>
 <body>
@@ -579,6 +582,7 @@ ${INSIGHTS_CSS}
   <!-- ═══════════════ TAB: Insights (default) ═══════════════ -->
   <div class="tab-panel active" id="tab-insights">
     ${insightsHtml}
+    ${ticketCardHtml}
   </div>
 
   <!-- ═══════════════ TAB: Overview ═══════════════ -->

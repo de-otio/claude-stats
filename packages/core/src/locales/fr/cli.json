@@ -182,7 +182,13 @@
     "costPerTaskLlmJudgeUnconfigured": "--llm-judge demandé mais llmJudge.endpoint/model ne sont pas définis ; juge ignoré.",
     "reportTicket": "Afficher le coût, les tokens et les sessions attribués à une clé de ticket (par ex. PROJ-123), ainsi que la couverture de la période",
     "taskClass": "Classer les sessions par classe de tâche et afficher la répartition",
-    "taskClassLimit": "Classer au plus ce nombre de sessions lors de cette exécution (reprise possible)"
+    "taskClassLimit": "Classer au plus ce nombre de sessions lors de cette exécution (reprise possible)",
+    "ticket": "Lier, neutraliser ou lister les attributions manuelles de tickets pour une session",
+    "ticketSessionArg": "ID de session (ou préfixe)",
+    "ticketKeyArg": "Clé de ticket (p. ex. PROJ-123). Omise sans autre option : liste les liens actuels",
+    "ticketNegate": "Neutraliser cette clé pour la session (la masque même si l'extraction continue de la détecter)",
+    "ticketRemove": "Supprimer un lien manuel pour cette clé (sans affecter la neutralisation)",
+    "ticketList": "Lister les liens de tickets de la session avant d'appliquer une modification"
   },
   "collection": {
     "collecting": "Collecte en cours...",
@@ -460,5 +466,14 @@
     "mixedVersions": "⚠  Les sessions ont été classées par plusieurs versions du classifieur ({{versions}}). Réexécutez « task-class » avant de comparer les classes sur une période.",
     "confidenceMix": "confiance : {{high}} élevée, {{medium}} moyenne, {{low}} faible",
     "caveat": "Mise en garde : la concordance a été mesurée sur un corpus généré — l'intention du générateur, et non des annotations humaines sur des sessions réelles. Les classes fines ne sont exploitables dans un rapport que sous cette réserve ; citez tout chiffre par classe avec celle-ci et avec la répartition de confiance ci-dessus, ou utilisez les classes générales."
+  },
+  "ticket": {
+    "sessionNoLinks": "Session {{sessionId}} : aucun lien de ticket",
+    "sessionLinks": "Session {{sessionId}} :",
+    "activeLabel": "actif",
+    "negatedLabel": "neutralisé",
+    "linked": "{{key}} lié à la session {{sessionId}}",
+    "negated": "{{key}} neutralisé pour la session {{sessionId}} (marqué supprimé ; l'extraction automatique ne le rétablira pas)",
+    "removed": "Lien manuel {{key}} supprimé de la session {{sessionId}}"
   }
 }
