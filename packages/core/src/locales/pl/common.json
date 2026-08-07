@@ -168,9 +168,11 @@
         "wholeStore": "Liczone dla wszystkich zarejestrowanych danych, nie tylko dla pokazanego okresu.",
         "day": "Liczone tylko dla ostatniego dnia, nie dla pokazanego okresu.",
         "week": "Liczone tylko dla ostatniego tygodnia, nie dla pokazanego okresu.",
-        "month": "Liczone tylko dla ostatniego miesiąca, nie dla pokazanego okresu.",
+        "month": "Liczone tylko dla bieżącego miesiąca kalendarzowego do dziś, nie dla pokazanego okresu.",
         "customRange": "Liczone dla wybranego zakresu dat."
-      }
+      },
+      "minimumSampleRationale": "Poniżej minN nie podaje się żadnego wskaźnika. Zgodnie z regułą trzech, n obserwacji bez żadnych rozbieżności ogranicza wskaźnik błędu jedynie do około 3/n, więc bezbłędna seria poniżej 30 ocen nie pozwala nawet wykluczyć wskaźnika błędu jeden do dziesięciu.",
+      "notCalibratedTaskClass": "Nie istnieje żadna rzeczywista podstawa czasu wykonania: żadna korekta nie odnotowuje sprzeciwu człowieka wobec klasy zadania sesji, więc zgodności nie można zmierzyć na tym komputerze. Opublikowany wskaźnik zgodności klasyfikatora jest mierzony względem WYGENEROWANEGO korpusu w czasie kompilacji i nie jest pomiarem danych tego magazynu."
     },
     "apiThrottle": {
       "rejection": {
@@ -203,6 +205,7 @@
       },
       "residualInvoiceHigher": "{{money}} ({{percent}}) więcej na fakturze, niż wynika z szacunku lokalnego",
       "residualLocalHigher": "{{money}} ({{percent}}) więcej w szacunku lokalnym, niż nalicza faktura",
+      "residualExact": "Dokładna zgodność — brak różnicy między fakturą a szacunkiem lokalnym.",
       "toleranceBand": "±{{percent}}%",
       "causesLabel": "Co może wyjaśniać tę różnicę",
       "cause": {

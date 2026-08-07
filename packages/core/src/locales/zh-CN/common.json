@@ -158,9 +158,11 @@
         "wholeStore": "统计范围为所有已记录的数据，而非仅所示时间段。",
         "day": "仅统计最近一天，而非所示时间段。",
         "week": "仅统计最近一周，而非所示时间段。",
-        "month": "仅统计最近一个月，而非所示时间段。",
+        "month": "仅统计本自然月至今，而非所示时间段。",
         "customRange": "统计范围为所选日期区间。"
-      }
+      },
+      "minimumSampleRationale": "低于 minN 时不报告比率。根据三分之一法则，n 次观察中零分歧只能将错误率限定在约 3/n，因此少于 30 次的完美记录甚至无法排除十分之一的错误率。",
+      "notCalibratedTaskClass": "不存在运行时的真实依据：没有任何纠正记录表明有人对某个会话的任务类别提出过异议，因此在这台机器上无法衡量一致性。分类器公布的一致性数值是在构建时针对生成的语料库测得的，并非对本存储数据的测量。"
     },
     "apiThrottle": {
       "rejection": {
@@ -189,6 +191,7 @@
       },
       "residualInvoiceHigher": "账单比本地估算所能解释的金额多 {{money}}（{{percent}}）",
       "residualLocalHigher": "本地估算比账单实际计费多 {{money}}（{{percent}}）",
+      "residualExact": "完全一致 — 账单与本地估算之间没有差额。",
       "toleranceBand": "±{{percent}}%",
       "causesLabel": "差额的可能原因",
       "cause": {

@@ -295,4 +295,35 @@ describe("formatApiThrottle", () => {
     expect(a.overloadHeadline).toBeNull();
     expect(a.overloadCaveat).toBeNull();
   });
+
+  it("N-2: unknownEvents/networkDownRetryEvents/rateLimitSessionsAffected/serverErrorRejections do not reach the rendered output", () => {
+    // Locks the honest doc claim on `ApiThrottleSummary` (N-2): these four
+    // fields are computed and returned so a CALLER can inspect them, but
+    // `formatApiThrottle` reads none of them — varying all four, with the
+    // rendered-from fields held fixed, must leave every sentence unchanged.
+    // If this starts failing because one of them WAS wired into a sentence,
+    // that's a real improvement — but it also means the "not currently
+    // rendered" doc comment on those fields needs updating in the same change.
+    const base: ApiThrottleSummary = {
+      ...EMPTY,
+      rateLimitRejections: 3,
+      overloadRetryEvents: 2,
+      measuredOverloadWaitMs: 45 * 60_000,
+    };
+    const withExtras: ApiThrottleSummary = {
+      ...base,
+      rateLimitSessionsAffected: 999,
+      serverErrorRejections: 999,
+      networkDownRetryEvents: 999,
+      unknownEvents: 999,
+    };
+    const baseAnswer = formatApiThrottle(t, base, "metered");
+    const extrasAnswer = formatApiThrottle(t, withExtras, "metered");
+    expect(extrasAnswer).toEqual(baseAnswer);
+    // …and none of the four numbers leak into the text some other way.
+    for (const field of [999]) {
+      expect(extrasAnswer.rejectionHeadline).not.toContain(String(field));
+      expect(extrasAnswer.overloadHeadline).not.toContain(String(field));
+    }
+  });
 });

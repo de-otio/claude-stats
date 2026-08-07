@@ -163,9 +163,11 @@
         "wholeStore": "Se cuenta sobre todo lo registrado, no solo sobre el período mostrado.",
         "day": "Se cuenta solo sobre el último día, no sobre el período mostrado.",
         "week": "Se cuenta solo sobre la última semana, no sobre el período mostrado.",
-        "month": "Se cuenta solo sobre el último mes, no sobre el período mostrado.",
+        "month": "Se cuenta solo sobre el mes calendario actual hasta la fecha, no sobre el período mostrado.",
         "customRange": "Se cuenta sobre el intervalo de fechas seleccionado."
-      }
+      },
+      "minimumSampleRationale": "Por debajo de minN no se reporta ninguna tasa. Según la regla de tres, n observaciones sin discrepancias solo acotan la tasa de error a aproximadamente 3/n, por lo que una racha perfecta de menos de 30 evaluaciones ni siquiera puede descartar una tasa de error de uno en diez.",
+      "notCalibratedTaskClass": "No existe una verdad de referencia en tiempo de ejecución: ninguna corrección registra el desacuerdo de una persona con la clase de tarea de una sesión, por lo que la concordancia no se puede medir en esta máquina. La cifra de concordancia publicada del clasificador se mide frente a un corpus GENERADO en tiempo de compilación y no es una medición de los datos de este almacén."
     },
     "apiThrottle": {
       "rejection": {
@@ -196,6 +198,7 @@
       },
       "residualInvoiceHigher": "{{money}} ({{percent}}) más en la factura de lo que refleja la estimación local",
       "residualLocalHigher": "{{money}} ({{percent}}) más en la estimación local de lo que cobra la factura",
+      "residualExact": "Coincidencia exacta — no hay diferencia entre la factura y la estimación local.",
       "toleranceBand": "±{{percent}} %",
       "causesLabel": "Qué podría explicar la diferencia",
       "cause": {

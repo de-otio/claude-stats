@@ -163,9 +163,11 @@
         "wholeStore": "Calculé sur l'ensemble des données enregistrées, pas uniquement sur la période affichée.",
         "day": "Calculé sur le dernier jour uniquement, pas sur la période affichée.",
         "week": "Calculé sur la dernière semaine uniquement, pas sur la période affichée.",
-        "month": "Calculé sur le dernier mois uniquement, pas sur la période affichée.",
+        "month": "Calculé sur le mois civil en cours à ce jour uniquement, pas sur la période affichée.",
         "customRange": "Calculé sur la plage de dates sélectionnée."
-      }
+      },
+      "minimumSampleRationale": "En dessous de minN, aucun taux n'est indiqué. Selon la règle de trois, n observations sans désaccord ne bornent le taux d'erreur qu'à environ 3/n : une série parfaite de moins de 30 évaluations ne permet même pas d'exclure un taux d'erreur d'un sur dix.",
+      "notCalibratedTaskClass": "Aucune vérité terrain n'existe à l'exécution : aucune correction n'enregistre le désaccord d'un humain avec la classe de tâche d'une session, l'accord ne peut donc pas être mesuré sur cette machine. Le taux d'accord publié du classifieur est mesuré sur un corpus GÉNÉRÉ au moment de la compilation et ne mesure pas les données de ce store."
     },
     "apiThrottle": {
       "rejection": {
@@ -196,6 +198,7 @@
       },
       "residualInvoiceHigher": "{{money}} ({{percent}}) de plus sur la facture que ce que couvre l'estimation locale",
       "residualLocalHigher": "{{money}} ({{percent}}) de plus dans l'estimation locale que ce que la facture indique",
+      "residualExact": "Correspondance exacte — aucun écart entre la facture et l'estimation locale.",
       "toleranceBand": "±{{percent}} %",
       "causesLabel": "Ce qui pourrait expliquer l'écart",
       "cause": {

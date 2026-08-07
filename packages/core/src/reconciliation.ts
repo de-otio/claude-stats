@@ -115,7 +115,18 @@ export function computeReconciliation(input: ReconciliationInput): Reconciliatio
     invoiceTotal,
     ratio,
     withinTolerance,
-    tolerancePercent: Math.round(tolerance * 100),
+    // G-2: `withinTolerance` above was decided against the UNROUNDED
+    // `tolerance` fraction. `tolerancePercent` is a config-controlled number
+    // (`validateReconciliationConfig` clamps it to [0, 100] but does not
+    // require an integer — a hand-edited `tolerancePercent: 4.7` is legal),
+    // so rounding it to the nearest whole percent here can state a band the
+    // verdict never used: a 4.7% tolerance would render "±5%" beside a
+    // verdict decided at 4.7%, making a residual of 4.8% look like it should
+    // have failed the displayed band when it actually passed the real one.
+    // Round only to 2 decimal places — enough to absorb float noise from the
+    // `percent / 100` conversion callers do, not enough to move the figure
+    // off the value the comparison above actually used.
+    tolerancePercent: Math.round(tolerance * 100 * 100) / 100,
     residual,
     residualRatio,
     candidateCauses,

@@ -158,9 +158,11 @@
         "wholeStore": "Über alle erfassten Daten gezählt, nicht nur über den angezeigten Zeitraum.",
         "day": "Nur über den letzten Tag gezählt, nicht über den angezeigten Zeitraum.",
         "week": "Nur über die letzte Woche gezählt, nicht über den angezeigten Zeitraum.",
-        "month": "Nur über den letzten Monat gezählt, nicht über den angezeigten Zeitraum.",
+        "month": "Nur über den aktuellen Kalendermonat bis heute gezählt, nicht über den angezeigten Zeitraum.",
         "customRange": "Über den ausgewählten Zeitraum gezählt."
-      }
+      },
+      "minimumSampleRationale": "Unter minN wird keine Rate ausgewiesen. Nach der Dreier-Regel grenzen n Beobachtungen ohne jede Abweichung die Fehlerquote nur auf etwa 3/n ein — ein fehlerfreier Durchlauf von weniger als 30 Bewertungen kann also nicht einmal eine Fehlerquote von eins zu zehn ausschließen.",
+      "notCalibratedTaskClass": "Es gibt keine Grundwahrheit zur Laufzeit: Keine Korrektur erfasst, dass ein Mensch der Aufgabenklasse einer Sitzung widersprochen hat, daher kann die Übereinstimmung auf diesem Rechner nicht gemessen werden. Die veröffentlichte Übereinstimmungszahl des Klassifikators wird zur Build-Zeit an einem GENERIERTEN Korpus gemessen und ist keine Messung der Daten dieses Speichers."
     },
     "apiThrottle": {
       "rejection": {
@@ -189,6 +191,7 @@
       },
       "residualInvoiceHigher": "{{money}} ({{percent}}) mehr auf der Rechnung, als die lokale Schätzung erklärt",
       "residualLocalHigher": "{{money}} ({{percent}}) mehr in der lokalen Schätzung, als die Rechnung berechnet",
+      "residualExact": "Exakte Übereinstimmung — keine Differenz zwischen Rechnung und lokaler Schätzung.",
       "toleranceBand": "±{{percent}} %",
       "causesLabel": "Mögliche Ursachen für die Abweichung",
       "cause": {

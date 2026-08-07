@@ -365,6 +365,12 @@ export async function buildCli(): Promise<Command> {
         process.exitCode = 1;
         return;
       }
+      // M-4: "most recent" here is `events[events.length - 1]`, which is only
+      // correct because `validatePolicyEvents` (config.ts) always returns its
+      // array sorted chronologically ascending — `config.policyEvents` is
+      // never assigned from anywhere else. If that sort ever moves or a
+      // second source of `policyEvents` bypasses the validator, this silently
+      // starts returning an arbitrary event instead of the latest one.
       const policyEvent = opts.date ? events.find((e) => e.date === opts.date) : events[events.length - 1];
       if (!policyEvent) {
         console.error(

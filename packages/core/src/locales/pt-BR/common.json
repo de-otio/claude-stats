@@ -163,9 +163,11 @@
         "wholeStore": "Contabilizado sobre tudo o que foi registrado, não apenas o período exibido.",
         "day": "Contabilizado apenas no último dia, não no período exibido.",
         "week": "Contabilizado apenas na última semana, não no período exibido.",
-        "month": "Contabilizado apenas no último mês, não no período exibido.",
+        "month": "Contabilizado apenas no mês corrente até hoje, não no período exibido.",
         "customRange": "Contabilizado no intervalo de datas selecionado."
-      }
+      },
+      "minimumSampleRationale": "Abaixo de minN, nenhuma taxa é reportada. Pela regra dos três, n observações sem discordâncias limitam a taxa de erro a apenas cerca de 3/n, então uma sequência perfeita com menos de 30 avaliações nem sequer consegue descartar uma taxa de erro de um em dez.",
+      "notCalibratedTaskClass": "Não existe verdade de referência em tempo de execução: nenhuma correção registra a discordância de uma pessoa com a classe de tarefa de uma sessão, então a concordância não pode ser medida nesta máquina. A taxa de concordância publicada do classificador é medida contra um corpus GERADO em tempo de compilação e não é uma medição dos dados deste armazenamento."
     },
     "apiThrottle": {
       "rejection": {
@@ -196,6 +198,7 @@
       },
       "residualInvoiceHigher": "{{money}} ({{percent}}) a mais na fatura do que a estimativa local considera",
       "residualLocalHigher": "{{money}} ({{percent}}) a mais na estimativa local do que a fatura cobra",
+      "residualExact": "Correspondência exata — nenhuma diferença entre a fatura e a estimativa local.",
       "toleranceBand": "±{{percent}}%",
       "causesLabel": "O que pode explicar a diferença",
       "cause": {

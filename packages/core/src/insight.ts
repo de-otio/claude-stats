@@ -335,7 +335,13 @@ export function reconciliationDetail(
   currency = "USD",
 ): ReconciliationDetail {
   const money = (n: number) => formatMoney(n, currency, { precise: true });
-  const residualIsInvoiceHigher = rec.residual >= 0;
+  // G-3: `residual = invoiceTotal - bottomUp`. At EXACTLY zero there is no
+  // residual to attribute a direction to — `>= 0` used to route it through
+  // "…more on the invoice…" with a $0.00 magnitude, which is not wrong about
+  // the number but IS a false claim of direction on a figure that has none.
+  // A perfect match gets its own sentence instead of borrowing either side's.
+  const residualIsExact = rec.residual === 0;
+  const residualIsInvoiceHigher = rec.residual > 0;
 
   const lines: ReconciliationLine[] = [
     {
@@ -351,17 +357,19 @@ export function reconciliationDetail(
     {
       id: "residual",
       label: t("common:insight.reconciliation.label.residual"),
-      value: t(
-        residualIsInvoiceHigher
-          ? "common:insight.reconciliation.residualInvoiceHigher"
-          : "common:insight.reconciliation.residualLocalHigher",
-        {
-          // Magnitudes: the direction is in the sentence, so a minus sign here
-          // would state it twice and contradict itself half the time.
-          money: money(Math.abs(rec.residual)),
-          percent: formatPercent(Math.abs(rec.residualRatio)),
-        },
-      ),
+      value: residualIsExact
+        ? t("common:insight.reconciliation.residualExact")
+        : t(
+            residualIsInvoiceHigher
+              ? "common:insight.reconciliation.residualInvoiceHigher"
+              : "common:insight.reconciliation.residualLocalHigher",
+            {
+              // Magnitudes: the direction is in the sentence, so a minus sign here
+              // would state it twice and contradict itself half the time.
+              money: money(Math.abs(rec.residual)),
+              percent: formatPercent(Math.abs(rec.residualRatio)),
+            },
+          ),
     },
     {
       id: "tolerance",

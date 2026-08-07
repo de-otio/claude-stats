@@ -707,10 +707,12 @@ export function createMcpServer(store: Store): McpServer {
       }
 
       return formatResult({
-        minimumSampleRationale:
-          "Below minN no rate is reported. By the rule of three, n observations with zero " +
-          "disagreements bound the error rate only at about 3/n, so a perfect run of fewer " +
-          "than 30 rulings cannot even rule out a one-in-ten error rate.",
+        // K-1: routed through the SAME translator `subjects.*.caveat`/
+        // `.enablement` resolve through below (calibrationJson → t()), rather
+        // than hardcoded English literals — a payload with two locale-aware
+        // fields and two English-only ones would render mixed-language JSON
+        // for every non-English caller.
+        minimumSampleRationale: t("common:insight.calibration.minimumSampleRationale"),
         subjects: {
           attribution: calibrationJson(t, attribution.estimate, {
             unproposed: attribution.review.unproposed,
@@ -723,11 +725,7 @@ export function createMcpServer(store: Store): McpServer {
           outcome: calibrationJson(t, outcomeCalibrationFrom(outcomeReport, "month")),
         },
         notCalibrated: {
-          taskClass:
-            "No runtime ground truth exists: no correction records a human's disagreement " +
-            "with a session's task class, so agreement cannot be measured on this machine. " +
-            "The classifier's published agreement figure is measured against a GENERATED " +
-            "corpus at build time and is not a measurement of this store's data.",
+          taskClass: t("common:insight.calibration.notCalibratedTaskClass"),
         },
       });
     },
@@ -1063,6 +1061,12 @@ export function createMcpServer(store: Store): McpServer {
         });
       }
 
+      // M-4: "most recent" here is `events[events.length - 1]`, which is only
+      // correct because `validatePolicyEvents` (config.ts) always returns its
+      // array sorted chronologically ascending — `config.policyEvents` is
+      // never assigned from anywhere else. If that sort ever moves or a
+      // second source of `policyEvents` bypasses the validator, this silently
+      // starts returning an arbitrary event instead of the latest one.
       const policyEvent = date ? events.find((e) => e.date === date) : events[events.length - 1];
       if (!policyEvent) {
         return formatResult({
