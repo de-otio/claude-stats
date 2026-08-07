@@ -63,6 +63,7 @@
   "units": {
     "tokens": "tokens",
     "session_one": "{{count}} sessão",
+    "session_many": "{{count}} sessões",
     "session_other": "{{count}} sessões",
     "tokPerMin": "tok/min",
     "promptsPerHr": "prompts/h",
@@ -97,6 +98,7 @@
       "tier": "{{percent}} {{tier}}",
       "mix": "{{parts}} de confiança.",
       "mixAmbiguous_one": "{{parts}} de confiança · {{count}} sessão ambígua.",
+      "mixAmbiguous_many": "{{parts}} de confiança · {{count}} sessões ambíguas.",
       "mixAmbiguous_other": "{{parts}} de confiança · {{count}} sessões ambíguas.",
       "none": "Nenhum gasto atribuído a chaves de ticket neste período — verifique se os nomes de branch, os assuntos de commit ou os prompts contêm uma chave como PROJ-123, e se config.tickets.projectKeys lista o prefixo da sua equipe (necessário para reconhecer uma convenção em minúsculas ou de caixa mista)."
     },
@@ -111,6 +113,7 @@
       "unavailable": "Ainda não há gasto atribuído a itens de trabalho.",
       "enablement": "Adicione as chaves do seu projeto em Configurações → Tickets para atribuir o gasto automaticamente.",
       "completed_one": "{{count}} tarefa concluída",
+      "completed_many": "{{count}} tarefas concluídas",
       "completed_other": "{{count}} tarefas concluídas",
       "attributed": "{{percent}} do gasto atribuído a itens de trabalho",
       "topTicket": "maior: {{key}} ({{cost}})"
@@ -127,6 +130,7 @@
       "unavailable": "Dados insuficientes para avaliar se o seu plano se encaixa.",
       "enablement": "Avaliar o encaixe do plano exige algumas semanas de uso para ter significado.",
       "policyImpact_one": "Desde a mudança de política em {{date}}, o custo por tarefa bem-sucedida subiu {{percent}} em {{count}} classe de tarefas.",
+      "policyImpact_many": "Desde a mudança de política em {{date}}, o custo por tarefa bem-sucedida subiu {{percent}} em {{count}} classes de tarefas.",
       "policyImpact_other": "Desde a mudança de política em {{date}}, o custo por tarefa bem-sucedida subiu {{percent}} em {{count}} classes de tarefas.",
       "policyCaveat": "Indício, não prova — comparado dentro das classes de tarefas, dos dois lados do limite.",
       "verdictWithSaving": "{{verdict}} — mudar para {{plan}} economizaria cerca de {{saving}}/mês.",
@@ -136,6 +140,7 @@
       "nothing": "No momento, nada precisa de atenção.",
       "withImpact": "{{title}} — {{impact}}",
       "more_one": "{{lead}} (+{{count}} outro).",
+      "more_many": "{{lead}} (+{{count}} outros).",
       "more_other": "{{lead}} (+{{count}} outros)."
     }
   },

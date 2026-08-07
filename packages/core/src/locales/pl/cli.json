@@ -243,6 +243,8 @@
     "thinkingDetail": "{{blocks}} bloków ({{percent}}% sesji)",
     "maxTokensWarning": "⚠  {{count}} odpowiedzi zostało obciętych (max_tokens)",
     "resultsFound_one": "Znaleziono {{count}} wynik.",
+    "resultsFound_few": "Znaleziono {{count}} wyniki.",
+    "resultsFound_many": "Znaleziono {{count}} wyników.",
     "resultsFound_other": "Znaleziono {{count}} wyników.",
     "wroteFile": "Zapisano {{file}}",
     "wrotePack": "Zapisano pakiet uzasadniający do {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
@@ -258,6 +260,8 @@
     "tableTotals": "Sumy",
     "unknownTime": "nieznany",
     "sessionSummary_one": "{{count}} sesja",
+    "sessionSummary_few": "{{count}} sesje",
+    "sessionSummary_many": "{{count}} sesji",
     "sessionSummary_other": "{{count}} sesji",
     "spendingTitle": "Wydatki tokenów — {{period}} ({{date}})",
     "spendingTotalCost": "Całkowity koszt (ekwiwalent API)",
@@ -330,6 +334,8 @@
     "removed": "Usunięto tag(i): {{tags}} z sesji {{sessionId}}",
     "noTagsFound": "Nie znaleziono tagów.",
     "tagCount_one": "sesja",
+    "tagCount_few": "sesje",
+    "tagCount_many": "sesji",
     "tagCount_other": "sesji"
   },
   "backfill": {

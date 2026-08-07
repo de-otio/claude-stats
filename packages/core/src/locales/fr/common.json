@@ -63,6 +63,7 @@
   "units": {
     "tokens": "tokens",
     "session_one": "{{count}} session",
+    "session_many": "{{count}} sessions",
     "session_other": "{{count}} sessions",
     "tokPerMin": "tok/min",
     "promptsPerHr": "prompts/h",
@@ -97,6 +98,7 @@
       "tier": "{{percent}} {{tier}}",
       "mix": "{{parts}} de confiance.",
       "mixAmbiguous_one": "{{parts}} de confiance · {{count}} session ambiguë.",
+      "mixAmbiguous_many": "{{parts}} de confiance · {{count}} sessions ambiguës.",
       "mixAmbiguous_other": "{{parts}} de confiance · {{count}} sessions ambiguës.",
       "none": "Aucune dépense attribuée à une clé de ticket sur cette période — vérifiez que les noms de branches, les objets de commit ou les prompts contiennent une clé comme PROJ-123, et que config.tickets.projectKeys liste le préfixe de votre équipe (nécessaire pour qu'une convention en minuscules ou en casse mixte soit reconnue)."
     },
@@ -111,6 +113,7 @@
       "unavailable": "Aucune dépense encore attribuée à des éléments de travail.",
       "enablement": "Ajoutez vos clés de projet dans Paramètres → Tickets pour attribuer les dépenses automatiquement.",
       "completed_one": "{{count}} tâche terminée",
+      "completed_many": "{{count}} tâches terminées",
       "completed_other": "{{count}} tâches terminées",
       "attributed": "{{percent}} des dépenses attribuées à des éléments de travail",
       "topTicket": "le plus important : {{key}} ({{cost}})"
@@ -127,6 +130,7 @@
       "unavailable": "Pas assez de données pour juger l'adéquation de votre abonnement.",
       "enablement": "L'adéquation de l'abonnement demande quelques semaines d'usage pour être significative.",
       "policyImpact_one": "Depuis le changement de politique du {{date}}, le coût par tâche réussie a augmenté de {{percent}} dans {{count}} classe de tâches.",
+      "policyImpact_many": "Depuis le changement de politique du {{date}}, le coût par tâche réussie a augmenté de {{percent}} dans {{count}} classes de tâches.",
       "policyImpact_other": "Depuis le changement de politique du {{date}}, le coût par tâche réussie a augmenté de {{percent}} dans {{count}} classes de tâches.",
       "policyCaveat": "Un indice, pas une preuve — comparaison faite au sein des classes de tâches, de part et d'autre de la limite.",
       "verdictWithSaving": "{{verdict}} — passer à {{plan}} économiserait environ {{saving}}/mois.",
@@ -136,6 +140,7 @@
       "nothing": "Rien ne requiert votre attention pour le moment.",
       "withImpact": "{{title}} — {{impact}}",
       "more_one": "{{lead}} (+{{count}} autre).",
+      "more_many": "{{lead}} (+{{count}} autres).",
       "more_other": "{{lead}} (+{{count}} autres)."
     }
   },

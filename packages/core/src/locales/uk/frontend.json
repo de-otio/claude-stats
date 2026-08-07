@@ -138,6 +138,8 @@
     "noTeamsHint": "Створіть команду або приєднайтесь до однієї з кодом запрошення.",
     "createFirstTeam": "Створіть вашу першу команду",
     "member_one": "{{count}} учасник",
+    "member_few": "{{count}} учасники",
+    "member_many": "{{count}} учасників",
     "member_other": "{{count}} учасників",
     "settings": "Налаштування",
     "teamNotFound": "Команду не знайдено.",

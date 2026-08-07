@@ -243,6 +243,7 @@
     "thinkingDetail": "{{blocks}} blocs ({{percent}}% des sessions)",
     "maxTokensWarning": "⚠  {{count}} réponses ont été tronquées (max_tokens)",
     "resultsFound_one": "{{count}} résultat trouvé.",
+    "resultsFound_many": "{{count}} résultats trouvés.",
     "resultsFound_other": "{{count}} résultats trouvés.",
     "wroteFile": "{{file}} écrit",
     "wrotePack": "Dossier de justification écrit dans {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
@@ -258,6 +259,7 @@
     "tableTotals": "Totaux",
     "unknownTime": "inconnu",
     "sessionSummary_one": "{{count}} session",
+    "sessionSummary_many": "{{count}} sessions",
     "sessionSummary_other": "{{count}} sessions",
     "spendingTitle": "Dépenses en tokens — {{period}} ({{date}})",
     "spendingTotalCost": "Coût total (équivalent API)",
@@ -330,6 +332,7 @@
     "removed": "Tag(s) supprimé(s) : {{tags}} de la session {{sessionId}}",
     "noTagsFound": "Aucun tag trouvé.",
     "tagCount_one": "session",
+    "tagCount_many": "sessions",
     "tagCount_other": "sessions"
   },
   "backfill": {

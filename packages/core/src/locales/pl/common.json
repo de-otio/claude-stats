@@ -63,6 +63,8 @@
   "units": {
     "tokens": "tokeny",
     "session_one": "{{count}} sesja",
+    "session_few": "{{count}} sesje",
+    "session_many": "{{count}} sesji",
     "session_other": "{{count}} sesji",
     "tokPerMin": "tok/min",
     "promptsPerHr": "promptów/godz",
@@ -97,6 +99,8 @@
       "tier": "{{percent}} {{tier}}",
       "mix": "{{parts}} pewności.",
       "mixAmbiguous_one": "{{parts}} pewności · {{count}} sesja niejednoznaczna.",
+      "mixAmbiguous_few": "{{parts}} pewności · {{count}} sesje niejednoznaczne.",
+      "mixAmbiguous_many": "{{parts}} pewności · {{count}} sesji niejednoznacznych.",
       "mixAmbiguous_other": "{{parts}} pewności · {{count}} sesji niejednoznacznych.",
       "none": "W tym okresie żadne wydatki nie zostały przypisane do kluczy zgłoszeń — sprawdź, czy nazwy gałęzi, tytuły commitów lub prompty zawierają klucz taki jak PROJ-123 oraz czy config.tickets.projectKeys wymienia prefiks Twojego zespołu (wymagane, aby rozpoznać konwencję pisaną małymi literami lub mieszaną)."
     },
@@ -111,6 +115,8 @@
       "unavailable": "Na razie żadne wydatki nie zostały przypisane do zadań.",
       "enablement": "Dodaj klucze swojego projektu w Ustawienia → Zgłoszenia, aby automatycznie przypisywać wydatki.",
       "completed_one": "{{count}} zadanie ukończone",
+      "completed_few": "{{count}} zadania ukończone",
+      "completed_many": "{{count}} zadań ukończonych",
       "completed_other": "{{count}} zadań ukończonych",
       "attributed": "{{percent}} wydatków przypisano do zadań",
       "topTicket": "największe: {{key}} ({{cost}})"
@@ -127,6 +133,8 @@
       "unavailable": "Za mało danych, aby ocenić dopasowanie Twojego planu.",
       "enablement": "Ocena dopasowania planu wymaga kilku tygodni użytkowania, aby była miarodajna.",
       "policyImpact_one": "Od zmiany zasad w dniu {{date}} koszt jednego udanego zadania wzrósł o {{percent}} w {{count}} klasie zadań.",
+      "policyImpact_few": "Od zmiany zasad w dniu {{date}} koszt jednego udanego zadania wzrósł o {{percent}} w {{count}} klasach zadań.",
+      "policyImpact_many": "Od zmiany zasad w dniu {{date}} koszt jednego udanego zadania wzrósł o {{percent}} w {{count}} klasach zadań.",
       "policyImpact_other": "Od zmiany zasad w dniu {{date}} koszt jednego udanego zadania wzrósł o {{percent}} w {{count}} klasach zadań.",
       "policyCaveat": "Przesłanka, nie dowód — porównanie w obrębie klas zadań po obu stronach granicy.",
       "verdictWithSaving": "{{verdict}} — przejście na {{plan}} pozwoliłoby zaoszczędzić około {{saving}}/mies.",
@@ -136,6 +144,8 @@
       "nothing": "Na razie nic nie wymaga uwagi.",
       "withImpact": "{{title}} — {{impact}}",
       "more_one": "{{lead}} (+{{count}} więcej).",
+      "more_few": "{{lead}} (+{{count}} więcej).",
+      "more_many": "{{lead}} (+{{count}} więcej).",
       "more_other": "{{lead}} (+{{count}} więcej)."
     }
   },

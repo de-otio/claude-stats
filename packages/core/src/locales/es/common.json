@@ -63,6 +63,7 @@
   "units": {
     "tokens": "tokens",
     "session_one": "{{count}} sesión",
+    "session_many": "{{count}} sesiones",
     "session_other": "{{count}} sesiones",
     "tokPerMin": "tok/min",
     "promptsPerHr": "prompts/h",
@@ -97,6 +98,7 @@
       "tier": "{{percent}} {{tier}}",
       "mix": "{{parts}} de confianza.",
       "mixAmbiguous_one": "{{parts}} de confianza · {{count}} sesión ambigua.",
+      "mixAmbiguous_many": "{{parts}} de confianza · {{count}} sesiones ambiguas.",
       "mixAmbiguous_other": "{{parts}} de confianza · {{count}} sesiones ambiguas.",
       "none": "No se atribuyó ningún gasto a claves de ticket en este periodo — comprueba que los nombres de rama, los asuntos de commit o los prompts contengan una clave como PROJ-123, y que config.tickets.projectKeys incluya el prefijo de tu equipo (necesario para reconocer una convención en minúsculas o mixta)."
     },
@@ -111,6 +113,7 @@
       "unavailable": "Todavía no hay gasto atribuido a elementos de trabajo.",
       "enablement": "Añade las claves de tu proyecto en Ajustes → Tickets para atribuir el gasto automáticamente.",
       "completed_one": "{{count}} tarea completada",
+      "completed_many": "{{count}} tareas completadas",
       "completed_other": "{{count}} tareas completadas",
       "attributed": "{{percent}} del gasto atribuido a elementos de trabajo",
       "topTicket": "el mayor: {{key}} ({{cost}})"
@@ -127,6 +130,7 @@
       "unavailable": "No hay datos suficientes para juzgar si tu plan encaja.",
       "enablement": "Valorar el encaje del plan requiere algunas semanas de uso para ser significativo.",
       "policyImpact_one": "Desde el cambio de política del {{date}}, el coste por tarea exitosa ha subido un {{percent}} en {{count}} clase de tareas.",
+      "policyImpact_many": "Desde el cambio de política del {{date}}, el coste por tarea exitosa ha subido un {{percent}} en {{count}} clases de tareas.",
       "policyImpact_other": "Desde el cambio de política del {{date}}, el coste por tarea exitosa ha subido un {{percent}} en {{count}} clases de tareas.",
       "policyCaveat": "Indicio, no prueba — comparado dentro de cada clase de tareas a ambos lados del límite.",
       "verdictWithSaving": "{{verdict}} — cambiar a {{plan}} ahorraría unos {{saving}}/mes.",
@@ -136,6 +140,7 @@
       "nothing": "Ahora mismo nada requiere atención.",
       "withImpact": "{{title}} — {{impact}}",
       "more_one": "{{lead}} (+{{count}} más).",
+      "more_many": "{{lead}} (+{{count}} más).",
       "more_other": "{{lead}} (+{{count}} más)."
     }
   },

@@ -243,6 +243,8 @@
     "thinkingDetail": "{{blocks}} блоков ({{percent}}% сессий)",
     "maxTokensWarning": "⚠  {{count}} ответов были обрезаны (max_tokens)",
     "resultsFound_one": "Найден {{count}} результат.",
+    "resultsFound_few": "Найдено {{count}} результата.",
+    "resultsFound_many": "Найдено {{count}} результатов.",
     "resultsFound_other": "Найдено {{count}} результатов.",
     "wroteFile": "Записан файл {{file}}",
     "wrotePack": "Обосновывающий пакет записан в {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
@@ -258,6 +260,8 @@
     "tableTotals": "Итоги",
     "unknownTime": "неизвестно",
     "sessionSummary_one": "{{count}} сессия",
+    "sessionSummary_few": "{{count}} сессии",
+    "sessionSummary_many": "{{count}} сессий",
     "sessionSummary_other": "{{count}} сессий",
     "spendingTitle": "Расходы токенов — {{period}} ({{date}})",
     "spendingTotalCost": "Общая стоимость (эквивалент API)",
@@ -330,6 +334,8 @@
     "removed": "Удалён(ы) тег(и): {{tags}} из сессии {{sessionId}}",
     "noTagsFound": "Теги не найдены.",
     "tagCount_one": "сессия",
+    "tagCount_few": "сессии",
+    "tagCount_many": "сессий",
     "tagCount_other": "сессий"
   },
   "backfill": {

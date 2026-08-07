@@ -138,6 +138,7 @@
     "noTeamsHint": "Crea un equipo o únete a uno con un código de invitación.",
     "createFirstTeam": "Crea tu primer equipo",
     "member_one": "{{count}} miembro",
+    "member_many": "{{count}} miembros",
     "member_other": "{{count}} miembros",
     "settings": "Configuración",
     "teamNotFound": "Equipo no encontrado.",
