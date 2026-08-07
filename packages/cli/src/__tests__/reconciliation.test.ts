@@ -31,6 +31,39 @@ describe("computeReconciliation", () => {
     expect(r!.candidateCauses).toEqual([]);
   });
 
+  // The band edge is the value a user tuning `tolerancePercent` is most likely
+  // to land on, and it was previously decided by IEEE-754 representation error
+  // rather than by the number they configured: `1 - 95/100` is
+  // 0.050000000000000044 (edge EXCLUDED from a ±5% band) while `1 - 90/100` is
+  // 0.09999999999999998 (same exact edge INCLUDED in a ±10% band). These pin
+  // the documented inclusive semantics on both sides and at several scales, so
+  // a regression in the comparison cannot pass unnoticed again.
+  it("includes the exact band edge — a figure exactly at ±tolerance reconciles", () => {
+    for (const [bottomUp, invoiceTotal, tolerance] of [
+      [95, 100, 0.05],
+      [105, 100, 0.05], // over the invoice, same distance
+      [9.5, 10, 0.05],
+      [47.5, 50, 0.05],
+      [90, 100, 0.1],
+      [0.57, 0.6, 0.05], // non-representable in binary: 0.6 - 0.57 !== 0.03
+    ] as const) {
+      const r = computeReconciliation({ bottomUp, invoiceTotal, tolerance });
+      expect(r, `${bottomUp}/${invoiceTotal} @ ${tolerance}`).not.toBeNull();
+      expect(r!.withinTolerance, `${bottomUp}/${invoiceTotal} @ ${tolerance} should be at/inside the band`).toBe(true);
+    }
+  });
+
+  it("excludes a figure just outside the band edge — the band still has a far side", () => {
+    for (const [bottomUp, invoiceTotal, tolerance] of [
+      [94.9, 100, 0.05],
+      [105.1, 100, 0.05],
+      [89.9, 100, 0.1],
+    ] as const) {
+      const r = computeReconciliation({ bottomUp, invoiceTotal, tolerance });
+      expect(r!.withinTolerance, `${bottomUp}/${invoiceTotal} @ ${tolerance} should be outside the band`).toBe(false);
+    }
+  });
+
   it("does NOT reconcile when the ratio is outside tolerance — can conclude the estimate is wrong", () => {
     const r = computeReconciliation({ bottomUp: 50, invoiceTotal: 100 });
     expect(r).not.toBeNull();

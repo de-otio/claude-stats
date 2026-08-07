@@ -815,6 +815,24 @@ describe("justification pack — generated against a seeded store", () => {
     expect(config.reconciliation!.invoiceTotal).toBe(500);
   });
 
+  it("does NOT carry config's scopeNote onto a --invoice-csv total — that note describes a different figure", () => {
+    const opts = { period: "2026-01", timezone: "UTC", now: () => FIXED_NOW } as const;
+    const scoped = { ...config, reconciliation: { ...config.reconciliation, scopeNote: "AWS account 111122223333, March 2026 invoice" } };
+
+    // Without an override the note describes the configured figure, so it shows.
+    const fromConfig = buildJustificationPack(store, scoped, opts);
+    expect(fromConfig.model.headline.reconciliation!.scopeNote).toBe("AWS account 111122223333, March 2026 invoice");
+
+    // With `--invoice-csv`, the total came from the CSV and its scope is
+    // precisely what nobody confirmed — reusing the config note would both
+    // mislabel the figure and silently drop `scope-mismatch` from the causes.
+    const fromCsv = buildJustificationPack(store, scoped, { ...opts, invoiceTotalOverride: 60 });
+    expect(fromCsv.model.headline.reconciliation!.invoiceTotal).toBe(60);
+    expect(fromCsv.model.headline.reconciliation!.scopeNote).toBeNull();
+    expect(fromCsv.model.headline.reconciliation!.withinTolerance).toBe(false);
+    expect(fromCsv.model.headline.reconciliation!.candidateCauses).toContain("scope-mismatch");
+  });
+
   it("scopeNote from config reaches the pack's reconciliation block, and suppresses the scope-mismatch cause", () => {
     const opts = { period: "2026-01", timezone: "UTC", now: () => FIXED_NOW } as const;
     const withNote = buildJustificationPack(store, { ...config, reconciliation: { ...config.reconciliation, scopeNote: "AWS 111122223333" } }, opts);

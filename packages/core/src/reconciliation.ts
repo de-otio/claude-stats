@@ -23,6 +23,16 @@ import type { Reconciliation, ReconciliationCause } from "./types/insight.js";
 
 export const DEFAULT_RECONCILIATION_TOLERANCE = 0.05;
 
+/**
+ * Relative slack on the tolerance-band comparison, to absorb binary
+ * floating-point representation error in the residual and the band (neither
+ * `0.6 - 0.57` nor `0.05 * 0.6` is exact in IEEE-754). One part in a billion
+ * is far below any figure a currency amount can express, so it cannot change
+ * a verdict a user could otherwise observe — it only stops the band edge from
+ * landing on whichever side the representation error happens to fall.
+ */
+const BAND_EDGE_EPSILON = 1e-9;
+
 export interface ReconciliationInput {
   /** The store's own bottom-up figure for the same period/scope. */
   bottomUp: number;
@@ -72,9 +82,21 @@ export function computeReconciliation(input: ReconciliationInput): Reconciliatio
 
   const tolerance = input.tolerance ?? DEFAULT_RECONCILIATION_TOLERANCE;
   const ratio = input.bottomUp / invoiceTotal;
-  const withinTolerance = Math.abs(1 - ratio) <= tolerance;
   const residual = invoiceTotal - input.bottomUp;
   const residualRatio = residual / invoiceTotal;
+  // Compare the residual against the tolerance band IN CURRENCY rather than
+  // `|1 - ratio|` against the fraction. The two are the same predicate in
+  // exact arithmetic, but dividing first and then subtracting from 1 loses
+  // precision exactly at the band edge: `1 - 95/100` evaluates to
+  // 0.050000000000000044, which is NOT <= 0.05, so a bottom-up figure exactly
+  // 5.00% under the invoice fell OUTSIDE a configured ±5% tolerance — the one
+  // case the inclusive `<=` exists to include. Worse, it was inconsistent:
+  // `1 - 90/100` is 0.09999999999999998, so the same exact-edge input landed
+  // INSIDE a ±10% band. Which side of a user's configured boundary a figure
+  // fell on was decided by binary representation, not by the number they
+  // typed. Deriving it from the `residual` this function already computes
+  // also means the verdict and the rendered residual can never disagree.
+  const withinTolerance = Math.abs(residual) <= tolerance * invoiceTotal * (1 + BAND_EDGE_EPSILON);
   const scopeNote = input.scopeNote && input.scopeNote.trim().length > 0 ? input.scopeNote.trim() : null;
 
   const candidateCauses: ReconciliationCause[] = [];
