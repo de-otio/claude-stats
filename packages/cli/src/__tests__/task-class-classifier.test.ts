@@ -46,6 +46,49 @@ describe("path rules", () => {
     expect(isConfigPath("/w/a/src/order.ts")).toBe(false);
   });
 
+  it("does not let an ANCESTOR directory name hijack an ordinary source file", () => {
+    // Stored paths are absolute, so the segment scan sees the whole home and
+    // repository prefix. Scanning bare generic names there made every file in a
+    // repository named `deploy` config — and at HIGH confidence, since
+    // configShare was then 1. Only dot-prefixed, tool-reserved segments are
+    // unambiguous at any depth (spec §5.6).
+    expect(isConfigPath("/home/u/repos/deploy/src/order.ts")).toBe(false);
+    expect(isConfigPath("/home/u/repos/charts/src/order.ts")).toBe(false);
+    expect(isConfigPath("/home/u/repos/k8s/src/order.ts")).toBe(false);
+    expect(isConfigPath("/home/u/repos/helm/src/order.ts")).toBe(false);
+    expect(isConfigPath("/home/u/repos/terraform/src/order.ts")).toBe(false);
+    // The monorepo shape: a PACKAGE named `deploy` inside an ordinary repo.
+    expect(isConfigPath("/home/u/repos/alpha/packages/deploy/src/order.ts")).toBe(false);
+  });
+
+  it("still recognises config that the extension and dot-segment rules cover", () => {
+    // Dropping the bare generic segments must not cost the cases that matter:
+    // real infrastructure files carry a config extension.
+    expect(isConfigPath("/home/u/repos/deploy/terraform/main.tf")).toBe(true);
+    expect(isConfigPath("/home/u/repos/alpha/k8s/deployment.yaml")).toBe(true);
+    expect(isConfigPath("/home/u/repos/alpha/charts/web/values.yaml")).toBe(true);
+    expect(isConfigPath("/home/u/repos/alpha/.github/workflows/ci.yml")).toBe(true);
+    expect(isConfigPath("/home/u/repos/alpha/.vscode/launch.json")).toBe(true);
+    expect(isConfigPath("/home/u/repos/alpha/deploy/Dockerfile")).toBe(true);
+  });
+
+  it("accepts the stated recall loss rather than guessing (spec §5.6)", () => {
+    // A non-config extension inside an infra directory is no longer reached.
+    // Pinned so the trade is a recorded decision, not a silent regression.
+    expect(isConfigPath("/home/u/repos/alpha/deploy/rollout.sh")).toBe(false);
+  });
+
+  it("a rename sweep inside a repo named `deploy` is a sweep, not a config chore", () => {
+    // End to end: the exact false positive the ancestor scan produced. Five
+    // TypeScript files, five edits, nothing config about any of them.
+    const files = ["order", "cart", "user", "client", "routes"];
+    const r = classifySession(
+      files.map((n) => ({ tools: ["Edit"], filePaths: [`/home/u/repos/deploy/src/${n}.ts`] })),
+    );
+    expect(r.fine).toBe("refactor-multi-file");
+    expect(r.fine).not.toBe("config-chore");
+  });
+
   it("treats a leading-dot basename as having no extension", () => {
     // `.eslintrc` must match by basename, not resolve `.eslintrc` as an extension.
     expect(isConfigPath("/w/a/.eslintrc")).toBe(true);
@@ -115,6 +158,62 @@ describe("feature derivation", () => {
     // documented choice rather than an accident someone later "fixes" blindly.
     const f = deriveFeatures([{ tools: ["Read", "Edit"], filePaths: ["/w/a/x.ts", "/w/a/y.ts"] }]);
     expect(f.editedFiles).toBe(2);
+  });
+
+  it("does not count a Bash cwd as a file", () => {
+    // The parser puts the Bash tool's `input.cwd` — a DIRECTORY — into the same
+    // `file_paths` column as real file arguments. It is not a file.
+    const f = deriveFeatures([{ tools: ["Bash"], filePaths: ["/w/a/sub"] }]);
+    expect(f.filesTouched).toBe(0);
+    expect(f.editedFiles).toBe(0);
+  });
+
+  it("does not count a Glob dirname or a literal wildcard as a file", () => {
+    // The parser stores `dirname(pattern)`, which is a directory — or the
+    // literal wildcard `src/**` when the pattern nests.
+    const f = deriveFeatures([
+      { tools: ["Glob"], filePaths: ["src"] },
+      { tools: ["Glob"], filePaths: ["src/**"] },
+    ]);
+    expect(f.filesTouched).toBe(0);
+    expect(f.editedFiles).toBe(0);
+  });
+
+  it("a Bash cwd beside an Edit is not an edited file", () => {
+    // The load-bearing case: one assistant message that edits a file and then
+    // runs the tests contributes BOTH the file and the cwd to `file_paths`.
+    // Counting the cwd let a three-file change cross REFACTOR_MIN_FILES.
+    const messages = [
+      { tools: ["Edit", "Bash"], filePaths: ["/w/a/src/x.ts", "/w/a"] },
+      { tools: ["Edit", "Bash"], filePaths: ["/w/a/src/y.ts", "/w/a"] },
+      { tools: ["Edit", "Edit", "Bash"], filePaths: ["/w/a/src/z.ts", "/w/a"] },
+      { tools: ["Edit"], filePaths: ["/w/a/src/x.ts"] },
+    ];
+    const f = deriveFeatures(messages);
+    expect(f.editCalls).toBe(5);
+    expect(f.editedFiles).toBe(3);
+    const r = classifyTaskClass(f);
+    expect(r.fine).not.toBe("refactor-multi-file");
+    expect(r.fine).toBe("unknown");
+    expect(r.abstainReason).toBe("below-threshold");
+    expect(r.coarse).toBe("build");
+  });
+
+  it("keeps an extension-less real file when the message is unambiguous", () => {
+    // No Bash and no Glob in the message, so every path came from a file-taking
+    // tool and is authoritative — the file-likeness filter must not run here.
+    const f = deriveFeatures([{ tools: ["Read", "Edit"], filePaths: ["/w/a/LICENSE"] }]);
+    expect(f.filesTouched).toBe(1);
+    expect(f.editedFiles).toBe(1);
+  });
+
+  it("keeps config files with no extension in a mixed message", () => {
+    const f = deriveFeatures([
+      { tools: ["Edit", "Bash"], filePaths: ["/w/a/Dockerfile", "/w/a"] },
+      { tools: ["Edit", "Bash"], filePaths: ["/w/a/Makefile", "/w/a"] },
+    ]);
+    expect(f.editedFiles).toBe(2);
+    expect(f.configFiles).toBe(2);
   });
 
   it("falls back to message count for turns when is_turn_start is absent (pre-V18)", () => {

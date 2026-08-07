@@ -719,9 +719,24 @@ export async function buildCli(): Promise<Command> {
           return;
         }
 
+        // The confidence tier travels WITH the count, never on a separate line
+        // a reader can skip: spec §5.7 gives every classification a tier and a
+        // per-class figure quoted without one implies a certainty it lacks.
+        const tiers = new Map<string, { high: number; medium: number; low: number }>();
+        for (const row of counts.byConfidence) {
+          const slot = tiers.get(row.task_class) ?? { high: 0, medium: 0, low: 0 };
+          if (row.confidence === "high") slot.high += row.n;
+          else if (row.confidence === "medium") slot.medium += row.n;
+          else slot.low += row.n;
+          tiers.set(row.task_class, slot);
+        }
+
         console.log(`\n${t("cli:taskClass.fineHeader")}`);
         for (const row of counts.fine) {
-          console.log(`  ${row.task_class.padEnd(22)} ${String(row.n).padStart(6)}`);
+          const mix = tiers.get(row.task_class) ?? { high: 0, medium: 0, low: 0 };
+          console.log(
+            `  ${row.task_class.padEnd(22)} ${String(row.n).padStart(6)}   ${t("cli:taskClass.confidenceMix", mix)}`,
+          );
         }
         console.log(`\n${t("cli:taskClass.coarseHeader")}`);
         for (const row of counts.coarse) {
@@ -738,6 +753,12 @@ export async function buildCli(): Promise<Command> {
         console.log(
           `\n${t("cli:taskClass.coverage", { classified: total, unclassified: counts.unclassified })}`,
         );
+
+        // Spec §5.10: the fine grain is report-grade UNDER A STATED CAVEAT, and
+        // any surface quoting a per-class figure carries the caveat with it.
+        // This is that surface, so it prints it — unconditionally, not behind a
+        // verbosity flag.
+        console.log(`\n${t("cli:taskClass.caveat")}`);
 
         // A store classified by two rule sets cannot anchor a before/after
         // comparison — say so rather than letting the mixture pass silently.

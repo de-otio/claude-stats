@@ -188,6 +188,31 @@ describe("task-class storage seam", () => {
     // s3 was never classified — the denominator must say so.
     expect(counts.unclassified).toBe(1);
   });
+
+  it("carries the confidence tier through the seam, not just the class count", () => {
+    // Spec §5.7 gives every classification a tier and §5.10 forbids quoting a
+    // per-class figure without one. A seam returning only class totals left
+    // every downstream surface unable to show the tier even if it wanted to.
+    store.upsertSession(session("s2"));
+    store.upsertSession(session("s3"));
+    store.setTaskClass({
+      sessionId: "s1", taskClass: "debug", coarseClass: "diagnose", confidence: "high",
+      rule: "diagnosis", classifierVersion: 1, classifiedAt: FIXED_NOW,
+    });
+    store.setTaskClass({
+      sessionId: "s2", taskClass: "debug", coarseClass: "diagnose", confidence: "medium",
+      rule: "diagnosis", classifierVersion: 1, classifiedAt: FIXED_NOW,
+    });
+    store.setTaskClass({
+      sessionId: "s3", taskClass: "unknown", coarseClass: "build", confidence: "low",
+      rule: "below-threshold", abstainReason: "below-threshold", classifierVersion: 1, classifiedAt: FIXED_NOW,
+    });
+    expect(store.getTaskClassCounts().byConfidence).toEqual([
+      { task_class: "debug", confidence: "high", n: 1 },
+      { task_class: "debug", confidence: "medium", n: 1 },
+      { task_class: "unknown", confidence: "low", n: 1 },
+    ]);
+  });
 });
 
 describe("the classify pass", () => {
@@ -377,6 +402,26 @@ describe("the classify pass — file_paths must survive the store", () => {
       coarse_class: "build",
       rule: "multi-file-sweep",
       abstain_reason: null,
+    });
+  });
+
+  it("a Bash cwd stored in file_paths never becomes an edited file", () => {
+    // The parser writes the Bash tool's `input.cwd` into the SAME column as
+    // real file arguments, so this has to hold after the JSON round-trip too:
+    // three edited files plus a repeated cwd was four, which crossed
+    // REFACTOR_MIN_FILES and reported a focused change as a sweep.
+    store.upsertSession(session("s-cwd"));
+    store.upsertMessages([
+      message("w0", "s-cwd", ["Edit", "Bash"], ["/w/alpha/src/x.ts", "/w/alpha"]),
+      message("w1", "s-cwd", ["Edit", "Bash"], ["/w/alpha/src/y.ts", "/w/alpha"]),
+      message("w2", "s-cwd", ["Edit", "Edit", "Bash"], ["/w/alpha/src/z.ts", "/w/alpha"]),
+      message("w3", "s-cwd", ["Edit"], ["/w/alpha/src/x.ts"]),
+    ]);
+    runTaskClassPass(store, { now: frozenClock() });
+    expect(store.getTaskClass("s-cwd")).toMatchObject({
+      task_class: "unknown",
+      abstain_reason: "below-threshold",
+      coarse_class: "build",
     });
   });
 

@@ -450,6 +450,8 @@
     "coarseHeader": "Por classe geral:",
     "abstainHeader": "Classificação recusada:",
     "coverage": "Cobertura: {{classified}} session(s) classificada(s), {{unclassified}} ainda não classificada(s).",
-    "mixedVersions": "⚠  As sessions foram classificadas por mais de uma versão do classificador ({{versions}}). Execute 'task-class' novamente antes de comparar classes ao longo de um período."
+    "mixedVersions": "⚠  As sessions foram classificadas por mais de uma versão do classificador ({{versions}}). Execute 'task-class' novamente antes de comparar classes ao longo de um período.",
+    "confidenceMix": "confiança: {{high}} alta, {{medium}} média, {{low}} baixa",
+    "caveat": "Ressalva: a concordância foi medida em relação a um corpus gerado — a intenção do gerador, não rótulos humanos em sessions reais. As classes granulares só têm qualidade de relatório sob essa ressalva; cite qualquer valor por classe sempre junto com ela e com a distribuição de confiança acima, ou use as classes amplas."
   }
 }

@@ -327,6 +327,8 @@
     "coarseHeader": "By coarse class:",
     "abstainHeader": "Declined to classify:",
     "coverage": "Coverage: {{classified}} session(s) classified, {{unclassified}} not yet classified.",
+    "confidenceMix": "confidence: {{high}} high, {{medium}} medium, {{low}} low",
+    "caveat": "Caveat: agreement was measured against a generated corpus — the generator's intent, not human labels on real sessions. The fine-grained classes are report-grade only under that caveat; quote any per-class figure together with it and with the confidence mix above, or use the coarse classes.",
     "mixedVersions": "⚠  Sessions were classified by more than one classifier version ({{versions}}). Re-run 'task-class' before comparing classes across a period."
   },
   "backfill": {

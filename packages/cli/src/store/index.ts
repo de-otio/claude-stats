@@ -2551,11 +2551,18 @@ export class Store {
    * Returns the UNCLASSIFIED count too, because that is the coverage
    * denominator: a per-class table without it implies a completeness it does
    * not have. Callers must surface it.
+   *
+   * `byConfidence` is the fine class crossed with the stored confidence tier.
+   * Spec §5.7 gives every classification a tier and §5.10 forbids quoting a
+   * per-class figure without its caveat; a seam that returned only `fine`
+   * counts left every downstream surface unable to show the tier even if it
+   * wanted to, so the tier travels with the count rather than beside it.
    */
   getTaskClassCounts(): {
     fine: Array<{ task_class: string; n: number }>;
     coarse: Array<{ coarse_class: string; n: number }>;
     abstain: Array<{ abstain_reason: string; n: number }>;
+    byConfidence: Array<{ task_class: string; confidence: string; n: number }>;
     unclassified: number;
   } {
     const fine = this.db
@@ -2570,6 +2577,12 @@ export class Store {
           WHERE abstain_reason IS NOT NULL GROUP BY abstain_reason ORDER BY n DESC, abstain_reason`,
       )
       .all() as Array<{ abstain_reason: string; n: number }>;
+    const byConfidence = this.db
+      .prepare(
+        `SELECT task_class, confidence, COUNT(*) AS n FROM session_task_class
+          GROUP BY task_class, confidence ORDER BY task_class, confidence`,
+      )
+      .all() as Array<{ task_class: string; confidence: string; n: number }>;
     const { n } = this.db
       .prepare(
         `SELECT COUNT(*) AS n FROM sessions s
@@ -2577,7 +2590,7 @@ export class Store {
           WHERE tc.session_id IS NULL`,
       )
       .get() as { n: number };
-    return { fine, coarse, abstain, unclassified: n };
+    return { fine, coarse, abstain, byConfidence, unclassified: n };
   }
 
   /**

@@ -21,7 +21,7 @@
  * specific way: recipe authorship and rule authorship share an author. The
  * spec says so, and so does anything that quotes the resulting number.
  *
- * Two recipes are labelled AMBIGUOUS on purpose. A classifier that scores well
+ * Three recipes are labelled AMBIGUOUS on purpose. A classifier that scores well
  * on the decidable ones while confidently labelling these has failed, not
  * passed — which is why abstention is measured separately.
  */
@@ -47,6 +47,34 @@ const PROSE_FILES = [
   "/w/alpha/README.md", "/w/alpha/doc/design.md", "/w/alpha/doc/api.md",
   "/w/alpha/CHANGELOG.md", "/w/alpha/doc/faq.md",
 ] as const;
+
+/**
+ * A second project whose ROOT DIRECTORY is named like infrastructure.
+ *
+ * Ordinary TypeScript, in a repository that happens to be called `deploy`.
+ * Absolute stored paths put that name in every ancestor scan, and an earlier
+ * config path rule scanned bare generic directory names anywhere in the path,
+ * so this shape was reported as `config-chore` at high confidence.
+ */
+const DEPLOY_REPO_CODE_FILES = [
+  "/home/u/repos/deploy/src/order.ts", "/home/u/repos/deploy/src/cart.ts",
+  "/home/u/repos/deploy/src/user.ts", "/home/u/repos/deploy/src/api/client.ts",
+  "/home/u/repos/deploy/src/api/routes.ts", "/home/u/repos/deploy/src/util/date.ts",
+] as const;
+
+/**
+ * What the PARSER, not the recipe, contributes to `messages.file_paths`.
+ *
+ * `packages/core/src/parser/session.ts` fills that one column from three
+ * shapes, and only the first is a file: a tool's `file_path` argument, the Bash
+ * tool's `input.cwd` (a directory), and `dirname(pattern)` for Glob (a
+ * directory, or a literal wildcard when the pattern nests). A corpus whose Bash
+ * and Glob calls contributed nothing could not falsify the derivation's
+ * handling of them — which is exactly how "a directory counted as an edited
+ * file" survived into a shipped classifier.
+ */
+const BASH_CWD = "/w/alpha";
+const GLOB_DIRNAMES = ["/w/alpha/src", "/w/alpha/src/**"] as const;
 
 /** A tool call paired with the file it touched (null for tools with no file). */
 interface Call {
@@ -245,6 +273,25 @@ export const RECIPES: readonly Recipe[] = [
     },
   },
   {
+    id: "rename-sweep-in-infra-named-repo",
+    narrative:
+      "The same rename sweep, but the repository the developer is working in " +
+      "is itself called `deploy`. Nothing about the work is configuration — " +
+      "every file is ordinary TypeScript under src/ — yet every stored path " +
+      "carries `deploy` as an ancestor segment.",
+    expect: "refactor-multi-file",
+    build: (rand) => {
+      const files = pick(DEPLOY_REPO_CODE_FILES, between(5, 6, rand), rand);
+      const calls: Call[] = [{ tool: "Grep", file: null }];
+      for (const f of files) {
+        calls.push({ tool: "Read", file: f });
+        calls.push({ tool: "Edit", file: f });
+      }
+      calls.push({ tool: "Bash", file: null });
+      return calls;
+    },
+  },
+  {
     id: "codebase-orientation",
     narrative:
       "Getting oriented in an unfamiliar area: a lot of reading and searching, " +
@@ -352,9 +399,16 @@ function toMessages(calls: readonly Call[], rand: () => number): TaskClassMessag
   while (i < calls.length) {
     const width = between(1, 3, rand);
     const slice = calls.slice(i, i + width);
+    const paths = slice.map((c) => c.file).filter((f): f is string => f !== null);
+    // The parser's non-file contributions, added the way it adds them: into the
+    // same column, undistinguishable from a real file argument.
+    if (slice.some((c) => c.tool === "Bash")) paths.push(BASH_CWD);
+    if (slice.some((c) => c.tool === "Glob")) {
+      paths.push(GLOB_DIRNAMES[Math.floor(rand() * GLOB_DIRNAMES.length)]!);
+    }
     messages.push({
       tools: slice.map((c) => c.tool),
-      filePaths: slice.map((c) => c.file).filter((f): f is string => f !== null),
+      filePaths: paths,
       toolErrorCount: slice.filter((c) => c.error).length,
       isTurnStart: first,
     });
