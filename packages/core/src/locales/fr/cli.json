@@ -188,7 +188,8 @@
     "ticketKeyArg": "Clé de ticket (p. ex. PROJ-123). Omise sans autre option : liste les liens actuels",
     "ticketNegate": "Neutraliser cette clé pour la session (la masque même si l'extraction continue de la détecter)",
     "ticketRemove": "Supprimer un lien manuel pour cette clé (sans affecter la neutralisation)",
-    "ticketList": "Lister les liens de tickets de la session avant d'appliquer une modification"
+    "ticketList": "Lister les liens de tickets de la session avant d'appliquer une modification",
+    "packInvoiceCsv": "Chemin vers un export CSV Cost Explorer (ou équivalent) à utiliser pour le rapprochement — remplace config.reconciliation.invoiceTotal pour cette exécution uniquement"
   },
   "collection": {
     "collecting": "Collecte en cours...",
@@ -352,7 +353,8 @@
     "cannotCombineHtml": "Impossible de combiner --html avec --trend ou --detail",
     "cannotCombineTrendDetail": "Impossible de combiner --trend et --detail",
     "invalidDateRange": "Plage de dates invalide : {{message}}",
-    "invalidPackPeriod": "Période de dossier invalide : {{message}}"
+    "invalidPackPeriod": "Période de dossier invalide : {{message}}",
+    "invalidInvoiceCsv": "Impossible de lire --invoice-csv {{path}} : {{message}}"
   },
   "repair": {
     "description": "Réparer les données dérivées que la collecte normale ne peut pas corriger rétroactivement.",

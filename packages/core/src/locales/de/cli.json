@@ -188,7 +188,8 @@
     "ticketKeyArg": "Ticket-Schlüssel (z. B. PROJ-123). Ohne weitere Flags: listet aktuelle Verknüpfungen auf",
     "ticketNegate": "Diesen Schlüssel für die Session als Tombstone markieren (unterdrückt ihn, auch wenn die Extraktion weiterhin passt)",
     "ticketRemove": "Eine manuelle Verknüpfung für diesen Schlüssel entfernen (betrifft den Negations-Tombstone nicht)",
-    "ticketList": "Ticket-Verknüpfungen der Session auflisten, bevor Änderungen angewendet werden"
+    "ticketList": "Ticket-Verknüpfungen der Session auflisten, bevor Änderungen angewendet werden",
+    "packInvoiceCsv": "Pfad zu einem Cost Explorer-CSV-Export (oder gleichwertig) für den Abgleich – überschreibt config.reconciliation.invoiceTotal nur für diesen Durchlauf"
   },
   "collection": {
     "collecting": "Erfassung läuft...",
@@ -349,7 +350,8 @@
     "cannotCombineHtml": "--html kann nicht mit --trend oder --detail kombiniert werden",
     "cannotCombineTrendDetail": "--trend und --detail können nicht kombiniert werden",
     "invalidDateRange": "Ungültiger Zeitraum: {{message}}",
-    "invalidPackPeriod": "Ungültiger Paketzeitraum: {{message}}"
+    "invalidPackPeriod": "Ungültiger Paketzeitraum: {{message}}",
+    "invalidInvoiceCsv": "--invoice-csv {{path}} konnte nicht gelesen werden: {{message}}"
   },
   "repair": {
     "description": "Repariert abgeleitete Daten, die die normale Erfassung nicht rückwirkend beheben kann.",

@@ -116,6 +116,10 @@
       "types": "./dist/insight.d.ts",
       "default": "./dist/insight.js"
     },
+    "./reconciliation": {
+      "types": "./dist/reconciliation.d.ts",
+      "default": "./dist/reconciliation.js"
+    },
     "./types/insight": {
       "types": "./dist/types/insight.d.ts",
       "default": "./dist/types/insight.js"

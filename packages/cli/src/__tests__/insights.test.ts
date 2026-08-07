@@ -130,6 +130,7 @@ const goldenData: DashboardData = {
     topTicket: { key: "PROJ-123", cost: 41.2 },
     hourlyRate: 90,
     currency: "USD",
+    reconciliation: null,
   },
 };
 

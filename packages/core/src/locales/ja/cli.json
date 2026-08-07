@@ -188,7 +188,8 @@
     "ticketKeyArg": "チケットキー (例: PROJ-123)。他のフラグなしで省略した場合は現在のリンクを一覧表示します",
     "ticketNegate": "このキーをセッションでトゥームストーン化します (抽出が一致し続けても抑制されます)",
     "ticketRemove": "このキーの手動リンクを削除します (無効化のトゥームストーンには影響しません)",
-    "ticketList": "変更を適用する前にセッションのチケットリンクを一覧表示します"
+    "ticketList": "変更を適用する前にセッションのチケットリンクを一覧表示します",
+    "packInvoiceCsv": "突き合わせに使用する Cost Explorer の CSV エクスポート (または同等のファイル) へのパス — この実行に限り config.reconciliation.invoiceTotal を上書きします"
   },
   "collection": {
     "collecting": "収集中...",
@@ -349,7 +350,8 @@
     "cannotCombineHtml": "--html は --trend や --detail と組み合わせられません",
     "cannotCombineTrendDetail": "--trend と --detail は組み合わせられません",
     "invalidDateRange": "無効な日付範囲です: {{message}}",
-    "invalidPackPeriod": "無効なパック期間です: {{message}}"
+    "invalidPackPeriod": "無効なパック期間です: {{message}}",
+    "invalidInvoiceCsv": "--invoice-csv {{path}} を読み取れませんでした: {{message}}"
   },
   "repair": {
     "description": "通常の収集では遡って修正できない派生データを修復します。",

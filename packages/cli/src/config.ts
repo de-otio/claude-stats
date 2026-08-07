@@ -147,10 +147,24 @@ export interface Config {
    * imported, never fetched — the store makes no network calls.
    */
   reconciliation?: {
-    /** Invoice total for the period, in the account's currency. */
+    /** Invoice total for the period, in the account's currency. A CLI
+     *  `--invoice-csv` import overrides this per-run; it is not written back
+     *  here. */
     invoiceTotal?: number;
     /** Percent difference below which the report says "reconciles". Default 5. */
     tolerancePercent?: number;
+    /**
+     * What the invoice figure above actually covers — an AWS account id, an
+     * org, a date range, a tag/profile mapping. REQUIRED to say so honestly:
+     * the local store's scope (this machine, possibly one project or
+     * account) need not equal the invoice's scope, and a reconciliation run
+     * against mismatched scopes "proves" the estimates are off when the real
+     * problem is that the two sides count different things
+     * (ticket-attribution/04 §4.3). Left unset, the report states the scope
+     * as unconfirmed rather than assuming a match — never rendered as if the
+     * two sides were known to agree.
+     */
+    scopeNote?: string;
   };
   /**
    * Efficiency-hygiene detectors. `suppressions` holds detector ids the user
@@ -303,6 +317,7 @@ const MAX_HOURLY_RATE = 10_000;
 const MAX_SUPPRESSIONS = 200;
 const MAX_SUPPRESSION_LEN = 64;
 const MAX_INVOICE_TOTAL = 10_000_000;
+const MAX_SCOPE_NOTE_LEN = 500;
 const DEFAULT_RECONCILE_TOLERANCE = 5;
 
 /** Validate `tickets`. Project keys are upper-cased and shape-checked. */
@@ -411,6 +426,9 @@ export function validateReconciliationConfig(input: unknown): NonNullable<Config
   }
   if (typeof r.tolerancePercent === "number" && Number.isFinite(r.tolerancePercent)) {
     out.tolerancePercent = Math.min(100, Math.max(0, r.tolerancePercent));
+  }
+  if (typeof r.scopeNote === "string" && r.scopeNote.trim().length > 0) {
+    out.scopeNote = r.scopeNote.trim().slice(0, MAX_SCOPE_NOTE_LEN);
   }
   return out;
 }

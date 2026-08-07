@@ -14,7 +14,7 @@
  * filter" means in practice.
  */
 import type { HasNoPersonalFields, ForbiddenPersonalField } from "./shard.js";
-import type { AccountMode, Confidence, PolicyEvent, TaskClass } from "./insight.js";
+import type { AccountMode, Confidence, PolicyEvent, Reconciliation, TaskClass } from "./insight.js";
 
 /** Pack-specific additions to the org plane's forbidden-field list: evidence
  *  text, per-session id arrays, and the LOCAL-ONLY `PolicyEvent.detail` field
@@ -61,14 +61,10 @@ export interface PackNonTicketRow {
   readonly confidence: Confidence | null;
 }
 
-export interface PackReconciliation {
-  readonly bottomUp: number;
-  readonly invoiceTotal: number;
-  /** bottomUp / invoiceTotal. */
-  readonly ratio: number;
-  readonly withinTolerance: boolean;
-  readonly tolerancePercent: number;
-}
+/** The pack's reconciliation block is exactly the shared `Reconciliation`
+ *  shape — no pack-specific fields, so a residual and its named causes read
+ *  identically wherever reconciliation appears (pack, dashboard, CLI). */
+export type PackReconciliation = Reconciliation;
 
 export interface PackHeadline {
   readonly mode: AccountMode;

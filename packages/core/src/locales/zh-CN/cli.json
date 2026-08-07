@@ -188,7 +188,8 @@
     "ticketKeyArg": "工单标识（例如 PROJ-123）。省略且未指定其他标志时：列出当前链接",
     "ticketNegate": "为该会话屏蔽此标识（即使提取仍能匹配也会将其抑制）",
     "ticketRemove": "移除此标识的手动链接（不影响屏蔽标记）",
-    "ticketList": "在应用任何更改前列出该会话的工单链接"
+    "ticketList": "在应用任何更改前列出该会话的工单链接",
+    "packInvoiceCsv": "用于对账的 Cost Explorer CSV 导出文件（或同类文件）的路径 — 仅对本次运行覆盖 config.reconciliation.invoiceTotal"
   },
   "collection": {
     "collecting": "收集中...",
@@ -349,7 +350,8 @@
     "cannotCombineHtml": "--html 不能与 --trend 或 --detail 组合使用",
     "cannotCombineTrendDetail": "--trend 和 --detail 不能组合使用",
     "invalidDateRange": "无效的日期范围：{{message}}",
-    "invalidPackPeriod": "无效的材料包时间段：{{message}}"
+    "invalidPackPeriod": "无效的材料包时间段：{{message}}",
+    "invalidInvoiceCsv": "无法读取 --invoice-csv {{path}}：{{message}}"
   },
   "repair": {
     "description": "修复常规采集无法追溯修正的派生数据。",

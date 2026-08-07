@@ -91,7 +91,9 @@
       "metered": "按量计费的实际成本。",
       "reconciled": "与账单的吻合度为 {{ratio}}。",
       "fallbackRates": "部分用量按第一方费率计价 — 配置合作伙伴费率可获得准确金额。",
-      "reconciledAndFallback": "与账单的吻合度为 {{ratio}}；部分用量按第一方费率计价 — 配置合作伙伴费率可获得准确金额。"
+      "reconciledAndFallback": "与账单的吻合度为 {{ratio}}；部分用量按第一方费率计价 — 配置合作伙伴费率可获得准确金额。",
+      "notReconciled": "与账单不一致——自下而上汇总为导入总额的 {{ratio}}。",
+      "notReconciledAndFallback": "与账单不一致——自下而上汇总为导入总额的 {{ratio}}；部分用量还按第一方费率计价——请配置合作伙伴费率以获得精确数值。"
     },
     "coverage": {
       "tier": "{{percent}} 为{{tier}}",

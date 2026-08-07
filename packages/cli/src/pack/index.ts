@@ -93,6 +93,13 @@ export interface PackGenerateOptions {
   accountUuid?: string;
   /** Injected clock. Defaults to `Date.now`; tests pin this for determinism. */
   now?: () => number;
+  /**
+   * Overrides `config.reconciliation.invoiceTotal` for this generation — the
+   * result of a `--invoice-csv` import. The CLI passes this rather than
+   * writing the parsed total back to config, so an ad-hoc CSV import never
+   * silently mutates the user's saved settings.
+   */
+  invoiceTotalOverride?: number | null;
 }
 
 export interface PackGenerateResult {
@@ -151,8 +158,9 @@ export function buildJustificationPack(store: Store, config: Config, opts: PackG
       currency,
       coverage: report.coverage,
       hourlyRate: config.rate?.hourly ?? null,
-      reconciledInvoiceTotal: config.reconciliation?.invoiceTotal ?? null,
+      reconciledInvoiceTotal: opts.invoiceTotalOverride ?? config.reconciliation?.invoiceTotal ?? null,
       reconciliationTolerance: (config.reconciliation?.tolerancePercent ?? 5) / 100,
+      reconciliationScopeNote: config.reconciliation?.scopeNote ?? null,
       anyFallbackRates: report.anyFallbackRates,
       planFee,
       unknownTokens: report.unknownTokens,

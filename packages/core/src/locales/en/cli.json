@@ -139,6 +139,7 @@
     "packSections": "Comma-separated sections to include: headline,tickets,nonticket,hygiene,constraint,calibration (default: headline,tickets,nonticket)",
     "packOut": "Directory to write the pack bundle into (default: current directory)",
     "packJson": "Print the written file paths as JSON instead of a summary line",
+    "packInvoiceCsv": "Path to a Cost Explorer CSV export (or equivalent) to reconcile against — overrides config.reconciliation.invoiceTotal for this run only",
     "status": "Show database size, row counts, and last collection time",
     "export": "Export data to CSV or JSON",
     "exportFormat": "Output format: csv or json (default: json)",
@@ -371,7 +372,8 @@
     "cannotCombineHtml": "Cannot combine --html with --trend or --detail",
     "cannotCombineTrendDetail": "Cannot combine --trend and --detail",
     "invalidDateRange": "Invalid date range: {{message}}",
-    "invalidPackPeriod": "Invalid pack period: {{message}}"
+    "invalidPackPeriod": "Invalid pack period: {{message}}",
+    "invalidInvoiceCsv": "Could not read --invoice-csv {{path}}: {{message}}"
   },
   "archive": {
     "description": "Manage transcript archives.",

@@ -481,7 +481,8 @@
     },
     "alerts": {
       "fallbackRates": "Parte do uso foi precificada com tarifas first-party em uma plataforma parceira (Bedrock ou Vertex). Todos os valores aqui são estimativas até que as tarifas do parceiro sejam configuradas.",
-      "action": "Revisar"
+      "action": "Revisar",
+      "reconciliationDrift": "O custo calculado de baixo para cima não concilia com o total da fatura configurado — consulte a ressalva no cartão de custo para ver o resíduo e suas possíveis causas."
     },
     "verdict": {
       "goodValue": "Seu plano vale a pena para o quanto você usa",

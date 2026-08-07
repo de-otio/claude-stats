@@ -502,10 +502,16 @@ describe("CSV bundle rendering", () => {
     const lines = renderSummaryCsv(model).trim().split("\r\n");
     expect(lines[0]).toBe(
       "period,projectPath,accountUuid,mode,currency,totalCost,coverageRatio,confidenceHigh,confidenceMedium,confidenceLow," +
-        "anyFallbackRates,unknownTokens,planFee,reconciledInvoiceTotal,reconciledRatio,withinTolerance",
+        "anyFallbackRates,unknownTokens,planFee,reconciledInvoiceTotal,reconciledRatio,withinTolerance," +
+        "reconciliationResidual,reconciliationScopeNote,reconciliationCandidateCauses",
     );
     // COVERAGE: byConfidence {high:40,medium:20,low:0}, attributedCost 60 → 0.6667/0.3333/0.0000.
-    expect(lines[1]).toBe("2026-04,,,metered,USD,100.00,0.6000,0.6667,0.3333,0.0000,false,0,,200.00,0.5000,false");
+    // bottomUp 100 vs invoice 200 → ratio 0.5, outside ±5% tolerance → residual
+    // 100.00, and with no scopeNote configured "scope-mismatch" is named as a
+    // candidate cause (nothing rules it out).
+    expect(lines[1]).toBe(
+      "2026-04,,,metered,USD,100.00,0.6000,0.6667,0.3333,0.0000,false,0,,200.00,0.5000,false,100.00,,scope-mismatch",
+    );
   });
 
   it("summary.csv carries the unpriced-token count and the fallback-rate flag (I-3, I-5)", () => {
@@ -797,6 +803,39 @@ describe("justification pack — generated against a seeded store", () => {
     expect(loose.model.headline.reconciliation!.withinTolerance).toBe(true);
   });
 
+  it("--invoice-csv's parsed total overrides config.reconciliation.invoiceTotal for this run, without mutating config", () => {
+    const opts = { period: "2026-01", timezone: "UTC", now: () => FIXED_NOW } as const;
+    const withoutOverride = buildJustificationPack(store, config, opts); // config.invoiceTotal: 500
+    const withOverride = buildJustificationPack(store, config, { ...opts, invoiceTotalOverride: 60 });
+
+    expect(withoutOverride.model.headline.reconciliation!.invoiceTotal).toBe(500);
+    expect(withOverride.model.headline.reconciliation!.invoiceTotal).toBe(60);
+    // The override is a per-call option, not a config write — the caller's
+    // config object is never touched.
+    expect(config.reconciliation!.invoiceTotal).toBe(500);
+  });
+
+  it("scopeNote from config reaches the pack's reconciliation block, and suppresses the scope-mismatch cause", () => {
+    const opts = { period: "2026-01", timezone: "UTC", now: () => FIXED_NOW } as const;
+    const withNote = buildJustificationPack(store, { ...config, reconciliation: { ...config.reconciliation, scopeNote: "AWS 111122223333" } }, opts);
+    expect(withNote.model.headline.reconciliation!.scopeNote).toBe("AWS 111122223333");
+    expect(withNote.model.headline.reconciliation!.candidateCauses).not.toContain("scope-mismatch");
+    expect(withNote.html).toContain("AWS 111122223333");
+
+    const withoutNote = buildJustificationPack(store, config, opts);
+    expect(withoutNote.model.headline.reconciliation!.scopeNote).toBeNull();
+    expect(withoutNote.model.headline.reconciliation!.candidateCauses).toContain("scope-mismatch");
+    expect(withoutNote.html).toContain("not confirmed in config");
+  });
+
+  it("names candidate causes for a residual in the HTML, and states 'not confirmed' scope when unset", () => {
+    const opts = { period: "2026-01", timezone: "UTC", now: () => FIXED_NOW } as const;
+    const result = buildJustificationPack(store, config, opts); // invoiceTotal 500, well outside tolerance
+    expect(result.model.headline.reconciliation!.withinTolerance).toBe(false);
+    expect(result.html).toContain("Residual:");
+    expect(result.html).toContain("Candidate cause");
+  });
+
   it("infers plan mode from a configured plan fee, and says so instead of claiming metered cost", () => {
     const planned = buildJustificationPack(
       store,
@@ -875,8 +914,18 @@ describe("justification pack — generated against a seeded store", () => {
     ]);
 
     const withFallback = buildJustificationPack(store, config, { period: "2026-01", timezone: "UTC", now: () => FIXED_NOW });
+    // `config` (this describe block's shared fixture) sets `reconciliation:
+    // {invoiceTotal: 500, tolerancePercent: 5}`, so the caveat now ALSO
+    // states the reconciliation verdict — the same figure the headline's
+    // own `reconciliation` block computes, quoted rather than re-derived.
+    const recon = withFallback.model.headline.reconciliation;
+    expect(recon).not.toBeNull();
     expect(withFallback.model.headline.costCaveatText).toBe(
-      costCaveat(t, "metered", { reconciledRatio: null, anyFallbackRates: true }),
+      costCaveat(t, "metered", {
+        reconciledRatio: recon!.ratio,
+        reconciledWithinTolerance: recon!.withinTolerance,
+        anyFallbackRates: true,
+      }),
     );
     expect(withFallback.html).not.toContain("Actual metered cost.");
 

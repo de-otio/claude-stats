@@ -92,7 +92,9 @@
       "metered": "Coût réellement facturé.",
       "reconciled": "Concorde avec la facture à {{ratio}}.",
       "fallbackRates": "Une partie de l'usage a été tarifée aux tarifs first-party — configurez les tarifs partenaires pour des montants exacts.",
-      "reconciledAndFallback": "Concorde avec la facture à {{ratio}} ; une partie de l'usage a été tarifée aux tarifs first-party — configurez les tarifs partenaires pour des montants exacts."
+      "reconciledAndFallback": "Concorde avec la facture à {{ratio}} ; une partie de l'usage a été tarifée aux tarifs first-party — configurez les tarifs partenaires pour des montants exacts.",
+      "notReconciled": "Ne correspond pas à la facture — le calcul ascendant représente {{ratio}} du total importé.",
+      "notReconciledAndFallback": "Ne correspond pas à la facture — le calcul ascendant représente {{ratio}} du total importé ; une partie de l'utilisation est aussi facturée aux tarifs directs — configurez les tarifs partenaires pour des chiffres exacts."
     },
     "coverage": {
       "tier": "{{percent}} {{tier}}",

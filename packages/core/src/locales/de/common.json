@@ -91,7 +91,9 @@
       "metered": "Tatsächlich abgerechnete Kosten.",
       "reconciled": "Stimmt zu {{ratio}} mit der Rechnung überein.",
       "fallbackRates": "Ein Teil der Nutzung wurde zu Erstanbieter-Preisen berechnet — konfigurieren Sie Partner-Preise für exakte Zahlen.",
-      "reconciledAndFallback": "Stimmt zu {{ratio}} mit der Rechnung überein; ein Teil der Nutzung wurde zu Erstanbieter-Preisen berechnet — konfigurieren Sie Partner-Preise für exakte Zahlen."
+      "reconciledAndFallback": "Stimmt zu {{ratio}} mit der Rechnung überein; ein Teil der Nutzung wurde zu Erstanbieter-Preisen berechnet — konfigurieren Sie Partner-Preise für exakte Zahlen.",
+      "notReconciled": "Stimmt nicht mit der Rechnung überein – Bottom-up ergibt {{ratio}} der importierten Gesamtsumme.",
+      "notReconciledAndFallback": "Stimmt nicht mit der Rechnung überein – Bottom-up ergibt {{ratio}} der importierten Gesamtsumme; ein Teil der Nutzung wird zudem zu First-Party-Tarifen berechnet – konfigurieren Sie Partner-Tarife für exakte Werte."
     },
     "coverage": {
       "tier": "{{percent}} {{tier}}",

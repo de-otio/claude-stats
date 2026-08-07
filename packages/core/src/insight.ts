@@ -219,13 +219,27 @@ export type CostVocabulary = AccountMode | "mixed";
 export function costCaveat(
   t: InsightT,
   mode: CostVocabulary,
-  opts: { reconciledRatio?: number | null; anyFallbackRates?: boolean } = {},
+  opts: {
+    reconciledRatio?: number | null;
+    /**
+     * Whether the reconciliation above fell within the configured tolerance.
+     * REQUIRED whenever `reconciledRatio` is set — without it this function
+     * cannot tell "reconciles" from "does not reconcile" and would have to
+     * guess, which is exactly the silent-wrong-number failure I1 forbids.
+     * `costCaveat` previously read ANY ratio as an affirmative "reconciles
+     * with the invoice at X%", including a residual nowhere near tolerance;
+     * that bug is why this field exists rather than a bare boolean derived
+     * from the ratio here.
+     */
+    reconciledWithinTolerance?: boolean;
+    anyFallbackRates?: boolean;
+  } = {},
 ): string {
   if (mode === "plan") return t("common:insight.caveat.plan");
   if (mode === "mixed") return t("common:insight.caveat.mixed");
 
-  // The metered branch has two independent qualifiers, so four outcomes. Each
-  // is its own COMPLETE sentence key rather than fragments joined with "; " and
+  // The metered branch has several independent qualifiers. Each outcome is
+  // its own COMPLETE sentence key rather than fragments joined with "; " and
   // run through a capitalizer: a translator handed "some usage priced at…"
   // cannot know whether it will land sentence-initial, and the capitalize()
   // this replaces was an English typographic rule applied blind to ten
@@ -233,8 +247,16 @@ export function costCaveat(
   // differently in each position).
   const reconciled = opts.reconciledRatio != null && Number.isFinite(opts.reconciledRatio);
   const ratio = reconciled ? formatPercent(opts.reconciledRatio!) : "";
-  if (reconciled && opts.anyFallbackRates) return t("common:insight.caveat.reconciledAndFallback", { ratio });
-  if (reconciled) return t("common:insight.caveat.reconciled", { ratio });
+  if (reconciled && opts.reconciledWithinTolerance === false) {
+    return opts.anyFallbackRates
+      ? t("common:insight.caveat.notReconciledAndFallback", { ratio })
+      : t("common:insight.caveat.notReconciled", { ratio });
+  }
+  if (reconciled && opts.reconciledWithinTolerance === true) {
+    return opts.anyFallbackRates
+      ? t("common:insight.caveat.reconciledAndFallback", { ratio })
+      : t("common:insight.caveat.reconciled", { ratio });
+  }
   if (opts.anyFallbackRates) return t("common:insight.caveat.fallbackRates");
   return t("common:insight.caveat.metered");
 }
@@ -284,6 +306,9 @@ export interface CostAnswerInput {
   planFee?: number | null;
   planMultiplier?: number | null;
   reconciledRatio?: number | null;
+  /** Required alongside `reconciledRatio` to state "reconciles" vs "does not
+   *  reconcile" rather than defaulting to silence (see `costCaveat`). */
+  reconciledWithinTolerance?: boolean;
   anyFallbackRates?: boolean;
 }
 
@@ -324,6 +349,7 @@ export function answerCost(t: InsightT, input: CostAnswerInput): InsightAnswer {
     trend: trendOf(input.cost, input.previousCost),
     caveat: costCaveat(t, input.mode, {
       reconciledRatio: input.reconciledRatio ?? null,
+      reconciledWithinTolerance: input.reconciledWithinTolerance,
       anyFallbackRates: input.anyFallbackRates ?? false,
     }),
     evidenceLink: "cost-and-controlling",

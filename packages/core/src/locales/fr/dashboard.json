@@ -481,7 +481,8 @@
     },
     "alerts": {
       "fallbackRates": "Une partie de l'usage a été tarifée aux tarifs first-party sur une plateforme partenaire (Bedrock ou Vertex). Tous les montants indiqués ici sont des estimations tant que les tarifs partenaires ne sont pas configurés.",
-      "action": "Examiner"
+      "action": "Examiner",
+      "reconciliationDrift": "Le coût calculé de bas en haut ne concorde pas avec le total de facture configuré — consultez la mise en garde de la carte des coûts pour connaître l'écart résiduel et ses causes possibles."
     },
     "verdict": {
       "goodValue": "Votre abonnement est rentable au vu de votre usage",

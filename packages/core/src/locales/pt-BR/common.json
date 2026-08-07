@@ -92,7 +92,9 @@
       "metered": "Custo real medido.",
       "reconciled": "Confere com a fatura em {{ratio}}.",
       "fallbackRates": "Parte do uso foi precificada com tarifas first-party — configure as tarifas do parceiro para valores exatos.",
-      "reconciledAndFallback": "Confere com a fatura em {{ratio}}; parte do uso foi precificada com tarifas first-party — configure as tarifas do parceiro para valores exatos."
+      "reconciledAndFallback": "Confere com a fatura em {{ratio}}; parte do uso foi precificada com tarifas first-party — configure as tarifas do parceiro para valores exatos.",
+      "notReconciled": "Não concilia com a fatura — o cálculo bottom-up é {{ratio}} do total importado.",
+      "notReconciledAndFallback": "Não concilia com a fatura — o cálculo bottom-up é {{ratio}} do total importado; parte do uso também foi precificada com tarifas first-party — configure as tarifas de parceiro para valores exatos."
     },
     "coverage": {
       "tier": "{{percent}} {{tier}}",
