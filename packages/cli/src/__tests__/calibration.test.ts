@@ -38,7 +38,10 @@ import {
   calibrationJson,
   outcomeCalibrationFrom,
 } from "../calibration/index.js";
-import type { CalibrationMetrics, CalibrationReport } from "../cost-per-task/calibration.js";
+import { calibrationMetrics } from "../cost-per-task/calibration.js";
+import type { CalibrationMetrics, CalibrationReport, LabelledPair } from "../cost-per-task/calibration.js";
+import { attachInsights } from "../dashboard/index.js";
+import type { DashboardData } from "../dashboard/index.js";
 import { FIXED_NOW } from "./fixtures/synthetic.js";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -726,5 +729,106 @@ describe("calibrationJson", () => {
     expect(j.agreed).toBe(20);
     expect(j.disagreed).toBe(10);
     expect(j.rate).toBeCloseTo(2 / 3, 10);
+  });
+
+  it("carries the honesty sentence, not just the numbers", () => {
+    // The payload's whole reason to exist is that `rate` must never travel
+    // without the sentence saying what it is a rate OF. Nothing else asserted
+    // `caveat`, so emptying it left every suite green while the MCP surface
+    // shipped a bare percentage. The KEY is asserted, not a substring, so four
+    // collapsed onto one sentence would still fail.
+    const measured = calibrationJson(idT, calibrate("attribution", { agreed: 27, disagreed: 3 }));
+    expect(measured.caveat).toBe("common:insight.calibration.measured.attribution");
+    expect(measured.enablement).toBeNull();
+
+    const under = calibrationJson(idT, calibrate("outcome", { agreed: 1, disagreed: 0 }));
+    expect(under.caveat).toBe("common:insight.calibration.uncalibrated.outcome");
+    expect(under.enablement).toBe("common:insight.calibration.enablement.outcome");
+  });
+});
+
+// ─── The outcome denominator at its SOURCE ────────────────────────────────────
+
+describe("calibrationMetrics.hits", () => {
+  const pair = (predicted: string, actual: string): LabelledPair =>
+    ({ predicted, actual, score: null }) as unknown as LabelledPair;
+
+  /** n = 7, hits = 3, observableN = 5 — all distinct, so no two coincide. */
+  const pairs: readonly LabelledPair[] = [
+    pair("success", "success"),
+    pair("success", "success"),
+    pair("failed", "failed"),
+    pair("success", "failed"),
+    pair("failed", "success"),
+    pair("in_flight", "unobservable"),
+    pair("unobservable", "in_flight"),
+  ];
+
+  it("is the exact match count, not the pair count", () => {
+    // `hits` was added FOR the outcome gate, and nothing asserted it at the
+    // point it is produced. `hits: pairs.length` survived every suite — and it
+    // makes the outcome subject report perfect agreement on any store, which is
+    // the one failure this whole module exists to prevent.
+    const m = calibrationMetrics(pairs);
+    expect(m.hits).toBe(3);
+    expect(m.n).toBe(7);
+    expect(m.hits).not.toBe(m.n);
+    expect(m.hits).not.toBe(m.observableN);
+  });
+
+  it("cannot diverge from the accuracy computed beside it", () => {
+    // Two computations of one quantity. If they can disagree, one of them is
+    // wrong and no reader can tell which.
+    const m = calibrationMetrics(pairs);
+    expect(m.hits / m.n).toBeCloseTo(m.accuracy!, 12);
+  });
+
+  it("reaches the gate as the agreed/disagreed split", () => {
+    const m = calibrationMetrics(pairs);
+    const e = outcomeCalibrationFrom({ n: m.n, floor: 0.7, proxyOnly: m, withSignals: m });
+    expect(e.agreed).toBe(3);
+    expect(e.disagreed).toBe(4);
+    expect(e.n).toBe(7);
+  });
+});
+
+// ─── The dashboard wiring ─────────────────────────────────────────────────────
+
+describe("attachInsights", () => {
+  /** The fields `attachInsights` actually reads; the rest is not its input. */
+  const bareData = (): DashboardData =>
+    ({
+      period: "all",
+      summary: { planFee: 0 },
+      planUtilization: null,
+      availableAccounts: [],
+      selectedAccountUuid: null,
+      insights: null,
+    }) as unknown as DashboardData;
+
+  it("puts the store's calibration on the dashboard the card reads from", () => {
+    // The ONLY path by which calibration reaches the default tab, and no test
+    // exercised it: replacing the gather with `null` left every suite green
+    // while the shipped dashboard silently dropped the qualification.
+    const store = new Store(tmpDb());
+    try {
+      seedSessions(store, ["s1", "s2"]);
+      store.addTicketLink({ sessionId: "s1", ticketKey: "PROJ-1", source: "branch", confidence: "high" });
+      store.addTicketLink({ sessionId: "s1", ticketKey: "PROJ-1", source: "tag", confidence: "high" });
+      store.addTicketLink({ sessionId: "s2", ticketKey: "PROJ-2", source: "commit", confidence: "medium" });
+      store.negateTicketLink("s2", "PROJ-2");
+
+      const data = attachInsights(store, bareData(), { period: "all" } as never, {});
+      const e = data.insights!.attributionCalibration;
+      expect(e).not.toBeNull();
+      expect(e!.subject).toBe("attribution");
+      expect(e!.agreed).toBe(1);
+      expect(e!.disagreed).toBe(1);
+      expect(e!.n).toBe(2);
+      // Still under the floor, so still no number — the state, not a rate.
+      expect(e!.state).toBe("uncalibrated");
+    } finally {
+      store.close();
+    }
   });
 });

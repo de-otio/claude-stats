@@ -899,6 +899,39 @@ describe("get_cost_per_ticket (MCP)", () => {
     );
     expect((data["calibration"] as Record<string, unknown>)["measures"]).toBe("agreement-on-reviewed-subset");
   });
+
+  it("reports the pass's REAL recall misses, not a placeholder zero", async () => {
+    // `unproposed` is the only recall figure on this payload, and nothing
+    // asserted a non-zero value for it: hardcoding it to 0 left every suite
+    // green while the tool told a caller the pass had missed nothing.
+    //
+    // Its own store and its own server, so the shared fixture above is
+    // untouched whatever order these run in.
+    const dir = mkdtempSync(join(tmpdir(), "claude-stats-mcp-unproposed-"));
+    const own = new Store(join(dir, "test.db"));
+    try {
+      seedStore(own, { sessions: 6, seed: 21, ticketCoverage: 0.75, projectKeys: ["PROJ"] });
+      // A key the extractor never proposed on a session it did see: a pure
+      // recall miss, which must be reported BESIDE the rate and never inside it.
+      const anySession = own.getTicketLinkGrades()[0]!.session_id;
+      own.addTicketLink({ sessionId: anySession, ticketKey: "MISS-1", source: "tag", confidence: "high" });
+
+      const server = createMcpServer(own);
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      await server.connect(st);
+      const ownClient = new Client({ name: "test-client", version: "1.0.0" });
+      await ownClient.connect(ct);
+
+      const data = textOf(await ownClient.callTool({ name: "get_cost_per_ticket", arguments: { period: "all" } }));
+      const cal = data["calibration"] as Record<string, number>;
+      expect(cal["unproposed"]).toBeGreaterThan(0);
+      // ...and it stayed out of the precision denominator.
+      expect(cal["n"]).toBe(cal["agreed"]! + cal["disagreed"]!);
+    } finally {
+      own.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("get_calibration (MCP)", () => {
