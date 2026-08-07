@@ -470,6 +470,7 @@
   "ticket": {
     "sessionNoLinks": "Sesja {{sessionId}}: brak powiązanych zgłoszeń",
     "sessionLinks": "Sesja {{sessionId}}:",
+    "keyRequired": "Podaj klucz zgłoszenia razem z opcją --negate/--remove.",
     "activeLabel": "aktywne",
     "negatedLabel": "zanegowane",
     "linked": "Powiązano {{key}} z sesją {{sessionId}}",

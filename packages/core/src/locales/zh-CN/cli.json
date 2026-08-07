@@ -470,6 +470,7 @@
   "ticket": {
     "sessionNoLinks": "会话 {{sessionId}}：无工单链接",
     "sessionLinks": "会话 {{sessionId}}：",
+    "keyRequired": "使用 --negate/--remove 时请提供工单键。",
     "activeLabel": "生效中",
     "negatedLabel": "已屏蔽",
     "linked": "已将 {{key}} 链接到会话 {{sessionId}}",

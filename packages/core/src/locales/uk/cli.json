@@ -470,6 +470,7 @@
   "ticket": {
     "sessionNoLinks": "Сесія {{sessionId}}: немає прив’язок тікетів",
     "sessionLinks": "Сесія {{sessionId}}:",
+    "keyRequired": "Вкажіть ключ тікета разом із --negate/--remove.",
     "activeLabel": "активний",
     "negatedLabel": "скасований",
     "linked": "Прив’язано {{key}} до сесії {{sessionId}}",

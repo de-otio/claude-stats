@@ -781,6 +781,16 @@ export async function buildCli(): Promise<Command> {
         }
         const shortId = session.session_id.slice(0, 6);
 
+        // --negate/--remove name an ACTION on a specific key; without a key
+        // there is nothing to act on. Falling through to the list branch
+        // below would silently drop the flag and exit 0 as if `--list` had
+        // been requested — a mistyped invocation reading as success.
+        if ((opts.negate || opts.remove) && !key) {
+          console.error(t("cli:ticket.keyRequired"));
+          process.exitCode = 1;
+          return;
+        }
+
         if (opts.list || !key) {
           const links = store.getTicketLinksForSession(session.session_id);
           if (links.length === 0) {
@@ -1349,9 +1359,8 @@ export async function buildCli(): Promise<Command> {
         // The correction above labels the digest item; this is what makes the
         // assignment reach cost aggregation, which reads `ticket_links`, not
         // the recap corrections DB.
-        for (const sessionId of item.sessionIds) {
-          store.addTicketLink({ sessionId, ticketKey: key, source: "tag", confidence: "high" });
-        }
+        const { applyTicketCorrectionWriteThrough } = await import("../ticketing/index.js");
+        applyTicketCorrectionWriteThrough(store, item.sessionIds, key);
         console.log(`Correction added: ticket "${key}" assigned to "${item.id}" (${item.sessionIds.length} session(s) linked).`);
       } finally {
         store.close();

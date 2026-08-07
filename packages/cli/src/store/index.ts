@@ -2334,11 +2334,24 @@ export class Store {
    * Record one attribution link. Idempotent per (session, key, source): a
    * re-run of extraction refreshes the row rather than duplicating it.
    *
-   * A MANUAL row is never overwritten by an automatic one. Extraction re-runs
-   * on every collect, so without that rule a user's correction would silently
-   * revert the next time the branch name was re-scanned — the single most
-   * corrosive bug this feature could ship, because it would look like the tool
-   * ignoring the user.
+   * An AUTOMATIC row never overwrites an existing MANUAL ('tag') row.
+   * Extraction re-runs on every collect, so without that rule a user's
+   * correction would silently revert the next time the branch name was
+   * re-scanned — the single most corrosive bug this feature could ship,
+   * because it would look like the tool ignoring the user.
+   *
+   * The converse is deliberately NOT blocked: a fresh MANUAL write (this
+   * method called with `source: 'tag'`, as the CLI/dashboard link action
+   * does) always overwrites an existing 'tag' row — including a tombstone
+   * left by an earlier `negateTicketLink`. Manual-wins is symmetric: the
+   * newest explicit user statement about a session/key pair overrides the
+   * previous one, whichever direction it runs. Without this, `ticket <s>
+   * <key> --negate` followed by `ticket <s> <key>` would print "Linked" while
+   * the tombstone silently survived underneath — a surface asserting an
+   * outcome it did not produce. The guard below keys off `excluded.source`
+   * (the INCOMING row), not `ticket_links.source` (the existing row), so it
+   * reads as "block this write only when it is automatic AND the existing
+   * row is manual."
    */
   addTicketLink(link: {
     sessionId: string;
@@ -2365,7 +2378,7 @@ export class Store {
            last_uuid   = excluded.last_uuid,
            evidence    = excluded.evidence,
            negated     = excluded.negated
-         WHERE ticket_links.source != 'tag'`,
+         WHERE ticket_links.source != 'tag' OR excluded.source = 'tag'`,
       )
       .run(
         link.sessionId,

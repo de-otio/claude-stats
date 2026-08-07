@@ -470,6 +470,7 @@
   "ticket": {
     "sessionNoLinks": "セッション {{sessionId}}: チケットリンクなし",
     "sessionLinks": "セッション {{sessionId}}:",
+    "keyRequired": "--negate/--remove にはチケットキーを指定してください。",
     "activeLabel": "有効",
     "negatedLabel": "無効化済み",
     "linked": "{{key}} をセッション {{sessionId}} にリンクしました",

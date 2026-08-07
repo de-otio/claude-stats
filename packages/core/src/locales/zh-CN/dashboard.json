@@ -494,8 +494,8 @@
     "noSession": "尚未记录任何 session — 无可关联内容。",
     "session": "当前 session：{{sessionId}}…",
     "noLinks": "此 session 暂无工单关联。",
-    "negatedBadge": "已否定",
-    "negateAction": "否定",
+    "negatedBadge": "已屏蔽",
+    "negateAction": "屏蔽",
     "removeAction": "移除",
     "linkAction": "关联",
     "keyPlaceholder": "PROJ-123"
