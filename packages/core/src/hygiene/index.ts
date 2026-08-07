@@ -1,7 +1,7 @@
 /**
  * Efficiency-hygiene — the self-audit layer.
  *
- * Runs the five detectors over one flat, timestamp-ordered message array,
+ * Runs the six detectors over one flat, timestamp-ordered message array,
  * applies per-detector suppression (`config.hygiene.suppressions[]`, Phase 0),
  * and reduces the result to a weekly-digest shape. Pure; the store query and
  * config plumbing live in `packages/cli/src/hygiene/index.ts`.
@@ -72,7 +72,7 @@ function mergeThresholds(overrides: RunHygieneDetectorsOptions["thresholds"]): H
 }
 
 /**
- * Run all five detectors over one window's messages. Every detector always
+ * Run all six detectors over one window's messages. Every detector always
  * runs (so a digest can report "N suppressed" honestly) — suppression only
  * hides the result, never skips the computation.
  */

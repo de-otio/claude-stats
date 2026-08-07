@@ -9,7 +9,7 @@
  * choices: "you kept using the top tier here even though your own history
  * shows the mid tier does just as well."
  *
- * EVIDENTIARY BAR — deliberately the highest of the five detectors, because a
+ * EVIDENTIARY BAR — deliberately the highest of the six detectors, because a
  * false "parity" verdict tells a developer to downshift a class the top tier
  * actually helps on:
  *   1. Compared WITHIN task class, never in aggregate (a workload shift would
@@ -45,6 +45,11 @@
  */
 import type { RateOverrides } from "../pricing.js";
 import { modelTier } from "../pricing.js";
+// Shared percent formatter rather than a local one — `insight.ts`'s own doc
+// warns that a hand-rolled percent formatter is exactly how a null ratio ends
+// up rendered inconsistently with the rest of the product (`abandonedSpend.ts`
+// reuses `formatMoney` from here for the same reason).
+import { formatPercent } from "../insight.js";
 import { groupBySession, messageCost, sumCost } from "./util.js";
 import type { HygieneFinding, HygieneMessageRow, HygieneThresholds, TierMismatchClassification } from "./types.js";
 
@@ -132,9 +137,12 @@ export function computeTierParity(
 
     const tier = dominantTier(group.messages, overrides);
     // Only a top-vs-mid question; haiku/unknown sessions don't inform it.
-    // (Redundant with the `top`/`mid` filters below by construction, but
-    // skipping here keeps `sessions` from accumulating rows no comparison
-    // will ever read.)
+    // NOT redundant with the `top`/`mid` filters below (adversarial review
+    // D2-R1 checked): those filters only decide who joins each SIDE of a
+    // comparison, so without this skip a task class whose usage is entirely
+    // haiku/unknown would still open a `byClass` bucket and emit a phantom
+    // `insufficient-data` row — a report line implying the comparison was
+    // attempted for a class that is outside the question altogether.
     if (tier !== "top" && tier !== "mid") continue;
 
     const supportsFine = cls.confidence !== "low";
@@ -228,10 +236,6 @@ function labelFor(c: TierParityComparison): string {
   return c.grain === "coarse" ? `${c.classKey.slice("coarse:".length)} (coarse class)` : c.classKey;
 }
 
-function fmtRate(n: number | null): string {
-  return n === null ? "n/a" : `${(n * 100).toFixed(1)}%`;
-}
-
 function fmtNum(n: number | null): string {
   return n === null ? "n/a" : n.toFixed(1);
 }
@@ -271,7 +275,7 @@ export function detectTierMismatch(
       remedy: `Consider defaulting "${label}" tasks to the mid tier — this history shows no meaningful outcome gap.`,
       detail:
         `n(top)=${c.nTop}, n(mid)=${c.nMid}; avg turns top ${fmtNum(c.avgTurnsTop)} vs mid ${fmtNum(c.avgTurnsMid)}; ` +
-        `tool-error rate top ${fmtRate(c.errorRateTop)} vs mid ${fmtRate(c.errorRateMid)}. ${CLASSIFIER_CAVEAT}`,
+        `tool-error rate top ${formatPercent(c.errorRateTop, 1)} vs mid ${formatPercent(c.errorRateMid, 1)}. ${CLASSIFIER_CAVEAT}`,
     });
   }
 

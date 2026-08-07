@@ -358,6 +358,34 @@ describe("buildHygieneReport — tier-mismatch (D2)", () => {
     expect(suppressed.digest.active.find((d) => d.detectorId === "tier-mismatch")).toBeUndefined();
     expect(suppressed.digest.suppressedIds).toContain("tier-mismatch");
   });
+
+  it("carries the STORED coarse_class and confidence through the glue — a low-confidence class comes back coarse-labelled", () => {
+    // Adversarial review D2-R1: the fine/coarse grain rule was unit-tested on a
+    // hand-built map, but the production path that BUILDS that map from
+    // `session_task_class` only ever saw high-confidence rows. Both a glue that
+    // read `task_class` into the `coarse` slot and one that hardcoded
+    // `confidence: "high"` passed the entire suite. This drives the low branch
+    // through the real table, so the label proves both columns were read.
+    for (let i = 0; i < N; i++) {
+      for (const [id, model] of [[`top-${i}`, "claude-opus-5"], [`mid-${i}`, "claude-sonnet-5"]] as const) {
+        store.upsertSession(session(id));
+        store.upsertMessages([
+          message(`${id}-m0`, id, { timestamp: FIXED_NOW, model }),
+          message(`${id}-m1`, id, { timestamp: FIXED_NOW + 1000, model }),
+        ]);
+        store.setTaskClass({
+          sessionId: id, taskClass: "debug", coarseClass: "diagnose", confidence: "low",
+          rule: "diagnosis", classifierVersion: 2, classifiedAt: FIXED_NOW,
+        });
+      }
+    }
+    const report = buildHygieneReport(store, {});
+    const finding = report.digest.active.find((d) => d.detectorId === "tier-mismatch")!.findings[0]!;
+    // Coarse grain (confidence was low) AND the coarse class name (not the fine one).
+    expect(finding.rule).toContain("diagnose (coarse class)");
+    expect(finding.remedy).toContain("diagnose (coarse class)");
+    expect(finding.rule).not.toContain("debug");
+  });
 });
 
 // ─── MCP tool ────────────────────────────────────────────────────────────────

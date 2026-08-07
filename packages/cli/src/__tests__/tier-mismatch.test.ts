@@ -233,10 +233,112 @@ describe("computeTierParity", () => {
     rows.push(...session(unknownId, "some-other-vendor-model", 5));
     taskClassBySession.set(unknownId, cls("debug", "diagnose", "high"));
 
-    const [c] = computeTierParity(rows, taskClassBySession, T);
+    const comparisons = computeTierParity(rows, taskClassBySession, T);
     // Neither joined top or mid — counts are unchanged from the base fixture.
+    expect(comparisons[0]!.nTop).toBe(T.minSessionsPerTier);
+    expect(comparisons[0]!.nMid).toBe(T.minSessionsPerTier);
+    // ...and they produced no comparison ROW of their own either. Without this
+    // length assertion the "entirely" in the test name was unverified: a class
+    // made up only of haiku/unknown sessions would appear in the public table
+    // as a phantom `insufficient-data` row and nothing would notice.
+    expect(comparisons).toHaveLength(1);
+  });
+
+  it("produces NO comparison row at all for a class made up only of low-tier / unknown-model sessions", () => {
+    const rows: HygieneMessageRow[] = [];
+    const taskClassBySession = new Map<string, TierMismatchClassification>();
+    for (let i = 0; i < T.minSessionsPerTier; i++) {
+      const haikuId = `haiku-${i}`;
+      rows.push(...session(haikuId, "claude-haiku-4-5", 5));
+      taskClassBySession.set(haikuId, cls("config-chore", "build", "high"));
+    }
+    // "config-chore" has usage, but none of it is top- or mid-tier: the class is
+    // outside this detector's question entirely, so it gets no row — not an
+    // `insufficient-data` row implying the comparison was attempted.
+    expect(computeTierParity(rows, taskClassBySession, T)).toEqual([]);
+  });
+
+  it("tiers a MIXED-model session by its dominant (cost-weighted) model, not by whichever model appears first", () => {
+    // Adversarial review D2-R1: every fixture used single-model sessions, so
+    // `dominantTier`'s cost-weighted argmax was never exercised — replacing it
+    // with "first model seen" passed the whole suite. Real sessions switch
+    // models mid-flight, and which tier a session is attributed to is the
+    // single most load-bearing decision this detector makes (I1: no forced
+    // attribution). Each top session OPENS with a cheap sonnet turn and then
+    // spends the rest of its budget on opus.
+    const rows: HygieneMessageRow[] = [];
+    const taskClassBySession = new Map<string, TierMismatchClassification>();
+    for (let i = 0; i < T.minSessionsPerTier; i++) {
+      const topId = `top-${i}`;
+      rows.push(
+        row({ sessionId: topId, uuid: `${topId}-m0`, timestamp: T0, model: "claude-sonnet-5", inputTokens: 1, outputTokens: 1 }),
+      );
+      for (let j = 1; j < 5; j++) {
+        rows.push(
+          row({ sessionId: topId, uuid: `${topId}-m${j}`, timestamp: T0 + j * 1000, model: "claude-opus-5" }),
+        );
+      }
+      taskClassBySession.set(topId, cls("debug", "diagnose", "high"));
+
+      const midId = `mid-${i}`;
+      rows.push(...session(midId, "claude-sonnet-5", 5));
+      taskClassBySession.set(midId, cls("debug", "diagnose", "high"));
+    }
+    const [c] = computeTierParity(rows, taskClassBySession, T);
     expect(c!.nTop).toBe(T.minSessionsPerTier);
     expect(c!.nMid).toBe(T.minSessionsPerTier);
+    expect(c!.topSessionIds.sort()).toEqual(
+      Array.from({ length: T.minSessionsPerTier }, (_, i) => `top-${i}`).sort(),
+    );
+  });
+
+  it("compares AVERAGE turns per session, not raw totals, when the two tiers have unequal session counts", () => {
+    // Adversarial review D2-R1: every fixture had nTop === nMid, which makes
+    // avg-based and total-based ratios numerically identical — so swapping
+    // `avgTurnsMid/avgTurnsTop` for `turnsMid/turnsTop` survived the suite.
+    // Unequal n is the normal case in real history, and under the totals form
+    // this fixture (identical per-session shapes) would read as 2x worse on the
+    // mid tier and wrongly verdict `top-tier-favored`.
+    const rows: HygieneMessageRow[] = [];
+    const taskClassBySession = new Map<string, TierMismatchClassification>();
+    for (let i = 0; i < T.minSessionsPerTier; i++) {
+      const topId = `top-${i}`;
+      rows.push(...session(topId, "claude-opus-5", 5));
+      taskClassBySession.set(topId, cls("debug", "diagnose", "high"));
+    }
+    for (let i = 0; i < T.minSessionsPerTier * 2; i++) {
+      const midId = `mid-${i}`;
+      rows.push(...session(midId, "claude-sonnet-5", 5));
+      taskClassBySession.set(midId, cls("debug", "diagnose", "high"));
+    }
+    const [c] = computeTierParity(rows, taskClassBySession, T);
+    expect(c!.nTop).toBe(T.minSessionsPerTier);
+    expect(c!.nMid).toBe(T.minSessionsPerTier * 2);
+    expect(c!.avgTurnsTop).toBe(5);
+    expect(c!.avgTurnsMid).toBe(5);
+    expect(c!.verdict).toBe("parity");
+  });
+
+  it("routes a MEDIUM-confidence session to the FINE class (the grain boundary is low-vs-rest, not high-vs-rest)", () => {
+    // Adversarial review D2-R1: the module doc's grain rule says fine when
+    // confidence is medium OR high. Only `high` and `low` were exercised, so
+    // narrowing `supportsFine` to `confidence === "high"` — which would push
+    // every medium-confidence session into the coarse bucket and silently
+    // re-key every comparison — passed the whole suite. This pins `medium`.
+    const rows: HygieneMessageRow[] = [];
+    const taskClassBySession = new Map<string, TierMismatchClassification>();
+    for (let i = 0; i < T.minSessionsPerTier; i++) {
+      const topId = `top-${i}`;
+      const midId = `mid-${i}`;
+      rows.push(...session(topId, "claude-opus-5", 5));
+      rows.push(...session(midId, "claude-sonnet-5", 5));
+      taskClassBySession.set(topId, cls("debug", "diagnose", "medium"));
+      taskClassBySession.set(midId, cls("debug", "diagnose", "medium"));
+    }
+    const comparisons = computeTierParity(rows, taskClassBySession, T);
+    expect(comparisons).toHaveLength(1);
+    expect(comparisons[0]!.grain).toBe("fine");
+    expect(comparisons[0]!.classKey).toBe("debug");
   });
 
   it("routes a LOW-confidence session to the COARSE class, not the fine one", () => {
@@ -284,6 +386,35 @@ describe("computeTierParity", () => {
     }
   });
 
+  it("counts EVERY stored message as a turn, including model-less (user) rows, on both sides of the comparison", () => {
+    // Adversarial review D2-R1: `getMessagesForHygiene` returns user rows too
+    // (`model` is NULL on them), so the turn proxy's denominator — and the
+    // tool-error-rate denominator built from it — depends on a definition
+    // nothing pinned: narrowing `turns` to model-bearing rows only passed the
+    // whole suite because every fixture row carried a model. The definition is
+    // "message count" (module doc, PROXY paragraph); this holds it there, and
+    // holds the error rate to the same denominator.
+    const rows: HygieneMessageRow[] = [];
+    const taskClassBySession = new Map<string, TierMismatchClassification>();
+    for (let i = 0; i < T.minSessionsPerTier; i++) {
+      for (const [id, model] of [[`top-${i}`, "claude-opus-5"], [`mid-${i}`, "claude-sonnet-5"]] as const) {
+        // 1 model-less user row + 4 assistant rows = 5 turns, 1 tool error.
+        rows.push(row({ sessionId: id, uuid: `${id}-u0`, timestamp: T0, model: null }));
+        for (let j = 1; j < 5; j++) {
+          rows.push(
+            row({ sessionId: id, uuid: `${id}-m${j}`, timestamp: T0 + j * 1000, model, toolErrorCount: j === 1 ? 1 : 0 }),
+          );
+        }
+        taskClassBySession.set(id, cls("debug", "diagnose", "high"));
+      }
+    }
+    const [c] = computeTierParity(rows, taskClassBySession, T);
+    expect(c!.avgTurnsTop).toBe(5);
+    expect(c!.avgTurnsMid).toBe(5);
+    expect(c!.errorRateTop).toBeCloseTo(0.2, 8); // 1 error / 5 turns, not 1/4
+    expect(c!.errorRateMid).toBeCloseTo(0.2, 8);
+  });
+
   it("returns results in deterministic classKey order regardless of input order", () => {
     const a = buildParitySessions(T.minSessionsPerTier);
     const zRows: HygieneMessageRow[] = [];
@@ -308,6 +439,7 @@ describe("computeTierParity", () => {
 describe("detectTierMismatch", () => {
   it("fires exactly one finding for a PARITY class, naming the top-tier sessions as downshift candidates", () => {
     const { rows, taskClassBySession } = buildParitySessions(T.minSessionsPerTier);
+    const [c0] = computeTierParity(rows, taskClassBySession, T);
     const findings = detectTierMismatch(rows, taskClassBySession, T);
     expect(findings).toHaveLength(1);
     const f = findings[0]!;
@@ -319,6 +451,14 @@ describe("detectTierMismatch", () => {
     expect(f.remedy).toMatch(/mid tier/i);
     expect(f.detail).toContain(`n(top)=${T.minSessionsPerTier}`);
     expect(f.detail).toContain(`n(mid)=${T.minSessionsPerTier}`);
+    // Rates render through the shared `insight.ts#formatPercent`, same as every
+    // other percent in the product (adversarial review D2-R1 — the local
+    // hand-rolled formatter this replaced rendered a null as "n/a" where the
+    // rest of the product renders "—").
+    expect(f.detail).toContain("tool-error rate top 0.0% vs mid 0.0%");
+    // The sessionIds list and the n(top) figure are the same quantity rendered
+    // twice — they must not be able to disagree.
+    expect(f.sessionIds).toHaveLength(c0!.nTop);
     // The classifier's own §5.10 caveat travels with every per-class figure.
     expect(f.detail).toMatch(/§5\.10|generated corpus/);
   });
@@ -352,6 +492,67 @@ describe("detectTierMismatch", () => {
     const expected = T.minSessionsPerTier * (perTopCost - perMidCost);
     expect(waste).toBeCloseTo(expected, 8);
     expect(waste).toBeGreaterThan(0); // opus costs more per token than sonnet for identical usage
+  });
+
+  it("floors estimatedWaste at 0 when the mid tier actually costs MORE per session (no negative 'waste')", () => {
+    // Adversarial review D2-R1: the sibling test's name claimed "never
+    // negative" but only ever exercised a positive delta, so deleting the
+    // `Math.max(0, …)` floor survived. This is a reachable shape: parity is a
+    // constraint on TURNS and ERROR RATE, not on tokens, so a mid-tier session
+    // with a heavy cache-creation profile can cost more than a lean top-tier
+    // one at identical turn counts. A negative figure here would silently
+    // subtract from `HygieneDigest.totalEstimatedWaste`.
+    const rows: HygieneMessageRow[] = [];
+    const taskClassBySession = new Map<string, TierMismatchClassification>();
+    for (let i = 0; i < T.minSessionsPerTier; i++) {
+      const topId = `top-${i}`;
+      rows.push(...session(topId, "claude-opus-5", 5));
+      taskClassBySession.set(topId, cls("debug", "diagnose", "high"));
+
+      const midId = `mid-${i}`;
+      for (let j = 0; j < 5; j++) {
+        rows.push(
+          row({
+            sessionId: midId,
+            uuid: `${midId}-m${j}`,
+            timestamp: T0 + j * 1000,
+            model: "claude-sonnet-5",
+            cacheCreationTokens: 2_000_000,
+          }),
+        );
+      }
+      taskClassBySession.set(midId, cls("debug", "diagnose", "high"));
+    }
+
+    // The fixture really is the negative-delta case (guard against the test
+    // silently degenerating into the positive one if rates change).
+    const perTopCost = estimateCost("claude-opus-5", 1000, 200, 0, 0).cost * 5;
+    const perMidCost = estimateCost("claude-sonnet-5", 1000, 200, 0, 2_000_000).cost * 5;
+    expect(perMidCost).toBeGreaterThan(perTopCost);
+
+    const [c] = computeTierParity(rows, taskClassBySession, T);
+    expect(c!.verdict).toBe("parity"); // turns and errors are identical
+    const findings = detectTierMismatch(rows, taskClassBySession, T);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.estimatedWaste).toBe(0);
+  });
+
+  it("prints the thresholds it actually applied, so a reader can check the claim (I1)", () => {
+    // Adversarial review D2-R1: `threshold` was only ever asserted to EXIST.
+    // Multiplying the displayed gap by 200 instead of 100 — i.e. a card telling
+    // the reader a 30% tolerance while a 15% one decided the verdict — survived
+    // the whole suite. The displayed number and the applied number must agree.
+    const { rows, taskClassBySession } = buildParitySessions(T.minSessionsPerTier);
+    const def = detectTierMismatch(rows, taskClassBySession, T)[0]!;
+    expect(def.threshold).toContain(`≥${T.minSessionsPerTier} sessions per tier`);
+    expect(def.threshold).toContain(`${Math.round(T.maxRelativeGap * 100)}%`);
+
+    // And it tracks a caller's override rather than echoing the defaults.
+    const custom = { minSessionsPerTier: 2, maxRelativeGap: 0.4 };
+    const { rows: r2, taskClassBySession: m2 } = buildParitySessions(2);
+    const f2 = detectTierMismatch(r2, m2, custom)[0]!;
+    expect(f2.threshold).toContain("≥2 sessions per tier");
+    expect(f2.threshold).toContain("40%");
   });
 
   it("does NOT fire for a TOP-TIER-FAVORED class — the null result produces no card", () => {
