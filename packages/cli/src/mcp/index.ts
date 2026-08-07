@@ -706,9 +706,13 @@ export function createMcpServer(store: Store): McpServer {
         rateOverrides: config.pricing?.rates,
       });
 
+      // Same fact, same key as `get_cost_per_ticket` and `answerCost` — Lane F1
+      // keyed the other two copies of this sentence and missed this one, which
+      // left the hygiene tool stating in English what its siblings state in the
+      // user's language.
       const summary = report.totalCost > 0
         ? `${formatMoney(report.digest.totalEstimatedWaste)} of ${formatMoney(report.totalCost)} self-audited as recoverable waste (${formatPercent(report.hygieneRatio)}).`
-        : "No usage recorded for this period.";
+        : t("common:insight.cost.unavailable");
 
       return formatResult({
         window: { since: new Date(range.since).toISOString(), until: new Date(range.until).toISOString() },
