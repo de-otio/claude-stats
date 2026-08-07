@@ -220,7 +220,25 @@ describe("claude-stats ticket (CLI verb)", () => {
     const { out } = await run("abc123def456", "--list");
     expect(out).toContain("PROJ-4");
     expect(out).toContain("tag/high");
+    // The status column is the whole point of `--list`: without it a user
+    // cannot tell a live link from a tombstone. Assert the status is actually
+    // ON the row (dropping the column entirely leaves every assertion above
+    // still passing) and that it flips after a negation.
+    const rowOf = (text: string): string =>
+      text.split("\n").filter((l) => l.includes("PROJ-4") && l.includes("tag/high")).pop()!.trim();
+    // "PROJ-4  tag/high  <status>" — three double-space-separated columns.
+    // Dropping the status column leaves two, which every other assertion here
+    // would happily accept.
+    const rowBefore = rowOf(out);
+    expect(rowBefore.split(/\s{2,}/)).toHaveLength(3);
     expect(realStore.getTicketLinksForSession("abc123def456")).toEqual(before);
+
+    await run("abc123def456", "PROJ-4", "--negate");
+    const { out: afterNegate } = await run("abc123def456", "--list");
+    const rowAfter = rowOf(afterNegate);
+    expect(rowAfter.split(/\s{2,}/)).toHaveLength(3);
+    // The status must actually track the tombstone, not be a constant string.
+    expect(rowAfter).not.toBe(rowBefore);
   });
 
   it("the coverage figure and per-ticket totals stay consistent after a correction (per-ticket sum + unattributed === period total)", async () => {

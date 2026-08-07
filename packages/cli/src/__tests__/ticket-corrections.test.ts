@@ -148,14 +148,19 @@ describe("attachTicketAttribution", () => {
   });
 
   it("attaches the most recent session's links, mapping `negated` to a boolean", () => {
-    seedSession(store, "s1");
-    store.addTicketLink({ sessionId: "s1", ticketKey: "PROJ-1", source: "branch", confidence: "high" });
-    store.negateTicketLink("s1", "PROJ-2");
+    // A session id longer than the 8 chars the card's header shows, so the
+    // truncated header and the full `data-session-id` are genuinely two
+    // different strings derived from one value (see the divergence assertion
+    // at the end of this test).
+    const sid = "sess-1234-abcd";
+    seedSession(store, sid);
+    store.addTicketLink({ sessionId: sid, ticketKey: "PROJ-1", source: "branch", confidence: "high" });
+    store.negateTicketLink(sid, "PROJ-2");
 
     const data = { currentSessionTicket: undefined } as { currentSessionTicket?: unknown };
     attachTicketAttribution(store, data as Parameters<typeof attachTicketAttribution>[1]);
     const attached = data.currentSessionTicket as { sessionId: string; links: Array<{ ticketKey: string; negated: boolean }> };
-    expect(attached.sessionId).toBe("s1");
+    expect(attached.sessionId).toBe(sid);
     const active = attached.links.find((l) => l.ticketKey === "PROJ-1")!;
     const negated = attached.links.find((l) => l.ticketKey === "PROJ-2")!;
     expect(active.negated).toBe(false);
@@ -167,7 +172,26 @@ describe("attachTicketAttribution", () => {
     // Mutation check: a negated link's row must actually say so — a card that
     // renders every link identically would silently hide the correction from
     // the person who made it.
-    expect(html).toContain("dashboard:ticketCard.negatedBadge");
+    //
+    // A bare `toContain` here is NOT enough: it searches the WHOLE card, so a
+    // card that badged EVERY row (including the active one) would still pass
+    // while telling the user the exact opposite of the truth. Assert the badge
+    // count AND which row carries it.
+    const badgeCount = (html.match(/ticketCard\.negatedBadge/g) ?? []).length;
+    expect(badgeCount).toBe(1);
+    const rowsHtml = html.split("<li");
+    const activeRow = rowsHtml.find((r) => r.includes("PROJ-1"))!;
+    const negatedRow = rowsHtml.find((r) => r.includes("PROJ-2"))!;
+    expect(negatedRow).toContain("ticketCard.negatedBadge");
+    expect(activeRow).not.toContain("ticketCard.negatedBadge");
+
+    // The session the card NAMES and the session id its buttons act on must be
+    // the same session — two renderings of one quantity that could silently
+    // diverge (the header is a truncated copy, the attribute is the full id).
+    expect(html).toContain(`data-session-id="${attached.sessionId}"`);
+    const header = html.match(/<div class="cs-ticket-session">([\s\S]*?)<\/div>/);
+    expect(header).not.toBeNull();
+    expect(header![1]).toContain(attached.sessionId.slice(0, 8));
   });
 
   it("renders a session with no links as an honest empty list, not an empty card", () => {

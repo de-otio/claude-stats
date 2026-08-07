@@ -178,6 +178,13 @@ describe("webview path — the ticket attribution card (Lane L)", () => {
     expect(removeButtons).toBe(1);
     const negateButtons = (webview.match(/data-ticket-action="negate"/g) ?? []).length;
     expect(negateButtons).toBe(2);
+    // Counting alone cannot tell "one Remove, on the manual row" from "one
+    // Remove, on the WRONG row" — an inverted `source === "tag"` test keeps the
+    // count at 1 while offering Remove on the automatic row (a no-op that
+    // reappears on the next collect) and withholding it from the manual one.
+    // Assert the pairing, not just the tally.
+    expect(webview).toContain('data-ticket-action="remove" data-ticket-key="PROJ-2"');
+    expect(webview).not.toContain('data-ticket-action="remove" data-ticket-key="PROJ-1"');
   });
 
   it("the markup's session-id attribute name and the bridge script's own selector agree exactly", () => {
