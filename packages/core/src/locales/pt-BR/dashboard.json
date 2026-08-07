@@ -501,5 +501,48 @@
     "removeAction": "Remover",
     "linkAction": "Vincular",
     "keyPlaceholder": "PROJ-123"
+  },
+  "views": {
+    "insights": "Insights",
+    "cost-and-controlling": "Custos e Controladoria",
+    "tickets-and-value": "Tickets e Valor",
+    "efficiency-and-hygiene": "Eficiência e Higiene",
+    "plan-and-policy": "Plano e Política",
+    "sessions": "Sessões",
+    "energy": "Energia",
+    "settings": "Configurações"
+  },
+  "filters": {
+    "legend": "Refinar esta exibição",
+    "scopeNote": "Os filtros reexecutam todo o relatório, portanto refinam todas as exibições — não apenas esta.",
+    "project": "Projeto:",
+    "ticket": "Ticket:",
+    "taskClass": "Classe da tarefa:",
+    "any": "Qualquer",
+    "ticketPlaceholder": "ex.: PROJ-123",
+    "apply": "Aplicar filtros",
+    "clear": "Limpar",
+    "active_one": "{{count}} filtro ativo",
+    "active_other": "{{count}} filtros ativos",
+    "modelUnavailable": "Filtrar por modelo ainda não está disponível — isso refinaria os totais de tokens sem refinar as sessões às quais eles pertencem.",
+    "active_many": "{{count}} filtros ativos"
+  },
+  "taskClasses": {
+    "debug": "Depuração",
+    "greenfield": "Novo recurso",
+    "refactor-multi-file": "Refatoração",
+    "config-chore": "Configuração / manutenção",
+    "review": "Revisão",
+    "explore": "Exploração",
+    "unknown": "Não classificado"
+  },
+  "costQuality": {
+    "title": "Qualidade de custo",
+    "frontierLayer": "Onde o gasto está em relação à fronteira",
+    "perTaskLayer": "Quanto custou uma tarefa bem-sucedida",
+    "calibrationLayer": "Até que ponto confiar nos rótulos de resultado",
+    "calibrationReady": "Os rótulos de resultado estão calibrados — veja como",
+    "calibrationNotReady": "Os rótulos de resultado ainda não estão calibrados — veja por quê",
+    "calibrationNoLabels": "Os rótulos de resultado não estão calibrados — nada rotulado ainda"
   }
 }

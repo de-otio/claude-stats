@@ -1358,4 +1358,43 @@ describe("Server opts-parsing (Blocker 1: tri-state includeCI)", () => {
   it("includes the CI-only session's project when includeCI=true", async () => {
     expect(await ciOnlyProjectIsPresent("&includeCI=true")).toBe(true);
   });
+
+  // ── The domain views' local filters, over the same HTTP path ───────────────
+  // `?ticket=` / `?taskClass=` / `?project=` are what the filter bar navigates
+  // to, so the parse has to survive the same tri-state trap `includeCI` did: an
+  // EMPTY value means "cleared", and passing it through as a filter would narrow
+  // to sessions attributed to the empty key — a page of zeroes instead of an
+  // unfiltered dashboard, and one that looks like real data.
+  async function appliedFilters(query: string): Promise<Record<string, string | null>> {
+    const res = await fetch(`${baseUrl}/api/dashboard?period=all${query}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { appliedFilters?: Record<string, string | null> };
+    expect(body.appliedFilters, "the payload does not echo its own filters").toBeDefined();
+    return body.appliedFilters!;
+  }
+
+  it("reports no filters when none are in the query", async () => {
+    expect(await appliedFilters("")).toEqual({ projectPath: null, ticket: null, taskClass: null });
+  });
+
+  it("carries ticket, taskClass and project through to the payload it echoes", async () => {
+    expect(await appliedFilters("&ticket=PROJ-9&taskClass=debug&project=%2Frepos%2Fx")).toEqual({
+      projectPath: "/repos/x",
+      ticket: "PROJ-9",
+      taskClass: "debug",
+    });
+  });
+
+  it("treats an EMPTY filter param as cleared, not as a filter on the empty key", async () => {
+    // `?ticket=` is what a cleared select/input produces. Passed through, it
+    // would match no session at all and the whole dashboard would read zero.
+    expect(await appliedFilters("&ticket=&taskClass=&project=")).toEqual({
+      projectPath: null,
+      ticket: null,
+      taskClass: null,
+    });
+    const res = await fetch(`${baseUrl}/api/dashboard?period=all&ticket=&taskClass=`);
+    const body = (await res.json()) as { byProject: unknown[] };
+    expect(body.byProject.length, "an empty filter param emptied the dashboard").toBeGreaterThan(0);
+  });
 });

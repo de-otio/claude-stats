@@ -56,11 +56,19 @@ function parseOpts(url: URL): ReportOptions {
   // Empty string means "all accounts" — treat as undefined so the dashboard
   // doesn't try to filter by an empty UUID.
   const account = p.get("account");
+  // The domain views' local filters (gui-redesign/02 §2.5). Empty string means
+  // "cleared", so it must become undefined rather than being passed through as
+  // a filter on the empty key — `?ticket=` would otherwise narrow to sessions
+  // attributed to the ticket named "", i.e. none, and render a page of zeroes.
+  const blankToUndefined = (v: string | null): string | undefined =>
+    v !== null && v.length > 0 ? v : undefined;
   return {
     period: (p.get("period") ?? undefined) as ReportOptions["period"],
     since: p.get("since") ?? undefined,
     until: p.get("until") ?? undefined,
-    projectPath: p.get("project") ?? undefined,
+    projectPath: blankToUndefined(p.get("project")),
+    ticket: blankToUndefined(p.get("ticket")),
+    taskClass: blankToUndefined(p.get("taskClass")),
     repoUrl: p.get("repo") ?? undefined,
     accountUuid: account && account.length > 0 ? account : undefined,
     entrypoint: p.get("entrypoint") ?? undefined,

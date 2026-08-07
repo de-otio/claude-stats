@@ -30,8 +30,20 @@ export interface ReportOptions extends DateRangeOpts {
   accountUuid?: string;
   entrypoint?: string;
   tag?: string;
-  /** Ticket key for `printTicketReport` (`report --ticket PROJ-123`). */
+  /**
+   * Ticket key. Two consumers, one meaning: `printTicketReport`
+   * (`report --ticket PROJ-123`), and — since the domain views' local filters —
+   * `buildDashboard`, which narrows both halves of the store filter to sessions
+   * attributed to this key.
+   */
   ticket?: string;
+  /**
+   * Fine task class (schema V21) to narrow to, e.g. `"debug"`. Like `ticket`,
+   * applied to BOTH halves of the store filter; unclassified sessions match
+   * nothing, which is deliberate — folding them into a class would fabricate
+   * attribution (see `taskClassPredicate` in store/index.ts).
+   */
+  taskClass?: string;
   timezone?: string;
   includeCI?: boolean;
   /** Include sessions whose source JSONL was rotated away (source_deleted=1).

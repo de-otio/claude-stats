@@ -501,5 +501,47 @@
     "removeAction": "削除",
     "linkAction": "リンク",
     "keyPlaceholder": "PROJ-123"
+  },
+  "views": {
+    "insights": "インサイト",
+    "cost-and-controlling": "コストと管理",
+    "tickets-and-value": "チケットと価値",
+    "efficiency-and-hygiene": "効率と健全性",
+    "plan-and-policy": "プランとポリシー",
+    "sessions": "セッション",
+    "energy": "エネルギー",
+    "settings": "設定"
+  },
+  "filters": {
+    "legend": "このビューを絞り込む",
+    "scopeNote": "フィルターはレポート全体を再実行するため、このビューだけでなくすべてのビューが絞り込まれます。",
+    "project": "プロジェクト:",
+    "ticket": "チケット:",
+    "taskClass": "タスク種別:",
+    "any": "すべて",
+    "ticketPlaceholder": "例: PROJ-123",
+    "apply": "フィルターを適用",
+    "clear": "クリア",
+    "active_one": "{{count}} 件のフィルターが有効",
+    "active_other": "{{count}} 件のフィルターが有効",
+    "modelUnavailable": "モデルによる絞り込みはまだ利用できません。トークン合計だけが絞り込まれ、その対象となるセッションは絞り込まれないためです。"
+  },
+  "taskClasses": {
+    "debug": "デバッグ",
+    "greenfield": "新機能",
+    "refactor-multi-file": "リファクタリング",
+    "config-chore": "設定 / 雑務",
+    "review": "レビュー",
+    "explore": "調査",
+    "unknown": "未分類"
+  },
+  "costQuality": {
+    "title": "コスト品質",
+    "frontierLayer": "フロンティアに対する支出の位置",
+    "perTaskLayer": "成功したタスクにかかったコスト",
+    "calibrationLayer": "成果ラベルをどこまで信頼できるか",
+    "calibrationReady": "成果ラベルは較正済みです — 方法を見る",
+    "calibrationNotReady": "成果ラベルはまだ較正されていません — 理由を見る",
+    "calibrationNoLabels": "成果ラベルは較正されていません — ラベルがまだありません"
   }
 }

@@ -384,10 +384,13 @@ describe("renderDashboard", () => {
     expect(pricingIdx).toBeLessThan(footerIdx);
   });
 
-  it("includes Plan tab button", () => {
+  it("includes the Plan & Policy nav button, which is where the Plan section now lives", () => {
     const html = renderDashboard(mockData, t);
-    expect(html).toContain('data-tab="plan"');
-    expect(html).toContain(">Plan<");
+    // Since the domain-view regrouping the nav bar holds views, so the button
+    // is the view's; the section keeps its own panel and heading.
+    expect(html).toContain('data-tab="plan-and-policy"');
+    expect(html).toContain(">Plan &amp; Policy<");
+    expect(html).toContain('id="tab-plan" data-view="plan-and-policy"');
   });
 
   it("renders Plan tab with no-data message when planUtilization is null", () => {
@@ -776,7 +779,10 @@ describe("renderDashboard", () => {
       },
     };
     const html = renderDashboard(withEff, t);
-    expect(html).toContain('data-tab="efficiency"');
+    // Efficiency is a SECTION of the Efficiency & Hygiene view now, so what the
+    // nav bar carries is the view; the panel and its figures are unchanged.
+    expect(html).toContain('data-tab="efficiency-and-hygiene"');
+    expect(html).toContain('id="tab-efficiency" data-view="efficiency-and-hygiene"');
     expect(html).toContain("Potential Savings");
   });
 
@@ -1155,10 +1161,12 @@ describe("renderDashboard", () => {
       }
     });
 
-    it("renders the Classify tab button and panel", () => {
+    it("renders the Classify panel inside Tickets & Value, with its init wired", () => {
       const html = renderDashboard(mockData, t);
-      expect(html).toContain('data-tab="classify"');
-      expect(html).toContain('id="tab-classify"');
+      // 02 §2.4: Classify stops being a permanent tab and lives where its
+      // output matters. The panel, and everything in it, is unchanged.
+      expect(html).toContain('data-tab="tickets-and-value"');
+      expect(html).toContain('id="tab-classify" data-view="tickets-and-value"');
       expect(html).toContain('id="classify-list"');
       expect(html).toContain('id="classify-apply"');
       // initClassify must be wired into the tab dispatch.
@@ -1179,25 +1187,46 @@ describe("renderDashboard", () => {
     });
   });
 
-  // ─── G0: nav definition drives the tab bar ─────────────────────────────────
-  describe("tab bar — driven by the single nav definition", () => {
-    it("renders exactly the tabs NAV_TABS says are visible for this data, in order", () => {
+  // ─── G0/G3: nav definition drives the nav bar ──────────────────────────────
+  // The bar holds the four domain views plus Insights and the utility surfaces
+  // since the regrouping; the eleven section panels are unchanged and still
+  // render. Section-level structure is asserted in domain-views.test.ts.
+  describe("nav bar — driven by the single nav definition", () => {
+    it("renders exactly the views NAV_VIEWS says are visible for this data, in order", () => {
       const html = renderDashboard(mockData, t);
       // mockData has no energy/spending/contextAnalysis/modelEfficiency.
-      const order = ["insights", "overview", "projects", "sessions", "plan", "classify", "settings"];
+      // Cost & Controlling survives on its unconditional Overview section even
+      // though Spending is missing — that is the "mental map does not move"
+      // property the old conditional tabs never had. Energy and Efficiency &
+      // Hygiene drop out because EVERY section they hold is data-gated; a view
+      // whose whole content is absent is the one honest case for dropping it.
+      const order = [
+        "insights",
+        "cost-and-controlling",
+        "tickets-and-value",
+        "plan-and-policy",
+        "sessions",
+        "settings",
+      ];
       let cursor = -1;
       for (const id of order) {
         const idx = html.indexOf(`data-tab="${id}"`);
-        expect(idx).toBeGreaterThan(cursor);
+        expect(idx, `no nav button for "${id}"`).toBeGreaterThan(cursor);
         cursor = idx;
       }
       expect(html).not.toContain('data-tab="energy"');
+      expect(html).not.toContain('data-tab="efficiency-and-hygiene"');
+      // Cost & Controlling is present on Overview alone.
+      expect(html).toContain('id="tab-overview" data-view="cost-and-controlling"');
+      expect(html).not.toContain('id="tab-spending"');
+      // The data-shaped ids are sections now, never nav buttons.
+      expect(html).not.toContain('data-tab="overview"');
       expect(html).not.toContain('data-tab="spending"');
       expect(html).not.toContain('data-tab="context"');
       expect(html).not.toContain('data-tab="efficiency"');
     });
 
-    it("shows the Spending tab, localized (no longer a hardcoded literal), when data.spending is present", () => {
+    it("renders the Spending SECTION, localized, when data.spending is present", () => {
       const withSpending: DashboardData = {
         ...mockData,
         spending: {
@@ -1212,25 +1241,25 @@ describe("renderDashboard", () => {
         } as unknown as DashboardData["spending"],
       };
       const html = renderDashboard(withSpending, t);
-      expect(html).toContain('data-tab="spending"');
+      expect(html).toContain('id="tab-spending" data-view="cost-and-controlling"');
       expect(html).toContain(">Spending<");
       // `>Spending<` alone cannot distinguish "localized" from "hardcoded" —
       // the en translation of dashboard:tabs.spending is the literal string
-      // "Spending", so the old hardcoded button satisfies it too (verified by
+      // "Spending", so a hardcoded heading satisfies it too (verified by
       // mutation). Render with an identity translator: the label must arrive
       // as the i18n KEY, which only happens if it goes through t().
       const raw = renderDashboard(withSpending, (k) => k);
-      expect(raw).toContain('data-tab="spending">dashboard:tabs.spending<');
+      expect(raw).toContain('id="section-spending">dashboard:tabs.spending<');
     });
 
-    it("the first visible tab is marked active — and it is Insights, the default", () => {
+    it("the first visible view is marked active — and it is Insights, the default", () => {
       const html = renderDashboard(mockData, t);
       expect(html).toMatch(/<button class="tab-btn active" data-tab="insights">/);
-      // Exactly one button carries `active`; a second would leave two tabs lit.
+      // Exactly one button carries `active`; a second would leave two views lit.
       expect(html.match(/class="tab-btn active"/g)).toHaveLength(1);
       // …and the panel that starts visible is the same one.
-      expect(html).toContain('<div class="tab-panel active" id="tab-insights">');
-      expect(html).toContain('<div class="tab-panel" id="tab-overview">');
+      expect(html).toContain('<div class="tab-panel active" id="tab-insights"');
+      expect(html).toContain('<div class="tab-panel" id="tab-overview"');
     });
   });
 

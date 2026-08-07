@@ -80,12 +80,16 @@ describe("webview path — nav + card survive patchForWebview", () => {
     expect(webview).toContain('class="cs-card cs-card-unavailable"');
     expect(webview).toContain("No usage recorded for this period.");
 
-    // The nav-driven tab bar round-trips too — energy/spending/context/
-    // efficiency are correctly absent for data-less DashboardData.
-    expect(webview).toContain('data-tab="overview"');
-    expect(webview).toContain('data-tab="classify"');
+    // The nav-driven bar round-trips too. Since the domain-view regrouping it
+    // carries VIEWS: Cost & Controlling (holding the Overview section) and
+    // Tickets & Value (holding Classify) are present, Energy — whose only
+    // section is data-gated — is correctly absent for data-less DashboardData.
+    expect(webview).toContain('data-tab="cost-and-controlling"');
+    expect(webview).toContain('data-tab="tickets-and-value"');
     expect(webview).not.toContain('data-tab="energy"');
-    expect(webview).not.toContain('data-tab="spending"');
+    // …and the sections themselves still render, inside the view that shows them.
+    expect(webview).toContain('id="tab-overview" data-view="cost-and-controlling"');
+    expect(webview).toContain('id="tab-classify" data-view="tickets-and-value"');
 
     // The webview CSP nonce rewrite reached the inline scripts our card CSS
     // sits beside — i.e. the page is still one coherent document, not two
@@ -129,7 +133,7 @@ describe("webview path — the Insights tab, in the VS Code host", () => {
       renderDashboard(populatedData, t), "vscode-webview://abc", "vscode-resource://chart.js");
 
     expect(webview).toMatch(/<button class="tab-btn active" data-tab="insights">/);
-    expect(webview).toContain('<div class="tab-panel active" id="tab-insights">');
+    expect(webview).toContain('<div class="tab-panel active" id="tab-insights" data-view="insights">');
 
     // The figures survive the patch — asserted on the cards, not the page.
     expect(card(webview, "insight-cost")).toContain("<span>$312</span>");

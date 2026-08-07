@@ -13,6 +13,16 @@
     "classify": "Classify",
     "insights": "Insights"
   },
+  "views": {
+    "insights": "Insights",
+    "cost-and-controlling": "Cost & Controlling",
+    "tickets-and-value": "Tickets & Value",
+    "efficiency-and-hygiene": "Efficiency & Hygiene",
+    "plan-and-policy": "Plan & Policy",
+    "sessions": "Sessions",
+    "energy": "Energy",
+    "settings": "Settings"
+  },
   "classify": {
     "title": "Classify your projects",
     "intro": "Assign each project to the subscription that should be billed for it. Projects are ranked by cost, so classifying the top few covers most of your spend.",
@@ -501,5 +511,37 @@
     "removeAction": "Remove",
     "linkAction": "Link",
     "keyPlaceholder": "PROJ-123"
+  },
+  "filters": {
+    "legend": "Narrow this view",
+    "scopeNote": "Filters re-run the whole report, so they narrow every view — not just this one.",
+    "project": "Project:",
+    "ticket": "Ticket:",
+    "taskClass": "Task class:",
+    "any": "Any",
+    "ticketPlaceholder": "e.g. PROJ-123",
+    "apply": "Apply filters",
+    "clear": "Clear",
+    "active_one": "{{count}} filter active",
+    "active_other": "{{count}} filters active",
+    "modelUnavailable": "Filtering by model is not available yet — it would narrow token totals without narrowing the sessions they belong to."
+  },
+  "taskClasses": {
+    "debug": "Debugging",
+    "greenfield": "New feature",
+    "refactor-multi-file": "Refactor",
+    "config-chore": "Config / chore",
+    "review": "Review",
+    "explore": "Exploration",
+    "unknown": "Unclassified"
+  },
+  "costQuality": {
+    "title": "Cost quality",
+    "frontierLayer": "Where the spend sits against the frontier",
+    "perTaskLayer": "What a successful task cost",
+    "calibrationLayer": "How far to trust the outcome labels",
+    "calibrationReady": "Outcome labels are calibrated — see how",
+    "calibrationNotReady": "Outcome labels are not calibrated yet — see why",
+    "calibrationNoLabels": "Outcome labels are not calibrated — nothing labelled yet"
   }
 }

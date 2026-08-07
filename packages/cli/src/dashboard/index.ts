@@ -133,6 +133,26 @@ export interface DashboardData {
    * populates it.
    */
   untilIso?: string;
+  /**
+   * The narrowing filters this payload was actually built with — the drill-down
+   * dimensions beyond period/account (doc/analysis/gui-redesign/02 §2.5).
+   *
+   * Carried on the payload rather than re-derived by each surface for two
+   * reasons. The GUI needs it to render its filter controls in the state the
+   * data is really in (a select that shows "Any" beside a filtered total is a
+   * lie about what the reader is looking at). And every consumer of a filtered
+   * payload — MCP, the CLI, an exported pack — can then state its own scope
+   * without having to be handed the options separately, which is the honesty
+   * obligation on any narrowed figure.
+   *
+   * Optional so `DashboardData` fixtures that predate it keep compiling;
+   * `buildDashboard` always populates it, with `null` per absent dimension.
+   */
+  appliedFilters?: {
+    projectPath: string | null;
+    ticket: string | null;
+    taskClass: string | null;
+  };
   summary: DashboardSummary;
   byDay: Array<{
     date: string;             // YYYY-MM-DD
@@ -618,11 +638,20 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   // headline (getMessageTotals, which counts every in-window message regardless
   // of session flags). Explicit caller values still win — server ?includeCI=,
   // CLI --include-ci; only callers that OMIT them inherit the new default.
+  // `ticket` and `taskClass` are the GUI's local-filter dimensions
+  // (gui-redesign/02 §2.5). Both are passed HERE and to `msgFilter` below, never
+  // to one alone: each narrows the SESSION set through the same predicate on
+  // both halves (`ticketPredicate` / `taskClassPredicate` in store/index.ts), and
+  // narrowing one half only is what produces "12 sessions" beside a cost
+  // covering forty. The store has supported both since V21; nothing consumed
+  // them from the dashboard until the domain views needed them.
   const rows = store.getSessions({
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
     accountUuid: opts.accountUuid,
     entrypoint: opts.entrypoint,
+    ticket: opts.ticket,
+    taskClass: opts.taskClass,
     activeSince: since > 0 ? since : undefined,
     until: isCustomRange ? until : undefined,
     includeCI: opts.includeCI ?? true,
@@ -639,6 +668,8 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     repoUrl: opts.repoUrl,
     accountUuid: opts.accountUuid,
     entrypoint: opts.entrypoint,
+    ticket: opts.ticket,
+    taskClass: opts.taskClass,
     since: since > 0 ? since : undefined,
     until: isCustomRange ? until : undefined,
     includeCI: opts.includeCI ?? true,
@@ -1407,6 +1438,15 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     // #until-date-input value) — subtract 1ms so it reports the inclusive
     // last calendar day, matching what a user actually requested.
     untilIso: ymdInTz(until - 1, tz),
+    // Echoed from the options the payload was built with, not from the store:
+    // this states the SCOPE of every figure below it, so it has to be the
+    // narrowing that was actually applied. `?? null` per dimension keeps the
+    // shape total — an absent dimension is "not filtered", never missing.
+    appliedFilters: {
+      projectPath: opts.projectPath ?? null,
+      ticket: opts.ticket ?? null,
+      taskClass: opts.taskClass ?? null,
+    },
     summary: {
       sessions: rows.length,
       prompts: totalPrompts,
