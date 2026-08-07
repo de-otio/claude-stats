@@ -1614,6 +1614,26 @@ export function attachTicketAttribution(store: Store, data: DashboardData): Dash
 }
 
 /**
+ * G-5: `periodRange` throws "since and until must be provided together" when
+ * exactly one is set — but `attachCostPerTask` and `attachCalibration` below
+ * read `opts.since`/`opts.until` directly (to opt a genuine custom range OUT
+ * of their "all"→"month" perf cap) without going through `periodRange` at
+ * all, so that invariant never applied to them. A `since` supplied without a
+ * `until` silently fell through `isCustomRange = false`: the caller's `since`
+ * was DROPPED, the query fell back to the "month" preset, and the stamped
+ * scope described the window that was actually queried, not the one the
+ * caller asked for. Mirrors `periodRange`'s validation so the same malformed
+ * input fails the same way everywhere: both callers are already wrapped in a
+ * try/catch that leaves the affected field an honest `null` rather than a
+ * silently-substituted report.
+ */
+function assertPairedRange(opts: Pick<ReportOptions, "since" | "until">): void {
+  if (Boolean(opts.since) !== Boolean(opts.until)) {
+    throw new RangeError("since and until must be provided together");
+  }
+}
+
+/**
  * Populate `data.costPerTask` for a dashboard, asynchronously.
  *
  * Kept separate from the synchronous {@link buildDashboard} because the metric
@@ -1650,6 +1670,7 @@ export async function attachCostPerTask(
     // An explicit custom since/until range is NOT capped this way — the user
     // already bounded it with two real dates, unlike the implicit/unbounded
     // "all" default, so no new hard cap is introduced for custom ranges.
+    assertPairedRange(opts);
     const isCustomRange = Boolean(opts.since && opts.until);
     const dashPeriod = opts.period ?? "all";
     const period = isCustomRange
@@ -1696,6 +1717,7 @@ export async function attachCalibration(
     const { buildCalibrationReport } = await import("../cost-per-task/index.js");
     // See attachCostPerTask's comment: same "all"→"month" perf cap, same
     // custom-range opt-out of that cap.
+    assertPairedRange(opts);
     const isCustomRange = Boolean(opts.since && opts.until);
     const dashPeriod = opts.period ?? "all";
     // Typed as the three windows this actually produces rather than as

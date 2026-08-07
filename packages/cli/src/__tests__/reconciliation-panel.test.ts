@@ -176,6 +176,19 @@ describe("renderReconciliationPanel — the residual and its causes are on the p
     expect(renderReconciliationPanel(DRIFT, t)).toContain(`id="${RECONCILIATION_ANCHOR}"`);
   });
 
+  it("G-4: carries the cs-recon-drift warning-border class ONLY on a FAILING reconciliation", () => {
+    // Inverting `withinTolerance ? "" : " cs-recon-drift"` (so a PASSING
+    // reconciliation grew the warning border and a drifting one lost it)
+    // would survive every other assertion in this file — nothing else pins
+    // the class to the verdict it is supposed to visualise.
+    const driftHtml = renderReconciliationPanel(DRIFT, t);
+    const withinHtml = renderReconciliationPanel(WITHIN, t);
+    expect(DRIFT.withinTolerance).toBe(false);
+    expect(WITHIN.withinTolerance).toBe(true);
+    expect(driftHtml).toContain("cs-recon-drift");
+    expect(withinHtml).not.toContain("cs-recon-drift");
+  });
+
   it("uses an anchor that is not also a tab id", () => {
     // The alert's action is `href="#<anchor>"`, and the page's `hashchange`
     // handler switches tabs for any hash that matches a tab id. An anchor
@@ -201,6 +214,19 @@ describe("the residual's DIRECTION is a sentence, never a minus sign", () => {
     const row = reconLine(renderReconciliationPanel(localHigher, idT), "residual");
     expect(row).toContain("common:insight.reconciliation.residualLocalHigher");
     expect(row).not.toContain("residualInvoiceHigher");
+  });
+
+  it("G-3: at an EXACT match (residual === 0), neither direction sentence fires — a third, honest sentence does", () => {
+    // `residualIsInvoiceHigher = residual >= 0` used to route a PERFECT
+    // reconciliation through "…more on the invoice than the local estimate
+    // accounts for" with a $0.00 magnitude — technically zero, but a claim
+    // of DIRECTION on a figure that has none. Pin the boundary exactly.
+    const exact = computeReconciliation({ bottomUp: 50, invoiceTotal: 50 })!;
+    expect(exact.residual).toBe(0);
+    const row = reconLine(renderReconciliationPanel(exact, idT), "residual");
+    expect(row).toContain("common:insight.reconciliation.residualExact");
+    expect(row).not.toContain("residualInvoiceHigher");
+    expect(row).not.toContain("residualLocalHigher");
   });
 
   it("never prints a negative money figure or a negative percentage", () => {
@@ -429,6 +455,20 @@ describe("end to end — the alert's promise and the page agree", () => {
     const opts = { since: "2023-11-01", until: "2023-11-30" };
     const data = await attachCalibration(store, buildDashboard(store, opts), opts);
     expect(data.calibrationScope).toBe("custom-range");
+  });
+
+  it("G-5: a `since` supplied WITHOUT `until` is never silently dropped — it fails honestly instead of falling back to an unrelated preset", async () => {
+    // `isCustomRange = Boolean(opts.since && opts.until)` used to fall
+    // through to `false` for a lone `since`, silently discarding it and
+    // querying the "month" preset instead — a completely different window
+    // than what was asked for, stamped with a scope that (dishonestly)
+    // matched what was actually queried rather than what the caller meant.
+    // The fix rejects the mismatched pair the same way `periodRange` already
+    // does for every OTHER caller, landing in `attachCalibration`'s existing
+    // catch — an honest `null`, never a substituted report.
+    const data = await attachCalibration(store, buildDashboard(store, {}), { since: "2023-11-01" });
+    expect(data.calibration).toBeNull();
+    expect(data.calibrationScope).toBeNull();
   });
 
   it("leaves the scope null when no report was built — never a window with no report", async () => {

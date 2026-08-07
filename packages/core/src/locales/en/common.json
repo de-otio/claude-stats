@@ -133,9 +133,11 @@
         "wholeStore": "Counted across everything recorded, not only the period shown.",
         "day": "Counted over the last day only, not the period shown.",
         "week": "Counted over the last week only, not the period shown.",
-        "month": "Counted over the last month only, not the period shown.",
+        "month": "Counted over the current calendar month so far only, not the period shown.",
         "customRange": "Counted over the selected date range."
-      }
+      },
+      "minimumSampleRationale": "Below minN no rate is reported. By the rule of three, n observations with zero disagreements bound the error rate only at about 3/n, so a perfect run of fewer than 30 rulings cannot even rule out a one-in-ten error rate.",
+      "notCalibratedTaskClass": "No runtime ground truth exists: no correction records a human's disagreement with a session's task class, so agreement cannot be measured on this machine. The classifier's published agreement figure is measured against a GENERATED corpus at build time and is not a measurement of this store's data."
     },
     "reconciliation": {
       "title": "Reconciliation against your invoice",
@@ -151,6 +153,7 @@
       },
       "residualInvoiceHigher": "{{money}} ({{percent}}) more on the invoice than the local estimate accounts for",
       "residualLocalHigher": "{{money}} ({{percent}}) more in the local estimate than the invoice charges",
+      "residualExact": "Exact match — no residual between the invoice and the local estimate.",
       "toleranceBand": "±{{percent}}%",
       "causesLabel": "What could explain the gap",
       "cause": {

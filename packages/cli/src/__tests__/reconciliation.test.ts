@@ -84,6 +84,25 @@ describe("computeReconciliation", () => {
     expect(r!.tolerancePercent).toBe(Math.round(DEFAULT_RECONCILIATION_TOLERANCE * 100));
   });
 
+  it("G-2: tolerancePercent reflects the ACTUAL band the verdict was decided against, not a whole-percent rounding of it", () => {
+    // `tolerancePercent` used to be `Math.round(tolerance * 100)`. A
+    // fractional tolerance (legal per `validateReconciliationConfig`, which
+    // clamps to [0, 100] but does not require an integer) would then render
+    // a rounded band beside a verdict decided at the UNROUNDED value. Pin a
+    // residual that sits strictly between the true 4.7% band and its
+    // round-to-nearest 5% neighbour, at a distance where the two verdicts
+    // disagree — 4.8% invoice residual is OUTSIDE a true 4.7% tolerance but
+    // would read as INSIDE a displayed "±5%" band.
+    const r = computeReconciliation({ bottomUp: 95.2, invoiceTotal: 100, tolerance: 0.047 });
+    expect(r).not.toBeNull();
+    // The verdict used the real 4.7% band: a 4.8% residual is outside it.
+    expect(r!.withinTolerance).toBe(false);
+    // The displayed figure must say 4.7, not the rounded-up 5 that would
+    // make this same residual look like it should have passed.
+    expect(r!.tolerancePercent).toBe(4.7);
+    expect(r!.tolerancePercent).not.toBe(5);
+  });
+
   it("names unpriced-usage as a candidate cause when unknownTokens > 0", () => {
     const r = computeReconciliation({ bottomUp: 50, invoiceTotal: 100, unknownTokens: 5000 });
     expect(r!.candidateCauses).toContain("unpriced-usage");

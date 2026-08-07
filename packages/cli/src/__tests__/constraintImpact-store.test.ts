@@ -246,6 +246,57 @@ describe("buildConstraintImpactReport", () => {
     }
   });
 
+  it("M-2: a straddling session's active duration is NOT attributed to both sides", () => {
+    // The straddler carries a session-level `activeDurationMs` for its WHOLE
+    // lifetime (60 minutes) — huge next to the 5-minute default every other
+    // seeded session gets. `getSessions({ activeSince })` matches this
+    // session on BOTH the before and after query (it overlaps both windows),
+    // so if the whole 60 minutes were joined onto each side, it would blow
+    // both `avgActiveMinutes*` figures far past 5 and inflate the dev-time
+    // cost half of the ledger — the exact regression this guards. The fix
+    // excludes (not approximates) `activeDurationMs`/`medianResponseTimeMs`
+    // for a straddling session, so both sides' averages stay pinned to the
+    // known-good 5-minute sessions and the straddler drops OUT of coverage.
+    const store = new Store(tmpDb());
+    try {
+      const id = "straddler";
+      store.upsertSession(
+        session(id, BOUNDARY_MS - DAY_MS, {
+          lastTimestamp: BOUNDARY_MS + DAY_MS,
+          activeDurationMs: 60 * 60_000,
+          medianResponseTimeMs: 999_000,
+        }),
+      );
+      store.upsertMessages([
+        message(`${id}-before`, id, BOUNDARY_MS - DAY_MS),
+        message(`${id}-after`, id, BOUNDARY_MS + DAY_MS),
+      ]);
+      store.setTaskClass({
+        sessionId: id, taskClass: "debug", coarseClass: "diagnose", confidence: "high",
+        rule: "diagnosis", classifierVersion: TASK_CLASS_VERSION, classifiedAt: BOUNDARY_MS - DAY_MS,
+      });
+      // Enough OTHER 5-minute sessions on each side to clear the sample floor.
+      seedClass(store, "before", MIN - 1, BOUNDARY_MS - DAY_MS);
+      seedClass(store, "after", MIN - 1, BOUNDARY_MS + DAY_MS);
+
+      const { report } = buildConstraintImpactReport(store, POLICY);
+      const [c] = report.classes;
+      expect(c!.nBefore).toBe(MIN);
+      expect(c!.nAfter).toBe(MIN);
+      // Coverage excludes the straddler on both sides — MIN-1, not MIN.
+      expect(c!.activeMinutesCoverageBefore).toBe(MIN - 1);
+      expect(c!.activeMinutesCoverageAfter).toBe(MIN - 1);
+      // Pinned to the 5-minute sessions; a double-counted 60-minute
+      // straddler would pull this well above 5 on EITHER side.
+      expect(c!.avgActiveMinutesBefore).toBeCloseTo(5, 6);
+      expect(c!.avgActiveMinutesAfter).toBeCloseTo(5, 6);
+      expect(c!.medianResponseMsBefore).toBe(2000);
+      expect(c!.medianResponseMsAfter).toBe(2000);
+    } finally {
+      store.close();
+    }
+  });
+
   it("plumbs the configured hourly rate through to the net-effect channel", () => {
     const store = new Store(tmpDb());
     try {

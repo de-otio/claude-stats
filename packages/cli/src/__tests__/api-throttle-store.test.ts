@@ -19,7 +19,7 @@ function tmpDb(): string {
   return path.join(os.tmpdir(), `cs-api-throttle-${process.pid}-${Math.random().toString(36).slice(2)}.db`);
 }
 
-function session(id: string): SessionRecord {
+function session(id: string, overrides: Partial<SessionRecord> = {}): SessionRecord {
   return {
     sessionId: id, projectPath: "/w/alpha", sourceFile: `/transcripts/${id}.jsonl`,
     firstTimestamp: 1_000_000, lastTimestamp: 1_010_000, claudeVersion: "2.1.70",
@@ -30,6 +30,7 @@ function session(id: string): SessionRecord {
     repoUrl: null, accountUuid: null, organizationUuid: null, subscriptionType: null,
     thinkingBlocks: 0, parentSessionId: null, isSubagent: false, sourceDeleted: false,
     throttleEvents: 0, activeDurationMs: null, medianResponseTimeMs: null,
+    ...overrides,
   };
 }
 
@@ -158,5 +159,36 @@ describe("Store#upsertApiErrorEvents / getApiErrorEvents", () => {
     ]);
     const got = store.getApiErrorEvents();
     expect(got.map((e) => e.sessionId).sort()).toEqual(["s1", "s2"]);
+  });
+
+  it("N-1: scopes by accountUuid through the session join — api_error_events has no account_uuid column of its own", () => {
+    // Two accounts on one machine, each with a rejection. Without account
+    // scoping (the verified defect) a per-account caveat like "your
+    // account's rate-limit tier" would be rendered beside a count that
+    // silently pooled BOTH accounts' events.
+    store.upsertSession(session("s2", { accountUuid: "acct-B" }));
+    // s1 was seeded with accountUuid: null in beforeEach — give it a real one.
+    store.upsertSession(session("s1", { accountUuid: "acct-A" }));
+    store.upsertApiErrorEvents([
+      event({ uuid: "e-a", sessionId: "s1" }),
+      event({ uuid: "e-b", sessionId: "s2" }),
+    ]);
+    const forA = store.getApiErrorEvents({ accountUuid: "acct-A" });
+    const forB = store.getApiErrorEvents({ accountUuid: "acct-B" });
+    expect(forA.map((e) => e.uuid)).toEqual(["e-a"]);
+    expect(forB.map((e) => e.uuid)).toEqual(["e-b"]);
+    // Unscoped still returns both — scoping is opt-in, not a behaviour change
+    // for existing callers.
+    expect(store.getApiErrorEvents().map((e) => e.uuid).sort()).toEqual(["e-a", "e-b"]);
+  });
+
+  it("N-1: scopes by projectPath through the same session join", () => {
+    store.upsertSession(session("s2", { projectPath: "/w/beta" }));
+    store.upsertApiErrorEvents([
+      event({ uuid: "e-alpha", sessionId: "s1" }), // s1 is /w/alpha (default)
+      event({ uuid: "e-beta", sessionId: "s2" }),
+    ]);
+    const got = store.getApiErrorEvents({ projectPath: "/w/beta" });
+    expect(got.map((e) => e.uuid)).toEqual(["e-beta"]);
   });
 });

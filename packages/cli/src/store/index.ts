@@ -1236,21 +1236,54 @@ export class Store {
    * constraintImpact/apiThrottleWait.ts`). Not part of the filter-symmetry
    * contract — this is a standalone event table, not a `MessageFilter`
    * dimension over `messages`/`sessions`.
+   *
+   * N-1: `api_error_events` has no `account_uuid` column of its own, but it
+   * has a `session_id` FK into `sessions`, which does — so `accountUuid` (and
+   * `projectPath`/`repoUrl`, for the same reason) scope through a join to
+   * `sessions`, same as every other event-ish table in this store.
+   * `formatApiThrottle` renders an `accountMode`-specific caveat ("your
+   * account's API or Bedrock rate-limit tier" / "your plan's 5-hour usage
+   * window") — wording that names ONE account. Without this scoping, a
+   * multi-account machine's figure silently pooled every account's rejections
+   * under a caveat naming whichever single account the caller had in mind.
    */
-  getApiErrorEvents(opts: { since?: number; until?: number } = {}): ApiErrorEvent[] {
-    const conditions: string[] = [];
+  getApiErrorEvents(
+    opts: {
+      since?: number;
+      until?: number;
+      accountUuid?: string;
+      projectPath?: string;
+      repoUrl?: string;
+    } = {},
+  ): ApiErrorEvent[] {
+    const outer: string[] = [];
+    const sessionConds: string[] = [];
     const params: unknown[] = [];
     if (opts.since !== undefined) {
-      conditions.push("timestamp >= ?");
+      outer.push("e.timestamp >= ?");
       params.push(opts.since);
     }
     if (opts.until !== undefined) {
-      conditions.push("timestamp <= ?");
+      outer.push("e.timestamp <= ?");
       params.push(opts.until);
     }
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    if (opts.accountUuid) {
+      sessionConds.push("s.account_uuid = ?");
+      params.push(opts.accountUuid);
+    }
+    if (opts.projectPath) {
+      sessionConds.push("s.project_path = ?");
+      params.push(opts.projectPath);
+    }
+    if (opts.repoUrl) {
+      sessionConds.push("s.repo_url = ?");
+      params.push(opts.repoUrl);
+    }
+    const sessionAnd = sessionConds.length ? ` AND ${sessionConds.join(" AND ")}` : "";
+    const outerAnd = outer.length ? `${outer.join(" AND ")} AND ` : "";
+    const where = `WHERE ${outerAnd}EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = e.session_id${sessionAnd})`;
     const rows = this.db
-      .prepare(`SELECT * FROM api_error_events ${where} ORDER BY timestamp ASC`)
+      .prepare(`SELECT e.* FROM api_error_events e ${where} ORDER BY e.timestamp ASC`)
       .all(...(params as any[])) as Array<Record<string, unknown>>;
     return rows.map((r) => ({
       uuid: r["uuid"] as string,

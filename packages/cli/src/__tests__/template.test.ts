@@ -188,6 +188,34 @@ describe("renderDashboard", () => {
     expect(annotationAt).toBeLessThan(nextCardAt);
   });
 
+  it("M-3: escapes HTML metacharacters in a policy event's date/kind/detail", () => {
+    // `detail` is free-form local text (LOCAL-ONLY per PolicyEvent's own
+    // doc-comment) rendered straight into the timeline annotation — the
+    // string a user typed into their own config becomes markup verbatim if
+    // `escapeHtml` is ever dropped from this path. Prove the injected markup
+    // survives ONLY in escaped form and never appears as live tags.
+    const withMarkup: DashboardData = {
+      ...mockData,
+      policyEvents: [
+        {
+          date: '2026-05-01"><img src=x onerror=alert(1)>',
+          kind: "other",
+          detail: "<script>alert('xss')</script> & \"quoted\" & 'single'",
+          scope: "org",
+        },
+      ],
+    };
+    const html = renderDashboard(withMarkup, t);
+    // The raw payloads must never appear unescaped.
+    expect(html).not.toContain("<script>alert('xss')</script>");
+    expect(html).not.toContain('"><img src=x onerror=alert(1)>');
+    // Their escaped forms must be present instead.
+    expect(html).toContain("&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;");
+    expect(html).toContain("&quot;&gt;&lt;img src=x onerror=alert(1)&gt;");
+    expect(html).toContain("&amp;");
+    expect(html).toContain("&quot;quoted&quot;");
+  });
+
   it("renders nothing extra when no policy events are declared or attached", () => {
     const noEvents = renderDashboard({ ...mockData, policyEvents: [] }, t);
     const undeclared = renderDashboard({ ...mockData, policyEvents: undefined }, t);

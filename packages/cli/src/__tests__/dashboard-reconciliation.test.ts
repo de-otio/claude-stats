@@ -118,6 +118,17 @@ describe("attachInsights — reconciliation wiring", () => {
     const data = attachInsights(store, buildDashboard(store, {}), {}, config);
     const recon = data.insights?.reconciliation;
     expect(recon).not.toBeNull();
+    // R-1: `recon.bottomUp` and `ticketCoverage.totalCost` are BOTH read off
+    // the SAME `report.totalCost` inside `attachInsights` — `computeReconciliation`
+    // passes `bottomUp` straight through, and `aggregateTicketCosts` sets
+    // `coverage.totalCost = totalCost` verbatim (`packages/core/src/
+    // attribution.ts`). The two are equal BY CONSTRUCTION regardless of
+    // whether the wiring is correct, so asserting they agree with EACH OTHER
+    // proves nothing; a bug that fed both the wrong window would still pass.
+    // Pin `bottomUp` against the ground-truth figure the fixture's own
+    // tokens dictate instead — an independent, computed-elsewhere expectation
+    // a wiring bug can actually diverge from.
+    expect(recon!.bottomUp).toBeCloseTo(0.6, 6);
     expect(recon!.bottomUp).toBeCloseTo(data.insights!.ticketCoverage!.totalCost);
     expect(recon!.withinTolerance).toBe(true);
   });

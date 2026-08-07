@@ -208,8 +208,33 @@ export function buildConstraintImpactReport(
 ): ConstraintImpactResult {
   const boundaryMs = parsePolicyEventBoundaryMs(policyEvent.date);
 
-  const beforeRows = buildSideRows(store, filters, filters.since, boundaryMs);
-  const afterRows = buildSideRows(store, filters, boundaryMs, filters.until);
+  const rawBeforeRows = buildSideRows(store, filters, filters.since, boundaryMs);
+  const rawAfterRows = buildSideRows(store, filters, boundaryMs, filters.until);
+
+  // M-2: a session whose activity straddles the boundary owns messages on
+  // BOTH sides, so it produces a row in both `rawBeforeRows` and
+  // `rawAfterRows` — that part is correct, and `cost`/`tokensTotal`/`turns`/
+  // `toolErrors` on each row are genuinely partial, since they're summed only
+  // from that side's messages. But `activeDurationMs` and
+  // `medianResponseTimeMs` are joined from the SESSION record's own aggregate
+  // columns (see `buildSideRows`), which cover the session's full lifetime —
+  // there is no per-window active-duration figure to join instead. Left
+  // as-is, the straddling session's whole active duration would be
+  // attributed in full to EACH side, double-counting the dev-time half of a
+  // before/after ledger whose entire point is to weigh dev-time against
+  // token cost. There's no honest way to split a lifetime duration by
+  // message timestamp, so exclude — rather than approximate — these two
+  // fields for a straddling session on both sides.
+  const afterSessionIds = new Set(rawAfterRows.map((r) => r.sessionId));
+  const straddlingSessionIds = new Set(
+    rawBeforeRows.filter((r) => afterSessionIds.has(r.sessionId)).map((r) => r.sessionId),
+  );
+  const clipStraddler = (row: ConstraintImpactSessionRow): ConstraintImpactSessionRow =>
+    straddlingSessionIds.has(row.sessionId)
+      ? { ...row, activeDurationMs: null, medianResponseTimeMs: null }
+      : row;
+  const beforeRows = rawBeforeRows.map(clipStraddler);
+  const afterRows = rawAfterRows.map(clipStraddler);
 
   const allSessionIds = [...beforeRows, ...afterRows].map((r) => r.sessionId);
   const { map: taskClassBySession, coverage } = buildTaskClassMap(store, allSessionIds);

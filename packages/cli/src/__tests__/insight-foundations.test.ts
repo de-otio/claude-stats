@@ -36,6 +36,7 @@ import {
   formatDevTime,
   trendOf,
   confidenceCaveat,
+  calibrationScopeNote,
 } from "@claude-stats/core/insight";
 import type { TicketCoverage } from "@claude-stats/core/types/insight";
 // The real `en` translator (setup.ts runs initCliI18n("en")). Deliberately not
@@ -46,6 +47,7 @@ import { parseTicketKey, isTicketKey, matchesProjectAllowlist } from "@claude-st
 import { buildCorpus, seedStore, FIXED_NOW, seededRandom } from "./fixtures/synthetic.js";
 import { estimateCost } from "@claude-stats/core/pricing";
 import { Store } from "../store/index.js";
+import { datesForPeriod } from "../cost-per-task/index.js";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
@@ -102,6 +104,45 @@ describe("insight config validation", () => {
     ]);
     expect(out.map((e) => e.date)).toEqual(["2026-02-01", "2026-05-01"]);
     expect(out[1]!.detail).toBe("opus");
+  });
+
+  it("M-4: sorts ascending so `events[events.length - 1]` is 'most recent' — the coupling both the CLI and MCP 'compare around the latest event' path rely on without re-sorting", () => {
+    // `cli/index.ts`'s `constraint-impact` command and `mcp/index.ts`'s
+    // `get_constraint_impact` tool both resolve an undated request as
+    // `events[events.length - 1]` on `config.policyEvents` directly — no
+    // sort at the use site. That's only correct because EVERY array
+    // reaching them was produced by this validator. Feed events wildly out
+    // of declaration order, as a human hand-editing config.json would, and
+    // confirm the truly latest-dated event lands last regardless.
+    const out = validatePolicyEvents([
+      { date: "2026-03-01", kind: "budget-cap" },
+      { date: "2026-08-01", kind: "model-removal", detail: "the actual most recent" },
+      { date: "2026-01-01", kind: "quota-change" },
+    ]);
+    expect(out[out.length - 1]!.date).toBe("2026-08-01");
+    expect(out[out.length - 1]!.detail).toBe("the actual most recent");
+  });
+
+  it("G-1: the 'month' calibration scope sentence doesn't overclaim a rolling window it never queried", () => {
+    // `datesForPeriod`'s 'month' branch enumerates only CURRENT-CALENDAR-MONTH
+    // days up to today, not a rolling last-30-days window. On the 2nd of the
+    // month that's 2 days, not 30 — proven directly here rather than trusted
+    // from `cost-per-task.test.ts` alone, since this test is what ties the
+    // SENTENCE to that fact. A sentence claiming "the last month" (a fixed
+    // rolling span) would be true on day 30 and false on day 2; assert
+    // against the extreme day to make that failure mode concrete.
+    const secondOfMonth = Date.UTC(2026, 4, 2, 12, 0, 0); // 2026-05-02 noon UTC
+    const days = datesForPeriod({ period: "month" }, "UTC", secondOfMonth, null);
+    expect(days).toEqual(["2026-05-01", "2026-05-02"]);
+
+    const sentence = calibrationScopeNote(t, "month");
+    expect(sentence).toBe(t("common:insight.calibration.scope.month"));
+    // Must not claim a fixed backward-looking span ("the last month") that
+    // would be false on a day like this one.
+    expect(sentence.toLowerCase()).not.toContain("last month");
+    // Must say what actually happened: the current month, only as far as it
+    // has elapsed.
+    expect(sentence.toLowerCase()).toMatch(/current calendar month|so far/);
   });
 
   it("rejects a non-positive or absurd hourly rate", () => {

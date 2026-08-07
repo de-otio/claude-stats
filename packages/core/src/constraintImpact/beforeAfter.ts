@@ -410,10 +410,17 @@ function compareOneClass(
   const avgActiveMinutesBefore = activeBefore.length > 0 ? mean(activeBefore) / 60000 : null;
   const avgActiveMinutesAfter = activeAfter.length > 0 ? mean(activeAfter) / 60000 : null;
 
+  // M-1: the field is `medianResponseMs*`, and every other `median*` field in
+  // this comparison (`medianCostBefore/After`) is the actual `median()` of the
+  // per-session values, not their mean — so this one follows that convention
+  // rather than silently reporting a mean of medians under a median's name. A
+  // median-of-medians is also the more honest aggregate for response time
+  // specifically: it stays robust to the one session with a long tail (a
+  // network stall, a huge single tool call) that a mean would let dominate.
   const respBefore = beforeRows.map((r) => r.medianResponseTimeMs).filter((v): v is number => v !== null);
   const respAfter = afterRows.map((r) => r.medianResponseTimeMs).filter((v): v is number => v !== null);
-  const medianResponseMsBefore = respBefore.length > 0 ? mean(respBefore) : null;
-  const medianResponseMsAfter = respAfter.length > 0 ? mean(respAfter) : null;
+  const medianResponseMsBefore = median(respBefore);
+  const medianResponseMsAfter = median(respAfter);
 
   const tokenSavingsAtAfterVolume = (avgCostBefore - avgCostAfter) * nAfter;
 

@@ -274,6 +274,45 @@ describe("compareConstraintImpact — the metric channels", () => {
     expect(c!.avgCostBefore).toBeGreaterThan(1); // the mean IS moved by it
   });
 
+  it("M-1: medianResponseMsBefore/After is the actual median, not a mean of medians", () => {
+    // Same outlier shape as the cost case above: seven ordinary sessions at
+    // 2000ms beside one pathological session at 100_000ms. A median of the
+    // per-session medians stays at 2000 (unmoved by the outlier); a MEAN of
+    // those same values would be pulled well above it. The field is named
+    // `medianResponseMs*` — if it silently reported a mean, this assertion
+    // catches it directly instead of relying on the name alone.
+    const before = [
+      session({ sessionId: "b0", medianResponseTimeMs: 2000 }),
+      session({ sessionId: "b1", medianResponseTimeMs: 2000 }),
+      session({ sessionId: "b2", medianResponseTimeMs: 2000 }),
+      session({ sessionId: "b3", medianResponseTimeMs: 2000 }),
+      session({ sessionId: "b4", medianResponseTimeMs: 2000 }),
+      session({ sessionId: "b5", medianResponseTimeMs: 2000 }),
+      session({ sessionId: "b6", medianResponseTimeMs: 2000 }),
+      session({ sessionId: "b-outlier", medianResponseTimeMs: 100_000 }),
+    ];
+    const after = classOf("a", DEFAULT_MIN_SESSIONS_PER_CLASS, () => ({ medianResponseTimeMs: 2000 }));
+    const taskClassBySession = classify([...before, ...after]);
+    const report = compareConstraintImpact(before, after, taskClassBySession, POLICY);
+
+    const [c] = report.classes;
+    expect(c!.medianResponseMsBefore).toBe(2000); // unmoved by the outlier
+    // A mean-of-medians would land at (7*2000 + 100000) / 8 = 14250 — well
+    // above the true median. Guard against that regression explicitly.
+    expect(c!.medianResponseMsBefore).toBeLessThan(14250);
+  });
+
+  it("M-1: medianResponseMsBefore/After is null, not NaN, with no data on that side", () => {
+    const before = classOf("b", DEFAULT_MIN_SESSIONS_PER_CLASS, () => ({ medianResponseTimeMs: null }));
+    const after = classOf("a", DEFAULT_MIN_SESSIONS_PER_CLASS, () => ({ medianResponseTimeMs: 2000 }));
+    const taskClassBySession = classify([...before, ...after]);
+    const report = compareConstraintImpact(before, after, taskClassBySession, POLICY);
+
+    const [c] = report.classes;
+    expect(c!.medianResponseMsBefore).toBeNull();
+    expect(c!.medianResponseTrend).toBe("unknown");
+  });
+
   it("carries distinct, sorted model ids per side as the confound annotation", () => {
     const before = [
       session({ sessionId: "b0", models: ["claude-opus-5"] }),

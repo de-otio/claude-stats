@@ -114,11 +114,18 @@ export interface ApiThrottleSummary {
    *  asserts "Anthropic's own infrastructure availability", and a local
    *  outage folded into them would be a false cause — the same defect class
    *  this module was rebuilt to remove. Counted, never silently dropped, but
-   *  not currently rendered. */
+   *  not currently rendered — see the N-2 note on `unknownEvents` below;
+   *  the same gap applies to this field. */
   networkDownRetryEvents: number;
   /** Events whose kind this module could not classify (an unrecognised
-   *  status/error string) — tracked, never silently folded into either
-   *  total, so an incomplete classification is visible rather than hidden. */
+   *  status/error string) — tracked here, never silently folded into either
+   *  total. N-2: this field, `rateLimitSessionsAffected`,
+   *  `serverErrorRejections` and `networkDownRetryEvents` are on this summary
+   *  so a caller CAN inspect them, but `formatApiThrottle` below does not
+   *  read any of the four — none of them reach a rendered sentence yet. "An
+   *  incomplete classification is visible" is true of this struct, not of
+   *  anything a user currently sees; a caller that renders only
+   *  `ApiThrottleAnswer` gets no signal that some events were unclassified. */
   unknownEvents: number;
 }
 
