@@ -166,19 +166,29 @@ export function formatPercent(ratio: number | null, decimals = 0): string {
 }
 
 /**
- * Express a cost as developer time. The lever that turns a token bill into a
- * number a manager already has intuitions about — a month of heavy usage is
- * typically a low single-digit percentage of one salary.
+ * Render a duration given in hours as dev-minutes/hours/days, whichever reads
+ * most naturally at that magnitude. Split out of `formatDevTime` so a caller
+ * that already has elapsed hours (no cost, no rate — e.g. a measured blocked
+ * wait time) renders through the exact same three branches rather than a
+ * second hand-rolled formatter that could drift from this one (I-1).
  *
  * The NUMBER is fixed-locale (same reason as `formatMoney`); only the unit is
  * translated, because "dev-hours" is a word.
  */
-export function formatDevTime(t: InsightT, cost: number, hourlyRate: number): string {
-  if (hourlyRate <= 0) return "—";
-  const hours = cost / hourlyRate;
+export function formatDurationHours(t: InsightT, hours: number): string {
   if (hours < 1) return t("common:insight.devTime.minutes", { value: Math.round(hours * 60) });
   if (hours < 8) return t("common:insight.devTime.hours", { value: hours.toFixed(1) });
   return t("common:insight.devTime.days", { value: (hours / 8).toFixed(1) });
+}
+
+/**
+ * Express a cost as developer time. The lever that turns a token bill into a
+ * number a manager already has intuitions about — a month of heavy usage is
+ * typically a low single-digit percentage of one salary.
+ */
+export function formatDevTime(t: InsightT, cost: number, hourlyRate: number): string {
+  if (hourlyRate <= 0) return "—";
+  return formatDurationHours(t, cost / hourlyRate);
 }
 
 /** Direction of travel vs the previous comparable period. */

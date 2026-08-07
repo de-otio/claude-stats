@@ -17,6 +17,7 @@ import type {
   SessionRecord,
   ToolUseCount,
   ParseError,
+  ApiErrorEvent,
 } from "../types.js";
 import { sanitizePromptText } from "../sanitize.js";
 
@@ -30,6 +31,25 @@ export interface ParseResult {
   firstKbHash: string;
   /** The parentUuid extracted from JSONL entries (for subagent → parent linking) */
   parentUuid: string | null;
+  /** Structured API-error/retry signals found in this range — see
+   *  `ApiErrorEvent`'s doc comment (`../types.ts`) for the two mechanisms. */
+  apiErrorEvents: ApiErrorEvent[];
+}
+
+/** Classify a terminal `isApiErrorMessage` entry's short error string, or a
+ *  retry-ladder entry's HTTP status, into the two-way vocabulary this module
+ *  cares about. Anything else (a future error family, a missing field) is
+ *  "unknown" rather than guessed into one of the two — an unrecognised
+ *  condition must never silently inflate the throttle-specific count. */
+function classifyApiErrorKind(
+  errorString: string | undefined,
+  status: number | null,
+): ApiErrorEvent["kind"] {
+  if (errorString === "rate_limit") return "rate_limit";
+  if (errorString === "server_error") return "server_error";
+  if (status === 429) return "rate_limit";
+  if (status != null && status >= 500) return "server_error";
+  return "unknown";
 }
 
 /** Compute SHA-256 of the first `maxBytes` bytes of a file (default 1024). */
@@ -157,6 +177,7 @@ export async function parseSessionFile(
   const responseTimes: number[] = [];     // assistant_ts - user_ts pairs
   let lastUserTimestamp: number | null = null;
   let lastPromptText: string | null = null;
+  const apiErrorEvents: ApiErrorEvent[] = [];
 
   let lineNumber = 0;
   for (const { raw, offset } of linesToProcess) {
@@ -242,6 +263,31 @@ export async function parseSessionFile(
           entrypoint = detectIdeEntrypoint(entry.message?.content);
         }
       }
+    } else if (
+      type === "system" &&
+      entry.subtype === "api_error" &&
+      (entry.source === "request_retry" || entry.source === "connection_retry")
+    ) {
+      // The client's own retry-ladder log for one attempt — see
+      // `ApiErrorEvent`'s doc comment. Only entries carrying a real
+      // `retryInMs` are a genuine "the client is about to sleep this long"
+      // signal; a malformed/partial line without one is dropped rather than
+      // counted with a fabricated zero.
+      if (entry.uuid && typeof entry.retryInMs === "number") {
+        const errObj = typeof entry.error === "object" ? entry.error : undefined;
+        const status = typeof errObj?.status === "number" ? errObj.status : null;
+        apiErrorEvents.push({
+          uuid: entry.uuid,
+          sessionId: entry.sessionId ?? sessionId ?? "",
+          timestamp: ts,
+          terminal: false,
+          kind: classifyApiErrorKind(undefined, status),
+          status,
+          retryInMs: entry.retryInMs,
+          retryAttempt: entry.retryAttempt ?? null,
+          isNetworkDown: errObj?.isNetworkDown === true,
+        });
+      }
     } else if (type === "assistant") {
       // A transcript can contain the SAME assistant message more than once:
       // resumes and compaction replay earlier turns verbatim (one real file was
@@ -259,6 +305,27 @@ export async function parseSessionFile(
         if (seenAssistantUuids.has(assistantUuid)) continue;
         seenAssistantUuids.add(assistantUuid);
       }
+
+      // A terminal, user-visible API rejection — see `ApiErrorEvent`'s doc
+      // comment. Recorded ADDITIVELY alongside the existing (unrelated)
+      // per-message accumulation below; this branch never changes what that
+      // accumulation does with a zero-usage entry, only adds the event.
+      if (entry.isApiErrorMessage === true && assistantUuid) {
+        const errorString = typeof entry.error === "string" ? entry.error : undefined;
+        const status = typeof entry.apiErrorStatus === "number" ? entry.apiErrorStatus : null;
+        apiErrorEvents.push({
+          uuid: assistantUuid,
+          sessionId: entry.sessionId ?? sessionId ?? "",
+          timestamp: ts,
+          terminal: true,
+          kind: classifyApiErrorKind(errorString, status),
+          status,
+          retryInMs: null,
+          retryAttempt: null,
+          isNetworkDown: false,
+        });
+      }
+
       assistantMessageCount++;
       const usage = entry.message?.usage;
       const model = entry.message?.model;
@@ -450,7 +517,7 @@ export async function parseSessionFile(
       }
     : null;
 
-  return { session, messages, errors, lastGoodOffset, firstKbHash, parentUuid };
+  return { session, messages, errors, lastGoodOffset, firstKbHash, parentUuid, apiErrorEvents };
 }
 
 /**

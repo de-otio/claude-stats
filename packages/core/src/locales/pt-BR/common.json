@@ -159,6 +159,21 @@
         "attribution": "Confirme ou corrija um vínculo automático com `claude-stats ticket <session-id> <key>`, ou anule um incorreto com `--negate`; cada avaliação explícita amplia a amostra.",
         "outcome": "Rotule o trabalho concluído com `claude-stats task-outcome <item> <success|partial|fail>`; cada rótulo amplia a amostra."
       }
+    },
+    "apiThrottle": {
+      "rejection": {
+        "summary_one": "A API do Claude aplicou limite de taxa a você {{count}} vez neste período.",
+        "summary_other": "A API do Claude aplicou limite de taxa a você {{count}} vezes neste período.",
+        "caveatMetered": "O Claude Code não registra quanto tempo durou uma rejeição por limite de taxa, apenas que ela ocorreu — trate isso como um sinal de limite inferior, não como custo de tempo. Verifique o tier de limite de taxa da API ou do Bedrock da sua conta.",
+        "caveatPlan": "O Claude Code não registra quanto tempo durou uma rejeição por limite de taxa, apenas que ela ocorreu — trate isso como um sinal de limite inferior, não como custo de tempo. Esse é um limite por requisição, separado da janela de uso de 5 horas do seu plano.",
+        "summary_many": "A API do Claude aplicou limite de taxa a você {{count}} vezes neste período."
+      },
+      "overload": {
+        "summary_one": "A API do Claude ficou sobrecarregada {{count}} vez neste período, somando {{time}} de espera medida em novas tentativas.",
+        "summary_other": "A API do Claude ficou sobrecarregada {{count}} vezes neste período, somando {{time}} de espera medida em novas tentativas.",
+        "caveat": "Isso reflete a disponibilidade da própria infraestrutura da Anthropic, não o limite de taxa da sua conta nem alguma política da organização — vale para qualquer conta e não é um custo de restrição.",
+        "summary_many": "A API do Claude ficou sobrecarregada {{count}} vezes neste período, somando {{time}} de espera medida em novas tentativas."
+      }
     }
   },
   "actions": {

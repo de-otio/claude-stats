@@ -21,12 +21,13 @@ import type {
   AccountRecord,
   OwnerRule,
   OwnerTarget,
+  ApiErrorEvent,
 } from "@claude-stats/core/types";
 import { estimateCost } from "@claude-stats/core/pricing";
 import { requireTicketKey } from "@claude-stats/core/tickets";
 import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
-const SCHEMA_VERSION = 21;
+const SCHEMA_VERSION = 22;
 
 /**
  * SQL narrowing a session-id column to sessions attributed to one ticket key.
@@ -117,6 +118,7 @@ export class Store {
     if (current < 19) this.migrateToV19();
     if (current < 20) this.migrateToV20();
     if (current < 21) this.migrateToV21();
+    if (current < 22) this.migrateToV22();
 
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
@@ -723,6 +725,48 @@ export class Store {
   }
 
   /**
+   * V22 — structured API-error/throttle events
+   * (`doc/analysis/constraint-impact/03-measurement-mechanics.md` §3.2,
+   * `packages/core/src/constraintImpact/apiThrottleWait.ts`).
+   *
+   * Append-only, one row per structured signal Claude Code itself writes for
+   * an API-level error — a retry-ladder attempt (`terminal = 0`, carries
+   * `retry_in_ms`) or a terminal user-visible rejection (`terminal = 1`, no
+   * wait attached). Kept OUT of `messages`: these are not billed turns (a
+   * terminal rejection already lands a zero-usage row there via the existing
+   * assistant-entry path; this table adds the classification and retry
+   * metadata that path has nowhere to put), and a retry-ladder attempt has no
+   * usage at all — folding either into `messages` would corrupt cost/turn
+   * analytics that assume a row is a real API response.
+   *
+   * `uuid` is the entry's own uuid (Claude Code emits one on both entry
+   * kinds), reused as the idempotency key exactly like `messages` — a
+   * re-parsed byte range upserts the same rows rather than duplicating them.
+   *
+   * Additive + idempotent; zero backfill (a historical file must still exist
+   * and be re-parsed from byte 0 to populate this table for old sessions —
+   * same constraint V20's `git_branch` documents).
+   */
+  private migrateToV22(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS api_error_events (
+        uuid             TEXT PRIMARY KEY,
+        session_id       TEXT NOT NULL,
+        timestamp        INTEGER,
+        terminal         INTEGER NOT NULL,
+        kind             TEXT NOT NULL,
+        status           INTEGER,
+        retry_in_ms      INTEGER,
+        retry_attempt    INTEGER,
+        is_network_down  INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_api_error_events_session ON api_error_events (session_id);
+      CREATE INDEX IF NOT EXISTS idx_api_error_events_ts ON api_error_events (timestamp);
+    `);
+  }
+
+  /**
    * V14 — anchor pins. Durable, session-keyed ground-truth pins produced by the
    * attribution engine's anchor signal (live CLI sessions observed active under
    * the currently-read account). Persisted because the live-session files are
@@ -1156,6 +1200,69 @@ export class Store {
         r.isThrottled ? 1 : 0
       );
     }
+  }
+
+  /** Append-only upsert for `api_error_events` (V22). See `migrateToV22`'s
+   *  doc comment for why this is a separate table from `messages`. Idempotent
+   *  by `uuid`, same as `upsertMessages`; a re-parsed byte range overwrites a
+   *  row with itself rather than duplicating it. */
+  upsertApiErrorEvents(events: ApiErrorEvent[]): void {
+    if (events.length === 0) return;
+    const stmt = this.db.prepare(`
+      INSERT INTO api_error_events (
+        uuid, session_id, timestamp, terminal, kind, status,
+        retry_in_ms, retry_attempt, is_network_down
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (uuid) DO UPDATE SET
+        timestamp        = excluded.timestamp,
+        terminal         = excluded.terminal,
+        kind             = excluded.kind,
+        status           = excluded.status,
+        retry_in_ms      = excluded.retry_in_ms,
+        retry_attempt    = excluded.retry_attempt,
+        is_network_down  = excluded.is_network_down
+    `);
+    for (const e of events) {
+      stmt.run(
+        e.uuid, e.sessionId, e.timestamp, e.terminal ? 1 : 0, e.kind, e.status,
+        e.retryInMs, e.retryAttempt, e.isNetworkDown ? 1 : 0
+      );
+    }
+  }
+
+  /**
+   * Period-scoped read for `api_error_events`, feeding
+   * `summarizeApiThrottle`/`formatApiThrottle` (`packages/core/src/
+   * constraintImpact/apiThrottleWait.ts`). Not part of the filter-symmetry
+   * contract — this is a standalone event table, not a `MessageFilter`
+   * dimension over `messages`/`sessions`.
+   */
+  getApiErrorEvents(opts: { since?: number; until?: number } = {}): ApiErrorEvent[] {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (opts.since !== undefined) {
+      conditions.push("timestamp >= ?");
+      params.push(opts.since);
+    }
+    if (opts.until !== undefined) {
+      conditions.push("timestamp <= ?");
+      params.push(opts.until);
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const rows = this.db
+      .prepare(`SELECT * FROM api_error_events ${where} ORDER BY timestamp ASC`)
+      .all(...(params as any[])) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      uuid: r["uuid"] as string,
+      sessionId: r["session_id"] as string,
+      timestamp: r["timestamp"] as number | null,
+      terminal: r["terminal"] === 1,
+      kind: r["kind"] as ApiErrorEvent["kind"],
+      status: r["status"] as number | null,
+      retryInMs: r["retry_in_ms"] as number | null,
+      retryAttempt: r["retry_attempt"] as number | null,
+      isNetworkDown: r["is_network_down"] === 1,
+    }));
   }
 
   // ─── Checkpoint ─────────────────────────────────────────────────────────────

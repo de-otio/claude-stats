@@ -89,6 +89,31 @@ export interface RawSessionEntry {
   subtype?: string;
   content?: string;
   level?: string;
+  // system, subtype "api_error" — the client's own retry-ladder log for a
+  // transient API error (429/5xx). One line per attempt; see
+  // constraintImpact/apiThrottleWait.ts for how this is used and why it must
+  // not be confused with the terminal rejection below.
+  source?: string;
+  retryInMs?: number;
+  retryAttempt?: number;
+  maxRetries?: number;
+  // assistant — a terminal, user-visible API rejection (retries exhausted, or
+  // never retried at all, e.g. 429). `error` is a short string here
+  // ("rate_limit" | "server_error" | ...); on a "system"/"api_error" line
+  // above it is instead an object — same field name, different shape by
+  // entry type, exactly as Claude Code itself emits it.
+  isApiErrorMessage?: boolean;
+  apiErrorStatus?: number;
+  error?:
+    | string
+    | {
+        message?: string;
+        status?: number;
+        requestId?: string;
+        formatted?: string;
+        isNetworkDown?: boolean;
+        rateLimits?: unknown;
+      };
   // progress
   data?: unknown;
   parentToolUseID?: string;
@@ -221,6 +246,41 @@ export interface UsageWindow {
   promptCount: number;
   tokensByModel: Record<string, number>;
   throttled: boolean;
+}
+
+// ─── API error / throttle events (schema V22) ─────────────────────────────────
+
+/**
+ * One structured API-error signal extracted from a session transcript.
+ * Claude Code writes TWO distinct, non-interchangeable mechanisms under this
+ * one concept — see `constraintImpact/apiThrottleWait.ts`'s module doc for the
+ * full reasoning; in short:
+ *
+ *  - `terminal: false` — a `type:"system", subtype:"api_error"` line: one
+ *    in-progress retry attempt the client absorbed silently. `retryInMs` is
+ *    the client's own scheduled backoff before its next attempt — verified
+ *    against real transcripts to predict the observed gap to the next retry
+ *    within normal request latency, so summing it is a MEASURED wait, not an
+ *    inference.
+ *  - `terminal: true` — a `type:"assistant", isApiErrorMessage:true` line:
+ *    the client gave up (retries exhausted, or the error was never retried at
+ *    all — observed for every 429 in real data) and surfaced the rejection to
+ *    the user. No retry was scheduled, so `retryInMs` is null here; the
+ *    element carries a COUNT, not a duration.
+ */
+export interface ApiErrorEvent {
+  uuid: string;
+  sessionId: string;
+  timestamp: number | null;
+  terminal: boolean;
+  /** "rate_limit" (HTTP 429 — the quota/throttle-shaped condition) vs
+   *  "server_error" (5xx/other — Anthropic-side availability, unrelated to
+   *  any account's own rate limit). Never merge these two in one figure. */
+  kind: "rate_limit" | "server_error" | "unknown";
+  status: number | null;
+  retryInMs: number | null;
+  retryAttempt: number | null;
+  isNetworkDown: boolean;
 }
 
 // ─── Plan configuration ───────────────────────────────────────────────────────

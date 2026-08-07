@@ -154,6 +154,19 @@
         "attribution": "Bestätigen oder korrigieren Sie eine automatische Verknüpfung mit `claude-stats ticket <session-id> <key>` oder heben Sie eine falsche mit `--negate` auf; jede ausdrückliche Beurteilung vergrößert die Stichprobe.",
         "outcome": "Kennzeichnen Sie abgeschlossene Arbeit mit `claude-stats task-outcome <item> <success|partial|fail>`; jede Kennzeichnung vergrößert die Stichprobe."
       }
+    },
+    "apiThrottle": {
+      "rejection": {
+        "summary_one": "Claudes API hat Sie in diesem Zeitraum {{count}} Mal per Rate-Limit abgewiesen.",
+        "summary_other": "Claudes API hat Sie in diesem Zeitraum {{count}} Mal per Rate-Limit abgewiesen.",
+        "caveatMetered": "Claude Code protokolliert nicht, wie lange eine Rate-Limit-Abweisung gedauert hat, sondern nur, dass sie aufgetreten ist – betrachten Sie dies als Untergrenze, nicht als Zeitkosten. Prüfen Sie die API- bzw. Bedrock-Rate-Limit-Stufe Ihres Kontos.",
+        "caveatPlan": "Claude Code protokolliert nicht, wie lange eine Rate-Limit-Abweisung gedauert hat, sondern nur, dass sie aufgetreten ist – betrachten Sie dies als Untergrenze, nicht als Zeitkosten. Dies ist ein Limit auf Anfrageebene, unabhängig vom 5-Stunden-Nutzungsfenster Ihres Plans."
+      },
+      "overload": {
+        "summary_one": "Claudes API war in diesem Zeitraum {{count}} Mal überlastet, mit {{time}} gemessener Wartezeit durch Wiederholungsversuche.",
+        "summary_other": "Claudes API war in diesem Zeitraum {{count}} Mal überlastet, mit {{time}} gemessener Wartezeit durch Wiederholungsversuche.",
+        "caveat": "Dies spiegelt die Infrastrukturverfügbarkeit von Anthropic selbst wider, nicht das Rate-Limit Ihres Kontos oder eine Organisationsrichtlinie – es betrifft jedes Konto und stellt keine Kosten durch Beschränkungen dar."
+      }
     }
   },
   "actions": {

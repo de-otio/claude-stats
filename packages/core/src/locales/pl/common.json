@@ -164,6 +164,23 @@
         "attribution": "Potwierdź lub popraw automatyczne powiązanie poleceniem `claude-stats ticket <session-id> <key>` albo usuń błędne za pomocą `--negate`; każda jawna ocena powiększa próbę.",
         "outcome": "Oznaczaj ukończoną pracę poleceniem `claude-stats task-outcome <item> <success|partial|fail>`; każda etykieta powiększa próbę."
       }
+    },
+    "apiThrottle": {
+      "rejection": {
+        "summary_one": "API Claude nałożyło na Ciebie limit żądań {{count}} raz w tym okresie.",
+        "summary_other": "API Claude nałożyło na Ciebie limit żądań {{count}} razy w tym okresie.",
+        "caveatMetered": "Claude Code nie zapisuje, jak długo trwało odrzucenie z powodu limitu żądań — tylko to, że wystąpiło. Traktuj to jako sygnał dolnej granicy, a nie koszt czasu. Sprawdź poziom limitu żądań API lub Bedrock dla swojego konta.",
+        "caveatPlan": "Claude Code nie zapisuje, jak długo trwało odrzucenie z powodu limitu żądań — tylko to, że wystąpiło. Traktuj to jako sygnał dolnej granicy, a nie koszt czasu. To limit na poziomie pojedynczego żądania, niezależny od 5-godzinnego okna użycia w Twoim planie.",
+        "summary_few": "API Claude nałożyło na Ciebie limit żądań {{count}} razy w tym okresie.",
+        "summary_many": "API Claude nałożyło na Ciebie limit żądań {{count}} razy w tym okresie."
+      },
+      "overload": {
+        "summary_one": "API Claude było przeciążone {{count}} raz w tym okresie, dodając {{time}} zmierzonego oczekiwania na ponowienie.",
+        "summary_other": "API Claude było przeciążone {{count}} razy w tym okresie, dodając {{time}} zmierzonego oczekiwania na ponowienie.",
+        "caveat": "Odzwierciedla to dostępność infrastruktury Anthropic, a nie limit żądań Twojego konta czy zasady organizacji — dotyczy każdego konta i nie jest kosztem ograniczeń.",
+        "summary_few": "API Claude było przeciążone {{count}} razy w tym okresie, dodając {{time}} zmierzonego oczekiwania na ponowienie.",
+        "summary_many": "API Claude było przeciążone {{count}} razy w tym okresie, dodając {{time}} zmierzonego oczekiwania na ponowienie."
+      }
     }
   },
   "actions": {

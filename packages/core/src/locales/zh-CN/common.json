@@ -154,6 +154,19 @@
         "attribution": "使用 `claude-stats ticket <session-id> <key>` 确认或更正自动关联，或用 `--negate` 撤销错误的关联；每次明确裁定都会扩大样本量。",
         "outcome": "使用 `claude-stats task-outcome <item> <success|partial|fail>` 标注已完成的工作；每个标注都会扩大样本量。"
       }
+    },
+    "apiThrottle": {
+      "rejection": {
+        "summary_one": "本周期内 Claude API 对你限流了 {{count}} 次。",
+        "summary_other": "本周期内 Claude API 对你限流了 {{count}} 次。",
+        "caveatMetered": "Claude Code 不会记录一次限流拒绝持续了多久，只记录它发生过——请将其视为下限信号，而非时间成本。请检查你账户的 API 或 Bedrock 速率限制层级。",
+        "caveatPlan": "Claude Code 不会记录一次限流拒绝持续了多久，只记录它发生过——请将其视为下限信号，而非时间成本。这是请求级别的限制，与你套餐的 5 小时用量窗口无关。"
+      },
+      "overload": {
+        "summary_one": "本周期内 Claude API 过载 {{count}} 次，额外产生了 {{time}} 的实测重试等待。",
+        "summary_other": "本周期内 Claude API 过载 {{count}} 次，额外产生了 {{time}} 的实测重试等待。",
+        "caveat": "这反映的是 Anthropic 自身的基础设施可用性，与你账户的速率限制或任何组织策略无关——任何账户都可能遇到，也不属于约束成本。"
+      }
     }
   },
   "actions": {
