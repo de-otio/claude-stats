@@ -14,6 +14,7 @@ import {
   resolvePricing,
   lookupPricing,
   estimateCost,
+  modelTier,
   type RateOverrides,
 } from "@claude-stats/core/pricing";
 import { MODELS } from "./fixtures/synthetic.js";
@@ -149,5 +150,29 @@ describe("pricing across served platforms", () => {
         },
       ),
     );
+  });
+});
+
+// ─── modelTier (D2 — tier-mismatch detector's input) ───────────────────────
+
+describe("modelTier", () => {
+  it.each([
+    ["claude-opus-5", "top"],
+    ["claude-opus-4-8", "top"],
+    ["claude-fable-5", "top"],
+    ["claude-mythos-5", "top"],
+    ["claude-sonnet-5", "mid"],
+    ["claude-sonnet-4-6", "mid"],
+    ["claude-haiku-4-5", "low"],
+    ["claude-3-5-haiku-20241022", "low"],
+    ["some-other-vendor-model", "unknown"],
+  ])("tiers %s as %s", (raw, tier) => {
+    expect(modelTier(raw)).toBe(tier);
+  });
+
+  it("tiers Bedrock and Vertex ids by normalizing first (the tier survives the id-family transform)", () => {
+    expect(modelTier("anthropic.claude-opus-5")).toBe("top");
+    expect(modelTier("us.anthropic.claude-sonnet-4-6")).toBe("mid");
+    expect(modelTier("claude-opus-4-5@20251101")).toBe("top");
   });
 });

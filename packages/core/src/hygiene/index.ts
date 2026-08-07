@@ -1,7 +1,7 @@
 /**
  * Efficiency-hygiene — the self-audit layer.
  *
- * Runs the five detectors over one flat, timestamp-ordered message array,
+ * Runs the six detectors over one flat, timestamp-ordered message array,
  * applies per-detector suppression (`config.hygiene.suppressions[]`, Phase 0),
  * and reduces the result to a weekly-digest shape. Pure; the store query and
  * config plumbing live in `packages/cli/src/hygiene/index.ts`.
@@ -14,6 +14,7 @@ import { detectRetryLoop } from "./retryLoop.js";
 import { detectContextBloat } from "./contextBloat.js";
 import { detectReEntryBurn } from "./reEntryBurn.js";
 import { detectAbandonedSpend } from "./abandonedSpend.js";
+import { detectTierMismatch } from "./tierMismatch.js";
 import {
   DEFAULT_HYGIENE_THRESHOLDS,
   type HygieneDetectorId,
@@ -21,6 +22,7 @@ import {
   type HygieneFinding,
   type HygieneMessageRow,
   type HygieneThresholds,
+  type TierMismatchClassification,
 } from "./types.js";
 
 export type {
@@ -29,8 +31,10 @@ export type {
   HygieneFinding,
   HygieneMessageRow,
   HygieneThresholds,
+  TierMismatchClassification,
 } from "./types.js";
 export { DEFAULT_HYGIENE_THRESHOLDS } from "./types.js";
+export { computeTierParity, detectTierMismatch, type TierParityComparison, type TierParityVerdict } from "./tierMismatch.js";
 
 const TITLES: Record<HygieneDetectorId, string> = {
   "cache-churn": "Cache churn",
@@ -38,6 +42,7 @@ const TITLES: Record<HygieneDetectorId, string> = {
   "abandoned-spend": "Abandoned spend",
   "context-bloat": "Context bloat",
   "re-entry-burn": "Re-entry burn",
+  "tier-mismatch": "Tier mismatch",
 };
 
 export interface RunHygieneDetectorsOptions {
@@ -45,6 +50,13 @@ export interface RunHygieneDetectorsOptions {
   /** Detector ids the user has dismissed as "not waste" (Phase 0 config). */
   suppressions?: readonly string[];
   rateOverrides?: RateOverrides;
+  /**
+   * Per-session task classification (`store.getTaskClass()`, mapped by
+   * sessionId), the join key tier-mismatch needs that the message rows don't
+   * carry. Omitted (e.g. the classifier hasn't run) means tier-mismatch
+   * reports zero findings — an honest "no data", not a guess.
+   */
+  taskClassBySession?: ReadonlyMap<string, TierMismatchClassification>;
 }
 
 function mergeThresholds(overrides: RunHygieneDetectorsOptions["thresholds"]): HygieneThresholds {
@@ -55,11 +67,12 @@ function mergeThresholds(overrides: RunHygieneDetectorsOptions["thresholds"]): H
     contextBloat: { ...DEFAULT_HYGIENE_THRESHOLDS.contextBloat, ...overrides.contextBloat },
     reEntryBurn: { ...DEFAULT_HYGIENE_THRESHOLDS.reEntryBurn, ...overrides.reEntryBurn },
     abandonedSpend: { ...DEFAULT_HYGIENE_THRESHOLDS.abandonedSpend, ...overrides.abandonedSpend },
+    tierMismatch: { ...DEFAULT_HYGIENE_THRESHOLDS.tierMismatch, ...overrides.tierMismatch },
   };
 }
 
 /**
- * Run all five detectors over one window's messages. Every detector always
+ * Run all six detectors over one window's messages. Every detector always
  * runs (so a digest can report "N suppressed" honestly) — suppression only
  * hides the result, never skips the computation.
  */
@@ -76,6 +89,12 @@ export function runHygieneDetectors(
     ["abandoned-spend", detectAbandonedSpend(rows, t.abandonedSpend, opts.rateOverrides)],
     ["context-bloat", detectContextBloat(rows, t.contextBloat, opts.rateOverrides)],
     ["re-entry-burn", detectReEntryBurn(rows, t.reEntryBurn, opts.rateOverrides)],
+    [
+      "tier-mismatch",
+      opts.taskClassBySession
+        ? detectTierMismatch(rows, opts.taskClassBySession, t.tierMismatch, opts.rateOverrides)
+        : [],
+    ],
   ];
 
   return byDetector.map(([detectorId, findings]) => ({

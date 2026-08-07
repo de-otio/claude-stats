@@ -280,6 +280,114 @@ describe("buildHygieneReport", () => {
   });
 });
 
+// ─── CLI glue: tier-mismatch (D2) over a real store ─────────────────────────
+
+describe("buildHygieneReport — tier-mismatch (D2)", () => {
+  let dbPath: string;
+  let store: Store;
+  const N = 8; // DEFAULT_HYGIENE_THRESHOLDS.tierMismatch.minSessionsPerTier
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+  });
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* best effort */ }
+  });
+
+  /** N top-tier + N mid-tier sessions, same shape, classified `debug`/`diagnose`
+   *  at `high` confidence — the parity fixture, seeded through the REAL store
+   *  (setTaskClass + upsertSession/Messages), not a pure-function fixture. */
+  function seedParityClass(): void {
+    for (let i = 0; i < N; i++) {
+      const topId = `top-${i}`;
+      const midId = `mid-${i}`;
+      store.upsertSession(session(topId));
+      store.upsertMessages([
+        message(`${topId}-m0`, topId, { timestamp: FIXED_NOW, model: "claude-opus-5" }),
+        message(`${topId}-m1`, topId, { timestamp: FIXED_NOW + 1000, model: "claude-opus-5" }),
+      ]);
+      store.setTaskClass({
+        sessionId: topId, taskClass: "debug", coarseClass: "diagnose", confidence: "high",
+        rule: "diagnosis", classifierVersion: 2, classifiedAt: FIXED_NOW,
+      });
+
+      store.upsertSession(session(midId));
+      store.upsertMessages([
+        message(`${midId}-m0`, midId, { timestamp: FIXED_NOW, model: "claude-sonnet-5" }),
+        message(`${midId}-m1`, midId, { timestamp: FIXED_NOW + 1000, model: "claude-sonnet-5" }),
+      ]);
+      store.setTaskClass({
+        sessionId: midId, taskClass: "debug", coarseClass: "diagnose", confidence: "high",
+        rule: "diagnosis", classifierVersion: 2, classifiedAt: FIXED_NOW,
+      });
+    }
+  }
+
+  it("finds a real tier-mismatch parity class end-to-end through the store, and prices it into totalEstimatedWaste", () => {
+    seedParityClass();
+    const report = buildHygieneReport(store, {});
+    const tierMismatch = report.digest.active.find((d) => d.detectorId === "tier-mismatch");
+    expect(tierMismatch).toBeDefined();
+    expect(tierMismatch!.findings).toHaveLength(1);
+    const finding = tierMismatch!.findings[0]!;
+    expect(finding.sessionIds.sort()).toEqual(Array.from({ length: N }, (_, i) => `top-${i}`).sort());
+    expect(finding.estimatedWaste).toBeGreaterThan(0);
+    expect(report.digest.totalEstimatedWaste).toBeGreaterThanOrEqual(finding.estimatedWaste);
+  });
+
+  it("does NOT fire when sessions are never classified — no session_task_class rows at all", () => {
+    // Same message shapes as seedParityClass, but no setTaskClass calls.
+    for (let i = 0; i < N; i++) {
+      const topId = `top-${i}`;
+      const midId = `mid-${i}`;
+      store.upsertSession(session(topId));
+      store.upsertMessages([message(`${topId}-m0`, topId, { timestamp: FIXED_NOW, model: "claude-opus-5" })]);
+      store.upsertSession(session(midId));
+      store.upsertMessages([message(`${midId}-m0`, midId, { timestamp: FIXED_NOW, model: "claude-sonnet-5" })]);
+    }
+    const report = buildHygieneReport(store, {});
+    const tierMismatch = report.digest.active.find((d) => d.detectorId === "tier-mismatch");
+    expect(tierMismatch!.findings).toEqual([]);
+  });
+
+  it("is suppressible via config.hygiene.suppressions end-to-end, like the other five detectors", () => {
+    seedParityClass();
+    const suppressed = buildHygieneReport(store, { suppressions: ["tier-mismatch"] });
+    expect(suppressed.digest.active.find((d) => d.detectorId === "tier-mismatch")).toBeUndefined();
+    expect(suppressed.digest.suppressedIds).toContain("tier-mismatch");
+  });
+
+  it("carries the STORED coarse_class and confidence through the glue — a low-confidence class comes back coarse-labelled", () => {
+    // Adversarial review D2-R1: the fine/coarse grain rule was unit-tested on a
+    // hand-built map, but the production path that BUILDS that map from
+    // `session_task_class` only ever saw high-confidence rows. Both a glue that
+    // read `task_class` into the `coarse` slot and one that hardcoded
+    // `confidence: "high"` passed the entire suite. This drives the low branch
+    // through the real table, so the label proves both columns were read.
+    for (let i = 0; i < N; i++) {
+      for (const [id, model] of [[`top-${i}`, "claude-opus-5"], [`mid-${i}`, "claude-sonnet-5"]] as const) {
+        store.upsertSession(session(id));
+        store.upsertMessages([
+          message(`${id}-m0`, id, { timestamp: FIXED_NOW, model }),
+          message(`${id}-m1`, id, { timestamp: FIXED_NOW + 1000, model }),
+        ]);
+        store.setTaskClass({
+          sessionId: id, taskClass: "debug", coarseClass: "diagnose", confidence: "low",
+          rule: "diagnosis", classifierVersion: 2, classifiedAt: FIXED_NOW,
+        });
+      }
+    }
+    const report = buildHygieneReport(store, {});
+    const finding = report.digest.active.find((d) => d.detectorId === "tier-mismatch")!.findings[0]!;
+    // Coarse grain (confidence was low) AND the coarse class name (not the fine one).
+    expect(finding.rule).toContain("diagnose (coarse class)");
+    expect(finding.remedy).toContain("diagnose (coarse class)");
+    expect(finding.rule).not.toContain("debug");
+  });
+});
+
 // ─── MCP tool ────────────────────────────────────────────────────────────────
 
 describe("get_efficiency_hints (MCP)", () => {
@@ -397,6 +505,66 @@ describe("get_efficiency_hints (MCP)", () => {
     // that never fired, which is exactly the failure mode a severed wire
     // produces.
     expect(suppressed["suppressedDetectors"]).toEqual(["retry-loop"]);
+  });
+});
+
+// ─── MCP: tier-mismatch (D2) surfaces through get_efficiency_hints ──────────
+
+describe("get_efficiency_hints (MCP) — tier-mismatch", () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "claude-stats-mcp-tier-mismatch-test-"));
+  let store: Store;
+  let client: Client;
+  const N = 8;
+
+  beforeAll(async () => {
+    store = new Store(join(tmpDir, "test.db"));
+    for (let i = 0; i < N; i++) {
+      const topId = `top-${i}`;
+      const midId = `mid-${i}`;
+      store.upsertSession(session(topId));
+      store.upsertMessages([message(`${topId}-m0`, topId, { timestamp: FIXED_NOW, model: "claude-opus-5" })]);
+      store.setTaskClass({
+        sessionId: topId, taskClass: "debug", coarseClass: "diagnose", confidence: "high",
+        rule: "diagnosis", classifierVersion: 2, classifiedAt: FIXED_NOW,
+      });
+      store.upsertSession(session(midId));
+      store.upsertMessages([message(`${midId}-m0`, midId, { timestamp: FIXED_NOW, model: "claude-sonnet-5" })]);
+      store.setTaskClass({
+        sessionId: midId, taskClass: "debug", coarseClass: "diagnose", confidence: "high",
+        rule: "diagnosis", classifierVersion: 2, classifiedAt: FIXED_NOW,
+      });
+    }
+
+    const server = createMcpServer(store);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    client = new Client({ name: "test-client-tier-mismatch", version: "1.0.0" });
+    await client.connect(clientTransport);
+  });
+
+  afterAll(() => {
+    store.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function textOf(result: unknown): Record<string, unknown> {
+    const content = (result as { content: unknown }).content as Array<{ type: string; text: string }>;
+    expect(content).toHaveLength(1);
+    return JSON.parse(content[0]!.text) as Record<string, unknown>;
+  }
+
+  it("surfaces the tier-mismatch finding, with its rule/threshold/remedy and the top-tier sessionIds, through the real MCP tool call", async () => {
+    const data = textOf(await client.callTool({ name: "get_efficiency_hints", arguments: { period: "all" } }));
+    const detectors = data["detectors"] as Array<Record<string, unknown>>;
+    const tierMismatch = detectors.find((d) => d["detectorId"] === "tier-mismatch");
+    expect(tierMismatch).toBeDefined();
+    const findings = tierMismatch!["findings"] as Array<Record<string, unknown>>;
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toHaveProperty("rule");
+    expect(findings[0]).toHaveProperty("threshold");
+    expect(findings[0]).toHaveProperty("remedy");
+    const sessionIds = (findings[0]!["sessionIds"] as string[]).sort();
+    expect(sessionIds).toEqual(Array.from({ length: N }, (_, i) => `top-${i}`).sort());
   });
 });
 
