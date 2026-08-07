@@ -715,7 +715,12 @@ export function createMcpServer(store: Store): McpServer {
           attribution: calibrationJson(t, attribution.estimate, {
             unproposed: attribution.review.unproposed,
           }),
-          outcome: calibrationJson(t, outcomeCalibrationFrom(outcomeReport)),
+          // `"month"` mirrors the `period` the report was built with above, not
+          // a guess. The two literals must agree; they are three lines apart so
+          // that a reader can check it, and `scope` now travels into the JSON
+          // so a calling agent can see that this subject and `attribution`
+          // (whole-store) were not counted over the same span.
+          outcome: calibrationJson(t, outcomeCalibrationFrom(outcomeReport, "month")),
         },
         notCalibrated: {
           taskClass:

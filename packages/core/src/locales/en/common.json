@@ -128,7 +128,39 @@
       "enablement": {
         "attribution": "Confirm or correct an automatic link with `claude-stats ticket <session-id> <key>`, or strike a wrong one with `--negate`; each explicit ruling grows the sample.",
         "outcome": "Label finished work with `claude-stats task-outcome <item> <success|partial|fail>`; each label grows the sample."
+      },
+      "scope": {
+        "wholeStore": "Counted across everything recorded, not only the period shown.",
+        "day": "Counted over the last day only, not the period shown.",
+        "week": "Counted over the last week only, not the period shown.",
+        "month": "Counted over the last month only, not the period shown.",
+        "customRange": "Counted over the selected date range."
       }
+    },
+    "reconciliation": {
+      "title": "Reconciliation against your invoice",
+      "verdict": {
+        "within": "Reconciles with the invoice: the local estimate is {{ratio}} of the imported total, inside your tolerance band.",
+        "outside": "Does not reconcile with the invoice: the local estimate is {{ratio}} of the imported total, outside your tolerance band."
+      },
+      "label": {
+        "bottomUp": "Local estimate",
+        "invoiceTotal": "Imported invoice total",
+        "residual": "Residual",
+        "tolerance": "Tolerance band"
+      },
+      "residualInvoiceHigher": "{{money}} ({{percent}}) more on the invoice than the local estimate accounts for",
+      "residualLocalHigher": "{{money}} ({{percent}}) more in the local estimate than the invoice charges",
+      "toleranceBand": "±{{percent}}%",
+      "causesLabel": "What could explain the gap",
+      "cause": {
+        "unpricedUsage": "Unpriced usage — some tokens had no rate to price them with.",
+        "fallbackRates": "Fallback rates — partner-platform usage priced at first-party rates.",
+        "scopeMismatch": "Scope mismatch — the invoice may not cover the same accounts or dates as this view; no scope was stated.",
+        "unexplained": "Unexplained — none of the known causes accounts for this gap."
+      },
+      "scopeStated": "Invoice covers: {{note}}",
+      "scopeUnstated": "What the invoice covers was never stated — set reconciliation.scopeNote so a mismatch can be ruled in or out."
     },
     "cost": {
       "unavailable": "No usage recorded for this period.",

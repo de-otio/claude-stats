@@ -29,7 +29,7 @@
  * That is what lets the test contract be a behaviour comparison — golden
  * `DashboardData` in, exact rendered figures out — instead of a DOM snapshot.
  */
-import type { InsightAnswer, TicketCoverage } from "@claude-stats/core/types/insight";
+import type { InsightAnswer, Reconciliation, TicketCoverage } from "@claude-stats/core/types/insight";
 import type { CostVocabulary } from "@claude-stats/core/insight";
 import {
   answerBought,
@@ -42,6 +42,7 @@ import { outcomeCalibrationFrom } from "../calibration/index.js";
 import type { DashboardData } from "../dashboard/index.js";
 import type { Config } from "../config.js";
 import { renderCard } from "./card.js";
+import { RECONCILIATION_ANCHOR, renderReconciliationPanel } from "./reconciliationPanel.js";
 import type { NavTabId } from "./nav.js";
 
 /** Minimal translator signature — same shape `template.ts` accepts. */
@@ -237,9 +238,17 @@ export function buildInsightAnswers(data: DashboardData, opts: InsightBuildOptio
   // mutation proved it dead: deleting it left the whole suite green. A line that
   // cannot fail is the verification theatre this build is trying to stop
   // shipping, so it is gone rather than pinned by a test that would pass anyway.
+  //
+  // The outcome estimate is additionally gated on `calibrationScope`: that field
+  // is the window `data.calibration` was actually gathered over, and without it
+  // the caveat could only guess. `attachCalibration` sets the two together, so
+  // in practice the gate never fires — but a guess here would be a scope claim
+  // with no basis, on the one figure whose subject IS the scope of a claim.
   const calibration = [
     ...(ins?.attributionCalibration ? [ins.attributionCalibration] : []),
-    ...(cpt && data.calibration ? [outcomeCalibrationFrom(data.calibration)] : []),
+    ...(cpt && data.calibration && data.calibrationScope
+      ? [outcomeCalibrationFrom(data.calibration, data.calibrationScope)]
+      : []),
   ];
 
   const bought = answerBought(opts.t, {
@@ -289,6 +298,17 @@ export interface InsightAlert {
   text: string;
   /** Tab to open for the evidence. */
   tab: NavTabId;
+  /**
+   * DOM id of the element the evidence actually is, when it is a specific
+   * element rather than a whole tab.
+   *
+   * Exists because an alert that names a destination has to be able to reach it.
+   * `reconciliation-drift` says "see the reconciliation panel"; without this the
+   * action link could only offer a tab, and the reader would arrive at a screen
+   * and still have to hunt. The `tab` above stays set regardless — the anchor is
+   * where to land, the tab is what must be showing for it to be visible.
+   */
+  anchor?: string;
 }
 
 /**
@@ -338,12 +358,19 @@ export function buildAlerts(data: DashboardData, t: TranslateFn): InsightAlert[]
 
   // Opt-in (a configured invoice figure) and tolerance-thresholded — never
   // fires for a user who hasn't set `reconciliation.invoiceTotal`.
+  //
+  // The destination is the reconciliation panel on THIS tab, not Settings. The
+  // sentence used to promise "the cost card's caveat", which carried the ratio
+  // and none of what it named; the panel is where the residual, the tolerance
+  // band and the candidate causes now actually render, and the anchor takes the
+  // reader there rather than to the screen where the invoice figure is typed in.
   if (data.insights?.reconciliation && !data.insights.reconciliation.withinTolerance) {
     alerts.push({
       id: "reconciliation-drift",
       severity: "warning",
       text: t("dashboard:insights.alerts.reconciliationDrift"),
-      tab: "settings",
+      tab: "insights",
+      anchor: RECONCILIATION_ANCHOR,
     });
   }
 
@@ -396,9 +423,19 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
+/** Detail blocks rendered beneath the card grid — the evidence a card's caveat
+ *  refers to, on the same screen as the claim. */
+export interface InsightsTabDetails {
+  /** The period's reconciliation, or null/absent when no invoice is configured. */
+  reconciliation?: Reconciliation | null;
+  /** `config.rate.currency` — the same one the answers were formatted with. */
+  currency?: string;
+}
+
 /**
  * Render the Insights tab body: the alerts strip (only when non-empty —
- * absence is information) followed by the five cards.
+ * absence is information), the five cards, then the detail panels a card's
+ * caveat points at.
  *
  * Takes the already-built answers and alerts rather than the payload, so the
  * assembly above stays independently testable and this function stays a
@@ -408,6 +445,7 @@ export function renderInsightsTab(
   answers: readonly InsightAnswer[],
   alerts: readonly InsightAlert[],
   t: TranslateFn,
+  details: InsightsTabDetails = {},
 ): string {
   const alertsHtml =
     alerts.length === 0
@@ -418,7 +456,7 @@ export function renderInsightsTab(
           (a) =>
             `<div class="cs-alert cs-alert-${escapeHtml(a.severity)}" data-alert-id="${escapeHtml(a.id)}">
         <span class="cs-alert-text">${escapeHtml(a.text)}</span>
-        <a class="cs-alert-action" href="#${escapeHtml(a.tab)}" data-evidence-link="${escapeHtml(a.tab)}">${escapeHtml(t("dashboard:insights.alerts.action"))}</a>
+        <a class="cs-alert-action" href="#${escapeHtml(a.anchor ?? a.tab)}" data-evidence-link="${escapeHtml(a.tab)}">${escapeHtml(t("dashboard:insights.alerts.action"))}</a>
       </div>`,
         )
         .join("\n      ")}
@@ -441,7 +479,7 @@ export function renderInsightsTab(
     ${alertsHtml}
     <div class="cs-insights-grid">
       ${cardsHtml}
-    </div>`;
+    </div>${renderReconciliationPanel(details.reconciliation, t, details.currency)}`;
 }
 
 /**

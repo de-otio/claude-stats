@@ -87,6 +87,27 @@ export const WILSON_Z_95 = 1.959963984540054;
  */
 export type CalibrationSubject = "attribution" | "outcome";
 
+/**
+ * The window the rulings behind an estimate were gathered over.
+ *
+ * Required on every estimate, because the two subjects this suite ships do NOT
+ * agree on it and nothing said so: attribution is gathered whole-store
+ * (`getTicketLinkGrades` takes no date bound — a deliberate choice, since a
+ * per-window cut of an already-scarce sample would read "uncalibrated" forever),
+ * while outcome is gathered over the surface's own period. Both then rode on
+ * period-scoped surfaces, side by side, in a feature whose entire subject is the
+ * scope of a claim. A reader comparing "88% (n=41)" against "uncalibrated
+ * (n=12)" had no way to know the first counted three years and the second
+ * counted this week.
+ *
+ * The period members are spelled out rather than collapsed to one `"period"`
+ * value on purpose. The dashboard caps an `all` period at a month for
+ * performance (`attachCalibration`), so a sentence reading "over this period"
+ * would be plainly WRONG on the very selection where the gap is widest. Naming
+ * the actual window is the only wording that is true in every case.
+ */
+export type CalibrationScope = "whole-store" | "day" | "week" | "month" | "custom-range";
+
 /** Explicit rulings, split by whether the mechanism was upheld. */
 export interface ReviewTally {
   /** The user explicitly endorsed what the mechanism said. */
@@ -111,6 +132,10 @@ export type CalibrationState = "measured" | "uncalibrated";
  */
 export interface CalibrationEstimate {
   readonly subject: CalibrationSubject;
+  /** The window the rulings were gathered over — see {@link CalibrationScope}.
+   *  Travels with the figure exactly as `minN` does, because a rate whose scope
+   *  the reader has to assume is a claim stronger than its basis. */
+  readonly scope: CalibrationScope;
   readonly state: CalibrationState;
   /** The denominator, always present. `agreed + disagreed`. */
   readonly n: number;
@@ -155,6 +180,18 @@ export function wilsonInterval(agreed: number, n: number, z: number = WILSON_Z_9
 
 // ─── Gating ───────────────────────────────────────────────────────────────────
 
+/** What `calibrate` needs beyond the tally itself. */
+export interface CalibrateOptions {
+  /**
+   * The window the tally was gathered over. REQUIRED, and deliberately not
+   * defaulted: a default would let a caller ship a figure whose scope nobody
+   * decided, which is the exact defect this field was added to close. Only the
+   * gatherer knows the answer, so only the gatherer may state it.
+   */
+  readonly scope: CalibrationScope;
+  readonly minN?: number;
+}
+
 /**
  * Fold a tally into a gated estimate.
  *
@@ -165,8 +202,9 @@ export function wilsonInterval(agreed: number, n: number, z: number = WILSON_Z_9
 export function calibrate(
   subject: CalibrationSubject,
   tally: ReviewTally,
-  minN: number = MIN_CALIBRATION_N,
+  opts: CalibrateOptions,
 ): CalibrationEstimate {
+  const minN = opts.minN ?? MIN_CALIBRATION_N;
   const agreed = Math.max(0, Math.trunc(tally.agreed));
   const disagreed = Math.max(0, Math.trunc(tally.disagreed));
   const n = agreed + disagreed;
@@ -174,6 +212,7 @@ export function calibrate(
   if (n < minN) {
     return {
       subject,
+      scope: opts.scope,
       state: "uncalibrated",
       n,
       agreed,
@@ -187,6 +226,7 @@ export function calibrate(
 
   return {
     subject,
+    scope: opts.scope,
     state: "measured",
     n,
     agreed,

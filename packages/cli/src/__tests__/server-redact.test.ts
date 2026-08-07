@@ -69,6 +69,7 @@ function makeDashboardData(overrides: Partial<DashboardData> = {}): DashboardDat
     energy: null,
     costPerTask: null,
     calibration: null,
+    calibrationScope: null,
     experimentalSignalsEnabled: false,
     recommendations: [],
     availableAccounts: [],

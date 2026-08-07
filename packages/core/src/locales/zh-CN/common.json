@@ -153,6 +153,13 @@
       "enablement": {
         "attribution": "使用 `claude-stats ticket <session-id> <key>` 确认或更正自动关联，或用 `--negate` 撤销错误的关联；每次明确裁定都会扩大样本量。",
         "outcome": "使用 `claude-stats task-outcome <item> <success|partial|fail>` 标注已完成的工作；每个标注都会扩大样本量。"
+      },
+      "scope": {
+        "wholeStore": "统计范围为所有已记录的数据，而非仅所示时间段。",
+        "day": "仅统计最近一天，而非所示时间段。",
+        "week": "仅统计最近一周，而非所示时间段。",
+        "month": "仅统计最近一个月，而非所示时间段。",
+        "customRange": "统计范围为所选日期区间。"
       }
     },
     "apiThrottle": {
@@ -167,6 +174,31 @@
         "summary_other": "本周期内 Claude API 过载 {{count}} 次，额外产生了 {{time}} 的实测重试等待。",
         "caveat": "这反映的是 Anthropic 自身的基础设施可用性，与你账户的速率限制或任何组织策略无关——任何账户都可能遇到，也不属于约束成本。"
       }
+    },
+    "reconciliation": {
+      "title": "与账单的对账",
+      "verdict": {
+        "within": "与账单一致：本地估算为导入总额的 {{ratio}}，处于容差范围内。",
+        "outside": "与账单不一致：本地估算为导入总额的 {{ratio}}，超出容差范围。"
+      },
+      "label": {
+        "bottomUp": "本地估算",
+        "invoiceTotal": "导入的账单总额",
+        "residual": "差额",
+        "tolerance": "容差范围"
+      },
+      "residualInvoiceHigher": "账单比本地估算所能解释的金额多 {{money}}（{{percent}}）",
+      "residualLocalHigher": "本地估算比账单实际计费多 {{money}}（{{percent}}）",
+      "toleranceBand": "±{{percent}}%",
+      "causesLabel": "差额的可能原因",
+      "cause": {
+        "unpricedUsage": "未计价用量 —— 部分 token 缺少可用于计价的费率。",
+        "fallbackRates": "回退费率 —— 合作平台的用量按第一方费率计价。",
+        "scopeMismatch": "范围不匹配 —— 账单涵盖的账户或日期可能与此视图不同；未说明其范围。",
+        "unexplained": "无法解释 —— 已知原因均不能解释此差额。"
+      },
+      "scopeStated": "账单涵盖：{{note}}",
+      "scopeUnstated": "从未说明账单涵盖的范围 —— 请设置 reconciliation.scopeNote，以便判断是否存在范围不匹配。"
     }
   },
   "actions": {

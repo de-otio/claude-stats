@@ -238,7 +238,7 @@ describe("calibrate", () => {
   it("reports NO rate below the minimum, however tempting the sample looks", () => {
     // 28/29 is 96.6% — a number any surface would happily render, from a sample
     // that cannot distinguish it from 80%.
-    const e = calibrate("attribution", { agreed: 28, disagreed: 1 });
+    const e = calibrate("attribution", { agreed: 28, disagreed: 1 }, { scope: "whole-store" });
     expect(e.state).toBe("uncalibrated");
     expect(e.rate).toBeNull();
     expect(e.interval).toBeNull();
@@ -249,23 +249,23 @@ describe("calibrate", () => {
   it("crosses at exactly minN, not one either side", () => {
     // The boundary from BOTH sides. A `<` written as `<=` passes a test that
     // only ever checks n-1 and n+1.
-    expect(calibrate("outcome", { agreed: 29, disagreed: 0 }).state).toBe("uncalibrated");
-    expect(calibrate("outcome", { agreed: 30, disagreed: 0 }).state).toBe("measured");
-    expect(calibrate("outcome", { agreed: 30, disagreed: 1 }).state).toBe("measured");
+    expect(calibrate("outcome", { agreed: 29, disagreed: 0 }, { scope: "month" }).state).toBe("uncalibrated");
+    expect(calibrate("outcome", { agreed: 30, disagreed: 0 }, { scope: "month" }).state).toBe("measured");
+    expect(calibrate("outcome", { agreed: 30, disagreed: 1 }, { scope: "month" }).state).toBe("measured");
   });
 
   it("counts DISAGREEMENTS toward the sample, not just agreements", () => {
     // The denominator is rulings, not endorsements. An implementation that
     // gated on `agreed` alone would report "uncalibrated" forever for a user
     // whose corrections are mostly rejections — which is most users.
-    const e = calibrate("attribution", { agreed: 4, disagreed: 26 });
+    const e = calibrate("attribution", { agreed: 4, disagreed: 26 }, { scope: "whole-store" });
     expect(e.state).toBe("measured");
     expect(e.n).toBe(30);
     expect(e.rate).toBeCloseTo(4 / 30, 10);
   });
 
   it("computes the rate over the sample, not over the agreements", () => {
-    const e = calibrate("outcome", { agreed: 27, disagreed: 13 });
+    const e = calibrate("outcome", { agreed: 27, disagreed: 13 }, { scope: "month" });
     expect(e.n).toBe(40);
     expect(e.rate).toBeCloseTo(0.675, 10);
     expect(e.agreed).toBe(27);
@@ -275,24 +275,24 @@ describe("calibrate", () => {
   });
 
   it("reports the gap to the floor, and zero once past it", () => {
-    expect(calibrate("outcome", { agreed: 0, disagreed: 0 }).needed).toBe(30);
-    expect(calibrate("outcome", { agreed: 7, disagreed: 4 }).needed).toBe(19);
-    expect(calibrate("outcome", { agreed: 40, disagreed: 0 }).needed).toBe(0);
+    expect(calibrate("outcome", { agreed: 0, disagreed: 0 }, { scope: "month" }).needed).toBe(30);
+    expect(calibrate("outcome", { agreed: 7, disagreed: 4 }, { scope: "month" }).needed).toBe(19);
+    expect(calibrate("outcome", { agreed: 40, disagreed: 0 }, { scope: "month" }).needed).toBe(0);
   });
 
   it("carries the floor it was gated against", () => {
-    expect(calibrate("outcome", { agreed: 1, disagreed: 0 }).minN).toBe(30);
-    expect(calibrate("outcome", { agreed: 5, disagreed: 0 }, 4).minN).toBe(4);
-    expect(calibrate("outcome", { agreed: 5, disagreed: 0 }, 4).state).toBe("measured");
+    expect(calibrate("outcome", { agreed: 1, disagreed: 0 }, { scope: "month" }).minN).toBe(30);
+    expect(calibrate("outcome", { agreed: 5, disagreed: 0 }, { scope: "month", minN: 4 }).minN).toBe(4);
+    expect(calibrate("outcome", { agreed: 5, disagreed: 0 }, { scope: "month", minN: 4 }).state).toBe("measured");
   });
 
   it("keeps the subject it was asked about", () => {
-    expect(calibrate("attribution", { agreed: 0, disagreed: 0 }).subject).toBe("attribution");
-    expect(calibrate("outcome", { agreed: 0, disagreed: 0 }).subject).toBe("outcome");
+    expect(calibrate("attribution", { agreed: 0, disagreed: 0 }, { scope: "whole-store" }).subject).toBe("attribution");
+    expect(calibrate("outcome", { agreed: 0, disagreed: 0 }, { scope: "month" }).subject).toBe("outcome");
   });
 
   it("floors negative and fractional counts rather than propagating them", () => {
-    const e = calibrate("outcome", { agreed: -5, disagreed: 30.9 });
+    const e = calibrate("outcome", { agreed: -5, disagreed: 30.9 }, { scope: "month" });
     expect(e.agreed).toBe(0);
     expect(e.disagreed).toBe(30);
     expect(e.n).toBe(30);
@@ -422,6 +422,38 @@ describe("buildAttributionCalibration", () => {
     }
   });
 
+  it("says whole-store, and the query it says it about really is unbounded", () => {
+    // Two halves, so this is not a constant check. A ruling on a session from
+    // years before any dashboard window must still be COUNTED (the query has no
+    // date bound), and the estimate must SAY so. Changing the literal to a
+    // period while the query stays unbounded is the lie this catches; narrowing
+    // the query while the literal stays "whole-store" is the other direction,
+    // and the count assertion catches that one.
+    const store = new Store(tmpDb());
+    try {
+      const ancient = FIXED_NOW - 4 * 365 * 24 * 60 * 60 * 1000;
+      store.upsertSession({
+        sessionId: "ancient", projectPath: "/w/alpha", sourceFile: "/transcripts/ancient.jsonl",
+        firstTimestamp: ancient, lastTimestamp: ancient + 60_000, claudeVersion: "2.1.70",
+        entrypoint: "claude-vscode", gitBranch: "main", permissionMode: "default",
+        isInteractive: true, promptCount: 1, assistantMessageCount: 1,
+        inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0,
+        webSearchRequests: 0, webFetchRequests: 0, toolUseCounts: [], models: ["claude-opus-4-6"],
+        repoUrl: null, accountUuid: null, organizationUuid: null, subscriptionType: null,
+        thinkingBlocks: 0, parentSessionId: null, isSubagent: false, sourceDeleted: false,
+        throttleEvents: 0, activeDurationMs: null, medianResponseTimeMs: null,
+      });
+      store.addTicketLink({ sessionId: "ancient", ticketKey: "PROJ-9", source: "branch", confidence: "high" });
+      store.addTicketLink({ sessionId: "ancient", ticketKey: "PROJ-9", source: "tag", confidence: "high" });
+
+      const { estimate } = buildAttributionCalibration(store);
+      expect(estimate.n).toBe(1);
+      expect(estimate.scope).toBe("whole-store");
+    } finally {
+      store.close();
+    }
+  });
+
   it("scores affirmations and rejections from a real store", () => {
     const store = new Store(tmpDb());
     try {
@@ -491,6 +523,7 @@ describe("outcomeCalibrationFrom", () => {
     // answer.
     const e = outcomeCalibrationFrom(
       report(metrics({ n: 40, hits: 27 }), metrics({ n: 40, hits: 38 })),
+      "month",
     );
     expect(e.agreed).toBe(27);
     expect(e.disagreed).toBe(13);
@@ -499,7 +532,7 @@ describe("outcomeCalibrationFrom", () => {
 
   it("degrades to the honest empty state when no report exists", () => {
     for (const absent of [null, undefined]) {
-      const e = outcomeCalibrationFrom(absent);
+      const e = outcomeCalibrationFrom(absent, "month");
       expect(e.subject).toBe("outcome");
       expect(e.state).toBe("uncalibrated");
       expect(e.n).toBe(0);
@@ -511,15 +544,15 @@ describe("outcomeCalibrationFrom", () => {
     // 1/3 cannot round-trip through a float ratio. `round(accuracy * n)` would
     // usually land back on the same integer — but "usually" is not a property,
     // and the denominator of an honesty figure does not get to be approximate.
-    const e = outcomeCalibrationFrom(report(metrics({ n: 33, hits: 11, accuracy: 1 / 3 }), metrics()));
+    const e = outcomeCalibrationFrom(report(metrics({ n: 33, hits: 11, accuracy: 1 / 3 }), metrics()), "month");
     expect(e.agreed).toBe(11);
     expect(e.disagreed).toBe(22);
     expect(e.n).toBe(33);
   });
 
   it("gates the outcome subject on the same floor as attribution", () => {
-    expect(outcomeCalibrationFrom(report(metrics({ n: 29, hits: 29 }), metrics())).state).toBe("uncalibrated");
-    expect(outcomeCalibrationFrom(report(metrics({ n: 30, hits: 29 }), metrics())).state).toBe("measured");
+    expect(outcomeCalibrationFrom(report(metrics({ n: 29, hits: 29 }), metrics()), "month").state).toBe("uncalibrated");
+    expect(outcomeCalibrationFrom(report(metrics({ n: 30, hits: 29 }), metrics()), "month").state).toBe("measured");
   });
 });
 
@@ -530,23 +563,65 @@ describe("calibrationCaveat", () => {
     // Four keys, four distinct results. Asserting "contains 'calibration'"
     // would pass with all four collapsed onto one sentence.
     const keys = new Set([
-      calibrationCaveat(idT, calibrate("attribution", { agreed: 1, disagreed: 0 })),
-      calibrationCaveat(idT, calibrate("outcome", { agreed: 1, disagreed: 0 })),
-      calibrationCaveat(idT, calibrate("attribution", { agreed: 30, disagreed: 0 })),
-      calibrationCaveat(idT, calibrate("outcome", { agreed: 30, disagreed: 0 })),
+      calibrationCaveat(idT, calibrate("attribution", { agreed: 1, disagreed: 0 }, { scope: "whole-store" })),
+      calibrationCaveat(idT, calibrate("outcome", { agreed: 1, disagreed: 0 }, { scope: "month" })),
+      calibrationCaveat(idT, calibrate("attribution", { agreed: 30, disagreed: 0 }, { scope: "whole-store" })),
+      calibrationCaveat(idT, calibrate("outcome", { agreed: 30, disagreed: 0 }, { scope: "month" })),
     ]);
     expect(keys.size).toBe(4);
-    expect(keys).toContain("common:insight.calibration.uncalibrated.attribution");
-    expect(keys).toContain("common:insight.calibration.uncalibrated.outcome");
-    expect(keys).toContain("common:insight.calibration.measured.attribution");
-    expect(keys).toContain("common:insight.calibration.measured.outcome");
+    // `toContain` on the SET would be an equality check; the caveat now also
+    // carries the scope clause, so each entry is asserted as a prefix instead.
+    // Prefix, not substring: the body must LEAD, because a scope clause that
+    // migrated in front of the figure would change what the sentence is about.
+    const startsWithOneOf = [...keys].map(
+      (k) =>
+        [
+          "common:insight.calibration.uncalibrated.attribution",
+          "common:insight.calibration.uncalibrated.outcome",
+          "common:insight.calibration.measured.attribution",
+          "common:insight.calibration.measured.outcome",
+        ].find((body) => k.startsWith(body)) ?? null,
+    );
+    expect(new Set(startsWithOneOf).size).toBe(4);
+    expect(startsWithOneOf).not.toContain(null);
+  });
+
+  it("appends the scope clause, and a DIFFERENT one per scope", () => {
+    // The defect this closes: attribution is gathered whole-store and outcome
+    // over the surface's period, both rendered side by side with nothing saying
+    // so. Every caveat must name its own window, and two windows must not
+    // resolve to one sentence.
+    const scoped = (scope: Parameters<typeof calibrate>[2]["scope"]) =>
+      calibrationCaveat(idT, calibrate("outcome", { agreed: 30, disagreed: 0 }, { scope }));
+    const clauses = new Set([
+      scoped("whole-store"),
+      scoped("day"),
+      scoped("week"),
+      scoped("month"),
+      scoped("custom-range"),
+    ]);
+    expect(clauses.size).toBe(5);
+    expect(scoped("whole-store")).toContain("common:insight.calibration.scope.wholeStore");
+    expect(scoped("custom-range")).toContain("common:insight.calibration.scope.customRange");
+  });
+
+  it("states the scope in the UNCALIBRATED state too, not only the measured one", () => {
+    // "12 of the 30 labels needed" over a week and over three years are
+    // different reports on how far away the figure is. Dropping the clause
+    // below the floor would leave the reader unable to tell which.
+    const text = calibrationCaveat(
+      idT,
+      calibrate("attribution", { agreed: 2, disagreed: 1 }, { scope: "whole-store" }),
+    );
+    expect(text).toContain("common:insight.calibration.uncalibrated.attribution");
+    expect(text).toContain("common:insight.calibration.scope.wholeStore");
   });
 
   it("carries the denominator and the interval into the measured sentence", () => {
     // A rate without its `n` is the exact defect I1 exists to stop, and an
     // interval dropped on the way to the sentence takes the sample-size
     // information with it.
-    const text = calibrationCaveat(echoT, calibrate("attribution", { agreed: 27, disagreed: 3 }));
+    const text = calibrationCaveat(echoT, calibrate("attribution", { agreed: 27, disagreed: 3 }, { scope: "whole-store" }));
     expect(text).toContain("n=30");
     expect(text).toContain("percent=90%");
     expect(text).toContain("lo=74%");
@@ -554,7 +629,7 @@ describe("calibrationCaveat", () => {
   });
 
   it("carries the gap to the floor into the uncalibrated sentence", () => {
-    const text = calibrationCaveat(echoT, calibrate("outcome", { agreed: 4, disagreed: 2 }));
+    const text = calibrationCaveat(echoT, calibrate("outcome", { agreed: 4, disagreed: 2 }, { scope: "month" }));
     expect(text).toContain("n=6");
     expect(text).toContain("minN=30");
     // No percentage may appear: there is no rate to state.
@@ -584,14 +659,14 @@ describe("calibrationCaveat", () => {
 
 describe("calibrationEnablement", () => {
   it("names the action while uncalibrated and falls silent once measured", () => {
-    expect(calibrationEnablement(idT, calibrate("attribution", { agreed: 3, disagreed: 0 }))).toBe(
+    expect(calibrationEnablement(idT, calibrate("attribution", { agreed: 3, disagreed: 0 }, { scope: "whole-store" }))).toBe(
       "common:insight.calibration.enablement.attribution",
     );
-    expect(calibrationEnablement(idT, calibrate("outcome", { agreed: 3, disagreed: 0 }))).toBe(
+    expect(calibrationEnablement(idT, calibrate("outcome", { agreed: 3, disagreed: 0 }, { scope: "month" }))).toBe(
       "common:insight.calibration.enablement.outcome",
     );
-    expect(calibrationEnablement(idT, calibrate("attribution", { agreed: 30, disagreed: 0 }))).toBeNull();
-    expect(calibrationEnablement(idT, calibrate("outcome", { agreed: 30, disagreed: 0 }))).toBeNull();
+    expect(calibrationEnablement(idT, calibrate("attribution", { agreed: 30, disagreed: 0 }, { scope: "whole-store" }))).toBeNull();
+    expect(calibrationEnablement(idT, calibrate("outcome", { agreed: 30, disagreed: 0 }, { scope: "month" }))).toBeNull();
   });
 
   it("names only CLI verbs the program actually registers", () => {
@@ -624,7 +699,7 @@ describe("answerBought carries calibration on the figures it qualifies", () => {
       completedTasks: 12,
       coverage: coverage(),
       topTicket: null,
-      calibration: [calibrate("attribution", { agreed: 2, disagreed: 0 })],
+      calibration: [calibrate("attribution", { agreed: 2, disagreed: 0 }, { scope: "whole-store" })],
     });
     expect(a.caveat).toContain("common:insight.coverage.mix");
     expect(a.caveat).toContain("common:insight.calibration.uncalibrated.attribution");
@@ -636,8 +711,8 @@ describe("answerBought carries calibration on the figures it qualifies", () => {
       coverage: coverage(),
       topTicket: null,
       calibration: [
-        calibrate("attribution", { agreed: 2, disagreed: 0 }),
-        calibrate("outcome", { agreed: 40, disagreed: 0 }),
+        calibrate("attribution", { agreed: 2, disagreed: 0 }, { scope: "whole-store" }),
+        calibrate("outcome", { agreed: 40, disagreed: 0 }, { scope: "month" }),
       ],
     });
     expect(a.caveat).toContain("common:insight.calibration.uncalibrated.attribution");
@@ -667,7 +742,7 @@ describe("answerBought carries calibration on the figures it qualifies", () => {
       completedTasks: 12,
       coverage: coverage(),
       topTicket: null,
-      calibration: [calibrate("attribution", { agreed: 2, disagreed: 0 })],
+      calibration: [calibrate("attribution", { agreed: 2, disagreed: 0 }, { scope: "whole-store" })],
     });
     expect(a.caveat).toContain("|SEP|");
   });
@@ -686,7 +761,7 @@ describe("answerBought carries calibration on the figures it qualifies", () => {
       completedTasks: 3,
       coverage: null,
       topTicket: null,
-      calibration: [calibrate("attribution", { agreed: 30, disagreed: 0 })],
+      calibration: [calibrate("attribution", { agreed: 30, disagreed: 0 }, { scope: "whole-store" })],
     });
     expect(a.unavailable?.reason).toBe("not-enabled");
     expect(a.caveat).toBeNull();
@@ -697,13 +772,13 @@ describe("answerBought carries calibration on the figures it qualifies", () => {
 
 describe("calibrationJson", () => {
   it("labels what the rate is a rate OF, as a token a caller can branch on", () => {
-    const j = calibrationJson(idT, calibrate("outcome", { agreed: 27, disagreed: 3 }));
+    const j = calibrationJson(idT, calibrate("outcome", { agreed: 27, disagreed: 3 }, { scope: "month" }));
     expect(j.measures).toBe("agreement-on-reviewed-subset");
     expect(CALIBRATION_MEASURES).toBe("agreement-on-reviewed-subset");
   });
 
   it("never emits a rate or an interval in the uncalibrated state", () => {
-    const j = calibrationJson(idT, calibrate("attribution", { agreed: 10, disagreed: 5 }));
+    const j = calibrationJson(idT, calibrate("attribution", { agreed: 10, disagreed: 5 }, { scope: "whole-store" }));
     expect(j.state).toBe("uncalibrated");
     expect(j.rate).toBeNull();
     expect(j.interval).toBeNull();
@@ -712,11 +787,11 @@ describe("calibrationJson", () => {
   });
 
   it("carries the recall miss count only when one was supplied", () => {
-    const withMisses = calibrationJson(idT, calibrate("attribution", { agreed: 1, disagreed: 0 }), {
+    const withMisses = calibrationJson(idT, calibrate("attribution", { agreed: 1, disagreed: 0 }, { scope: "whole-store" }), {
       unproposed: 7,
     });
     expect(withMisses.unproposed).toBe(7);
-    expect(calibrationJson(idT, calibrate("outcome", { agreed: 1, disagreed: 0 }))).not.toHaveProperty(
+    expect(calibrationJson(idT, calibrate("outcome", { agreed: 1, disagreed: 0 }, { scope: "month" }))).not.toHaveProperty(
       "unproposed",
     );
   });
@@ -725,7 +800,7 @@ describe("calibrationJson", () => {
     // n, agreed and disagreed must be untouched by `unproposed`. Adding misses
     // into the denominator would turn the rate into a quantity that is neither
     // precision nor recall.
-    const j = calibrationJson(idT, calibrate("attribution", { agreed: 20, disagreed: 10 }), { unproposed: 99 });
+    const j = calibrationJson(idT, calibrate("attribution", { agreed: 20, disagreed: 10 }, { scope: "whole-store" }), { unproposed: 99 });
     expect(j.n).toBe(30);
     expect(j.agreed).toBe(20);
     expect(j.disagreed).toBe(10);
@@ -738,13 +813,33 @@ describe("calibrationJson", () => {
     // `caveat`, so emptying it left every suite green while the MCP surface
     // shipped a bare percentage. The KEY is asserted, not a substring, so four
     // collapsed onto one sentence would still fail.
-    const measured = calibrationJson(idT, calibrate("attribution", { agreed: 27, disagreed: 3 }));
-    expect(measured.caveat).toBe("common:insight.calibration.measured.attribution");
+    const measured = calibrationJson(idT, calibrate("attribution", { agreed: 27, disagreed: 3 }, { scope: "whole-store" }));
+    expect(measured.caveat).toBe(
+      "common:insight.calibration.measured.attribution" +
+        "common:insight.punctuation.caveatJoin" +
+        "common:insight.calibration.scope.wholeStore",
+    );
     expect(measured.enablement).toBeNull();
 
-    const under = calibrationJson(idT, calibrate("outcome", { agreed: 1, disagreed: 0 }));
-    expect(under.caveat).toBe("common:insight.calibration.uncalibrated.outcome");
+    const under = calibrationJson(idT, calibrate("outcome", { agreed: 1, disagreed: 0 }, { scope: "month" }));
+    expect(under.caveat).toBe(
+      "common:insight.calibration.uncalibrated.outcome" +
+        "common:insight.punctuation.caveatJoin" +
+        "common:insight.calibration.scope.month",
+    );
     expect(under.enablement).toBe("common:insight.calibration.enablement.outcome");
+  });
+
+  it("carries the scope as a machine token, not only inside the prose", () => {
+    // A calling agent comparing the two subjects' rates has to be able to see
+    // they were not counted over the same span. The caveat says so, but it is
+    // localized — an agent cannot be asked to parse ten languages to learn that
+    // one figure covers three years and the other covers a month.
+    const attribution = calibrationJson(idT, calibrate("attribution", { agreed: 40, disagreed: 0 }, { scope: "whole-store" }));
+    const outcome = calibrationJson(idT, calibrate("outcome", { agreed: 40, disagreed: 0 }, { scope: "month" }));
+    expect(attribution.scope).toBe("whole-store");
+    expect(outcome.scope).toBe("month");
+    expect(attribution.scope).not.toBe(outcome.scope);
   });
 });
 
@@ -815,7 +910,7 @@ describe("calibrationMetrics.hits", () => {
 
   it("reaches the gate as the agreed/disagreed split", () => {
     const m = calibrationMetrics(pairs);
-    const e = outcomeCalibrationFrom({ n: m.n, floor: 0.7, proxyOnly: m, withSignals: m });
+    const e = outcomeCalibrationFrom({ n: m.n, floor: 0.7, proxyOnly: m, withSignals: m }, "month");
     expect(e.agreed).toBe(3);
     expect(e.disagreed).toBe(4);
     expect(e.n).toBe(7);

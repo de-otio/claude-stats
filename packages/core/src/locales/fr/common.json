@@ -158,6 +158,13 @@
       "enablement": {
         "attribution": "Confirmez ou corrigez un lien automatique avec `claude-stats ticket <session-id> <key>`, ou annulez-en un erroné avec `--negate` ; chaque décision explicite agrandit l'échantillon.",
         "outcome": "Étiquetez le travail terminé avec `claude-stats task-outcome <item> <success|partial|fail>` ; chaque étiquette agrandit l'échantillon."
+      },
+      "scope": {
+        "wholeStore": "Calculé sur l'ensemble des données enregistrées, pas uniquement sur la période affichée.",
+        "day": "Calculé sur le dernier jour uniquement, pas sur la période affichée.",
+        "week": "Calculé sur la dernière semaine uniquement, pas sur la période affichée.",
+        "month": "Calculé sur le dernier mois uniquement, pas sur la période affichée.",
+        "customRange": "Calculé sur la plage de dates sélectionnée."
       }
     },
     "apiThrottle": {
@@ -174,6 +181,31 @@
         "caveat": "Cela reflète la disponibilité de l'infrastructure d'Anthropic elle-même, et non la limite de débit de votre compte ni une politique d'organisation — cela s'applique à n'importe quel compte et ne constitue pas un coût de contrainte.",
         "summary_many": "L'API de Claude a été surchargée {{count}} fois sur cette période, ajoutant {{time}} d'attente mesurée avant nouvelle tentative."
       }
+    },
+    "reconciliation": {
+      "title": "Rapprochement avec votre facture",
+      "verdict": {
+        "within": "Concorde avec la facture : l'estimation locale représente {{ratio}} du total importé, dans votre marge de tolérance.",
+        "outside": "Ne concorde pas avec la facture : l'estimation locale représente {{ratio}} du total importé, hors de votre marge de tolérance."
+      },
+      "label": {
+        "bottomUp": "Estimation locale",
+        "invoiceTotal": "Total de la facture importée",
+        "residual": "Écart résiduel",
+        "tolerance": "Marge de tolérance"
+      },
+      "residualInvoiceHigher": "{{money}} ({{percent}}) de plus sur la facture que ce que couvre l'estimation locale",
+      "residualLocalHigher": "{{money}} ({{percent}}) de plus dans l'estimation locale que ce que la facture indique",
+      "toleranceBand": "±{{percent}} %",
+      "causesLabel": "Ce qui pourrait expliquer l'écart",
+      "cause": {
+        "unpricedUsage": "Utilisation non tarifée — certains tokens n'avaient aucun tarif applicable.",
+        "fallbackRates": "Tarifs de repli — utilisation via une plateforme partenaire tarifée aux tarifs directs.",
+        "scopeMismatch": "Périmètre différent — la facture peut ne pas couvrir les mêmes comptes ou dates que cette vue ; aucun périmètre n'a été indiqué.",
+        "unexplained": "Inexpliqué — aucune des causes connues n'explique cet écart."
+      },
+      "scopeStated": "La facture couvre : {{note}}",
+      "scopeUnstated": "Le périmètre couvert par la facture n'a jamais été indiqué — définissez reconciliation.scopeNote pour pouvoir confirmer ou écarter un écart de périmètre."
     }
   },
   "actions": {

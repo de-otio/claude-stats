@@ -10,6 +10,7 @@ import { searchHistory } from "../history/index.js";
 import { loadConfig, saveConfig, createJudgeProviderFromConfig, ticketProjectKeys } from "../config.js";
 import { generateJustificationPack, parseSections } from "../pack/index.js";
 import { parseCostExplorerCsv, formatCsvImportError } from "@claude-stats/core/reconciliation";
+import type { CalibrationScope } from "@claude-stats/core/calibration";
 import { checkThresholds } from "../alerts.js";
 import { formatCost } from "@claude-stats/core/pricing";
 import { buildDashboard } from "../dashboard/index.js";
@@ -578,7 +579,20 @@ export async function buildCli(): Promise<Command> {
           const calibration = await buildCalibrationReport(store, common);
           const { outcomeCalibrationFrom, calibrationJson, renameAccuracyField } =
             await import("../calibration/index.js");
-          const estimate = outcomeCalibrationFrom(calibration);
+          // Scope derived from the flags this invocation actually used, the
+          // same way `attachCalibration` derives it for the dashboard. Passing
+          // a fixed "month" here would restore the undisclosed-window defect
+          // the scope parameter was added to close — the figure would be
+          // labelled with a period the query did not use.
+          // `--period all` has no CalibrationScope of its own; it means the
+          // whole store, which is exactly what "whole-store" denotes.
+          const calibrationScope: CalibrationScope =
+            opts.since && opts.until
+              ? "custom-range"
+              : common.period === "all"
+                ? "whole-store"
+                : (common.period ?? "month");
+          const estimate = outcomeCalibrationFrom(calibration, calibrationScope);
           process.stdout.write(
             JSON.stringify(
               {

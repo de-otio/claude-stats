@@ -158,6 +158,13 @@
       "enablement": {
         "attribution": "Confirma o corrige un enlace automático con `claude-stats ticket <session-id> <key>`, o anula uno erróneo con `--negate`; cada resolución explícita amplía la muestra.",
         "outcome": "Etiqueta el trabajo terminado con `claude-stats task-outcome <item> <success|partial|fail>`; cada etiqueta amplía la muestra."
+      },
+      "scope": {
+        "wholeStore": "Se cuenta sobre todo lo registrado, no solo sobre el período mostrado.",
+        "day": "Se cuenta solo sobre el último día, no sobre el período mostrado.",
+        "week": "Se cuenta solo sobre la última semana, no sobre el período mostrado.",
+        "month": "Se cuenta solo sobre el último mes, no sobre el período mostrado.",
+        "customRange": "Se cuenta sobre el intervalo de fechas seleccionado."
       }
     },
     "apiThrottle": {
@@ -174,6 +181,31 @@
         "caveat": "Esto refleja la disponibilidad de la propia infraestructura de Anthropic, no el límite de tasa de tu cuenta ni ninguna política de la organización: se aplica a cualquier cuenta y no es un coste de restricción.",
         "summary_many": "La API de Claude estuvo sobrecargada {{count}} veces en este periodo, lo que añadió {{time}} de espera medida por reintentos."
       }
+    },
+    "reconciliation": {
+      "title": "Conciliación con tu factura",
+      "verdict": {
+        "within": "Concilia con la factura: la estimación local es el {{ratio}} del total importado, dentro de tu margen de tolerancia.",
+        "outside": "No concilia con la factura: la estimación local es el {{ratio}} del total importado, fuera de tu margen de tolerancia."
+      },
+      "label": {
+        "bottomUp": "Estimación local",
+        "invoiceTotal": "Total de la factura importada",
+        "residual": "Residuo",
+        "tolerance": "Margen de tolerancia"
+      },
+      "residualInvoiceHigher": "{{money}} ({{percent}}) más en la factura de lo que refleja la estimación local",
+      "residualLocalHigher": "{{money}} ({{percent}}) más en la estimación local de lo que cobra la factura",
+      "toleranceBand": "±{{percent}} %",
+      "causesLabel": "Qué podría explicar la diferencia",
+      "cause": {
+        "unpricedUsage": "Uso sin tarificar: algunos tokens no tenían tarifa con la que valorarlos.",
+        "fallbackRates": "Tarifas de reserva: uso en plataformas asociadas valorado con tarifas propias.",
+        "scopeMismatch": "Alcance no coincidente: puede que la factura no cubra las mismas cuentas o fechas que esta vista; no se indicó ningún alcance.",
+        "unexplained": "Sin explicación: ninguna de las causas conocidas justifica esta diferencia."
+      },
+      "scopeStated": "La factura cubre: {{note}}",
+      "scopeUnstated": "Nunca se indicó qué cubre la factura: define reconciliation.scopeNote para poder confirmar o descartar una discrepancia."
     }
   },
   "actions": {

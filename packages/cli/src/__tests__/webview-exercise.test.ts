@@ -45,7 +45,7 @@ const minimalData: DashboardData = {
   byDay: [], byProject: [], byModel: [], byEntrypoint: [], stopReasons: [],
   sinceIso: null, byHour: [], byWindow: [], byConversationCost: [], byWeek: [],
   planUtilization: null, feeAttribution: null, modelEfficiency: null, contextAnalysis: null,
-  spending: null, energy: null, costPerTask: null, calibration: null,
+  spending: null, energy: null, costPerTask: null, calibration: null, calibrationScope: null,
   experimentalSignalsEnabled: false, recommendations: [], availableAccounts: [],
   selectedAccountUuid: null, insights: null,
 };
