@@ -77,6 +77,15 @@ export interface DashboardSummary {
   cacheCreationTokens: number;
   cacheEfficiency: number;
   estimatedCost: number;
+  /**
+   * True when any priced message in this period rested on
+   * `rateBasis: "first_party_fallback"` — a partner platform (Bedrock,
+   * Vertex) billed with no configured partner rate, so `estimatedCost`
+   * reused first-party per-token prices as a stand-in. The cost card's
+   * caveat must say so (insight.ts `costCaveat`); a metered figure that
+   * silently omits this reads as "actual metered cost" when it may not be.
+   */
+  anyFallbackRates: boolean;
   totalDurationMs: number;
   // Plan ROI
   planFee: number;
@@ -656,6 +665,11 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   let totalOutput = 0;
   let totalCacheRead = 0;
   let totalCacheCreate = 0;
+  // Set when any priced message this period rested on a fallback rate (see
+  // DashboardSummary.anyFallbackRates) — surfaced so the cost card's caveat
+  // can say the figure is an estimate rather than asserting "actual metered
+  // cost" over a partner platform's separately-priced usage.
+  let anyFallbackRates = false;
   const byModel: DashboardData["byModel"] = [];
   for (const mt of messageTotals) {
     const result = estimateCost(
@@ -665,6 +679,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       mt.cache_read_tokens,
       mt.cache_creation_tokens,
     );
+    if (result.rateBasis === "first_party_fallback") anyFallbackRates = true;
     totalCost += result.cost;
     totalInput += mt.input_tokens;
     totalOutput += mt.output_tokens;
@@ -1285,6 +1300,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       cacheCreationTokens: totalCacheCreate,
       cacheEfficiency,
       estimatedCost: Math.round(totalCost * 100) / 100,
+      anyFallbackRates,
       totalDurationMs,
       planFee,
       planMultiplier,

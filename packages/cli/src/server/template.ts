@@ -554,6 +554,19 @@ ${CARD_CSS}
         <span style="font-size:0.75rem; color:#e0a458;">${t("dashboard:summary.emptyPeriodHint")}</span>
       </div>
       ` : ""}
+      <div style="grid-column: 1 / -1;">
+        ${renderCard(
+          answerCost({
+            mode: showPlan ? "plan" : "metered",
+            cost: data.summary.estimatedCost,
+            previousCost: null,
+            planFee: showPlan ? planFee : null,
+            planMultiplier: showPlan ? data.summary.planMultiplier : null,
+            anyFallbackRates: data.summary.anyFallbackRates,
+          }),
+          { id: "card-cost", title: t("dashboard:summary.estCost") },
+        )}
+      </div>
       <div class="summary-card">
         <div class="label">${t("dashboard:summary.sessions")}</div>
         <div class="value">${data.summary.sessions}</div>
@@ -584,16 +597,6 @@ ${CARD_CSS}
         <div class="label">${t("dashboard:summary.cacheEfficiency")}</div>
         <div class="value">${cacheEff}</div>
       </div>
-      ${renderCard(
-        answerCost({
-          mode: showPlan ? "plan" : "metered",
-          cost: data.summary.estimatedCost,
-          previousCost: null,
-          planFee: showPlan ? planFee : null,
-          planMultiplier: showPlan ? data.summary.planMultiplier : null,
-        }),
-        { id: "card-cost", title: t("dashboard:summary.estCost") },
-      )}
       ${(cpt && cpt.tasksTotal > 0 && cpt.costPerSuccessfulTask !== null) ? `
       <div class="summary-card">
         <div class="label">${t("dashboard:costPerTask.title")}</div>

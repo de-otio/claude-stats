@@ -29,7 +29,7 @@ const minimalData: DashboardData = {
   timezone: "UTC",
   summary: {
     sessions: 0, prompts: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0,
-    cacheCreationTokens: 0, cacheEfficiency: 0, estimatedCost: 0, totalDurationMs: 0,
+    cacheCreationTokens: 0, cacheEfficiency: 0, estimatedCost: 0, anyFallbackRates: false, totalDurationMs: 0,
     planFee: 0, planMultiplier: 0, costPerPrompt: 0, costPerActiveHour: 0,
     dailyValueRate: 0, tokensPerMinute: 0, outputTokensPerPrompt: 0, promptsPerHour: 0,
     totalActiveHours: 0, avgSessionDurationMinutes: 0, truncatedOutputs: 0,

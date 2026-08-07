@@ -35,6 +35,7 @@ const mockData: DashboardData = {
     cacheCreationTokens: 50000,
     cacheEfficiency: 28.6,
     estimatedCost: 3.75,
+    anyFallbackRates: false,
     totalDurationMs: 7200000,
     planFee: 0,
     planMultiplier: 0,
@@ -1263,6 +1264,20 @@ describe("renderDashboard", () => {
       expect(card).toContain("No usage recorded for this period.");
       expect(card).not.toContain("cs-card-value");
       expect(html).not.toContain("$0.00");
+    });
+
+    it("does not assert unqualified 'Actual metered cost.' when the period's cost rests on a partner-platform fallback rate", () => {
+      // A Bedrock/Vertex account with no configured partner rates: metered
+      // mode (planFee === 0), but `anyFallbackRates` is true because
+      // estimateCost() had to reuse first-party per-token prices for a
+      // separately-priced partner platform (packages/core/src/pricing.ts).
+      const fallbackPriced: DashboardData = {
+        ...mockData,
+        summary: { ...mockData.summary, planFee: 0, anyFallbackRates: true },
+      };
+      const card = costCard(renderDashboard(fallbackPriced, t));
+      expect(card).not.toContain("Actual metered cost.");
+      expect(card).toContain("first-party rates");
     });
   });
 });

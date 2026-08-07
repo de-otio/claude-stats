@@ -27,23 +27,46 @@ export interface NavTab {
   dataKey?: keyof Pick<DashboardData, "energy" | "spending" | "contextAnalysis" | "modelEfficiency">;
 }
 
-/** The canonical tab list. Both hosts consume this — do not hand-roll a
- *  second list anywhere else. */
-export const NAV_TABS: readonly NavTab[] = [
-  { id: "overview", labelKey: "dashboard:tabs.overview" },
+/**
+ * The canonical tab list. Both hosts consume this — do not hand-roll a
+ * second list anywhere else.
+ *
+ * `as const satisfies readonly NavTab[]` (not a plain `: readonly NavTab[]`
+ * annotation) deliberately keeps each entry's `id` a string LITERAL instead
+ * of widening it to `NavTab["id"]`'s plain `string` — that literal union is
+ * what lets `NAV_TAB_IDS` (below) carry a real union type instead of
+ * `string`, which is in turn what makes `extension/sidebar.ts`'s
+ * `as typeof TAB_IDS[number]` cast an actual compile-time check rather than
+ * a no-op that accepts any typo'd tab id.
+ *
+ * Every entry lists `dataKey` explicitly (`undefined` where there's no
+ * predicate) rather than omitting the property. Preserving id literals via
+ * `as const` also makes TS infer each entry's own precise object shape —
+ * omitting `dataKey` on the unconditional entries would make it absent from
+ * their type entirely (not merely `undefined`), so `NAV_TABS[number]` would
+ * be a union of shapes some of which have no `dataKey` key at all, and
+ * `tab.dataKey` below (and in nav.test.ts) would fail to typecheck across
+ * the whole union.
+ */
+export const NAV_TABS = [
+  { id: "overview", labelKey: "dashboard:tabs.overview", dataKey: undefined },
   { id: "energy", labelKey: "dashboard:tabs.energy", dataKey: "energy" },
   { id: "spending", labelKey: "dashboard:tabs.spending", dataKey: "spending" },
-  { id: "projects", labelKey: "dashboard:tabs.projects" },
-  { id: "sessions", labelKey: "dashboard:tabs.sessions" },
-  { id: "plan", labelKey: "dashboard:tabs.plan" },
+  { id: "projects", labelKey: "dashboard:tabs.projects", dataKey: undefined },
+  { id: "sessions", labelKey: "dashboard:tabs.sessions", dataKey: undefined },
+  { id: "plan", labelKey: "dashboard:tabs.plan", dataKey: undefined },
   { id: "context", labelKey: "dashboard:tabs.context", dataKey: "contextAnalysis" },
   { id: "efficiency", labelKey: "dashboard:tabs.efficiency", dataKey: "modelEfficiency" },
-  { id: "classify", labelKey: "dashboard:tabs.classify" },
-  { id: "settings", labelKey: "dashboard:tabs.settings" },
-] as const;
+  { id: "classify", labelKey: "dashboard:tabs.classify", dataKey: undefined },
+  { id: "settings", labelKey: "dashboard:tabs.settings", dataKey: undefined },
+] as const satisfies readonly NavTab[];
+
+/** The literal union of every tab id — `"overview" | "energy" | ... `,
+ *  not plain `string`. */
+export type NavTabId = (typeof NAV_TABS)[number]["id"];
 
 /** Every tab id, in display order — the sidebar's help-content lookup set. */
-export const NAV_TAB_IDS: readonly string[] = NAV_TABS.map((tab) => tab.id);
+export const NAV_TAB_IDS: readonly NavTabId[] = NAV_TABS.map((tab) => tab.id);
 
 /** The tabs actually shown for a given dashboard payload, in order. */
 export function visibleNavTabs(data: DashboardData): NavTab[] {

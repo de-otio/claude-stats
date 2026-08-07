@@ -33,6 +33,7 @@ function makeDashboardData(overrides: Partial<DashboardData> = {}): DashboardDat
       cacheCreationTokens: 10000,
       cacheEfficiency: 28.6,
       estimatedCost: 1.5,
+      anyFallbackRates: false,
       totalDurationMs: 3600000,
       planFee: 0,
       planMultiplier: 0,

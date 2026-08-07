@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createRequire } from "node:module";
 import { NAV_TABS, NAV_TAB_IDS, visibleNavTabs } from "../server/nav.js";
+import type { NavTabId } from "../server/nav.js";
 import type { DashboardData } from "../dashboard/index.js";
 
 // Relative paths into this worktree's own source, deliberately NOT
@@ -33,6 +34,22 @@ describe("nav — single tab definition for both hosts", () => {
 
   it("has no duplicate ids", () => {
     expect(new Set(NAV_TAB_IDS).size).toBe(NAV_TAB_IDS.length);
+  });
+
+  it("NAV_TAB_IDS carries a literal id union, not plain string (G4 regression guard)", () => {
+    // Compile-time only. `NAV_TAB_IDS` used to be typed `readonly string[]`,
+    // which made every `as typeof TAB_IDS[number]` cast in
+    // extension/sidebar.ts a no-op accepting any string. If that regresses
+    // (e.g. NAV_TABS loses `as const satisfies readonly NavTab[]`, or
+    // NAV_TAB_IDS goes back to an explicit `readonly string[]` annotation),
+    // `NavTabId` widens back to plain `string`, this assignment stops being
+    // a type error, and the unmatched `@ts-expect-error` below itself
+    // becomes a compile error ("Unused '@ts-expect-error' directive") —
+    // failing `npm run typecheck`.
+    // @ts-expect-error — an arbitrary string is not a valid NavTabId.
+    const bad: NavTabId = "not-a-real-tab-id";
+    void bad;
+    expect(NAV_TAB_IDS.length).toBeGreaterThan(0);
   });
 
   it("includes classify and spending, and does not include the removed models tab", () => {
