@@ -25,7 +25,8 @@
 import { isTicketKey } from "./tickets.js";
 import type { InsightT } from "./insight.js";
 import { formatDevTime, formatMoney, formatMoneyCsv, formatPercent, confidenceCaveat, costCaveat } from "./insight.js";
-import type { AccountMode, Confidence, PolicyEvent, TaskClass, TicketCoverage } from "./types/insight.js";
+import { computeReconciliation } from "./reconciliation.js";
+import type { AccountMode, Confidence, PolicyEvent, ReconciliationCause, TaskClass, TicketCoverage } from "./types/insight.js";
 import type {
   JustificationPackModel,
   JustificationPackSectionId,
@@ -37,6 +38,19 @@ import type {
   PackTicketRow,
   PackUnavailableSections,
 } from "./types/pack.js";
+
+/** English one-line explanation per residual cause — pack chrome, deliberately
+ *  not localized (same "own English chrome" scope this file's header states
+ *  for `MODE_LABEL`/`TASK_CLASS_LABELS`). Keep in cost-relevance order so the
+ *  rendered list reads as "most likely first". */
+const RECONCILIATION_CAUSE_TEXT: Readonly<Record<ReconciliationCause, string>> = {
+  "unpriced-usage": "Usage on models with no pricing row this period (see unpriced-token count above).",
+  "fallback-rates": "Some usage priced at first-party rates in place of an unconfigured partner rate.",
+  "scope-mismatch":
+    "The invoice's scope was not confirmed in config (reconciliation.scopeNote) — it may cover a different " +
+    "account, project, or date range than this report.",
+  unexplained: "No known cause accounts for this residual from the data available to this report.",
+};
 
 export const PACK_SCHEMA_VERSION = 1;
 
@@ -85,6 +99,9 @@ export interface BuildHeadlineInput {
   reconciledInvoiceTotal?: number | null;
   /** Fraction, e.g. 0.05 for ±5%. Defaults to 0.05. */
   reconciliationTolerance?: number;
+  /** What the invoice figure covers — `config.reconciliation.scopeNote`,
+   *  passed straight through to {@link computeReconciliation}. */
+  reconciliationScopeNote?: string | null;
   anyFallbackRates?: boolean;
   /** Configured monthly plan fee. Only rendered when `mode === "plan"` — a
    *  metered account's fee field (if any) is not this figure's business
@@ -104,23 +121,21 @@ export function buildPackHeadline(t: InsightT, input: BuildHeadlineInput): PackH
       ? formatDevTime(t, totalCost, input.hourlyRate)
       : null;
 
-  let reconciliation: PackReconciliation | null = null;
-  if (
-    input.mode === "metered" &&
-    input.reconciledInvoiceTotal != null &&
-    Number.isFinite(input.reconciledInvoiceTotal) &&
-    input.reconciledInvoiceTotal > 0
-  ) {
-    const tolerance = input.reconciliationTolerance ?? 0.05;
-    const ratio = totalCost / input.reconciledInvoiceTotal;
-    reconciliation = {
-      bottomUp: totalCost,
-      invoiceTotal: input.reconciledInvoiceTotal,
-      ratio,
-      withinTolerance: Math.abs(1 - ratio) <= tolerance,
-      tolerancePercent: Math.round(tolerance * 100),
-    };
-  }
+  // Reconciliation only makes sense for metered accounts (04 §4.3): a plan
+  // account's bottom-up figure is equivalent-API-VALUE, not money, so
+  // comparing it against an invoice's actual dollars is a category error, not
+  // a residual.
+  const reconciliation: PackReconciliation | null =
+    input.mode === "metered"
+      ? computeReconciliation({
+          bottomUp: totalCost,
+          invoiceTotal: input.reconciledInvoiceTotal,
+          tolerance: input.reconciliationTolerance,
+          unknownTokens: input.unknownTokens,
+          anyFallbackRates: input.anyFallbackRates,
+          scopeNote: input.reconciliationScopeNote,
+        })
+      : null;
 
   // Attributed cost split by evidence tier, as a fraction of attributedCost —
   // the same mix `coverageCaveat`'s prose already describes, as numbers a
@@ -142,17 +157,16 @@ export function buildPackHeadline(t: InsightT, input: BuildHeadlineInput): PackH
     devTimeLabel,
     coverageRatio: input.coverage.ratio,
     coverageCaveat: confidenceCaveat(t, input.coverage),
-    // Deliberately NOT passing reconciliation.ratio into costCaveat here:
-    // costCaveat's "reconciles with the invoice at X%" phrasing reads as an
-    // affirmative claim at any X, which is actively misleading for a residual
-    // FAR from 100% (e.g. "reconciles ... at 4%" when the two figures barely
-    // relate) — self-contradictory next to this same headline's own
-    // tolerance-aware `reconciliation` block below, which states the verdict
-    // correctly either way. The pack still quotes costCaveat for the mode
-    // sentence and the fallback-rate caveat; it just doesn't feed it a number
-    // whose wording that formatter doesn't yet handle safely.
+    // `costCaveat` now takes `reconciledWithinTolerance` explicitly (fixed
+    // alongside this call site — it used to read ANY ratio as an affirmative
+    // "reconciles with the invoice at X%", which was actively misleading for
+    // a residual far from tolerance). With that fixed, feeding the real ratio
+    // and verdict through is safe and is exactly what makes this caveat state
+    // something instead of nothing (R — reconciliation was the starved
+    // integration point `costCaveat`'s `reconciledRatio` param was built for).
     costCaveatText: costCaveat(t, input.mode, {
-      reconciledRatio: null,
+      reconciledRatio: reconciliation?.ratio ?? null,
+      reconciledWithinTolerance: reconciliation?.withinTolerance,
       anyFallbackRates: input.anyFallbackRates ?? false,
     }),
     reconciliation,
@@ -441,6 +455,18 @@ export function renderJustificationPackHtml(model: JustificationPackModel): stri
         `<div class="caveat">Bottom-up ${fmtMoney(r.bottomUp, h.currency)} vs invoice ` +
           `${fmtMoney(r.invoiceTotal, h.currency)} → ${fmtPct(r.ratio)} — ${verdict} within ±${r.tolerancePercent}%.</div>`,
       );
+      parts.push(
+        `<div class="caveat">Invoice scope: ${escapeHtml(r.scopeNote ?? "not confirmed in config (reconciliation.scopeNote) — verify it covers the same account(s) and date range as this report")}.</div>`,
+      );
+      if (!r.withinTolerance) {
+        const signedResidual = `${r.residual >= 0 ? "+" : "−"}${fmtMoney(Math.abs(r.residual), h.currency)}`;
+        parts.push(
+          `<div class="caveat">Residual: ${signedResidual} (invoice minus bottom-up, ${fmtPct(Math.abs(r.residualRatio))} of the invoice). ` +
+            `Candidate cause${r.candidateCauses.length > 1 ? "s" : ""}: ${r.candidateCauses
+              .map((c) => escapeHtml(RECONCILIATION_CAUSE_TEXT[c]))
+              .join(" ")}</div>`,
+        );
+      }
     }
     parts.push(`</div>`);
   }
@@ -622,6 +648,9 @@ export function renderSummaryCsv(model: JustificationPackModel): string {
       "reconciledInvoiceTotal",
       "reconciledRatio",
       "withinTolerance",
+      "reconciliationResidual",
+      "reconciliationScopeNote",
+      "reconciliationCandidateCauses",
     ]),
     csvLine([
       model.period.label,
@@ -640,6 +669,9 @@ export function renderSummaryCsv(model: JustificationPackModel): string {
       h.reconciliation ? h.reconciliation.invoiceTotal.toFixed(2) : "",
       h.reconciliation ? h.reconciliation.ratio.toFixed(4) : "",
       h.reconciliation ? String(h.reconciliation.withinTolerance) : "",
+      h.reconciliation ? formatMoneyCsv(h.reconciliation.residual) : "",
+      h.reconciliation?.scopeNote ?? "",
+      h.reconciliation ? h.reconciliation.candidateCauses.join(";") : "",
     ]),
   ];
   return lines.join("\r\n") + "\r\n";

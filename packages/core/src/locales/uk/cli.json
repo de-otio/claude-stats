@@ -188,7 +188,8 @@
     "ticketKeyArg": "Ключ тікета (напр. PROJ-123). Без інших прапорців: показує поточні прив’язки",
     "ticketNegate": "Позначити цей ключ як tombstone для сесії (приховує його, навіть якщо автоматичне визначення й далі знаходить збіг)",
     "ticketRemove": "Видалити ручну прив’язку для цього ключа (не впливає на tombstone скасування)",
-    "ticketList": "Показати прив’язки тікетів для сесії перед застосуванням будь-яких змін"
+    "ticketList": "Показати прив’язки тікетів для сесії перед застосуванням будь-яких змін",
+    "packInvoiceCsv": "Шлях до експорту CSV із Cost Explorer (або еквівалентного) для звірки — перевизначає config.reconciliation.invoiceTotal лише для цього запуску"
   },
   "collection": {
     "collecting": "Збирання...",
@@ -355,7 +356,8 @@
     "cannotCombineHtml": "Не можна поєднувати --html з --trend або --detail",
     "cannotCombineTrendDetail": "Не можна поєднувати --trend і --detail",
     "invalidDateRange": "Недійсний діапазон дат: {{message}}",
-    "invalidPackPeriod": "Недійсний період пакета: {{message}}"
+    "invalidPackPeriod": "Недійсний період пакета: {{message}}",
+    "invalidInvoiceCsv": "Не вдалося прочитати --invoice-csv {{path}}: {{message}}"
   },
   "repair": {
     "description": "Відновлення похідних даних, які звичайне збирання не може виправити заднім числом.",

@@ -12,7 +12,8 @@ import { readClaudeAccount } from "../account.js";
 import { resolveAccountFee, type Config } from "../config.js";
 import { getTicketCostReport } from "../ticketing/index.js";
 import { resolveDashboardCostVocabulary, type VocabularyResolution } from "../server/insights.js";
-import type { TicketCoverage } from "@claude-stats/core/types/insight";
+import type { Reconciliation, TicketCoverage } from "@claude-stats/core/types/insight";
+import { computeReconciliation } from "@claude-stats/core/reconciliation";
 import { buildFeeAttribution, type FeeAttribution } from "./fee-attribution.js";
 import {
   scoreComplexity,
@@ -371,6 +372,19 @@ export interface DashboardInsights {
    * had reviewed. Null only when the gather itself failed.
    */
   attributionCalibration: CalibrationEstimate | null;
+  /**
+   * Bottom-up cost reconciled against `config.reconciliation.invoiceTotal`
+   * for exactly this dashboard's window and filters — the SAME
+   * `getTicketCostReport` call this block already makes for
+   * `ticketCoverage`, so the bottom-up figure reconciliation compares can
+   * never disagree with the one the coverage denominator uses. Null when no
+   * invoice figure is configured, when the account mode isn't `metered`
+   * (plan-mode cost is equivalent-API-value, not money — comparing it to an
+   * invoice is a category error, not a residual), or when the window has no
+   * local spend at all (the honest-empty state, not a manufactured
+   * residual).
+   */
+  reconciliation: Reconciliation | null;
 }
 
 export interface Recommendation {
@@ -1475,9 +1489,11 @@ export function attachInsights(
   const tz = opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const currency = config.rate?.currency ?? "USD";
   const hourlyRate = config.rate?.hourly ?? null;
+  const vocabulary = resolveDashboardCostVocabulary(data, config);
 
   let ticketCoverage: TicketCoverage | null = null;
   let topTicket: { key: string; cost: number } | null = null;
+  let reconciliation: Reconciliation | null = null;
   try {
     const { since, until } = periodRange(opts, tz);
     const isCustomRange = Boolean(opts.since && opts.until);
@@ -1496,9 +1512,26 @@ export function attachInsights(
     ticketCoverage = report.coverage;
     const top = report.tickets[0];
     topTicket = top ? { key: top.ticketKey, cost: top.cost } : null;
+
+    // `report.totalCost` is the SAME bottom-up figure `ticketCoverage`'s
+    // denominator is derived from, over the SAME window — so the number
+    // reconciliation compares against the invoice is never a different total
+    // than the one the rest of the tab renders. Metered only: a plan
+    // account's cost is equivalent-API-value, not money.
+    if (vocabulary.vocabulary === "metered") {
+      reconciliation = computeReconciliation({
+        bottomUp: report.totalCost,
+        invoiceTotal: config.reconciliation?.invoiceTotal ?? null,
+        tolerance: config.reconciliation?.tolerancePercent != null ? config.reconciliation.tolerancePercent / 100 : undefined,
+        unknownTokens: report.unknownTokens,
+        anyFallbackRates: report.anyFallbackRates,
+        scopeNote: config.reconciliation?.scopeNote ?? null,
+      });
+    }
   } catch {
     ticketCoverage = null;
     topTicket = null;
+    reconciliation = null;
   }
 
   // Gathered in its OWN try: a pre-V19 store or a failed ticket report must not
@@ -1512,12 +1545,13 @@ export function attachInsights(
   }
 
   data.insights = {
-    vocabulary: resolveDashboardCostVocabulary(data, config),
+    vocabulary,
     ticketCoverage,
     topTicket,
     hourlyRate,
     currency,
     attributionCalibration,
+    reconciliation,
   };
   return data;
 }

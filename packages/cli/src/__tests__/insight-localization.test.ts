@@ -162,11 +162,36 @@ function allAnswers(tr: InsightT): Array<[string, InsightAnswer]> {
     ["cost/metered+rate", answerCost(tr, { mode: "metered", cost: 720, previousCost: null, hourlyRate: 90 })],
     ["cost/metered+minutes", answerCost(tr, { mode: "metered", cost: 30, previousCost: null, hourlyRate: 90 })],
     ["cost/metered+hours", answerCost(tr, { mode: "metered", cost: 360, previousCost: null, hourlyRate: 90 })],
-    ["cost/reconciled", answerCost(tr, { mode: "metered", cost: 100, previousCost: null, reconciledRatio: 0.987 })],
+    [
+      "cost/reconciled",
+      answerCost(tr, { mode: "metered", cost: 100, previousCost: null, reconciledRatio: 0.987, reconciledWithinTolerance: true }),
+    ],
     ["cost/fallback", answerCost(tr, { mode: "metered", cost: 100, previousCost: null, anyFallbackRates: true })],
     [
       "cost/reconciled+fallback",
-      answerCost(tr, { mode: "metered", cost: 100, previousCost: null, reconciledRatio: 0.9, anyFallbackRates: true }),
+      answerCost(tr, {
+        mode: "metered",
+        cost: 100,
+        previousCost: null,
+        reconciledRatio: 0.9,
+        reconciledWithinTolerance: true,
+        anyFallbackRates: true,
+      }),
+    ],
+    [
+      "cost/notReconciled",
+      answerCost(tr, { mode: "metered", cost: 100, previousCost: null, reconciledRatio: 0.5, reconciledWithinTolerance: false }),
+    ],
+    [
+      "cost/notReconciled+fallback",
+      answerCost(tr, {
+        mode: "metered",
+        cost: 100,
+        previousCost: null,
+        reconciledRatio: 0.5,
+        reconciledWithinTolerance: false,
+        anyFallbackRates: true,
+      }),
     ],
     ["cost/plan", answerCost(tr, { mode: "plan", cost: 540, previousCost: 500, planFee: 100, planMultiplier: 5.4 })],
     ["cost/mixed", answerCost(tr, { mode: "mixed", cost: 540, previousCost: null })],
@@ -262,9 +287,17 @@ function allFragments(tr: InsightT): Array<[string, string | null]> {
     ["costCaveat/plan", costCaveat(tr, "plan")],
     ["costCaveat/mixed", costCaveat(tr, "mixed")],
     ["costCaveat/metered", costCaveat(tr, "metered")],
-    ["costCaveat/reconciled", costCaveat(tr, "metered", { reconciledRatio: 0.98 })],
+    ["costCaveat/reconciled", costCaveat(tr, "metered", { reconciledRatio: 0.98, reconciledWithinTolerance: true })],
     ["costCaveat/fallback", costCaveat(tr, "metered", { anyFallbackRates: true })],
-    ["costCaveat/both", costCaveat(tr, "metered", { reconciledRatio: 0.98, anyFallbackRates: true })],
+    [
+      "costCaveat/both",
+      costCaveat(tr, "metered", { reconciledRatio: 0.98, reconciledWithinTolerance: true, anyFallbackRates: true }),
+    ],
+    ["costCaveat/notReconciled", costCaveat(tr, "metered", { reconciledRatio: 0.5, reconciledWithinTolerance: false })],
+    [
+      "costCaveat/notReconciledAndFallback",
+      costCaveat(tr, "metered", { reconciledRatio: 0.5, reconciledWithinTolerance: false, anyFallbackRates: true }),
+    ],
     ["confidenceCaveat/mix", confidenceCaveat(tr, coverage())],
     ["confidenceCaveat/ambiguous", confidenceCaveat(tr, coverage({ ambiguousSessions: 3 }))],
     [
@@ -465,12 +498,25 @@ describe("the real `en` translator reproduces the sentences these formatters shi
     expect(answerCost(t, { mode: "plan", cost: 540, previousCost: 500, planFee: 100, planMultiplier: 5.4 }).caveat).toBe(
       "Equivalent API cost — not what your plan charges.",
     );
-    expect(costCaveat(t, "metered", { reconciledRatio: 0.987 })).toBe("Reconciles with the invoice at 99%.");
+    expect(costCaveat(t, "metered", { reconciledRatio: 0.987, reconciledWithinTolerance: true })).toBe(
+      "Reconciles with the invoice at 99%.",
+    );
     expect(costCaveat(t, "metered", { anyFallbackRates: true })).toBe(
       "Some usage priced at first-party rates — configure partner rates for exact figures.",
     );
-    expect(costCaveat(t, "metered", { reconciledRatio: 0.987, anyFallbackRates: true })).toBe(
+    expect(
+      costCaveat(t, "metered", { reconciledRatio: 0.987, reconciledWithinTolerance: true, anyFallbackRates: true }),
+    ).toBe(
       "Reconciles with the invoice at 99%; some usage priced at first-party rates — configure partner rates for exact figures.",
+    );
+    expect(costCaveat(t, "metered", { reconciledRatio: 0.5, reconciledWithinTolerance: false })).toBe(
+      "Does not reconcile with the invoice — bottom-up is 50% of the imported total.",
+    );
+    expect(
+      costCaveat(t, "metered", { reconciledRatio: 0.5, reconciledWithinTolerance: false, anyFallbackRates: true }),
+    ).toBe(
+      "Does not reconcile with the invoice — bottom-up is 50% of the imported total; some usage also priced at " +
+        "first-party rates — configure partner rates for exact figures.",
     );
     expect(confidenceCaveat(t, coverage({ ambiguousSessions: 1 }))).toBe(
       "70% high · 20% medium · 10% low confidence · 1 session ambiguous.",

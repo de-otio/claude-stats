@@ -135,6 +135,17 @@ describe("insight config validation", () => {
     expect(reconciliationTolerance({ reconciliation: { tolerancePercent: 2 } })).toBeCloseTo(0.02);
   });
 
+  it("trims and bounds reconciliation.scopeNote, dropping blank/whitespace-only values", () => {
+    expect(validateReconciliationConfig({ scopeNote: "  AWS account 111122223333  " }).scopeNote).toBe(
+      "AWS account 111122223333",
+    );
+    expect(validateReconciliationConfig({ scopeNote: "   " }).scopeNote).toBeUndefined();
+    expect(validateReconciliationConfig({ scopeNote: "" }).scopeNote).toBeUndefined();
+    expect(validateReconciliationConfig({}).scopeNote).toBeUndefined();
+    const long = "x".repeat(1000);
+    expect(validateReconciliationConfig({ scopeNote: long }).scopeNote!.length).toBe(500);
+  });
+
   it("de-duplicates and bounds hygiene suppressions", () => {
     const out = validateHygieneConfig({ suppressions: ["a", "a", "b", 1, ""] });
     expect(out.suppressions).toEqual(["a", "b"]);
@@ -251,10 +262,32 @@ describe("answer formatters", () => {
     expect(plan.answer).toContain("5.4× your $100/mo plan");
     expect(plan.caveat).toContain("not what your plan charges");
 
-    const metered = answerCost(t, { mode: "metered", cost: 312, previousCost: 280, reconciledRatio: 0.987 });
+    const metered = answerCost(t, {
+      mode: "metered",
+      cost: 312,
+      previousCost: 280,
+      reconciledRatio: 0.987,
+      reconciledWithinTolerance: true,
+    });
     expect(metered.answer).toContain("$312");
     expect(metered.caveat).toContain("econciles with the invoice at 99%");
     expect(metered.caveat).not.toContain("not what your plan charges");
+
+    // Without a verdict, the reconciled wording is withheld rather than
+    // guessed — `reconciledWithinTolerance` is REQUIRED to say "reconciles"
+    // vs "does not reconcile" (I1).
+    const noVerdict = answerCost(t, { mode: "metered", cost: 312, previousCost: 280, reconciledRatio: 0.5 });
+    expect(noVerdict.caveat).not.toContain("Reconciles");
+    expect(noVerdict.caveat).not.toContain("Does not reconcile");
+
+    const outOfTolerance = answerCost(t, {
+      mode: "metered",
+      cost: 312,
+      previousCost: 280,
+      reconciledRatio: 0.5,
+      reconciledWithinTolerance: false,
+    });
+    expect(outOfTolerance.caveat).toContain("Does not reconcile with the invoice");
   });
 
   it("warns when partner usage was priced at fallback rates", () => {

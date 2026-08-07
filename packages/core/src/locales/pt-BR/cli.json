@@ -188,7 +188,8 @@
     "ticketKeyArg": "Chave do ticket (ex.: PROJ-123). Omitida sem outra flag: lista os vínculos atuais",
     "ticketNegate": "Marca esta chave como tombstone na sessão (suprime mesmo que a extração continue correspondendo)",
     "ticketRemove": "Remove um vínculo manual desta chave (não afeta o tombstone de negação)",
-    "ticketList": "Lista os vínculos de ticket da sessão antes de aplicar qualquer alteração"
+    "ticketList": "Lista os vínculos de ticket da sessão antes de aplicar qualquer alteração",
+    "packInvoiceCsv": "Caminho para uma exportação CSV do Cost Explorer (ou equivalente) a ser usada na reconciliação — substitui config.reconciliation.invoiceTotal apenas nesta execução"
   },
   "collection": {
     "collecting": "Coletando...",
@@ -352,7 +353,8 @@
     "cannotCombineHtml": "Não é possível combinar --html com --trend ou --detail",
     "cannotCombineTrendDetail": "Não é possível combinar --trend e --detail",
     "invalidDateRange": "Intervalo de datas inválido: {{message}}",
-    "invalidPackPeriod": "Período de pacote inválido: {{message}}"
+    "invalidPackPeriod": "Período de pacote inválido: {{message}}",
+    "invalidInvoiceCsv": "Não foi possível ler --invoice-csv {{path}}: {{message}}"
   },
   "repair": {
     "description": "Repara dados derivados que a coleta normal não consegue corrigir retroativamente.",

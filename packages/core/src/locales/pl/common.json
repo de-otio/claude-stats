@@ -94,7 +94,9 @@
       "metered": "Rzeczywisty koszt rozliczany za zużycie.",
       "reconciled": "Zgadza się z fakturą w {{ratio}}.",
       "fallbackRates": "Część użycia wyceniono stawkami first-party — skonfiguruj stawki partnera, aby uzyskać dokładne kwoty.",
-      "reconciledAndFallback": "Zgadza się z fakturą w {{ratio}}; część użycia wyceniono stawkami first-party — skonfiguruj stawki partnera, aby uzyskać dokładne kwoty."
+      "reconciledAndFallback": "Zgadza się z fakturą w {{ratio}}; część użycia wyceniono stawkami first-party — skonfiguruj stawki partnera, aby uzyskać dokładne kwoty.",
+      "notReconciled": "Nie zgadza się z fakturą — wyliczenie oddolne stanowi {{ratio}} zaimportowanej sumy.",
+      "notReconciledAndFallback": "Nie zgadza się z fakturą — wyliczenie oddolne stanowi {{ratio}} zaimportowanej sumy; część użycia wyceniono też według stawek własnych — skonfiguruj stawki partnera, aby uzyskać dokładne wartości."
     },
     "coverage": {
       "tier": "{{percent}} {{tier}}",

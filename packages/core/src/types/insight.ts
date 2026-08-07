@@ -127,6 +127,44 @@ export type PricingSource = "first_party" | "bedrock" | "vertex";
  */
 export type AccountMode = "plan" | "metered";
 
+// ─── Invoice reconciliation ────────────────────────────────────────────────────
+
+/**
+ * A known, nameable explanation for a reconciliation residual
+ * (ticket-attribution/04 §4.3 rule 3: "the residual is named, never hidden").
+ * `unexplained` is itself an honest answer — it says the residual exists and
+ * none of the known candidate causes account for it, rather than omitting a
+ * cause the report can't actually name.
+ */
+export type ReconciliationCause = "unpriced-usage" | "fallback-rates" | "scope-mismatch" | "unexplained";
+
+/**
+ * The result of comparing the store's bottom-up cost against an imported
+ * top-down invoice figure for the same declared period. Producing one of
+ * these is opt-in — a caller with no invoice figure never builds one, and
+ * every consumer treats `null` as "not configured", not as "reconciles".
+ */
+export interface Reconciliation {
+  readonly bottomUp: number;
+  readonly invoiceTotal: number;
+  /** bottomUp / invoiceTotal. */
+  readonly ratio: number;
+  readonly withinTolerance: boolean;
+  readonly tolerancePercent: number;
+  /** invoiceTotal - bottomUp; positive when the invoice is higher. */
+  readonly residual: number;
+  /** residual / invoiceTotal. */
+  readonly residualRatio: number;
+  /** Candidate causes for the residual, most-likely first. Empty when
+   *  `withinTolerance` is true — there is nothing to explain. */
+  readonly candidateCauses: readonly ReconciliationCause[];
+  /** The user-stated description of what the invoice figure covers (account,
+   *  date range, etc.), or null when never configured — rendered verbatim
+   *  wherever the reconciliation figure appears, because an unstated scope is
+   *  itself something the reader needs to know (04 §4.3 rule 1). */
+  readonly scopeNote: string | null;
+}
+
 // ─── Answer-first presentation (GUI + pack + CLI) ─────────────────────────────
 
 /** The five business questions the Insights layer answers (gui-redesign/02 §2.2). */

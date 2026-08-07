@@ -9,6 +9,7 @@ import { printSummary, printStatus, printSearchResults, printSessionList, printS
 import { searchHistory } from "../history/index.js";
 import { loadConfig, saveConfig, createJudgeProviderFromConfig, ticketProjectKeys } from "../config.js";
 import { generateJustificationPack, parseSections } from "../pack/index.js";
+import { parseCostExplorerCsv, formatCsvImportError } from "@claude-stats/core/reconciliation";
 import { checkThresholds } from "../alerts.js";
 import { formatCost } from "@claude-stats/core/pricing";
 import { buildDashboard } from "../dashboard/index.js";
@@ -240,6 +241,7 @@ export async function buildCli(): Promise<Command> {
     .option("--account <uuid>", t("cli:commands.reportAccount"))
     .option("--out <dir>", t("cli:commands.packOut"))
     .option("--json", t("cli:commands.packJson"))
+    .option("--invoice-csv <path>", t("cli:commands.packInvoiceCsv"))
     .action(
       async (opts: {
         period: string;
@@ -249,11 +251,43 @@ export async function buildCli(): Promise<Command> {
         account?: string;
         out?: string;
         json?: boolean;
+        invoiceCsv?: string;
       }) => {
         loadCachedPricing();
         const config = loadConfig();
         const store = new Store();
         try {
+          // `--invoice-csv` overrides `config.reconciliation.invoiceTotal` for
+          // THIS run only — it never writes back to config (04 §4.3 rule 1:
+          // "the top-down figure is imported, never fetched"). A malformed
+          // export fails loudly here, before any pack is written, rather than
+          // producing a pack with a silently wrong reconciled figure.
+          let invoiceTotalOverride: number | null | undefined;
+          if (opts.invoiceCsv) {
+            let csvText: string;
+            try {
+              csvText = fs.readFileSync(opts.invoiceCsv, "utf-8");
+            } catch (err) {
+              console.error(
+                t("cli:errors.invalidInvoiceCsv", {
+                  path: opts.invoiceCsv,
+                  message: err instanceof Error ? err.message : String(err),
+                }),
+              );
+              process.exitCode = 1;
+              return;
+            }
+            const parsed = parseCostExplorerCsv(csvText);
+            if (!parsed.ok) {
+              console.error(
+                t("cli:errors.invalidInvoiceCsv", { path: opts.invoiceCsv, message: formatCsvImportError(parsed.error) }),
+              );
+              process.exitCode = 1;
+              return;
+            }
+            invoiceTotalOverride = parsed.value.total;
+          }
+
           const written = generateJustificationPack(
             store,
             config,
@@ -263,6 +297,7 @@ export async function buildCli(): Promise<Command> {
               sections: parseSections(opts.sections),
               projectPath: opts.project,
               accountUuid: opts.account,
+              invoiceTotalOverride,
             },
             opts.out ?? process.cwd()
           );

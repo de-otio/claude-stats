@@ -481,7 +481,8 @@
     },
     "alerts": {
       "fallbackRates": "部分用量在合作伙伴平台（Bedrock 或 Vertex）上按第一方费率计价。在配置合作伙伴费率之前，此处所有金额均为估算值。",
-      "action": "查看"
+      "action": "查看",
+      "reconciliationDrift": "自下而上统计的成本与配置的发票总额无法对账 — 有关差额及其可能原因，请参见成本卡片中的注意事项。"
     },
     "verdict": {
       "goodValue": "按你的用量，当前套餐物有所值",

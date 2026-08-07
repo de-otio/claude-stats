@@ -481,7 +481,8 @@
     },
     "alerts": {
       "fallbackRates": "Parte del uso se tarificó con tarifas de primera parte en una plataforma asociada (Bedrock o Vertex). Todas las cifras de coste aquí son estimaciones hasta que se configuren las tarifas del socio.",
-      "action": "Revisar"
+      "action": "Revisar",
+      "reconciliationDrift": "El coste ascendente no cuadra con el total de factura configurado — consulte la salvedad de la tarjeta de coste para ver el residuo y sus posibles causas."
     },
     "verdict": {
       "goodValue": "Tu plan tiene buena relación calidad-precio para lo que lo usas",

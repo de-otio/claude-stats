@@ -216,6 +216,11 @@ export function buildInsightAnswers(data: DashboardData, opts: InsightBuildOptio
     planFee: data.summary.planFee,
     planMultiplier: data.summary.planMultiplier,
     anyFallbackRates: data.summary.anyFallbackRates,
+    // `attachInsights` computes this over the SAME window/filters as the rest
+    // of this call — see `Reconciliation`'s doc comment for why it is
+    // metered-only and null on a period with no local spend (Lane R).
+    reconciledRatio: ins?.reconciliation?.ratio ?? null,
+    reconciledWithinTolerance: ins?.reconciliation?.withinTolerance,
   });
 
   // Calibration for exactly the mechanisms this card quotes, and only when the
@@ -305,9 +310,15 @@ export interface InsightAlert {
  *  - **A mixed cost vocabulary.** Real, but it is a property of the headline
  *    figure, so it belongs on that figure's caveat. Saying it twice would make
  *    the strip look busy on an ordinary two-account setup.
- *  - **Reconciliation drift, hygiene findings, policy damage.** Their inputs
- *    (Lanes R, D1, M) have not landed. A rule with no data is a rule that
- *    cannot be tested, so none is written.
+ *  - **Hygiene findings, policy damage.** Their inputs (Lanes D1, M) have not
+ *    landed on this tab yet. A rule with no data is a rule that cannot be
+ *    tested, so none is written.
+ *
+ * Reconciliation drift (Lane R) IS an alert, unlike the "not yet" list above:
+ * it fires only when the user configured an invoice figure AND the tolerance
+ * band was crossed — never on a fresh install with nothing configured, so it
+ * meets the same "fact or thresholded dollar figure" bar every other rule
+ * here does.
  */
 export function buildAlerts(data: DashboardData, t: TranslateFn): InsightAlert[] {
   const alerts: InsightAlert[] = [];
@@ -321,6 +332,17 @@ export function buildAlerts(data: DashboardData, t: TranslateFn): InsightAlert[]
       id: "fallback-rates",
       severity: "warning",
       text: t("dashboard:insights.alerts.fallbackRates"),
+      tab: "settings",
+    });
+  }
+
+  // Opt-in (a configured invoice figure) and tolerance-thresholded — never
+  // fires for a user who hasn't set `reconciliation.invoiceTotal`.
+  if (data.insights?.reconciliation && !data.insights.reconciliation.withinTolerance) {
+    alerts.push({
+      id: "reconciliation-drift",
+      severity: "warning",
+      text: t("dashboard:insights.alerts.reconciliationDrift"),
       tab: "settings",
     });
   }

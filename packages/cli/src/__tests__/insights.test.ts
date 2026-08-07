@@ -132,6 +132,7 @@ const goldenData: DashboardData = {
     hourlyRate: 90,
     currency: "USD",
     attributionCalibration: null,
+    reconciliation: null,
   },
 };
 

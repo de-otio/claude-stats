@@ -92,7 +92,9 @@
       "metered": "Actual metered cost.",
       "reconciled": "Reconciles with the invoice at {{ratio}}.",
       "fallbackRates": "Some usage priced at first-party rates — configure partner rates for exact figures.",
-      "reconciledAndFallback": "Reconciles with the invoice at {{ratio}}; some usage priced at first-party rates — configure partner rates for exact figures."
+      "reconciledAndFallback": "Reconciles with the invoice at {{ratio}}; some usage priced at first-party rates — configure partner rates for exact figures.",
+      "notReconciled": "Does not reconcile with the invoice — bottom-up is {{ratio}} of the imported total.",
+      "notReconciledAndFallback": "Does not reconcile with the invoice — bottom-up is {{ratio}} of the imported total; some usage also priced at first-party rates — configure partner rates for exact figures."
     },
     "coverage": {
       "tier": "{{percent}} {{tier}}",

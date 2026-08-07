@@ -93,7 +93,9 @@
       "metered": "Coste real facturado por uso.",
       "reconciled": "Concuerda con la factura al {{ratio}}.",
       "fallbackRates": "Parte del uso se tarificó con tarifas de primera parte — configura las tarifas del socio para obtener cifras exactas.",
-      "reconciledAndFallback": "Concuerda con la factura al {{ratio}}; parte del uso se tarificó con tarifas de primera parte — configura las tarifas del socio para obtener cifras exactas."
+      "reconciledAndFallback": "Concuerda con la factura al {{ratio}}; parte del uso se tarificó con tarifas de primera parte — configura las tarifas del socio para obtener cifras exactas.",
+      "notReconciled": "No cuadra con la factura: el cálculo ascendente es {{ratio}} del total importado.",
+      "notReconciledAndFallback": "No cuadra con la factura: el cálculo ascendente es {{ratio}} del total importado; además, parte del uso se ha tarificado con tarifas propias. Configure las tarifas de partner para obtener cifras exactas."
     },
     "coverage": {
       "tier": "{{percent}} {{tier}}",

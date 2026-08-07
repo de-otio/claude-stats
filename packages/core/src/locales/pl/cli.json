@@ -188,7 +188,8 @@
     "ticketKeyArg": "Klucz zgłoszenia (np. PROJ-123). Pominięty bez innych flag: wyświetla bieżące powiązania",
     "ticketNegate": "Oznacz ten klucz jako usunięty dla sesji (ukrywa go, nawet jeśli ekstrakcja nadal go dopasowuje)",
     "ticketRemove": "Usuń ręczne powiązanie dla tego klucza (nie wpływa na znacznik negacji)",
-    "ticketList": "Wyświetl powiązania zgłoszeń dla sesji przed zastosowaniem jakiejkolwiek zmiany"
+    "ticketList": "Wyświetl powiązania zgłoszeń dla sesji przed zastosowaniem jakiejkolwiek zmiany",
+    "packInvoiceCsv": "Ścieżka do eksportu CSV z Cost Explorer (lub odpowiednika) do uzgodnienia — zastępuje config.reconciliation.invoiceTotal tylko dla tego uruchomienia"
   },
   "collection": {
     "collecting": "Zbieranie...",
@@ -355,7 +356,8 @@
     "cannotCombineHtml": "Nie można łączyć --html z --trend ani --detail",
     "cannotCombineTrendDetail": "Nie można łączyć --trend i --detail",
     "invalidDateRange": "Nieprawidłowy zakres dat: {{message}}",
-    "invalidPackPeriod": "Nieprawidłowy okres pakietu: {{message}}"
+    "invalidPackPeriod": "Nieprawidłowy okres pakietu: {{message}}",
+    "invalidInvoiceCsv": "Nie można odczytać --invoice-csv {{path}}: {{message}}"
   },
   "repair": {
     "description": "Napraw dane pochodne, których normalne zbieranie nie potrafi poprawić z mocą wsteczną.",
