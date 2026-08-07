@@ -759,6 +759,9 @@ export async function buildDailyDigest(
           if (cluster.hidden === true) {
             (item as { hidden?: boolean }).hidden = true;
           }
+          if (cluster.ticketKey !== undefined) {
+            (item as { ticketKey?: string | null }).ticketKey = cluster.ticketKey;
+          }
           patchedItems.push(item);
         }
 
@@ -865,6 +868,9 @@ export async function buildDailyDigest(
     }
     if (cluster.hidden === true) {
       (item as { hidden?: boolean }).hidden = true;
+    }
+    if (cluster.ticketKey !== undefined) {
+      (item as { ticketKey?: string | null }).ticketKey = cluster.ticketKey;
     }
     items.push(item);
   }

@@ -488,5 +488,16 @@
       "underusing": "You are using less than your plan covers",
       "noPlan": "No plan detected — costs are read as metered usage"
     }
+  },
+  "ticketCard": {
+    "title": "Ticket attribution",
+    "noSession": "No sessions recorded yet — nothing to link.",
+    "session": "Current session: {{sessionId}}…",
+    "noLinks": "No ticket links for this session.",
+    "negatedBadge": "negated",
+    "negateAction": "Negate",
+    "removeAction": "Remove",
+    "linkAction": "Link",
+    "keyPlaceholder": "PROJ-123"
   }
 }

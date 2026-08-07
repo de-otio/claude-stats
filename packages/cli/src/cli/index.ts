@@ -47,6 +47,7 @@ import {
   type PersistedSyncConfig,
 } from "../sync/index.js";
 import { paths } from "@claude-stats/core/paths";
+import { requireTicketKey } from "@claude-stats/core/tickets";
 
 export async function buildCli(): Promise<Command> {
   // Pre-parse --locale from argv before commander processes it
@@ -762,6 +763,70 @@ export async function buildCli(): Promise<Command> {
     });
 
   program
+    .command("ticket")
+    .description(t("cli:commands.ticket"))
+    .argument("<session-id>", t("cli:commands.ticketSessionArg"))
+    .argument("[key]", t("cli:commands.ticketKeyArg"))
+    .option("--negate", t("cli:commands.ticketNegate"))
+    .option("--remove", t("cli:commands.ticketRemove"))
+    .option("--list", t("cli:commands.ticketList"))
+    .action((sessionId: string, key: string | undefined, opts: { negate?: boolean; remove?: boolean; list?: boolean }) => {
+      const store = new Store();
+      try {
+        const session = store.findSession(sessionId);
+        if (!session) {
+          console.error(t("cli:tag.noSessionMatch", { sessionId }));
+          process.exitCode = 1;
+          return;
+        }
+        const shortId = session.session_id.slice(0, 6);
+
+        if (opts.list || !key) {
+          const links = store.getTicketLinksForSession(session.session_id);
+          if (links.length === 0) {
+            console.log(t("cli:ticket.sessionNoLinks", { sessionId: shortId }));
+          } else {
+            console.log(t("cli:ticket.sessionLinks", { sessionId: shortId }));
+            for (const link of links) {
+              const status = link.negated ? t("cli:ticket.negatedLabel") : t("cli:ticket.activeLabel");
+              console.log(
+                `  ${link.ticket_key}  ${link.source}/${link.confidence}  ${status}`,
+              );
+            }
+          }
+          if (!key) return;
+        }
+
+        let normalizedKey: string;
+        try {
+          normalizedKey = requireTicketKey(key);
+        } catch (err) {
+          console.error((err as Error).message);
+          process.exitCode = 1;
+          return;
+        }
+
+        if (opts.negate) {
+          store.negateTicketLink(session.session_id, normalizedKey);
+          console.log(t("cli:ticket.negated", { key: normalizedKey, sessionId: shortId }));
+        } else if (opts.remove) {
+          store.removeTicketLink(session.session_id, normalizedKey, "tag");
+          console.log(t("cli:ticket.removed", { key: normalizedKey, sessionId: shortId }));
+        } else {
+          store.addTicketLink({
+            sessionId: session.session_id,
+            ticketKey: normalizedKey,
+            source: "tag",
+            confidence: "high",
+          });
+          console.log(t("cli:ticket.linked", { key: normalizedKey, sessionId: shortId }));
+        }
+      } finally {
+        store.close();
+      }
+    });
+
+  program
     .command("task-class")
     .description(t("cli:commands.taskClass"))
     .option("--limit <n>", t("cli:commands.taskClassLimit"))
@@ -1238,6 +1303,56 @@ export async function buildCli(): Promise<Command> {
         } finally {
           client.close();
         }
+      } finally {
+        store.close();
+      }
+    });
+
+  correctCmd
+    .command("ticket <item> <key>")
+    .description("Assign a work-item key to a digest item, and link every session it covers")
+    .action(async (itemSelector: string, keyArg: string) => {
+      const { Store: StoreCT } = await import("../store/index.js");
+      const { collect: collectCT } = await import("../aggregator/index.js");
+      const { buildDailyDigest } = await import("../recap/index.js");
+      const { openCorrections, computeSignature } = await import(
+        "../recap/corrections.js"
+      );
+      const store = new StoreCT();
+      await collectCT(store);
+      try {
+        const digest = await buildDailyDigest(store, {});
+        const item = await resolveItem(digest, itemSelector);
+        if (!item) {
+          process.stderr.write(`No item matching "${itemSelector}" in today's digest.\n`);
+          process.exit(1);
+        }
+        let key: string;
+        try {
+          key = requireTicketKey(keyArg);
+        } catch (err) {
+          process.stderr.write(`${(err as Error).message}\n`);
+          process.exitCode = 1;
+          return;
+        }
+        const sig = computeSignature(item);
+        const client = openCorrections();
+        try {
+          client.add(sig, { kind: "ticket", key });
+        } catch (err) {
+          process.stderr.write(`${(err as Error).message}\n`);
+          process.exitCode = 1;
+          return;
+        } finally {
+          client.close();
+        }
+        // The correction above labels the digest item; this is what makes the
+        // assignment reach cost aggregation, which reads `ticket_links`, not
+        // the recap corrections DB.
+        for (const sessionId of item.sessionIds) {
+          store.addTicketLink({ sessionId, ticketKey: key, source: "tag", confidence: "high" });
+        }
+        console.log(`Correction added: ticket "${key}" assigned to "${item.id}" (${item.sessionIds.length} session(s) linked).`);
       } finally {
         store.close();
       }

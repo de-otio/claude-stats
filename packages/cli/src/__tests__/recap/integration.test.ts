@@ -3063,6 +3063,78 @@ describe('SR-6 smoke — SQL injection payload stored verbatim and table still q
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
+// v3 Scenario 40: `recap correct ticket` flows through to the item, and the
+// underlying session gains a real ticket_links row (Lane L)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('v3 Scenario 40 — recap correct ticket flows through to the item and to ticket_links', () => {
+  it('a ticket correction stores on the item, and the CLI write-through links the session', async () => {
+    const corrDbPath = mkCorrDbPath('ticket');
+    const corrections = openCorrections({ dbPath: corrDbPath });
+
+    try {
+      const { store, dbPath } = mkTmpDb();
+      const dir = mkTmpDir();
+
+      const sid = nextSid();
+      store.upsertSession(makeSession({
+        sessionId: sid,
+        projectPath: dir,
+        firstTimestamp: min(30),
+        lastTimestamp: min(60),
+      }));
+      store.upsertMessages([
+        makeMessage({
+          sessionId: sid,
+          timestamp: min(30),
+          promptText: 'Work that belongs to a ticket the extractor missed',
+          tools: ['Read', 'Edit'],
+        }),
+      ]);
+
+      const { segmentSession: segSess40 } = await import('../../recap/segment.js');
+      const msgs40 = store.getSessionMessages(sid);
+      const segs40: SegmentWithProject[] = segSess40(msgs40).map((s) => ({
+        ...s, sessionId: sid, projectPath: dir,
+      }));
+      const clusters40 = await clusterSegments(segs40);
+      expect(clusters40.length).toBeGreaterThanOrEqual(1);
+      const sig40 = computeClusterSignature(clusters40[0]!);
+
+      corrections.add(sig40, { kind: 'ticket', key: 'PROJ-88' });
+
+      // buildDailyDigest labels the item — the visible half of the correction.
+      const digestAfter = await buildDailyDigest(
+        store,
+        { date: TEST_DATE, tz: 'UTC' },
+        noGitDeps({ correctionsClient: corrections }),
+      );
+      const taggedItem = digestAfter.items.find((i) => i.ticketKey === 'PROJ-88');
+      expect(taggedItem).toBeDefined();
+      expect(taggedItem?.sessionIds).toContain(sid);
+
+      // The CLI handler's write-through (not exercised by buildDailyDigest
+      // itself — the digest label and the ticket_links row are deliberately
+      // separate writes, see corrections.ts's 'ticket' variant doc comment)
+      // is what makes cost aggregation see the assignment. Simulate it here
+      // exactly as `correctCmd.command("ticket <item> <key>")` does.
+      for (const sessionId of taggedItem!.sessionIds) {
+        store.addTicketLink({ sessionId, ticketKey: 'PROJ-88', source: 'tag', confidence: 'high' });
+      }
+      const links = store.getTicketLinksForSession(sid);
+      expect(links).toContainEqual(
+        expect.objectContaining({ ticket_key: 'PROJ-88', source: 'tag', confidence: 'high', negated: 0 }),
+      );
+
+      store.close();
+      try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+    } finally {
+      corrections.close();
+    }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
 // SR-7 smoke test: tune-segmenter makes no API calls without consent flag
 // ═════════════════════════════════════════════════════════════════════════════
 

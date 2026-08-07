@@ -488,5 +488,16 @@
       "underusing": "你的用量低于套餐所覆盖的额度",
       "noPlan": "未检测到套餐 — 费用按用量计费方式计算"
     }
+  },
+  "ticketCard": {
+    "title": "工单归属",
+    "noSession": "尚未记录任何 session — 无可关联内容。",
+    "session": "当前 session：{{sessionId}}…",
+    "noLinks": "此 session 暂无工单关联。",
+    "negatedBadge": "已否定",
+    "negateAction": "否定",
+    "removeAction": "移除",
+    "linkAction": "关联",
+    "keyPlaceholder": "PROJ-123"
   }
 }

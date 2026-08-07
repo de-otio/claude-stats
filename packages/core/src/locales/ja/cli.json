@@ -182,7 +182,13 @@
     "costPerTaskLlmJudgeUnconfigured": "--llm-judge が指定されましたが llmJudge.endpoint/model が未設定のため、ジャッジをスキップします。",
     "reportTicket": "1 つのチケットキー (例: PROJ-123) に紐付くコスト/トークン/セッションと、期間のカバレッジを表示します",
     "taskClass": "セッションをタスククラスに分類して分布を表示します",
-    "taskClassLimit": "この実行で分類するセッション数の上限（再開可能）"
+    "taskClassLimit": "この実行で分類するセッション数の上限（再開可能）",
+    "ticket": "セッションの手動チケット関連付けをリンク・無効化・一覧表示します",
+    "ticketSessionArg": "セッション ID (または先頭部分)",
+    "ticketKeyArg": "チケットキー (例: PROJ-123)。他のフラグなしで省略した場合は現在のリンクを一覧表示します",
+    "ticketNegate": "このキーをセッションでトゥームストーン化します (抽出が一致し続けても抑制されます)",
+    "ticketRemove": "このキーの手動リンクを削除します (無効化のトゥームストーンには影響しません)",
+    "ticketList": "変更を適用する前にセッションのチケットリンクを一覧表示します"
   },
   "collection": {
     "collecting": "収集中...",
@@ -460,5 +466,14 @@
     "mixedVersions": "⚠  複数の分類器バージョン（{{versions}}）で分類されたセッションがあります。期間をまたいでクラスを比較する前に 'task-class' を再実行してください。",
     "confidenceMix": "信頼度: 高 {{high}}、中 {{medium}}、低 {{low}}",
     "caveat": "注意: 一致率は生成されたコーパスに対して測定されたものであり、実際の session に付与された人手ラベルではなく、ジェネレーターの意図を基準としています。詳細クラスはこの注意事項の下でのみレポート品質とみなせます。クラスごとの数値を引用する際は、必ずこの注意事項と上記の信頼度の内訳を併記するか、粗いクラスを使用してください。"
+  },
+  "ticket": {
+    "sessionNoLinks": "セッション {{sessionId}}: チケットリンクなし",
+    "sessionLinks": "セッション {{sessionId}}:",
+    "activeLabel": "有効",
+    "negatedLabel": "無効化済み",
+    "linked": "{{key}} をセッション {{sessionId}} にリンクしました",
+    "negated": "セッション {{sessionId}} の {{key}} を無効化しました (トゥームストーン化。自動抽出では復活しません)",
+    "removed": "セッション {{sessionId}} から手動リンク {{key}} を削除しました"
   }
 }

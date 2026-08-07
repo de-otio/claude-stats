@@ -182,7 +182,13 @@
     "costPerTaskByModel": "Break the metric down by dominant model",
     "costPerTaskCalibrate": "Output calibration metrics (proxy/signal agreement vs your labels) as JSON",
     "costPerTaskLlmJudge": "Run the opt-in LLM judge on ambiguous tasks (needs llmJudge config; sends a blinded task summary to your endpoint)",
-    "costPerTaskLlmJudgeUnconfigured": "--llm-judge requested but llmJudge.endpoint/model are not set; skipping the judge."
+    "costPerTaskLlmJudgeUnconfigured": "--llm-judge requested but llmJudge.endpoint/model are not set; skipping the judge.",
+    "ticket": "Link, negate, or list manual ticket attributions for a session",
+    "ticketSessionArg": "Session ID (or prefix)",
+    "ticketKeyArg": "Ticket key (e.g. PROJ-123). Omitted with no other flag: lists current links",
+    "ticketNegate": "Tombstone this key for the session (suppresses it even if extraction keeps matching)",
+    "ticketRemove": "Remove a manual link for this key (does not affect the negation tombstone)",
+    "ticketList": "List ticket links for the session before applying any change"
   },
   "collection": {
     "collecting": "Collecting...",
@@ -460,5 +466,14 @@
     "deleteNote": "Note: Other devices still have copies of synced data. Uninstall or purge on those devices separately if needed.",
     "muted": "Also unregistered from Claude Code MCP server. Restart Claude Code for changes to take effect.",
     "notSynced": "Your data is not synced. No cloud data to delete."
+  },
+  "ticket": {
+    "sessionNoLinks": "Session {{sessionId}}: no ticket links",
+    "sessionLinks": "Session {{sessionId}}:",
+    "activeLabel": "active",
+    "negatedLabel": "negated",
+    "linked": "Linked {{key}} to session {{sessionId}}",
+    "negated": "Negated {{key}} for session {{sessionId}} (tombstoned; automatic extraction will not resurrect it)",
+    "removed": "Removed manual link {{key}} from session {{sessionId}}"
   }
 }

@@ -182,7 +182,13 @@
     "costPerTaskLlmJudgeUnconfigured": "请求了 --llm-judge，但未配置 llmJudge.endpoint/model；跳过评判。",
     "reportTicket": "显示归属于某个工单编号（例如 PROJ-123）的费用/token/session，以及该时段的覆盖情况",
     "taskClass": "将 session 分类为任务类别并显示分布",
-    "taskClassLimit": "本次运行最多分类的 session 数（可恢复）"
+    "taskClassLimit": "本次运行最多分类的 session 数（可恢复）",
+    "ticket": "链接、屏蔽或列出会话的手动工单关联",
+    "ticketSessionArg": "会话 ID（或前缀）",
+    "ticketKeyArg": "工单标识（例如 PROJ-123）。省略且未指定其他标志时：列出当前链接",
+    "ticketNegate": "为该会话屏蔽此标识（即使提取仍能匹配也会将其抑制）",
+    "ticketRemove": "移除此标识的手动链接（不影响屏蔽标记）",
+    "ticketList": "在应用任何更改前列出该会话的工单链接"
   },
   "collection": {
     "collecting": "收集中...",
@@ -460,5 +466,14 @@
     "mixedVersions": "⚠  这些 session 由多个分类器版本（{{versions}}）分类。跨时间段比较类别前，请重新运行 'task-class'。",
     "confidenceMix": "置信度：{{high}} 高，{{medium}} 中，{{low}} 低",
     "caveat": "注意：一致性是针对生成的语料库测得的 — 依据的是生成器的意图，而非真实 session 上的人工标注。细粒度类别仅在此前提下可用于报告；引用任何单个类别的数据时，请连同本说明及上述置信度分布一并给出，或改用粗粒度类别。"
+  },
+  "ticket": {
+    "sessionNoLinks": "会话 {{sessionId}}：无工单链接",
+    "sessionLinks": "会话 {{sessionId}}：",
+    "activeLabel": "生效中",
+    "negatedLabel": "已屏蔽",
+    "linked": "已将 {{key}} 链接到会话 {{sessionId}}",
+    "negated": "已为会话 {{sessionId}} 屏蔽 {{key}}（已添加屏蔽标记；自动提取不会将其恢复）",
+    "removed": "已从会话 {{sessionId}} 移除手动链接 {{key}}"
   }
 }

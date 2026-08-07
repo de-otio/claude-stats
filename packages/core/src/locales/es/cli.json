@@ -182,7 +182,13 @@
     "costPerTaskLlmJudgeUnconfigured": "Se solicitó --llm-judge pero llmJudge.endpoint/model no están configurados; se omite el juez.",
     "reportTicket": "Mostrar coste/tokens/sesiones atribuidos a una clave de ticket (p. ej. PROJ-123), además de la cobertura del periodo",
     "taskClass": "Clasifica las sesiones en clases de tarea y muestra la distribución",
-    "taskClassLimit": "Clasificar como máximo este número de sesiones en esta ejecución (reanudable)"
+    "taskClassLimit": "Clasificar como máximo este número de sesiones en esta ejecución (reanudable)",
+    "ticket": "Vincular, anular o listar atribuciones manuales de tickets para una sesión",
+    "ticketSessionArg": "ID de sesión (o prefijo)",
+    "ticketKeyArg": "Clave del ticket (p. ej. PROJ-123). Si se omite sin ninguna otra opción: lista los vínculos actuales",
+    "ticketNegate": "Marcar esta clave como anulada (tombstone) en la sesión (la suprime aunque la extracción siga coincidiendo)",
+    "ticketRemove": "Eliminar un vínculo manual de esta clave (no afecta al tombstone de anulación)",
+    "ticketList": "Listar los vínculos de tickets de la sesión antes de aplicar cualquier cambio"
   },
   "collection": {
     "collecting": "Recopilando...",
@@ -460,5 +466,14 @@
     "mixedVersions": "⚠  Las sesiones se clasificaron con más de una versión del clasificador ({{versions}}). Vuelve a ejecutar 'task-class' antes de comparar clases de un periodo.",
     "confidenceMix": "confianza: {{high}} alta, {{medium}} media, {{low}} baja",
     "caveat": "Advertencia: la concordancia se midió frente a un corpus generado, es decir, frente a la intención del generador y no a etiquetas humanas sobre sesiones reales. Las clases detalladas solo tienen calidad de informe bajo esa advertencia; cite cualquier cifra por clase junto con ella y con la mezcla de confianza anterior, o utilice las clases generales."
+  },
+  "ticket": {
+    "sessionNoLinks": "Sesión {{sessionId}}: sin vínculos de tickets",
+    "sessionLinks": "Sesión {{sessionId}}:",
+    "activeLabel": "activo",
+    "negatedLabel": "anulado",
+    "linked": "Se vinculó {{key}} a la sesión {{sessionId}}",
+    "negated": "Se anuló {{key}} en la sesión {{sessionId}} (tombstone; la extracción automática no lo restaurará)",
+    "removed": "Se eliminó el vínculo manual {{key}} de la sesión {{sessionId}}"
   }
 }

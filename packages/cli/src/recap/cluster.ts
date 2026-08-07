@@ -23,6 +23,8 @@ export interface SegmentCluster {
   label?: string | null;
   /** When true, this cluster was hidden by a user correction. */
   hidden?: boolean;
+  /** Work-item key assigned by a 'ticket' correction, or null/undefined if none. */
+  ticketKey?: string | null;
 }
 
 /**
@@ -164,6 +166,8 @@ function applyCorrections(
         updated = { ...updated, label: action.label };
       } else if (action.kind === 'hide') {
         updated = { ...updated, hidden: true };
+      } else if (action.kind === 'ticket') {
+        updated = { ...updated, ticketKey: action.key };
       }
     }
 

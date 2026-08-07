@@ -2153,6 +2153,26 @@ export class Store {
     return rows[0]!;
   }
 
+  /**
+   * The most recently active non-deleted session, or null when the store is
+   * empty. "Active" is `COALESCE(last_timestamp, first_timestamp)` — the same
+   * ordering `getSessions({activeSince})` treats as membership — so "current
+   * session" for the dashboard's attribution card means the same session a
+   * period-scoped view would call most-recent, not an independent notion.
+   * Subagent sessions are excluded: they inherit their parent's ticket
+   * attribution rather than carrying their own correction UI.
+   */
+  getMostRecentSessionId(): string | null {
+    const stmt = this.db.prepare(
+      `SELECT session_id FROM sessions
+        WHERE source_deleted = 0 AND is_subagent = 0
+        ORDER BY COALESCE(last_timestamp, first_timestamp) DESC
+        LIMIT 1`,
+    );
+    const row = stmt.get() as { session_id: string } | undefined;
+    return row?.session_id ?? null;
+  }
+
   getSessionMessages(sessionId: string): MessageRow[] {
     const stmt = this.db.prepare(
       "SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp ASC"

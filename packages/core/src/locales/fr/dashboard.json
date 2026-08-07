@@ -488,5 +488,16 @@
       "underusing": "Vous utilisez moins que ce que couvre votre abonnement",
       "noPlan": "Aucun abonnement détecté — les coûts sont lus comme un usage facturé à la consommation"
     }
+  },
+  "ticketCard": {
+    "title": "Attribution de ticket",
+    "noSession": "Aucune session enregistrée pour l'instant — rien à lier.",
+    "session": "Session actuelle : {{sessionId}}…",
+    "noLinks": "Aucun lien de ticket pour cette session.",
+    "negatedBadge": "exclu",
+    "negateAction": "Exclure",
+    "removeAction": "Supprimer",
+    "linkAction": "Lier",
+    "keyPlaceholder": "PROJ-123"
   }
 }
