@@ -536,9 +536,12 @@ export function createMcpServer(store: Store): McpServer {
       "in `tickets` (never silently split), so per-ticket costs can sum to more than " +
       "`coverage.attributedCost` when ambiguity exists — read `coverage.ambiguousSessions`.\n\n" +
       "Pass `ticket` to drill into ONE key's evidence (which sessions, which source, " +
-      "which branch/commit matched) instead of the whole-window table. " +
-      "READ-ONLY: use the CLI `claude-stats ticket <session> <KEY>` (manual link) or " +
-      "`--negate` (tombstone a wrong automatic one) to correct attribution.",
+      "which branch/commit matched) instead of the whole-window table — the CLI " +
+      "equivalent is `claude-stats report --ticket <KEY>`.\n\n" +
+      "READ-ONLY, and attribution is fully automatic today: there is no CLI or MCP " +
+      "surface yet to manually link a session to a ticket, or to negate a wrong " +
+      "automatic one. If a linked key is wrong, say so rather than instructing the " +
+      "user to run a command that does not exist.",
     {
       ...dateRangeShape,
       project: z.string().optional()

@@ -305,6 +305,112 @@ export function getCommitSubjectsInWindow(projectPath: string, startMs: number, 
   return subjects.length <= MAX_SUBJECTS ? subjects : subjects.slice(0, MAX_SUBJECTS);
 }
 
+// ─── Memoized commit-subject lookup (ticket-attribution write path) ────────
+//
+// `runTicketExtraction` (ticketing/index.ts) calls `getCommitSubjectsInWindow`
+// once per upserted session — fine for incremental `collect`, but `backfill`
+// resets checkpoints and re-collects every session, fanning this out to one
+// BLOCKING `git log` subprocess per session file, with no reuse even when
+// many sessions in the same run share a project and a nearby time window.
+//
+// The fix: coarsen the requested window to a day-aligned UTC bucket, run ONE
+// `git log` per (project, bucket) — fetching commit TIMESTAMPS, not just
+// subjects, so the wider bucket's raw commits can still be filtered back down
+// to the caller's exact [startMs, endMs) — and cache that raw result. A
+// caller threading one `CommitSubjectsCache` through an entire `collect` run
+// (see `RunExtractionOptions.commitCache`) turns "N sessions in one project
+// on one day" into one subprocess instead of N, without changing which
+// commits any individual call sees (the bucket is always a superset of the
+// requested window; filtering by timestamp after the fact keeps the result
+// identical to calling the unmemoized function directly).
+
+interface RawCommit {
+  tsMs: number;
+  subject: string;
+}
+
+/** Day-aligned UTC bucket width. Matches `COMMIT_WINDOW_PAD_MS` in
+ *  ticketing/index.ts (both exist to smooth over "commit lands the morning
+ *  after"), so most same-project sessions from one working day collapse into
+ *  one bucket without widening any individual call's effective window by more
+ *  than a day on either side. */
+const CACHE_BUCKET_MS = 24 * 60 * 60 * 1000;
+
+function bucketBounds(startMs: number, endMs: number): [number, number] {
+  const bucketStart = Math.floor(startMs / CACHE_BUCKET_MS) * CACHE_BUCKET_MS;
+  const bucketEnd = Math.ceil(endMs / CACHE_BUCKET_MS) * CACHE_BUCKET_MS;
+  return [bucketStart, bucketEnd];
+}
+
+function fetchRawCommits(resolvedDir: string, startMs: number, endMs: number): RawCommit[] {
+  const startIso = new Date(startMs).toISOString();
+  const endIso = new Date(endMs).toISOString();
+  let rawOutput: string;
+  try {
+    rawOutput = execFileSync(
+      'git',
+      ['-C', resolvedDir, 'log', `--since=${startIso}`, `--until=${endIso}`, '--format=%ct|%s', '--'],
+      { encoding: 'utf8', maxBuffer: MAX_BUFFER },
+    );
+  } catch {
+    return [];
+  }
+  const commits: RawCommit[] = [];
+  for (const line of rawOutput.split('\n')) {
+    if (!line) continue;
+    const idx = line.indexOf('|');
+    if (idx < 0) continue;
+    const ct = parseInt(line.slice(0, idx), 10);
+    if (!Number.isFinite(ct)) continue;
+    const subject = line.slice(idx + 1).split('\n')[0]!.slice(0, MAX_SUBJECT_LEN);
+    commits.push({ tsMs: ct * 1000, subject });
+  }
+  return commits;
+}
+
+/** Opaque cache handle for {@link getCommitSubjectsInWindowCached}. Create ONE
+ *  per `collect` run via {@link createCommitSubjectsCache} and thread it
+ *  through every call so sessions sharing a project/day reuse one subprocess. */
+export interface CommitSubjectsCache {
+  readonly buckets: Map<string, RawCommit[]>;
+}
+
+export function createCommitSubjectsCache(): CommitSubjectsCache {
+  return { buckets: new Map() };
+}
+
+/**
+ * Memoized equivalent of {@link getCommitSubjectsInWindow}: same inputs,
+ * same output shape and ordering (newest-first, capped at `MAX_SUBJECTS`,
+ * each subject capped at `MAX_SUBJECT_LEN`) — but a `git log` subprocess is
+ * spawned at most once per (resolved project dir, day-aligned UTC bucket)
+ * across the lifetime of `cache`, not once per call.
+ */
+export function getCommitSubjectsInWindowCached(
+  cache: CommitSubjectsCache,
+  projectPath: string,
+  startMs: number,
+  endMs: number,
+): string[] {
+  const p = resolveGitDir(projectPath);
+  if (p === null) return [];
+
+  const [bucketStart, bucketEnd] = bucketBounds(startMs, endMs);
+  const cacheKey = `${p}::${bucketStart}::${bucketEnd}`;
+  let commits = cache.buckets.get(cacheKey);
+  if (commits === undefined) {
+    commits = fetchRawCommits(p, bucketStart, bucketEnd);
+    cache.buckets.set(cacheKey, commits);
+  }
+
+  const subjects = commits
+    .filter((c) => c.tsMs >= startMs && c.tsMs < endMs)
+    .map((c) => c.subject)
+    .filter((s) => s.length > 0);
+
+  return subjects.length <= MAX_SUBJECTS ? subjects : subjects.slice(0, MAX_SUBJECTS);
+}
+
 // ─── Windowed (multi-day) git provider ──────────────────────────────────────
 //
 // Performance: the per-day `getProjectGitActivity` above spawns FOUR

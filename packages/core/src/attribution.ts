@@ -76,13 +76,36 @@ export interface ExtractedLink {
   evidence: string | null;
 }
 
-/** Scan `text` for syntactically valid, allowlist-passing keys, in order of
- *  first appearance, each at most once. */
+/**
+ * Scan `text` for syntactically valid, allowlist-passing keys, in order of
+ * first appearance, each at most once.
+ *
+ * Case sensitivity is gated on whether a project-key allowlist is configured:
+ *
+ *  - **No allowlist**: stay UPPERCASE-only (today's behavior, unchanged).
+ *    Without an allowlist, nothing can tell `PROJ-123` from an unrelated
+ *    identifier of the same shape, so widening the scan to lowercase would
+ *    ALSO start matching `utf-8`, `sha-1`, `base-64`, `http-2` and similar —
+ *    real false positives with no allowlist to filter them back out.
+ *  - **Allowlist configured**: scan case-INSENSITIVELY, then let
+ *    `matchesProjectAllowlist` (below) do the filtering. This is what makes a
+ *    lowercase branch convention (`feature/proj-42-fix`) visible — a team
+ *    whose convention is lowercase would otherwise see a silent 0% coverage
+ *    (A2) — while staying precise: `utf-8`'s "UTF" prefix only survives if
+ *    "UTF" is itself a configured project key, which for a real Jira/Linear
+ *    allowlist it never will be. The allowlist is the safety net that makes
+ *    case-insensitivity a strict superset of the safe cases, never a source
+ *    of new false positives.
+ */
 function scanKeys(text: string, allowlist: readonly string[] | undefined): TicketKey[] {
   const seen = new Set<TicketKey>();
   const out: TicketKey[] = [];
-  for (const match of text.matchAll(/\b[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}\b/g)) {
-    const key = parseTicketKey(match[0]);
+  const hasAllowlist = allowlist !== undefined && allowlist.length > 0;
+  const re = hasAllowlist
+    ? /\b[A-Za-z][A-Za-z0-9]{1,9}-[0-9]{1,7}\b/g
+    : /\b[A-Z][A-Z0-9]{1,9}-[0-9]{1,7}\b/g;
+  for (const match of text.matchAll(re)) {
+    const key = parseTicketKey(match[0]); // uppercases + re-validates shape
     if (!key) continue;
     if (!matchesProjectAllowlist(key, allowlist)) continue;
     if (seen.has(key)) continue;

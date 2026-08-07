@@ -2162,6 +2162,22 @@ export class Store {
   }
 
   /**
+   * `uuid` + `prompt_text` only, for one session's non-null-prompt messages, in
+   * the same ORDER BY timestamp ASC as `getSessionMessages` (callers depend on
+   * encounter order — see ticket-attribution's `collectSignal`). A4: ticket
+   * extraction (`runTicketExtraction`) only ever reads these two columns, but
+   * called `getSessionMessages` (`SELECT *`) — `prompt_text` is the largest
+   * column in the table, and every other column it pulled back was discarded
+   * immediately. This is the targeted read.
+   */
+  getSessionPromptTexts(sessionId: string): Array<{ uuid: string; prompt_text: string }> {
+    const stmt = this.db.prepare(
+      "SELECT uuid, prompt_text FROM messages WHERE session_id = ? AND prompt_text IS NOT NULL AND prompt_text != '' ORDER BY timestamp ASC"
+    );
+    return stmt.all(sessionId) as Array<{ uuid: string; prompt_text: string }>;
+  }
+
+  /**
    * Per-session MAX(uuid) over messages whose timestamp is in [startMs, endMs),
    * for the given session ids. Used by the recap snapshot-hash to compute
    * per-session and global last-message-uuid WITHOUT fetching every message row
@@ -2425,6 +2441,11 @@ export class Store {
     source: string;
     confidence: string;
   }> {
+    // A5: without an ORDER BY, equal-cost tickets resolve in SQLite's
+    // unspecified scan order — a latent flake for any test/caller indexing
+    // `tickets[0]`. (session_id, ticket_key, source) is the table's own
+    // PRIMARY KEY, so ordering by all three is a deterministic total order:
+    // no two rows can tie.
     return this.db
       .prepare(
         `SELECT tl.session_id, tl.ticket_key, tl.source, tl.confidence
@@ -2435,7 +2456,8 @@ export class Store {
                WHERE tn.session_id = tl.session_id
                  AND tn.ticket_key = tl.ticket_key
                  AND tn.negated = 1
-            )`,
+            )
+          ORDER BY tl.session_id, tl.ticket_key, tl.source`,
       )
       .all() as Array<{ session_id: string; ticket_key: string; source: string; confidence: string }>;
   }

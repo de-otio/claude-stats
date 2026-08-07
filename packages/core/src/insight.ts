@@ -94,9 +94,27 @@ export function costCaveat(mode: AccountMode, opts: { reconciledRatio?: number |
   return parts.length > 0 ? capitalize(parts.join("; ")) + "." : "Actual metered cost.";
 }
 
-/** Confidence-tier summary, e.g. "72% high · 21% medium · 7% low confidence". */
+/**
+ * Confidence-tier summary, e.g. "72% high · 21% medium · 7% low confidence".
+ *
+ * When there IS spend in the window but NONE of it attributed (0% coverage),
+ * a bare zero is a silent-wrong-number risk (I1): it reads identically
+ * whether ticket attribution is unconfigured, misconfigured (e.g. a
+ * lowercase branch convention outside the case-sensitive-without-allowlist
+ * default — see `scanKeys` in `attribution.ts`), or genuinely has no
+ * ticket-linked work this period. Surface the enablement path instead of
+ * returning null, so the caller never renders "0%" with no explanation.
+ * `totalCost <= 0` (no spend at all) stays null — there's nothing to enable.
+ */
 export function confidenceCaveat(coverage: TicketCoverage): string | null {
-  if (coverage.attributedCost <= 0) return null;
+  if (coverage.attributedCost <= 0) {
+    return coverage.totalCost > 0
+      ? "No spend attributed to ticket keys this period — check that branch names, " +
+        "commit subjects, or prompts contain a key like PROJ-123, and that " +
+        "config.tickets.projectKeys lists your team's prefix (required for a " +
+        "lowercase or mixed-case convention to be picked up)."
+      : null;
+  }
   const order: Confidence[] = ["high", "medium", "low"];
   const parts = order
     .filter((c) => (coverage.byConfidence[c] ?? 0) > 0)
