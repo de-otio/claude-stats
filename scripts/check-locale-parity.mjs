@@ -45,6 +45,43 @@ function flatten(obj, prefix = "", out = new Map()) {
   return out;
 }
 
+/**
+ * CLDR plural-category suffixes, as i18next v4 spells them (`key_one`,
+ * `key_few`, …).
+ *
+ * These need special handling because **plural sets are not the same size in
+ * every language**. English has two categories (`one`, `other`); Polish,
+ * Russian and Ukrainian have four (`one`, `few`, `many`, `other`) and select
+ * `few` for 2–4 and `many` for 5+. A strict key-for-key comparison against `en`
+ * therefore rejects exactly the keys those languages are *required* to have —
+ * and that is not hypothetical: it silently shipped English sentences to three
+ * locales on the dashboard's default tab, because i18next found no `_few` and
+ * fell through to the fallback language.
+ */
+const PLURAL_SUFFIXES = ["zero", "one", "two", "few", "many", "other"];
+
+/** Split `foo.bar_few` into `{ base: "foo.bar", category: "few" }`, else null. */
+function splitPlural(key) {
+  const i = key.lastIndexOf("_");
+  if (i <= 0) return null;
+  const category = key.slice(i + 1);
+  if (!PLURAL_SUFFIXES.includes(category)) return null;
+  return { base: key.slice(0, i), category };
+}
+
+/**
+ * The plural categories a locale actually uses, from the runtime's own CLDR
+ * data — never a hardcoded table, which would rot as locales are added.
+ * Falls back to the English pair if the locale tag is unknown to Intl.
+ */
+function pluralCategories(locale) {
+  try {
+    return new Set(new Intl.PluralRules(locale).resolvedOptions().pluralCategories);
+  } catch {
+    return new Set(["one", "other"]);
+  }
+}
+
 /** Return the sorted list of `{{name}}` placeholders in a string. */
 function placeholders(value) {
   if (typeof value !== "string") return [];
@@ -115,11 +152,45 @@ function compareLocale(refLocale, otherLocale, localesDir) {
     const refMap = flatten(refJson);
     const otherMap = flatten(otherJson);
 
+    // Every plural base `en` declares, so a locale's extra categories for that
+    // same base can be recognised as required rather than rejected as noise.
+    const refPluralBases = new Set();
     for (const key of refMap.keys()) {
-      if (!otherMap.has(key)) problems.push(`${file}: missing key "${key}"`);
+      const p = splitPlural(key);
+      if (p) refPluralBases.add(p.base);
     }
+    const otherCategories = pluralCategories(otherLocale);
+
+    for (const key of refMap.keys()) {
+      if (otherMap.has(key)) continue;
+      const p = splitPlural(key);
+      // A category `en` has and this locale does not (e.g. `en` needs no
+      // `_few`) is not a gap — the locale cannot use a form its grammar
+      // lacks. `other` is always required: i18next's final fallback.
+      if (p && p.category !== "other" && !otherCategories.has(p.category)) continue;
+      problems.push(`${file}: missing key "${key}"`);
+    }
+
+    // The categories this locale must supply for each plural base, beyond what
+    // `en` happens to spell. Reported as missing, because a Slavic locale
+    // without `_few` renders English at count 2 — the defect this check exists
+    // to catch, and the one a naive key-for-key comparison caused.
+    for (const base of refPluralBases) {
+      for (const category of otherCategories) {
+        const key = `${base}_${category}`;
+        if (!otherMap.has(key)) {
+          problems.push(`${file}: missing plural form "${key}" (${otherLocale} uses the "${category}" category)`);
+        }
+      }
+    }
+
     for (const key of otherMap.keys()) {
-      if (!refMap.has(key)) problems.push(`${file}: extra key "${key}"`);
+      if (refMap.has(key)) continue;
+      const p = splitPlural(key);
+      // A plural variant of a base `en` declares, in a category this locale
+      // genuinely uses, is required — not extra.
+      if (p && refPluralBases.has(p.base) && otherCategories.has(p.category)) continue;
+      problems.push(`${file}: extra key "${key}"`);
     }
 
     // Shared keys: check placeholders and codicons.
