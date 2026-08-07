@@ -32,6 +32,10 @@ import type { SessionRecord, MessageRecord } from "@claude-stats/core/types";
 const PROJECTS = ["/w/alpha", "/w/beta", "/w/gamma"];
 const TICKETS = ["PROJ-1", "PROJ-2", "CORE-77"];
 const TAGS = ["refactor", "hotfix"];
+/** Fine task classes seeded below (schema V21). */
+const TASK_CLASSES = ["debug", "greenfield", "explore", "unknown"];
+/** Their coarse images — the second V21 dimension. */
+const COARSE_CLASSES = ["diagnose", "build", "support", "unknown"];
 const T0 = 1_700_000_000_000;
 
 function tmpDb(): string {
@@ -121,6 +125,23 @@ function seed(store: Store): void {
       });
     }
     if (i % 4 === 0) store.addTag(id, TAGS[i % TAGS.length]!);
+    // Task classes (V21). Session 7 is deliberately left UNCLASSIFIED so the
+    // generated filters exercise the "matches neither dimension" path — an
+    // unclassified session must be excluded by both halves alike, not folded
+    // into whichever class the filter names.
+    if (i !== 7) {
+      const fine = TASK_CLASSES[i % TASK_CLASSES.length]!;
+      store.setTaskClass({
+        sessionId: id,
+        taskClass: fine,
+        coarseClass: COARSE_CLASSES[i % TASK_CLASSES.length]!,
+        confidence: fine === "unknown" ? "low" : "medium",
+        rule: fine === "unknown" ? "below-threshold" : "diagnosis",
+        abstainReason: fine === "unknown" ? "below-threshold" : null,
+        classifierVersion: 1,
+        classifiedAt: T0,
+      });
+    }
   }
   // A tombstone: s0 is linked to PROJ-1 by branch, but the user says otherwise.
   store.negateTicketLink("s0", "PROJ-1");
@@ -151,6 +172,8 @@ describe("filter symmetry — getSessions vs buildMessageFilter", () => {
         projectPath: fc.option(fc.constantFrom(...PROJECTS), { nil: undefined }),
         ticket: fc.option(fc.constantFrom(...TICKETS), { nil: undefined }),
         tag: fc.option(fc.constantFrom(...TAGS), { nil: undefined }),
+        taskClass: fc.option(fc.constantFrom(...TASK_CLASSES), { nil: undefined }),
+        coarseTaskClass: fc.option(fc.constantFrom(...COARSE_CLASSES), { nil: undefined }),
         since: fc.option(fc.integer({ min: T0 - 3_600_000, max: T0 + 9 * 3_600_000 }), {
           nil: undefined,
         }),
@@ -173,6 +196,8 @@ describe("filter symmetry — getSessions vs buildMessageFilter", () => {
               projectPath: filter.projectPath,
               ticket: filter.ticket,
               tag: filter.tag,
+              taskClass: filter.taskClass,
+              coarseTaskClass: filter.coarseTaskClass,
               activeSince: filter.since,
               until: filter.until,
               includeCI: true,
@@ -219,6 +244,71 @@ describe("filter symmetry — getSessions vs buildMessageFilter", () => {
     expect(
       store.getSessions({ ticket: "PROJ-1", includeCI: true, includeDeleted: true }).map((s) => s.session_id),
     ).not.toContain("s0");
+  });
+
+  it("taskClass narrows both halves identically", () => {
+    const messageHalf = store
+      .getSessionIdsWithMessages({ taskClass: "debug", includeCI: true, includeDeleted: true })
+      .sort();
+    const sessionHalf = store
+      .getSessions({ taskClass: "debug", includeCI: true, includeDeleted: true })
+      .map((s) => s.session_id)
+      .sort();
+    expect(messageHalf.length).toBeGreaterThan(0);
+    expect(messageHalf).toEqual(sessionHalf);
+  });
+
+  it("coarseTaskClass narrows both halves identically", () => {
+    const messageHalf = store
+      .getSessionIdsWithMessages({ coarseTaskClass: "build", includeCI: true, includeDeleted: true })
+      .sort();
+    const sessionHalf = store
+      .getSessions({ coarseTaskClass: "build", includeCI: true, includeDeleted: true })
+      .map((s) => s.session_id)
+      .sort();
+    expect(messageHalf.length).toBeGreaterThan(0);
+    expect(messageHalf).toEqual(sessionHalf);
+  });
+
+  it("an UNCLASSIFIED session is excluded by both halves, never folded into a class", () => {
+    // s7 has no V21 row. If either half fell back to "no row means include",
+    // a per-class cost figure would quietly price work the classifier never
+    // placed — the fabricated-attribution failure the honesty invariant bans.
+    expect(store.getTaskClass("s7")).toBeNull();
+    for (const cls of TASK_CLASSES) {
+      expect(
+        store.getSessionIdsWithMessages({ taskClass: cls, includeCI: true, includeDeleted: true }),
+      ).not.toContain("s7");
+      expect(
+        store.getSessions({ taskClass: cls, includeCI: true, includeDeleted: true }).map((s) => s.session_id),
+      ).not.toContain("s7");
+    }
+    for (const cls of COARSE_CLASSES) {
+      expect(
+        store.getSessionIdsWithMessages({ coarseTaskClass: cls, includeCI: true, includeDeleted: true }),
+      ).not.toContain("s7");
+    }
+  });
+
+  it("prices nothing for a task class that no session carries", () => {
+    const filter: MessageFilter = { taskClass: "config-chore", includeCI: true, includeDeleted: true };
+    expect(store.getSessionIdsWithMessages(filter)).toEqual([]);
+    expect(store.getMessageTotals(filter)).toEqual([]);
+  });
+
+  it("the two class dimensions compose (fine ∧ coarse) in both halves alike", () => {
+    // A contradictory pair must yield the empty set in BOTH halves — not the
+    // union, and not one half's answer.
+    const contradiction: MessageFilter = {
+      taskClass: "debug",
+      coarseTaskClass: "support",
+      includeCI: true,
+      includeDeleted: true,
+    };
+    expect(store.getSessionIdsWithMessages(contradiction)).toEqual([]);
+    expect(
+      store.getSessions({ taskClass: "debug", coarseTaskClass: "support", includeCI: true, includeDeleted: true }),
+    ).toEqual([]);
   });
 
   it("tag now narrows the message half too (it previously did not)", () => {

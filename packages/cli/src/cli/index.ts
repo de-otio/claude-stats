@@ -11,6 +11,7 @@ import { loadConfig, saveConfig, createJudgeProviderFromConfig, ticketProjectKey
 import { checkThresholds } from "../alerts.js";
 import { formatCost } from "@claude-stats/core/pricing";
 import { buildDashboard } from "../dashboard/index.js";
+import { runTaskClassPass } from "../task-class/index.js";
 import { renderDashboard } from "../server/template.js";
 import { writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
@@ -685,6 +686,68 @@ export async function buildCli(): Promise<Command> {
         for (const { tag, count } of tagCounts) {
           const label = t("cli:tag.tagCount", { count });
           console.log(`${tag.padEnd(20)} (${count} ${label})`);
+        }
+      } finally {
+        store.close();
+      }
+    });
+
+  program
+    .command("task-class")
+    .description(t("cli:commands.taskClass"))
+    .option("--limit <n>", t("cli:commands.taskClassLimit"))
+    .action((opts: { limit?: string }) => {
+      const store = new Store();
+      try {
+        const limit = opts.limit ? Number.parseInt(opts.limit, 10) : undefined;
+        const run = runTaskClassPass(store, {
+          ...(limit !== undefined && Number.isFinite(limit) ? { limit } : {}),
+        });
+        console.log(
+          t("cli:taskClass.passSummary", {
+            classified: run.classified,
+            alreadyCurrent: run.alreadyCurrent,
+            remaining: run.remaining,
+            version: run.version,
+          }),
+        );
+
+        const counts = store.getTaskClassCounts();
+        const total = counts.fine.reduce((sum, r) => sum + r.n, 0);
+        if (total === 0) {
+          console.log(t("cli:taskClass.noSessions"));
+          return;
+        }
+
+        console.log(`\n${t("cli:taskClass.fineHeader")}`);
+        for (const row of counts.fine) {
+          console.log(`  ${row.task_class.padEnd(22)} ${String(row.n).padStart(6)}`);
+        }
+        console.log(`\n${t("cli:taskClass.coarseHeader")}`);
+        for (const row of counts.coarse) {
+          console.log(`  ${row.coarse_class.padEnd(22)} ${String(row.n).padStart(6)}`);
+        }
+        if (counts.abstain.length > 0) {
+          console.log(`\n${t("cli:taskClass.abstainHeader")}`);
+          for (const row of counts.abstain) {
+            console.log(`  ${row.abstain_reason.padEnd(22)} ${String(row.n).padStart(6)}`);
+          }
+        }
+        // The coverage denominator is not optional output: a per-class table
+        // without it implies a completeness it does not have.
+        console.log(
+          `\n${t("cli:taskClass.coverage", { classified: total, unclassified: counts.unclassified })}`,
+        );
+
+        // A store classified by two rule sets cannot anchor a before/after
+        // comparison — say so rather than letting the mixture pass silently.
+        const versions = store.getTaskClassVersions();
+        if (versions.length > 1) {
+          console.warn(
+            t("cli:taskClass.mixedVersions", {
+              versions: versions.map((v) => `v${v.classifier_version} (${v.n})`).join(", "),
+            }),
+          );
         }
       } finally {
         store.close();

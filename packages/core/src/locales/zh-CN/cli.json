@@ -175,7 +175,9 @@
     "costPerTaskCalibrate": "以 JSON 输出校准指标（代理/信号与你的标签的一致性）",
     "costPerTaskLlmJudge": "对模糊任务运行可选的 LLM 评判（需要 llmJudge 配置；会将匿名化的任务摘要发送到你的端点）",
     "costPerTaskLlmJudgeUnconfigured": "请求了 --llm-judge，但未配置 llmJudge.endpoint/model；跳过评判。",
-    "reportTicket": "显示归属于某个工单编号（例如 PROJ-123）的费用/token/session，以及该时段的覆盖情况"
+    "reportTicket": "显示归属于某个工单编号（例如 PROJ-123）的费用/token/session，以及该时段的覆盖情况",
+    "taskClass": "将 session 分类为任务类别并显示分布",
+    "taskClassLimit": "本次运行最多分类的 session 数（可恢复）"
   },
   "collection": {
     "collecting": "收集中...",
@@ -440,5 +442,14 @@
     "deviceRemoved": "Device '{{name}}' removed.",
     "newDeviceDetected": "New device detected in sync group: {{name}} ({{id}}). Review in settings.",
     "mergeConflict": "Merge conflict resolved using latest timestamp."
+  },
+  "taskClass": {
+    "passSummary": "已分类 {{classified}} 个 session；{{alreadyCurrent}} 个已是最新，{{remaining}} 个待处理（分类器 v{{version}}）。",
+    "noSessions": "尚未分类任何 session — 请先运行 'collect'。",
+    "fineHeader": "按任务类别：",
+    "coarseHeader": "按粗粒度类别：",
+    "abstainHeader": "未进行分类：",
+    "coverage": "覆盖率：已分类 {{classified}} 个 session，{{unclassified}} 个尚未分类。",
+    "mixedVersions": "⚠  这些 session 由多个分类器版本（{{versions}}）分类。跨时间段比较类别前，请重新运行 'task-class'。"
   }
 }

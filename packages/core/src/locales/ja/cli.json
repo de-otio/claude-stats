@@ -175,7 +175,9 @@
     "costPerTaskCalibrate": "キャリブレーション指標（プロキシ/シグナルとラベルの一致度）を JSON で出力する",
     "costPerTaskLlmJudge": "曖昧なタスクに対してオプションの LLM ジャッジを実行する（llmJudge 設定が必要; 匿名化したタスク要約をエンドポイントに送信）",
     "costPerTaskLlmJudgeUnconfigured": "--llm-judge が指定されましたが llmJudge.endpoint/model が未設定のため、ジャッジをスキップします。",
-    "reportTicket": "1 つのチケットキー (例: PROJ-123) に紐付くコスト/トークン/セッションと、期間のカバレッジを表示します"
+    "reportTicket": "1 つのチケットキー (例: PROJ-123) に紐付くコスト/トークン/セッションと、期間のカバレッジを表示します",
+    "taskClass": "セッションをタスククラスに分類して分布を表示します",
+    "taskClassLimit": "この実行で分類するセッション数の上限（再開可能）"
   },
   "collection": {
     "collecting": "収集中...",
@@ -440,5 +442,14 @@
     "deviceRemoved": "Device '{{name}}' removed.",
     "newDeviceDetected": "New device detected in sync group: {{name}} ({{id}}). Review in settings.",
     "mergeConflict": "Merge conflict resolved using latest timestamp."
+  },
+  "taskClass": {
+    "passSummary": "{{classified}} 件のセッションを分類しました。{{alreadyCurrent}} 件は最新、残り {{remaining}} 件です（分類器 v{{version}}）。",
+    "noSessions": "分類済みのセッションがありません — 先に 'collect' を実行してください。",
+    "fineHeader": "タスククラス別:",
+    "coarseHeader": "大分類別:",
+    "abstainHeader": "分類を見送り:",
+    "coverage": "カバレッジ: {{classified}} 件のセッションが分類済み、{{unclassified}} 件は未分類です。",
+    "mixedVersions": "⚠  複数の分類器バージョン（{{versions}}）で分類されたセッションがあります。期間をまたいでクラスを比較する前に 'task-class' を再実行してください。"
   }
 }

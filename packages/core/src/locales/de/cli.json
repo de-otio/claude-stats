@@ -175,7 +175,9 @@
     "costPerTaskCalibrate": "Kalibrierungsmetriken (Übereinstimmung von Proxy/Signal mit deinen Labels) als JSON ausgeben",
     "costPerTaskLlmJudge": "Den optionalen LLM-Richter für mehrdeutige Aufgaben ausführen (benötigt llmJudge-Konfiguration; sendet eine anonymisierte Aufgabenzusammenfassung an deinen Endpunkt)",
     "costPerTaskLlmJudgeUnconfigured": "--llm-judge angefordert, aber llmJudge.endpoint/model sind nicht gesetzt; Richter wird übersprungen.",
-    "reportTicket": "Kosten/Tokens/Sessions anzeigen, die einem Ticket-Key (z. B. PROJ-123) zugeordnet sind, samt Abdeckung des Zeitraums"
+    "reportTicket": "Kosten/Tokens/Sessions anzeigen, die einem Ticket-Key (z. B. PROJ-123) zugeordnet sind, samt Abdeckung des Zeitraums",
+    "taskClass": "Sessions in Aufgabenklassen klassifizieren und die Verteilung anzeigen",
+    "taskClassLimit": "Höchstens so viele Sessions in diesem Durchlauf klassifizieren (fortsetzbar)"
   },
   "collection": {
     "collecting": "Erfassung läuft...",
@@ -440,5 +442,14 @@
     "deviceRemoved": "Device '{{name}}' removed.",
     "newDeviceDetected": "New device detected in sync group: {{name}} ({{id}}). Review in settings.",
     "mergeConflict": "Merge conflict resolved using latest timestamp."
+  },
+  "taskClass": {
+    "passSummary": "{{classified}} Session(s) klassifiziert; {{alreadyCurrent}} bereits aktuell, {{remaining}} verbleibend (Klassifizierer v{{version}}).",
+    "noSessions": "Noch keine Sessions klassifiziert – zuerst 'collect' ausführen.",
+    "fineHeader": "Nach Aufgabenklasse:",
+    "coarseHeader": "Nach Grobklasse:",
+    "abstainHeader": "Klassifizierung abgelehnt:",
+    "coverage": "Abdeckung: {{classified}} Session(s) klassifiziert, {{unclassified}} noch nicht klassifiziert.",
+    "mixedVersions": "⚠  Sessions wurden mit mehr als einer Klassifizierer-Version ({{versions}}) klassifiziert. Führen Sie 'task-class' erneut aus, bevor Sie Klassen über einen Zeitraum hinweg vergleichen."
   }
 }

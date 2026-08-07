@@ -119,6 +119,10 @@
     "./types/insight": {
       "types": "./dist/types/insight.d.ts",
       "default": "./dist/types/insight.js"
+    },
+    "./taskClass": {
+      "types": "./dist/taskClass/index.d.ts",
+      "default": "./dist/taskClass/index.js"
     }
   },
   "scripts": {

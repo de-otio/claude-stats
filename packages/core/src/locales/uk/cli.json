@@ -175,7 +175,9 @@
     "costPerTaskCalibrate": "Вивести метрики калібрування (узгодженість проксі/сигналів з вашими мітками) у форматі JSON",
     "costPerTaskLlmJudge": "Запустити опціонального LLM-суддю для неоднозначних завдань (потребує налаштування llmJudge; надсилає знеособлену зведену інформацію про завдання на ваш ендпоінт)",
     "costPerTaskLlmJudgeUnconfigured": "Запитано --llm-judge, але llmJudge.endpoint/model не задані; суддю пропущено.",
-    "reportTicket": "Показати вартість/токени/сесії, віднесені до одного ключа тікета (напр. PROJ-123), а також покриття за період"
+    "reportTicket": "Показати вартість/токени/сесії, віднесені до одного ключа тікета (напр. PROJ-123), а також покриття за період",
+    "taskClass": "Класифікувати сесії за класами задач і показати розподіл",
+    "taskClassLimit": "Класифікувати не більше ніж стільки сесій за цей запуск (з можливістю продовження)"
   },
   "collection": {
     "collecting": "Збирання...",
@@ -440,5 +442,14 @@
     "deviceRemoved": "Device '{{name}}' removed.",
     "newDeviceDetected": "New device detected in sync group: {{name}} ({{id}}). Review in settings.",
     "mergeConflict": "Merge conflict resolved using latest timestamp."
+  },
+  "taskClass": {
+    "passSummary": "Класифіковано сесій: {{classified}}; {{alreadyCurrent}} вже актуальні, {{remaining}} залишилося (класифікатор v{{version}}).",
+    "noSessions": "Ще немає класифікованих сесій — спочатку виконайте 'collect'.",
+    "fineHeader": "За класом задачі:",
+    "coarseHeader": "За узагальненим класом:",
+    "abstainHeader": "Відмова від класифікації:",
+    "coverage": "Покриття: класифіковано сесій — {{classified}}, ще не класифіковано — {{unclassified}}.",
+    "mixedVersions": "⚠  Сесії класифіковано різними версіями класифікатора ({{versions}}). Повторно виконайте 'task-class' перед порівнянням класів за період."
   }
 }
