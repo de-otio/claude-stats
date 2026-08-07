@@ -94,6 +94,38 @@ describe("compareConstraintImpact — sample-size gate", () => {
     expect(c!.avgCostAfter).toBe(5);
   });
 
+  it("a floor that is not a number cannot DISABLE the gate (NaN < NaN is false)", () => {
+    // Regression: `--min-sessions abc` → `Number("abc")` → NaN → `n < NaN` is
+    // false for every n, so a one-session-per-side class was reported
+    // `verdict: "compared"` with a delta computed on n=1, while the
+    // `minSessionsPerClass` that "travels with the figure" serialised to
+    // JSON `null`. A gate that vanishes on bad input still claims to have
+    // gated — the exact I1 failure this report is built to avoid.
+    const before = classOf("b", 1, () => ({ cost: 100 }));
+    const after = classOf("a", 1, () => ({ cost: 1 }));
+    const taskClassBySession = classify([...before, ...after]);
+    const report = compareConstraintImpact(before, after, taskClassBySession, POLICY, {
+      minSessionsPerClass: Number("abc"),
+    });
+
+    const [c] = report.classes;
+    expect(c!.verdict).toBe("insufficient-data");
+    expect(c!.tokenSavingsAtAfterVolume).toBeNull();
+    expect(report.minSessionsPerClass).toBe(DEFAULT_MIN_SESSIONS_PER_CLASS);
+    expect(Number.isFinite(report.minSessionsPerClass)).toBe(true);
+  });
+
+  it("a floor below one is not a floor — falls back to the default rather than gating on nothing", () => {
+    const before = classOf("b", 1, () => ({ cost: 100 }));
+    const after = classOf("a", 1, () => ({ cost: 1 }));
+    const taskClassBySession = classify([...before, ...after]);
+    const report = compareConstraintImpact(before, after, taskClassBySession, POLICY, {
+      minSessionsPerClass: 0,
+    });
+    expect(report.classes[0]!.verdict).toBe("insufficient-data");
+    expect(report.minSessionsPerClass).toBe(DEFAULT_MIN_SESSIONS_PER_CLASS);
+  });
+
   it("a custom minSessionsPerClass changes the gate", () => {
     const before = classOf("b", 3, () => ({ cost: 10 }));
     const after = classOf("a", 3, () => ({ cost: 5 }));
@@ -177,6 +209,32 @@ describe("compareConstraintImpact — the metric channels", () => {
 
     const totalTurns = 20 + 2 + 5 * (DEFAULT_MIN_SESSIONS_PER_CLASS - 2);
     expect(report.classes[0]!.toolErrorRateBefore).toBeCloseTo(2 / totalTurns, 10);
+  });
+
+  it("reports a real tool-error-rate trend when both sides have a denominator", () => {
+    const before = classOf("b", DEFAULT_MIN_SESSIONS_PER_CLASS, () => ({ turns: 10, toolErrors: 5 }));
+    const after = classOf("a", DEFAULT_MIN_SESSIONS_PER_CLASS, () => ({ turns: 10, toolErrors: 1 }));
+    const taskClassBySession = classify([...before, ...after]);
+    const report = compareConstraintImpact(before, after, taskClassBySession, POLICY);
+
+    const [c] = report.classes;
+    expect(c!.toolErrorRateBefore).toBeCloseTo(0.5, 10);
+    expect(c!.toolErrorRateAfter).toBeCloseTo(0.1, 10);
+    expect(c!.toolErrorRateTrend).toBe("down");
+  });
+
+  it("abstains on the tool-error-rate trend when a side has no denominator, rather than reading it as zero", () => {
+    // Zero turns on the after side means there is no rate to compare — not a
+    // rate of 0%. Treating the missing denominator as 0 would manufacture a
+    // "down" (improved) trend out of absent data.
+    const before = classOf("b", DEFAULT_MIN_SESSIONS_PER_CLASS, () => ({ turns: 10, toolErrors: 5 }));
+    const after = classOf("a", DEFAULT_MIN_SESSIONS_PER_CLASS, () => ({ turns: 0, toolErrors: 0 }));
+    const taskClassBySession = classify([...before, ...after]);
+    const report = compareConstraintImpact(before, after, taskClassBySession, POLICY);
+
+    const [c] = report.classes;
+    expect(c!.toolErrorRateAfter).toBeNull();
+    expect(c!.toolErrorRateTrend).toBe("unknown");
   });
 
   it("excludes null activeDurationMs from the average rather than treating it as zero", () => {
@@ -310,6 +368,49 @@ describe("compareConstraintImpact — two-sided reporting", () => {
     expect(report.classes.map((c) => c.classKey).sort()).toEqual(["debug", "greenfield"]);
     expect(report.classesCompared).toBe(1);
     expect(report.classesInsufficientData).toBe(1);
+  });
+
+  it("orders classes deterministically by classKey, whatever order the rows arrive in", () => {
+    const build = (prefix: string) => classOf(prefix, DEFAULT_MIN_SESSIONS_PER_CLASS, () => ({}));
+    const keys: Array<[string, ConstraintImpactClassification["fine"]]> = [
+      ["z", "review"],
+      ["a", "debug"],
+      ["m", "greenfield"],
+    ];
+    const taskClassBySession = new Map<string, ConstraintImpactClassification>();
+    const before: ConstraintImpactSessionRow[] = [];
+    const after: ConstraintImpactSessionRow[] = [];
+    for (const [prefix, fine] of keys) {
+      const b = build(`${prefix}b`);
+      const a = build(`${prefix}a`);
+      for (const r of [...b, ...a]) taskClassBySession.set(r.sessionId, { fine, coarse: "build", confidence: "high" });
+      before.push(...b);
+      after.push(...a);
+    }
+    const report = compareConstraintImpact(before, after, taskClassBySession, POLICY);
+    // NOT `.sort()`ed by the assertion — the ordering under test is the
+    // report's own, so a dropped sort in the engine has to show up here.
+    expect(report.classes.map((c) => c.classKey)).toEqual(["debug", "greenfield", "review"]);
+  });
+
+  it("publishes the active-minutes coverage denominator on an ABSTAINING class too", () => {
+    // The abstaining row still reports how many of its sessions had a usable
+    // `active_duration_ms` — the denominator a reader needs to judge why the
+    // class abstained, and the one place a coverage count is computed on a
+    // path the compared-row assertions never touch.
+    const before = [
+      ...classOf("b-known", 2, () => ({ activeDurationMs: 60_000 })),
+      session({ sessionId: "b-null", activeDurationMs: null }),
+    ];
+    const after = classOf("a", 1, () => ({ activeDurationMs: null }));
+    const taskClassBySession = classify([...before, ...after]);
+    const report = compareConstraintImpact(before, after, taskClassBySession, POLICY);
+
+    const [c] = report.classes;
+    expect(c!.verdict).toBe("insufficient-data");
+    expect(c!.nBefore).toBe(3);
+    expect(c!.activeMinutesCoverageBefore).toBe(2);
+    expect(c!.activeMinutesCoverageAfter).toBe(0);
   });
 
   it("carries a confound caveat and the not-measured scope list on every report", () => {

@@ -175,6 +175,16 @@ describe("renderDashboard", () => {
     expect(html).toContain("model-removal");
     expect(html).toContain("opus");
     expect(html).toContain(t("dashboard:charts.policyEvents"));
+    // Placement, not just presence: a substring assertion over the whole
+    // document passes just as happily with the annotation parked under some
+    // other chart. Pin it between the daily canvas and the next card's title.
+    const canvasAt = html.indexOf('id="chart-daily"');
+    const annotationAt = html.indexOf(t("dashboard:charts.policyEvents"));
+    const nextCardAt = html.indexOf(t("dashboard:charts.tokenBreakdown"));
+    expect(canvasAt).toBeGreaterThan(-1);
+    expect(nextCardAt).toBeGreaterThan(-1);
+    expect(annotationAt).toBeGreaterThan(canvasAt);
+    expect(annotationAt).toBeLessThan(nextCardAt);
   });
 
   it("renders nothing extra when no policy events are declared or attached", () => {

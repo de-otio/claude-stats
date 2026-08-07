@@ -450,7 +450,14 @@ function compareOneClass(
     turnsTrend: trendOf(avgTurnsAfter, avgTurnsBefore),
     toolErrorRateBefore,
     toolErrorRateAfter,
-    toolErrorRateTrend: trendOf(toolErrorRateAfter ?? 0, toolErrorRateBefore),
+    // `?? 0` here would read a MISSING after-side rate (no turns at all on
+    // that side, so no denominator) as "the error rate fell to zero" — a
+    // favourable trend manufactured out of absent data. Abstain instead, the
+    // same way `activeMinutesTrend` and `medianResponseTrend` below do (I1).
+    toolErrorRateTrend:
+      toolErrorRateBefore !== null && toolErrorRateAfter !== null
+        ? trendOf(toolErrorRateAfter, toolErrorRateBefore)
+        : "unknown",
     avgActiveMinutesBefore,
     avgActiveMinutesAfter,
     activeMinutesTrend:
@@ -487,6 +494,25 @@ export interface CompareConstraintImpactOptions {
 }
 
 /**
+ * The abstention floor, or the default when the caller handed over something
+ * that cannot BE a floor.
+ *
+ * `NaN` is the case that matters: `Number("abc")` is NaN, `NaN ?? default` is
+ * NaN (it is not nullish), and every `n < NaN` comparison is false — so a
+ * non-numeric floor arriving from a CLI flag would silently DISABLE the
+ * sample-size gate, mark a class with one session per side `"compared"`, and
+ * publish a delta computed on n=1 next to a `minSessionsPerClass` that
+ * serialises to JSON `null`. A floor that vanishes on bad input is worse than
+ * no floor at all, because the verdict still claims to have been gated (I1).
+ * A floor below 1 is likewise not a floor.
+ */
+function resolveMinSessionsPerClass(raw: number | undefined): number {
+  if (raw === undefined) return DEFAULT_MIN_SESSIONS_PER_CLASS;
+  if (!Number.isFinite(raw) || raw < 1) return DEFAULT_MIN_SESSIONS_PER_CLASS;
+  return Math.floor(raw);
+}
+
+/**
  * Compare the sessions either side of a declared policy boundary, per task
  * class. Pure; the full table, including insufficient-data rows — see
  * `ClassImpactComparison`'s doc comment.
@@ -498,7 +524,7 @@ export function compareConstraintImpact(
   policyEvent: PolicyEvent,
   opts: CompareConstraintImpactOptions = {},
 ): ConstraintImpactReport {
-  const minSessionsPerClass = opts.minSessionsPerClass ?? DEFAULT_MIN_SESSIONS_PER_CLASS;
+  const minSessionsPerClass = resolveMinSessionsPerClass(opts.minSessionsPerClass);
   const hourlyRate = opts.hourlyRate ?? null;
   const currency = opts.currency ?? "USD";
   const boundaryMs = parsePolicyEventBoundaryMs(policyEvent.date);

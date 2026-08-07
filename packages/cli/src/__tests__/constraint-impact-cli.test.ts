@@ -152,6 +152,18 @@ describe("claude-stats constraint-impact (CLI verb, end-to-end)", () => {
     expect(data).toHaveProperty("notMeasured");
   });
 
+  it("refuses a non-numeric --min-sessions instead of silently dropping the sample-size gate", async () => {
+    loadConfigMock.mockReturnValue({
+      policyEvents: [{ date: "2026-05-01", kind: "model-removal", detail: "opus", scope: "org" }],
+    });
+    await run(["--min-sessions", "abc"]);
+    const message = errorSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("\n");
+    expect(message).toContain("--min-sessions");
+    // Nothing printed: no report may be published under a floor that isn't one.
+    const writeSpy = process.stdout.write as unknown as ReturnType<typeof vi.fn>;
+    expect(writeSpy.mock.calls).toHaveLength(0);
+  });
+
   it("writes the CSV export when --csv is given", async () => {
     loadConfigMock.mockReturnValue({
       policyEvents: [{ date: "2026-05-01", kind: "model-removal", detail: "opus", scope: "org" }],

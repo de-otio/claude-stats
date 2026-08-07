@@ -373,6 +373,24 @@ export async function buildCli(): Promise<Command> {
         return;
       }
 
+      // A non-numeric --min-sessions must not reach the engine: `Number("abc")`
+      // is NaN, and every `n < NaN` is false, so the sample-size gate would
+      // silently stop gating while the report still claimed to have been
+      // gated. Refuse rather than quietly substituting the default — the user
+      // asked for a specific floor and is entitled to know they did not get it.
+      let minSessionsPerClass: number | undefined;
+      if (opts.minSessions !== undefined) {
+        const parsed = Number(opts.minSessions);
+        if (!Number.isFinite(parsed) || parsed < 1) {
+          console.error(
+            `--min-sessions must be a whole number of sessions >= 1 (got "${opts.minSessions}").`,
+          );
+          process.exitCode = 1;
+          return;
+        }
+        minSessionsPerClass = Math.floor(parsed);
+      }
+
       const { buildConstraintImpactReport } = await import("../constraintImpact/index.js");
       const { renderConstraintImpactCsv } = await import("@claude-stats/core/constraintImpact");
       const toBoundMs = (d: string | undefined): number | undefined =>
@@ -386,7 +404,7 @@ export async function buildCli(): Promise<Command> {
           accountUuid: opts.account,
           since: toBoundMs(opts.since),
           until: toBoundMs(opts.until),
-          minSessionsPerClass: opts.minSessions ? Number(opts.minSessions) : undefined,
+          minSessionsPerClass,
           rateOverrides: config.pricing?.rates,
           hourlyRate: config.rate?.hourly ?? null,
           currency: config.rate?.currency ?? "USD",
