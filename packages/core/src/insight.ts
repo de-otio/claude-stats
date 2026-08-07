@@ -37,18 +37,57 @@ import type {
 // ─── Primitives ───────────────────────────────────────────────────────────────
 
 /** Fixed-locale money formatting. Deliberately not `toLocaleString` with a
- *  runtime locale — the pack must not change shape with the machine it ran on. */
-export function formatMoney(amount: number, currency = "USD"): string {
+ *  runtime locale — the pack must not change shape with the machine it ran on.
+ *
+ *  `opts.precise` keeps two decimal places regardless of magnitude, for
+ *  surfaces read closely rather than glanced at (the justification pack's
+ *  per-ticket table, its CSV export). Default (`precise` unset/false) is the
+ *  glanceable form: whole dollars once the amount reaches 100. Both branches
+ *  route through this one function so no surface can silently diverge on
+ *  what a given number of cents renders as (I-1). */
+export function formatMoney(amount: number, currency = "USD", opts: { precise?: boolean } = {}): string {
   const symbol = currency === "USD" ? "$" : currency === "EUR" ? "€" : `${currency} `;
-  const rounded = Math.abs(amount) >= 100 ? Math.round(amount).toString() : amount.toFixed(2);
+  // I-6: a positive amount that rounds to "0.00" at 2 decimals is real, priced
+  // spend, not nothing — stating it as an exact zero is more confident than
+  // the basis supports. Every `formatMoney` call site gets this for free
+  // rather than each surface needing to remember to special-case it.
+  if (amount > 0 && amount < 0.005) return `<${symbol}0.01`;
+  const rounded = opts.precise
+    ? amount.toFixed(2)
+    : Math.abs(amount) >= 100
+      ? Math.round(amount).toString()
+      : amount.toFixed(2);
   const withSeparators = rounded.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return `${symbol}${withSeparators}`;
 }
 
-/** Percentage with no decimals; null renders as an em dash, never as "0%". */
-export function formatPercent(ratio: number | null): string {
+/**
+ * CSV-cell money: a plain decimal string (no symbol, no thousands separator)
+ * so ordinary amounts stay numeric-parseable in a spreadsheet — but, same
+ * honesty rule as `formatMoney` (I-6), a positive amount never collapses to
+ * a bare "0.00". Real generated output once emitted
+ * `unclassified,2026-01,0.00,1` for a session with genuine priced tokens;
+ * this widens the precision just far enough to show the amount is non-zero,
+ * rather than lying by omission the way a plain `toFixed(2)` does.
+ */
+export function formatMoneyCsv(amount: number): string {
+  if (amount > 0 && amount < 0.005) {
+    for (let decimals = 3; decimals <= 6; decimals++) {
+      const s = amount.toFixed(decimals);
+      if (Number(s) > 0) return s;
+    }
+    return amount.toFixed(6);
+  }
+  return amount.toFixed(2);
+}
+
+/** Percentage; null renders as an em dash, never as "0%". `decimals` defaults
+ *  to 0 (glanceable); the pack passes 1 for its closer-read tables — still
+ *  the same rounding/em-dash rule, so it can never format "0%" for a null
+ *  ratio the way a hand-rolled percent formatter could. */
+export function formatPercent(ratio: number | null, decimals = 0): string {
   if (ratio === null || !Number.isFinite(ratio)) return "—";
-  return `${Math.round(ratio * 100)}%`;
+  return `${(ratio * 100).toFixed(decimals)}%`;
 }
 
 /**

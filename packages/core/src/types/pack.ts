@@ -53,6 +53,12 @@ export interface PackNonTicketRow {
   readonly taskClass: TaskClass | "unclassified";
   readonly cost: number;
   readonly sessionCount: number;
+  /** The classifier's own confidence tier for this bucket (cost-weighted
+   *  majority when a class mixes tiers), or null when the sessions in it were
+   *  never classified at all (the `unclassified` bucket) — a bare number with
+   *  no tier is a different honesty gap than one that's low-confidence, and
+   *  the two must not collapse into the same rendering (I-5). */
+  readonly confidence: Confidence | null;
 }
 
 export interface PackReconciliation {
@@ -76,6 +82,23 @@ export interface PackHeadline {
    *  reworded, so the pack and the dashboard never disagree. */
   readonly costCaveatText: string;
   readonly reconciliation: PackReconciliation | null;
+  /** Configured monthly plan fee — populated only in `mode: "plan"`, null for
+   *  metered accounts or when no fee is configured (I-4: previously computed
+   *  by the caller and discarded, so a plan-mode pack never stated the one
+   *  number a manager comparing plan against metered actually needs). */
+  readonly planFee: number | null;
+  /** True when any priced usage this period fell back to first-party rates —
+   *  the same signal `costCaveatText`'s prose already carries, exposed as a
+   *  raw flag too so a CSV/appendix reader gets it without parsing a sentence. */
+  readonly anyFallbackRates: boolean;
+  /** Tokens whose model had no pricing row this period, carried through from
+   *  `TicketCostReport.unknownTokens` (I-3) — a pack that hides this is the
+   *  one surface silently understating spend that every other surface caveats. */
+  readonly unknownTokens: number;
+  /** Attributed cost split by evidence tier, as a fraction of attributedCost
+   *  (sums to 1). Null when there is no attributed cost to split. The same
+   *  mix `coverageCaveat`'s prose describes, exposed as numbers for the CSV. */
+  readonly confidenceMix: Readonly<Record<Confidence, number>> | null;
 }
 
 /** A policy event as it may appear in the pack — `detail` deliberately
@@ -101,11 +124,24 @@ export interface PackUnavailableSections {
   readonly calibration: string | null;
 }
 
+/**
+ * What this generation was filtered to — null in either field means "no
+ * filter", not "unknown" (I-2). Rendered prominently in every surface of the
+ * pack (headline meta line, all three CSVs, methodology appendix) so a
+ * project- or account-scoped pack is never textually indistinguishable from
+ * one covering the whole machine.
+ */
+export interface PackScope {
+  readonly projectPath: string | null;
+  readonly accountUuid: string | null;
+}
+
 export interface JustificationPackModel {
   /** Epoch ms, injected — core never calls `Date.now()`, so a pack
    *  regenerated later from the same inputs is byte-identical. */
   readonly generatedAt: number;
   readonly period: { readonly since: number; readonly until: number; readonly label: string };
+  readonly scope: PackScope;
   readonly sections: readonly JustificationPackSectionId[];
   readonly headline: PackHeadline;
   /** Null when "tickets" was not opted into this generation. */

@@ -27,7 +27,7 @@ import {
   renderSummaryCsv,
   renderTicketsCsv,
 } from "@claude-stats/core/pack";
-import type { AccountMode } from "@claude-stats/core/types/insight";
+import type { AccountMode, Confidence } from "@claude-stats/core/types/insight";
 import type { JustificationPackModel, JustificationPackSectionId } from "@claude-stats/core/types/pack";
 
 export { ALL_PACK_SECTIONS, DEFAULT_PACK_SECTIONS, PACK_SCHEMA_VERSION };
@@ -119,19 +119,28 @@ export function buildJustificationPack(store: Store, config: Config, opts: PackG
     accountUuid: opts.accountUuid,
   });
 
-  const nonTicketByClass = new Map<string, { cost: number; sessionCount: number }>();
+  // byConfidence tracks the CLASSIFIER's own confidence for the sessions in
+  // each bucket (cost-weighted) — separate from ticket-attribution confidence
+  // — so the non-ticket table/CSV can report which tier dominates a class
+  // rather than presenting every bucket as equally certain (I-5).
+  const nonTicketByClass = new Map<
+    string,
+    { cost: number; sessionCount: number; byConfidence: Record<Confidence, number> }
+  >();
   for (const s of report.unattributedSessions) {
     const row = store.getTaskClass(s.sessionId);
     const key = row ? row.task_class : "unclassified";
-    const cur = nonTicketByClass.get(key) ?? { cost: 0, sessionCount: 0 };
+    const cur = nonTicketByClass.get(key) ?? { cost: 0, sessionCount: 0, byConfidence: { high: 0, medium: 0, low: 0 } };
     cur.cost += s.cost;
     cur.sessionCount += 1;
+    if (row) cur.byConfidence[row.confidence as Confidence] += s.cost;
     nonTicketByClass.set(key, cur);
   }
 
   const model = buildJustificationPackModel({
     generatedAt: now(),
     period,
+    scope: { projectPath: opts.projectPath ?? null, accountUuid: opts.accountUuid ?? null },
     sections,
     headline: {
       mode,
@@ -141,6 +150,8 @@ export function buildJustificationPack(store: Store, config: Config, opts: PackG
       reconciledInvoiceTotal: config.reconciliation?.invoiceTotal ?? null,
       reconciliationTolerance: (config.reconciliation?.tolerancePercent ?? 5) / 100,
       anyFallbackRates: report.anyFallbackRates,
+      planFee,
+      unknownTokens: report.unknownTokens,
     },
     tickets: report.tickets,
     nonTicketByClass,
@@ -174,6 +185,17 @@ export interface WrittenPack extends PackGenerateResult {
  * one HTML document plus the CSV bundle (05 §5.1: "self-contained HTML …
  * A CSV bundle alongside"). Directory, not a single file, so the bundle is
  * one thing to attach or `zip`.
+ *
+ * I-7 (write-path decision, recorded rather than left implicit): the MCP
+ * tool that calls this (`generate_justification_pack`) is the one exception
+ * to the read-only convention every other tool follows, and that is judged
+ * acceptable here — producing files IS this tool's entire purpose; the other
+ * thirteen tools return data because their purpose is answering questions.
+ * The scope of the exception is kept narrow rather than opened up: `outDir`
+ * is resolved to an absolute path (never silently relative to whatever the
+ * MCP server process's cwd happens to be — an agent-supplied relative path
+ * has no reliable meaning there) and every write lands under a single
+ * `claude-stats-pack-<period>` subdirectory of it, never scattered files.
  */
 export function generateJustificationPack(
   store: Store,
@@ -182,7 +204,7 @@ export function generateJustificationPack(
   outDir: string = process.cwd(),
 ): WrittenPack {
   const result = buildJustificationPack(store, config, opts);
-  const dir = path.join(outDir, `claude-stats-pack-${result.model.period.label}`);
+  const dir = path.join(path.resolve(outDir), `claude-stats-pack-${result.model.period.label}`);
   fs.mkdirSync(dir, { recursive: true });
   const htmlPath = path.join(dir, "report.html");
   const ticketsCsvPath = path.join(dir, "tickets.csv");
