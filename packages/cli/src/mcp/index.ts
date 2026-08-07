@@ -728,6 +728,64 @@ export function createMcpServer(store: Store): McpServer {
     },
   );
 
+  // ── generate_justification_pack ───────────────────────────────────────────
+  server.tool(
+    "generate_justification_pack",
+    "Generate the justification pack: a self-contained HTML document plus a CSV bundle " +
+      "for one calendar month, written to local disk — the artifact a developer hands to " +
+      "a manager who does not run claude-stats. Equivalent to `claude-stats pack --period " +
+      "<YYYY-MM>`. Runs the SAME redaction the org-sync plane uses (never prompt text, file " +
+      "paths, or session ids) — stricter than the local dashboard, because this document " +
+      "leaves the machine.\n\n" +
+      "Sections are opt-in (`sections`, comma-separated): headline, tickets, nonticket, " +
+      "hygiene, constraint, calibration. Default: headline,tickets,nonticket — the smallest " +
+      "complete pack. `hygiene`/`constraint`/`calibration` are accepted but currently render " +
+      "an honest 'not available in this build' block, since those detectors/engines are not " +
+      "shipped yet — never a fabricated number.\n\n" +
+      "Returns the written file paths, not the document content — read the HTML/CSV files " +
+      "directly if you need to inspect what was generated.",
+    {
+      period: z.string().regex(/^\d{4}-\d{2}$/).describe("Calendar month, YYYY-MM"),
+      sections: z.string().optional()
+        .describe("Comma-separated: headline,tickets,nonticket,hygiene,constraint,calibration"),
+      timezone: z.string().optional().describe("IANA timezone for month bucketing (default: local)"),
+      project: z.string().optional().describe("Filter to a specific project path"),
+      account: z.string().optional().describe("Filter to a specific account UUID (full or prefix match)"),
+      outDir: z.string().optional().describe("Directory to write the pack bundle into (default: current directory)"),
+    },
+    async ({ period, sections, timezone, project, account, outDir }) => {
+      const resolved = resolveAccountFilter(store, account);
+      if (!resolved.ok) return formatResult({ error: resolved.error });
+      const { generateJustificationPack, parseSections } = await import("../pack/index.js");
+      const { loadConfig } = await import("../config.js");
+      try {
+        const written = generateJustificationPack(
+          store,
+          loadConfig(),
+          {
+            period,
+            timezone,
+            sections: parseSections(sections),
+            projectPath: project,
+            accountUuid: resolved.accountUuid,
+          },
+          outDir ?? process.cwd(),
+        );
+        return formatResult({
+          dir: written.dir,
+          htmlPath: written.htmlPath,
+          ticketsCsvPath: written.ticketsCsvPath,
+          nonTicketCsvPath: written.nonTicketCsvPath,
+          summaryCsvPath: written.summaryCsvPath,
+          sections: written.model.sections,
+          totalCost: written.model.headline.totalCost,
+        });
+      } catch (err) {
+        return formatResult({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
+
   // ── get_account_info ──────────────────────────────────────────────────────
   server.tool(
     "get_account_info",

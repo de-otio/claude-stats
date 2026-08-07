@@ -11,9 +11,11 @@ export default defineConfig({
       // `/` boundary, so the bare alias would otherwise shadow the subpaths.
       "@claude-stats/core/types/shard": path.resolve(__dirname, "packages/core/src/types/shard.ts"),
       "@claude-stats/core/types/insight": path.resolve(__dirname, "packages/core/src/types/insight.ts"),
+      "@claude-stats/core/types/pack": path.resolve(__dirname, "packages/core/src/types/pack.ts"),
       "@claude-stats/core/tickets": path.resolve(__dirname, "packages/core/src/tickets.ts"),
       "@claude-stats/core/attribution": path.resolve(__dirname, "packages/core/src/attribution.ts"),
       "@claude-stats/core/insight": path.resolve(__dirname, "packages/core/src/insight.ts"),
+      "@claude-stats/core/pack": path.resolve(__dirname, "packages/core/src/pack.ts"),
       "@claude-stats/core/taskClass": path.resolve(__dirname, "packages/core/src/taskClass/index.ts"),
       "@claude-stats/core/hygiene": path.resolve(__dirname, "packages/core/src/hygiene/index.ts"),
       "@claude-stats/core/bundle": path.resolve(__dirname, "packages/core/src/bundle/index.ts"),

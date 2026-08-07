@@ -133,6 +133,11 @@
     "reportTag": "Sitzungen nach Tag filtern",
     "reportSession": "Detailansicht einer einzelnen Sitzung anzeigen",
     "reportHtml": "Eigenständigen HTML-Bericht in eine Datei schreiben",
+    "pack": "Das Rechtfertigungspaket erzeugen: ein eigenständiges HTML-Dokument plus ein CSV-Bündel für einen Kalendermonat, für Leser ohne claude-stats",
+    "packPeriod": "Kalendermonat für den Bericht, JJJJ-MM (erforderlich)",
+    "packSections": "Kommagetrennte Abschnitte: headline,tickets,nonticket,hygiene,constraint,calibration (Standard: headline,tickets,nonticket)",
+    "packOut": "Verzeichnis, in das das Paket-Bündel geschrieben wird (Standard: aktuelles Verzeichnis)",
+    "packJson": "Geschriebene Dateipfade als JSON statt einer Zusammenfassungszeile ausgeben",
     "status": "Datenbankgröße, Zeilenanzahl und letzte Erfassungszeit anzeigen",
     "export": "Daten als CSV oder JSON exportieren",
     "exportFormat": "Ausgabeformat: csv oder json (Standard: json)",
@@ -234,6 +239,7 @@
     "resultsFound_one": "{{count}} Ergebnis gefunden.",
     "resultsFound_other": "{{count}} Ergebnisse gefunden.",
     "wroteFile": "{{file}} geschrieben",
+    "wrotePack": "Rechtfertigungspaket geschrieben nach {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
     "planValueUsed": "Plan: {{planFee}}/Monat → {{percent}}% des Planwerts in diesem Zeitraum genutzt",
     "trendColumnDay": "Tag",
     "trendColumnWeek": "Woche",
@@ -336,7 +342,8 @@
   "errors": {
     "cannotCombineHtml": "--html kann nicht mit --trend oder --detail kombiniert werden",
     "cannotCombineTrendDetail": "--trend und --detail können nicht kombiniert werden",
-    "invalidDateRange": "Ungültiger Zeitraum: {{message}}"
+    "invalidDateRange": "Ungültiger Zeitraum: {{message}}",
+    "invalidPackPeriod": "Ungültiger Paketzeitraum: {{message}}"
   },
   "repair": {
     "description": "Repariert abgeleitete Daten, die die normale Erfassung nicht rückwirkend beheben kann.",
