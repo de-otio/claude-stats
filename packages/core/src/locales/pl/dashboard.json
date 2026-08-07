@@ -10,7 +10,8 @@
     "energy": "Energia",
     "settings": "Ustawienia",
     "classify": "Klasyfikuj",
-    "spending": "Wydatki"
+    "spending": "Wydatki",
+    "insights": "Wnioski"
   },
   "toolbar": {
     "period": "Okres:",
@@ -468,5 +469,24 @@
     "splitHint": "Podział przypisuje koszt każdej sesji do konta, które ją faktycznie uruchomiło. Użyj go dla projektów współdzielonych między subskrypcjami (np. gdy limit jednego planu nie wystarcza).",
     "apply": "Zastosuj",
     "applying": "Stosowanie..."
+  },
+  "insights": {
+    "lede": "Pięć pytań, dla których powstało to narzędzie. Każda karta prowadzi do dowodów.",
+    "cards": {
+      "cost": "Ile kosztowała AI?",
+      "bought": "Co za to uzyskano?",
+      "efficiency": "Czy to było efektywne?",
+      "setup": "Czy konfiguracja jest właściwa?",
+      "change": "Co należy zmienić?"
+    },
+    "alerts": {
+      "fallbackRates": "Część użycia wyceniono stawkami first-party na platformie partnerskiej (Bedrock lub Vertex). Wszystkie kwoty tutaj są szacunkami, dopóki nie skonfigurujesz stawek partnera.",
+      "action": "Sprawdź"
+    },
+    "verdict": {
+      "goodValue": "Twój plan jest opłacalny przy tym poziomie użycia",
+      "underusing": "Wykorzystujesz mniej, niż obejmuje Twój plan",
+      "noPlan": "Nie wykryto planu — koszty są traktowane jako rozliczenie za zużycie"
+    }
   }
 }

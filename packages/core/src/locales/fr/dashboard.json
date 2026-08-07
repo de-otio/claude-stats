@@ -10,7 +10,8 @@
     "energy": "Énergie",
     "settings": "Paramètres",
     "classify": "Classer",
-    "spending": "Dépenses"
+    "spending": "Dépenses",
+    "insights": "Analyses"
   },
   "toolbar": {
     "period": "Période :",
@@ -468,5 +469,24 @@
     "splitHint": "La répartition attribue le coût de chaque session au compte qui l'a réellement exécutée. Utilisez-la pour les projets partagés entre abonnements (p. ex. lorsque la limite d'un forfait ne suffit pas).",
     "apply": "Appliquer",
     "applying": "Application..."
+  },
+  "insights": {
+    "lede": "Les cinq questions auxquelles cet outil existe pour répondre. Chaque carte renvoie à ses preuves.",
+    "cards": {
+      "cost": "Combien l'IA a-t-elle coûté ?",
+      "bought": "Qu'est-ce que cela a apporté ?",
+      "efficiency": "Était-ce efficace ?",
+      "setup": "La configuration est-elle la bonne ?",
+      "change": "Que faut-il changer ?"
+    },
+    "alerts": {
+      "fallbackRates": "Une partie de l'usage a été tarifée aux tarifs first-party sur une plateforme partenaire (Bedrock ou Vertex). Tous les montants indiqués ici sont des estimations tant que les tarifs partenaires ne sont pas configurés.",
+      "action": "Examiner"
+    },
+    "verdict": {
+      "goodValue": "Votre abonnement est rentable au vu de votre usage",
+      "underusing": "Vous utilisez moins que ce que couvre votre abonnement",
+      "noPlan": "Aucun abonnement détecté — les coûts sont lus comme un usage facturé à la consommation"
+    }
   }
 }

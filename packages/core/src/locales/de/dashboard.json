@@ -10,7 +10,8 @@
     "energy": "Energie",
     "settings": "Einstellungen",
     "classify": "Klassifizieren",
-    "spending": "Ausgaben"
+    "spending": "Ausgaben",
+    "insights": "Erkenntnisse"
   },
   "toolbar": {
     "period": "Zeitraum:",
@@ -468,5 +469,24 @@
     "splitHint": "Beim Aufteilen bleiben die Kosten jeder Session bei dem Konto, das sie tatsächlich ausgeführt hat. Verwenden Sie es für Projekte, die über mehrere Abonnements hinweg geteilt werden (z. B. wenn das Limit eines Plans nicht ausreicht).",
     "apply": "Anwenden",
     "applying": "Wird angewendet…"
+  },
+  "insights": {
+    "lede": "Die fünf Fragen, für deren Beantwortung dieses Tool existiert. Jede Karte verlinkt auf ihre Belege.",
+    "cards": {
+      "cost": "Was hat KI gekostet?",
+      "bought": "Was hat es gebracht?",
+      "efficiency": "War es effizient?",
+      "setup": "Stimmt das Setup?",
+      "change": "Was sollte sich ändern?"
+    },
+    "alerts": {
+      "fallbackRates": "Ein Teil der Nutzung wurde auf einer Partner-Plattform (Bedrock oder Vertex) zu Erstanbieter-Preisen berechnet. Alle Kostenangaben hier sind Schätzungen, bis Partner-Preise konfiguriert sind.",
+      "action": "Prüfen"
+    },
+    "verdict": {
+      "goodValue": "Ihr Abo ist bei dieser Nutzung ein gutes Preis-Leistungs-Verhältnis",
+      "underusing": "Sie nutzen weniger, als Ihr Abo abdeckt",
+      "noPlan": "Kein Abo erkannt — Kosten werden als nutzungsbasierte Abrechnung gelesen"
+    }
   }
 }

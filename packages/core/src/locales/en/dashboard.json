@@ -10,7 +10,8 @@
     "efficiency": "Efficiency",
     "energy": "Energy",
     "settings": "Settings",
-    "classify": "Classify"
+    "classify": "Classify",
+    "insights": "Insights"
   },
   "classify": {
     "title": "Classify your projects",
@@ -467,6 +468,25 @@
       "default_effort_down": "Reduce the default effort tier",
       "cache_hygiene": "Improve cache hygiene to cut repeated tokens",
       "stop_after_repairs": "Stop sessions after repairs complete"
+    }
+  },
+  "insights": {
+    "lede": "The five questions this tool exists to answer. Each card links to its evidence.",
+    "cards": {
+      "cost": "What did AI cost?",
+      "bought": "What did it buy?",
+      "efficiency": "Was it efficient?",
+      "setup": "Is the setup right?",
+      "change": "What should change?"
+    },
+    "alerts": {
+      "fallbackRates": "Some usage was priced at first-party rates on a partner platform (Bedrock or Vertex). Every cost figure here is an estimate until partner rates are configured.",
+      "action": "Review"
+    },
+    "verdict": {
+      "goodValue": "Your plan is good value for how much you use it",
+      "underusing": "You are using less than your plan covers",
+      "noPlan": "No plan detected — costs are read as metered usage"
     }
   }
 }

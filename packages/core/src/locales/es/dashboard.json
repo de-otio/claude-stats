@@ -10,7 +10,8 @@
     "energy": "Energía",
     "settings": "Configuración",
     "classify": "Clasificar",
-    "spending": "Gasto"
+    "spending": "Gasto",
+    "insights": "Perspectivas"
   },
   "toolbar": {
     "period": "Periodo:",
@@ -468,5 +469,24 @@
     "splitHint": "Dividir mantiene el coste de cada sesión con la cuenta que realmente la ejecutó. Úsalo para proyectos compartidos entre suscripciones (p. ej., cuando el límite de un plan no es suficiente).",
     "apply": "Aplicar",
     "applying": "Aplicando..."
+  },
+  "insights": {
+    "lede": "Las cinco preguntas para las que existe esta herramienta. Cada tarjeta enlaza con sus pruebas.",
+    "cards": {
+      "cost": "¿Cuánto costó la IA?",
+      "bought": "¿Qué se obtuvo?",
+      "efficiency": "¿Fue eficiente?",
+      "setup": "¿Es correcta la configuración?",
+      "change": "¿Qué debería cambiar?"
+    },
+    "alerts": {
+      "fallbackRates": "Parte del uso se tarificó con tarifas de primera parte en una plataforma asociada (Bedrock o Vertex). Todas las cifras de coste aquí son estimaciones hasta que se configuren las tarifas del socio.",
+      "action": "Revisar"
+    },
+    "verdict": {
+      "goodValue": "Tu plan tiene buena relación calidad-precio para lo que lo usas",
+      "underusing": "Estás usando menos de lo que cubre tu plan",
+      "noPlan": "No se detectó ningún plan — los costes se leen como uso medido"
+    }
   }
 }

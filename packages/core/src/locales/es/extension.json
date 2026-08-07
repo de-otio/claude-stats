@@ -255,6 +255,23 @@
           "body": "La clasificación de proyectos está disponible en el panel de VS Code; el panel de control servido en el navegador no la ofrece."
         }
       ]
+    },
+    "insights": {
+      "title": "Perspectivas",
+      "sections": [
+        {
+          "heading": "Qué estás viendo",
+          "body": "Las cinco preguntas de negocio para las que existe esta herramienta: cuánto costó la IA, qué se obtuvo, si fue eficiente, si la configuración es correcta y qué debería cambiar. Una frase y una cifra por cada una, con enlace a las pruebas."
+        },
+        {
+          "heading": "Tarjetas que dicen que no pueden responder",
+          "body": "Una tarjeta sin datos indica qué falta y cómo habilitarlo, en lugar de mostrar un widget vacío o un cero inventado. En una instalación nueva la mayoría empieza así, y cada una nombra el siguiente paso."
+        },
+        {
+          "heading": "La franja de avisos",
+          "body": "Se muestra solo cuando algo requiere atención de verdad, y es deliberadamente discreta: un aviso que salta con ruido te enseña a ignorar la franja."
+        }
+      ]
     }
   },
   "panel": {

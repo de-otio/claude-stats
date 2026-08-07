@@ -122,6 +122,7 @@ describe("nav — single tab definition for both hosts", () => {
     const partial = stub({ spending: {} as DashboardData["spending"] });
     const visible = visibleNavTabs(partial).map((t) => t.id);
     expect(visible).toEqual([
+      "insights",
       "overview",
       "spending",
       "projects",

@@ -186,8 +186,9 @@ export async function buildCli(): Promise<Command> {
           };
           if (opts.html) {
             const data = buildDashboard(store, reportOpts);
-            const { attachCostPerTask } = await import("../dashboard/index.js");
+            const { attachCostPerTask, attachInsights } = await import("../dashboard/index.js");
             await attachCostPerTask(store, data, reportOpts);
+            attachInsights(store, data, reportOpts, loadConfig());
             // Pass the CLI translator so the exported HTML is localized; without
             // it every label (not just this card) renders as a raw i18n key.
             const html = renderDashboard(data, t);
@@ -818,8 +819,9 @@ export async function buildCli(): Promise<Command> {
           repoUrl: opts.repo,
         };
         const data = buildDashboard(store, dashOpts);
-        const { attachCostPerTask } = await import("../dashboard/index.js");
+        const { attachCostPerTask, attachInsights } = await import("../dashboard/index.js");
         await attachCostPerTask(store, data, dashOpts);
+        attachInsights(store, data, dashOpts, loadConfig());
         console.log(JSON.stringify(data, null, 2));
       } catch (err) {
         if (err instanceof RangeError) {

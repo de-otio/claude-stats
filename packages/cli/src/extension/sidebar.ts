@@ -7,7 +7,7 @@
 import * as vscode from "vscode";
 import { getNonce, escapeHtml } from "./utils.js";
 import { t } from "./i18n.js";
-import { NAV_TAB_IDS } from "../server/nav.js";
+import { NAV_TAB_IDS, DEFAULT_NAV_TAB } from "../server/nav.js";
 
 /** Known tab IDs for help content lookup — derived from the single nav
  *  definition in `server/nav.ts` so this list can't drift from the tab bar
@@ -18,7 +18,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = "claude-stats.dashboardView";
 
   private view?: vscode.WebviewView;
-  private currentTab = "overview";
+  // The help panel opens on whatever tab the dashboard opens on; hardcoding
+  // "overview" here would show Overview help beside the Insights tab.
+  private currentTab: string = DEFAULT_NAV_TAB;
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -53,7 +55,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private render(): void {
     if (!this.view) return;
 
-    const tabId = TAB_IDS.includes(this.currentTab as typeof TAB_IDS[number]) ? this.currentTab : "overview";
+    const tabId = TAB_IDS.includes(this.currentTab as typeof TAB_IDS[number]) ? this.currentTab : DEFAULT_NAV_TAB;
     const helpTitle = t(`extension:tabHelp.${tabId}.title`);
     const sections = t(`extension:tabHelp.${tabId}.sections`, { returnObjects: true }) as unknown as Array<{ heading: string; body: string }>;
     const nonce = getNonce();

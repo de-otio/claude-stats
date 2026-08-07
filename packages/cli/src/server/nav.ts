@@ -49,6 +49,15 @@ export interface NavTab {
  * the whole union.
  */
 export const NAV_TABS = [
+  // First, and therefore the default tab (`DEFAULT_NAV_TAB` below, and the
+  // "first visible tab is active" rule the tab bar renders by). The whole
+  // point of the answer-first IA is that the front door answers the five
+  // business questions rather than showing token mechanics
+  // (doc/analysis/gui-redesign/02-answer-first-ia.md §2.1). It carries no
+  // `dataKey`: an Insights tab that disappeared when data was thin would take
+  // the honest-empty states — the part that tells a new user what to enable —
+  // away from exactly the user who needs them.
+  { id: "insights", labelKey: "dashboard:tabs.insights", dataKey: undefined },
   { id: "overview", labelKey: "dashboard:tabs.overview", dataKey: undefined },
   { id: "energy", labelKey: "dashboard:tabs.energy", dataKey: "energy" },
   { id: "spending", labelKey: "dashboard:tabs.spending", dataKey: "spending" },
@@ -67,6 +76,15 @@ export type NavTabId = (typeof NAV_TABS)[number]["id"];
 
 /** Every tab id, in display order — the sidebar's help-content lookup set. */
 export const NAV_TAB_IDS: readonly NavTabId[] = NAV_TABS.map((tab) => tab.id);
+
+/**
+ * The tab a host opens on, and the fallback for an unrecognised saved/hash tab.
+ *
+ * Derived from `NAV_TABS[0]` rather than written out, so "the default tab is
+ * the first tab" cannot drift: the served page's hash restore, the webview's
+ * remembered tab, and the sidebar's help panel all resolve through this.
+ */
+export const DEFAULT_NAV_TAB: NavTabId = NAV_TABS[0].id;
 
 /** The tabs actually shown for a given dashboard payload, in order. */
 export function visibleNavTabs(data: DashboardData): NavTab[] {

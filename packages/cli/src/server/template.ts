@@ -6,9 +6,15 @@
 import type { DashboardData } from "../dashboard/index.js";
 import { PRICING, PRICING_VERIFIED_DATE } from "@claude-stats/core/pricing";
 import { formatEnergy, formatCO2, REGIONS } from "@claude-stats/core/energy";
-import { answerCost } from "@claude-stats/core/insight";
-import { visibleNavTabs } from "./nav.js";
+import { visibleNavTabs, DEFAULT_NAV_TAB } from "./nav.js";
 import { renderCard, CARD_TOKENS_CSS, CARD_CSS } from "./card.js";
+import {
+  buildInsightAnswers,
+  buildAlerts,
+  renderInsightsTab,
+  EVIDENCE_TAB,
+  INSIGHTS_CSS,
+} from "./insights.js";
 
 export { DashboardData };
 
@@ -384,6 +390,34 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       </div>${acctSection}`;
   }
 
+  // ── Insights tab (the default) ──
+  // The cost vocabulary comes from `attachInsights`'s resolver, which reduces
+  // the accounts in scope to one vocabulary or to the explicit `mixed` verdict.
+  // The `planFee > 0` proxy survives only as the fallback for callers that
+  // never attached — the same answer that surface gave before, unchanged.
+  const costVocabulary = data.insights?.vocabulary.vocabulary ?? (showPlan ? "plan" : "metered");
+  const planVerdictSentence = data.planUtilization
+    ? data.planUtilization.currentPlanVerdict === "good-value"
+      ? t("dashboard:insights.verdict.goodValue")
+      : data.planUtilization.currentPlanVerdict === "underusing"
+        ? t("dashboard:insights.verdict.underusing")
+        : t("dashboard:insights.verdict.noPlan")
+    : null;
+  const insightAnswers = buildInsightAnswers(data, {
+    vocabulary: costVocabulary,
+    hourlyRate: data.insights?.hourlyRate ?? null,
+    currency: data.insights?.currency ?? "USD",
+    verdictSentence: planVerdictSentence,
+  });
+  const insightsHtml = renderInsightsTab(insightAnswers, buildAlerts(data, t), t);
+  // The Overview cost card and the Insights Q1 card are the SAME answer object,
+  // rendered twice. Phase 1 of the migration is additive — nothing moves yet —
+  // so both surfaces exist for one release, and the only way two renderings of
+  // one figure cannot disagree is for there to be one figure. `insightAnswers`
+  // is built above; index 0 is the cost answer by `buildInsightAnswers`'
+  // documented order, asserted in insights.test.ts.
+  const costAnswer = insightAnswers[0]!;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -505,6 +539,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     }
 ${CARD_TOKENS_CSS}
 ${CARD_CSS}
+${INSIGHTS_CSS}
   </style>
 </head>
 <body>
@@ -541,8 +576,13 @@ ${CARD_CSS}
       .join("\n    ")}
   </div>
 
+  <!-- ═══════════════ TAB: Insights (default) ═══════════════ -->
+  <div class="tab-panel active" id="tab-insights">
+    ${insightsHtml}
+  </div>
+
   <!-- ═══════════════ TAB: Overview ═══════════════ -->
-  <div class="tab-panel active" id="tab-overview">
+  <div class="tab-panel" id="tab-overview">
     ${recsHtml}
     <div class="summary-bar">
       <div class="summary-card" style="grid-column: 1 / -1; text-align: left; padding: 0.5rem 0.75rem;">
@@ -555,17 +595,11 @@ ${CARD_CSS}
       </div>
       ` : ""}
       <div style="grid-column: 1 / -1;">
-        ${renderCard(
-          answerCost({
-            mode: showPlan ? "plan" : "metered",
-            cost: data.summary.estimatedCost,
-            previousCost: null,
-            planFee: showPlan ? planFee : null,
-            planMultiplier: showPlan ? data.summary.planMultiplier : null,
-            anyFallbackRates: data.summary.anyFallbackRates,
-          }),
-          { id: "card-cost", title: t("dashboard:summary.estCost") },
-        )}
+        ${renderCard(costAnswer, {
+          id: "card-cost",
+          title: t("dashboard:summary.estCost"),
+          evidenceHref: costAnswer.evidenceLink ? `#${EVIDENCE_TAB[costAnswer.evidenceLink]}` : undefined,
+        })}
       </div>
       <div class="summary-card">
         <div class="label">${t("dashboard:summary.sessions")}</div>
@@ -1507,6 +1541,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
       var initialized = {};
       var tabBtns = document.querySelectorAll('.tab-btn');
       var tabPanels = document.querySelectorAll('.tab-panel');
+      var validTabIds = Array.from(tabBtns).map(function (b) { return b.getAttribute('data-tab'); });
 
       var pricingPanel = document.getElementById('pricing-panel');
       function switchTab(tabId) {
@@ -1522,6 +1557,20 @@ CO₂_grams = total_kWh × grid_intensity</div>
 
       tabBtns.forEach(function (btn) {
         btn.addEventListener('click', function () { switchTab(this.getAttribute('data-tab')); });
+      });
+
+      // Evidence links ("see evidence →" on an Insights card, and the alert
+      // strip's action link) are plain anchors to '#<tab>'. The browser sets
+      // location.hash but nothing else listens, so without this the link would
+      // change the URL and leave the page on the same tab — the "two-click
+      // evidence" promise silently broken. switchTab() itself writes the hash,
+      // so the guard stops the resulting hashchange from re-entering.
+      window.addEventListener('hashchange', function () {
+        var target = (window.location.hash || '').replace('#', '');
+        if (!target || validTabIds.indexOf(target) === -1) return;
+        var current = document.querySelector('.tab-btn.active');
+        if (current && current.getAttribute('data-tab') === target) return;
+        switchTab(target);
       });
 
       // ── Chart defaults ───────────────────────────────────────────────────
@@ -3337,9 +3386,13 @@ CO₂_grams = total_kWh × grid_intensity</div>
       }
 
       // ── Initialize first tab + restore from hash ──────────────────────────
-      var startTab = window.__ACTIVE_TAB__ || (window.location.hash || '').replace('#', '') || 'overview';
-      var validTabs = Array.from(tabBtns).map(function (b) { return b.getAttribute('data-tab'); });
-      if (validTabs.indexOf(startTab) === -1) startTab = 'overview';
+      // The default is the first tab in the single nav definition (server/nav.ts
+      // DEFAULT_NAV_TAB), interpolated rather than hardcoded so the served
+      // page, the webview and the sidebar cannot disagree about which tab is
+      // the front door.
+      var defaultTab = '${jsStr(DEFAULT_NAV_TAB)}';
+      var startTab = window.__ACTIVE_TAB__ || (window.location.hash || '').replace('#', '') || defaultTab;
+      if (validTabIds.indexOf(startTab) === -1) startTab = defaultTab;
       switchTab(startTab);
     }());
   </script>

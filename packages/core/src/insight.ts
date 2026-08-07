@@ -77,13 +77,39 @@ export function trendOf(current: number, previous: number | null, epsilon = 0.02
 // ─── Caveats (the honesty obligations) ────────────────────────────────────────
 
 /**
+ * The cost vocabulary a *report* speaks, as opposed to the mode a single
+ * account is billed under (`AccountMode`).
+ *
+ * A dashboard can span several accounts, and they need not agree: a plan seat
+ * for interactive work beside a metered API/Bedrock account for automation is
+ * an ordinary setup, not a pathology. When they disagree there is no single
+ * correct vocabulary for the combined figure — "$312, equivalent API value" is
+ * wrong for the metered half and "$312, actual metered cost" is wrong for the
+ * plan half. `mixed` is the honest third answer: report the sum, and say the
+ * sum means two different things (I1 — a confident number that is quietly
+ * wrong is worse than a number that states its own limits).
+ *
+ * Deliberately NOT folded into `AccountMode`: an *account* is never mixed, and
+ * `resolveAccountMode()` in the CLI's config must keep returning a value that
+ * can be stored as a per-account billing fact.
+ */
+export type CostVocabulary = AccountMode | "mixed";
+
+/**
  * The caveat chip is load-bearing, not decoration: it is where the confidence
  * mix, the calibration state, and the estimate-vs-actual distinction live. A
  * figure rendered without its caveat is a figure that has quietly dropped the
  * thing that makes it defensible.
  */
-export function costCaveat(mode: AccountMode, opts: { reconciledRatio?: number | null; anyFallbackRates?: boolean } = {}): string {
+export function costCaveat(mode: CostVocabulary, opts: { reconciledRatio?: number | null; anyFallbackRates?: boolean } = {}): string {
   if (mode === "plan") return "Equivalent API cost — not what your plan charges.";
+  if (mode === "mixed") {
+    return (
+      "Mixed billing across the accounts in view — part of this figure is " +
+      "equivalent API value against a plan fee, part is metered money. " +
+      "Select a single account, or set pricing.mode, for one meaning."
+    );
+  }
   const parts: string[] = [];
   if (opts.reconciledRatio != null && Number.isFinite(opts.reconciledRatio)) {
     parts.push(`reconciles with the invoice at ${formatPercent(opts.reconciledRatio)}`);
@@ -135,7 +161,7 @@ function capitalize(s: string): string {
 
 /** Inputs for Q1 — "What did AI cost?" */
 export interface CostAnswerInput {
-  mode: AccountMode;
+  mode: CostVocabulary;
   cost: number;
   previousCost: number | null;
   currency?: string;
@@ -162,6 +188,10 @@ export function answerCost(input: CostAnswerInput): InsightAnswer {
   if (input.hourlyRate && input.hourlyRate > 0) {
     clauses.push(`≈ ${formatDevTime(input.cost, input.hourlyRate)} at your configured rate`);
   }
+  // `plan` only — never `mixed`. A multiplier against the plan fee divides the
+  // WHOLE period's cost by a fee that covers only part of it, which overstates
+  // the plan's value by however much metered spend is in scope. Under a mixed
+  // vocabulary the multiplier is dropped and the caveat says why.
   if (input.mode === "plan" && input.planFee && input.planMultiplier) {
     clauses.push(`${input.planMultiplier.toFixed(1)}× your ${formatMoney(input.planFee, currency)}/mo plan`);
   }

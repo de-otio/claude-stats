@@ -41,7 +41,22 @@ const minimalData: DashboardData = {
   planUtilization: null, feeAttribution: null, modelEfficiency: null, contextAnalysis: null,
   spending: null, energy: null, costPerTask: null, calibration: null,
   experimentalSignalsEnabled: false, recommendations: [], availableAccounts: [],
-  selectedAccountUuid: null,
+  selectedAccountUuid: null, insights: null,
+};
+
+/** Same payload with real figures, to exercise the populated card path too. */
+const populatedData: DashboardData = {
+  ...minimalData,
+  summary: { ...minimalData.summary, sessions: 12, estimatedCost: 312.4 },
+  insights: {
+    vocabulary: { vocabulary: "metered", basis: "accounts", planAccounts: 0, meteredAccounts: 1 },
+    ticketCoverage: {
+      attributedCost: 259.3, totalCost: 312.4, ratio: 0.83,
+      byConfidence: { high: 186.7, medium: 54.5, low: 18.1 }, ambiguousSessions: 2,
+    },
+    topTicket: { key: "PROJ-123", cost: 41.2 },
+    hourlyRate: 90, currency: "USD",
+  },
 };
 
 describe("webview path — nav + card survive patchForWebview", () => {
@@ -83,5 +98,51 @@ describe("webview path — nav + card survive patchForWebview", () => {
     for (const tag of scriptTags) {
       expect(tag).toContain(`nonce="${nonce}"`);
     }
+  });
+});
+
+describe("webview path — the Insights tab, in the VS Code host", () => {
+  /** One card's own markup, sliced out by its DOM id. Page-wide assertions are
+   *  vacuous here: CARD_CSS and INSIGHTS_CSS are embedded in every page and
+   *  contain the class tokens verbatim. */
+  function card(html: string, id: string): string {
+    const idAt = html.indexOf(`id="${id}"`);
+    expect(idAt).toBeGreaterThan(-1);
+    const start = html.lastIndexOf('<div class="cs-card', idAt);
+    const end = html.indexOf("\n    </div>", start);
+    expect(end).toBeGreaterThan(start);
+    return html.slice(start, end);
+  }
+
+  it("renders the five cards with their figures intact after patchForWebview", () => {
+    // No `activeTab` argument: this is a freshly opened panel, so the host
+    // supplies nothing and the page must land on its own default.
+    const webview = patchForWebview(
+      renderDashboard(populatedData), "vscode-webview://abc", "vscode-resource://chart.js");
+
+    expect(webview).toMatch(/<button class="tab-btn active" data-tab="insights">/);
+    expect(webview).toContain('<div class="tab-panel active" id="tab-insights">');
+
+    // The figures survive the patch — asserted on the cards, not the page.
+    expect(card(webview, "insight-cost")).toContain("<span>$312</span>");
+    expect(card(webview, "insight-bought")).toContain("<span>83%</span>");
+    // …and the honest-empty branch survives it too.
+    expect(card(webview, "insight-setup")).toContain('class="cs-card cs-card-unavailable"');
+  });
+
+  it("honours a remembered tab, so the default does not override the user's last choice", () => {
+    const webview = patchForWebview(
+      renderDashboard(populatedData), "vscode-webview://abc", "vscode-resource://chart.js", "plan");
+    expect(webview).toContain("window.__ACTIVE_TAB__='plan'");
+  });
+
+  it("keeps the Insights CSS inside the nonce-protected document", () => {
+    const webview = patchForWebview(
+      renderDashboard(populatedData), "vscode-webview://abc", "vscode-resource://chart.js");
+    // The tab's own layout class, and the VS Code theme variable the alert
+    // token maps to — proof the tokens reached the webview, where they are the
+    // whole point (the served host only ever sees the fallbacks).
+    expect(webview).toContain(".cs-insights-grid");
+    expect(webview).toContain("--vscode-inputValidation-warningBorder");
   });
 });

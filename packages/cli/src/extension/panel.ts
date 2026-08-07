@@ -10,8 +10,9 @@ import * as fs from "node:fs";
 import * as vscode from "vscode";
 import { Store } from "../store/index.js";
 import { getNonce, escapeHtml } from "./utils.js";
-import { buildDashboard, attachCostPerTask, attachCalibration } from "../dashboard/index.js";
+import { buildDashboard, attachCostPerTask, attachCalibration, attachInsights } from "../dashboard/index.js";
 import { renderDashboard } from "../server/template.js";
+import { DEFAULT_NAV_TAB } from "../server/nav.js";
 import { loadConfig, saveConfig, mergeConfig, buildAccountsForConfig, type Config } from "../config.js";
 import { readClaudeAccount } from "../account.js";
 import { openCorrections, type CorrectionSignature, type OutcomeValue } from "../recap/corrections.js";
@@ -49,7 +50,7 @@ export class DashboardPanel {
   private since: string | undefined;
   private until: string | undefined;
   private accountUuid: string | undefined;
-  private activeTab: string = "overview";
+  private activeTab: string = DEFAULT_NAV_TAB;
   // The AutoCollector fires refreshIfVisible() on every ~/.claude/projects/
   // write, which is constant during an active session. A full webview.html
   // replacement wipes DOM-only state on the Settings tab (recovery key shown
@@ -154,6 +155,9 @@ export class DashboardPanel {
       // Calibration view (proxy/signal agreement vs the user's labels) — drives
       // the trust display + the activation toggle. Sync signals only.
       await attachCalibration(store, data, dashOpts);
+      // Insights tab inputs (ticket coverage, hourly rate, cost vocabulary).
+      // Synchronous and cheap; needs the config the two attaches above do not.
+      attachInsights(store, data, dashOpts, cfg);
       const html = renderDashboard(data, t);
       this.panel.webview.html = patchForWebview(
         html,

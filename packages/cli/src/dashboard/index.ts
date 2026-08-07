@@ -10,6 +10,9 @@ import type { UsageWindow } from "@claude-stats/core/types";
 import { classifyUsageIntensity } from "@claude-stats/core/planMechanics";
 import { readClaudeAccount } from "../account.js";
 import { resolveAccountFee, type Config } from "../config.js";
+import { getTicketCostReport } from "../ticketing/index.js";
+import { resolveDashboardCostVocabulary, type VocabularyResolution } from "../server/insights.js";
+import type { TicketCoverage } from "@claude-stats/core/types/insight";
 import { buildFeeAttribution, type FeeAttribution } from "./fee-attribution.js";
 import {
   scoreComplexity,
@@ -290,6 +293,47 @@ export interface DashboardData {
   }>;
   /** The accountUuid currently being filtered to, or null for "all accounts combined". */
   selectedAccountUuid: string | null;
+  /**
+   * Inputs the Insights tab needs that no other block carries — ticket
+   * attribution for the period and the user's hourly rate. Null until
+   * {@link attachInsights} runs; the tab then renders each affected card's
+   * honest-unavailable state rather than omitting it, so a caller that skips
+   * the attach still gets a correct (if emptier) page rather than a broken one.
+   *
+   * Optional rather than `DashboardInsights | null`, matching {@link
+   * DashboardData.untilIso}'s precedent: the many pre-existing `DashboardData`
+   * literals in tests and fixtures across the repo keep compiling, and every
+   * consumer must read it as `data.insights?.…` anyway because "not attached"
+   * and "attached but empty" are both real states.
+   */
+  insights?: DashboardInsights | null;
+}
+
+/**
+ * The Insights tab's extra inputs. Deliberately narrow: everything else the
+ * five cards need is already on `DashboardData`, and duplicating a figure here
+ * would create a second place for it to be wrong.
+ */
+export interface DashboardInsights {
+  /**
+   * The cost vocabulary for this dashboard as a whole, and which rule decided
+   * it. Resolved once here so every surface speaks the same one; `mixed` is a
+   * real verdict, not a failure, and the cost card renders it as such.
+   */
+  vocabulary: VocabularyResolution;
+  /**
+   * Ticket-attribution coverage for exactly this dashboard's window and
+   * filters, or null when the store holds no active ticket links at all (which
+   * is the state before Lane A's extraction is configured). Null and
+   * zero-coverage are different answers and the card says so differently.
+   */
+  ticketCoverage: TicketCoverage | null;
+  /** Costliest attributed ticket in the window, or null. */
+  topTicket: { key: string; cost: number } | null;
+  /** `config.rate.hourly` — absent means the dev-time clause is omitted, never estimated. */
+  hourlyRate: number | null;
+  /** `config.rate.currency`, defaulting to USD. Never auto-converted. */
+  currency: string;
 }
 
 export interface Recommendation {
@@ -1368,7 +1412,66 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       }));
     })(),
     selectedAccountUuid: opts.accountUuid ?? null,
+    insights: null,
   };
+}
+
+/**
+ * Populate `data.insights` — the Insights tab's extra inputs.
+ *
+ * Synchronous (unlike {@link attachCostPerTask}): the ticket report is two
+ * indexed store reads plus a pure aggregation, cheap enough to run on every
+ * refresh. Separate from `buildDashboard` for a different reason — it needs
+ * the user's `Config`, which the lightweight callers (status bar, MCP
+ * `get_stats`) neither have nor want.
+ *
+ * Never throws. A store predating schema V19, or any other failure, leaves
+ * `insights` null and the affected cards render their honest-unavailable
+ * branch — the correct output for "not enabled yet", not a broken page.
+ */
+export function attachInsights(
+  store: Store,
+  data: DashboardData,
+  opts: ReportOptions,
+  config: Config,
+): DashboardData {
+  const tz = opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const currency = config.rate?.currency ?? "USD";
+  const hourlyRate = config.rate?.hourly ?? null;
+
+  let ticketCoverage: TicketCoverage | null = null;
+  let topTicket: { key: string; cost: number } | null = null;
+  try {
+    const { since, until } = periodRange(opts, tz);
+    const isCustomRange = Boolean(opts.since && opts.until);
+    // The SAME window and filters `buildDashboard` used above — a coverage
+    // denominator computed over a different window would silently disagree
+    // with the headline cost it is a fraction of.
+    const report = getTicketCostReport(store, {
+      since: since > 0 ? since : undefined,
+      until: isCustomRange ? until : undefined,
+      projectPath: opts.projectPath,
+      repoUrl: opts.repoUrl,
+      accountUuid: opts.accountUuid,
+      includeCI: opts.includeCI ?? true,
+      includeDeleted: opts.includeDeleted ?? true,
+    });
+    ticketCoverage = report.coverage;
+    const top = report.tickets[0];
+    topTicket = top ? { key: top.ticketKey, cost: top.cost } : null;
+  } catch {
+    ticketCoverage = null;
+    topTicket = null;
+  }
+
+  data.insights = {
+    vocabulary: resolveDashboardCostVocabulary(data, config),
+    ticketCoverage,
+    topTicket,
+    hourlyRate,
+    currency,
+  };
+  return data;
 }
 
 /**

@@ -69,6 +69,20 @@ export interface RenderCardOptions {
   /** DOM id for the card root — lets a caller scroll/highlight a specific
    *  card (the "two-click evidence" path, gui-redesign/02 §2.5). */
   id?: string;
+  /**
+   * Override the evidence link's `href`, leaving `data-evidence-link` set to
+   * the answer's canonical destination.
+   *
+   * `InsightAnswer.evidenceLink` names a DOMAIN VIEW (`"cost-and-controlling"`),
+   * which is where the evidence lives in the target IA — but those views are
+   * Phase 3 and the same evidence currently sits in a today-tab. A host that
+   * knows the current mapping supplies the href it can actually navigate to;
+   * the canonical id stays on the element so the later regrouping is a
+   * one-line change at the mapping, not a hunt through the markup. Ignored
+   * when the answer has no `evidenceLink` — an answer with no evidence must
+   * not grow a link just because a caller offered one.
+   */
+  evidenceHref?: string;
 }
 
 /**
@@ -100,7 +114,7 @@ export function renderCard(answer: InsightAnswer, opts: RenderCardOptions = {}):
     : "";
   const caveatHtml = answer.caveat ? `<div class="cs-card-caveat">${escapeHtml(answer.caveat)}</div>` : "";
   const evidenceHtml = answer.evidenceLink
-    ? `<a class="cs-card-evidence" href="#${escapeHtml(answer.evidenceLink)}" data-evidence-link="${escapeHtml(answer.evidenceLink)}">›</a>`
+    ? `<a class="cs-card-evidence" href="${escapeHtml(opts.evidenceHref ?? `#${answer.evidenceLink}`)}" data-evidence-link="${escapeHtml(answer.evidenceLink)}">›</a>`
     : "";
 
   return `<div class="cs-card"${idAttr} data-question="${escapeHtml(answer.question)}">
