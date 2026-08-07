@@ -31,6 +31,7 @@ import {
   answerSetup,
   answerChange,
   formatMoney,
+  formatMoneyCsv,
   formatPercent,
   formatDevTime,
   trendOf,
@@ -199,6 +200,38 @@ describe("answer formatters", () => {
     expect(formatDevTime(360, 90)).toBe("4.0 dev-hours");
     expect(formatDevTime(1440, 90)).toBe("2.0 dev-days");
     expect(formatDevTime(100, 0)).toBe("—");
+  });
+
+  it("keeps two decimals in `precise` mode regardless of magnitude (I-1: the pack's own precision, same implementation)", () => {
+    expect(formatMoney(1234.567, "USD", { precise: true })).toBe("$1,234.57");
+    expect(formatMoney(18450.2, "USD", { precise: true })).toBe("$18,450.20");
+    // Without `precise`, the same amount takes the glanceable (whole-dollar
+    // once >=100) form — proves the two callers genuinely diverge in OUTPUT
+    // while sharing the same function, not that the option is a no-op.
+    expect(formatMoney(1234.567, "USD")).toBe("$1,235");
+  });
+
+  it("formatPercent takes an optional decimals count, defaulting to 0", () => {
+    expect(formatPercent(0.5922)).toBe("59%");
+    expect(formatPercent(0.5922, 1)).toBe("59.2%");
+    expect(formatPercent(null, 1)).toBe("—");
+  });
+
+  it("never renders real, priced spend as an exact zero (I-6)", () => {
+    expect(formatMoney(0.003)).toBe("<$0.01");
+    expect(formatMoney(0.003, "USD", { precise: true })).toBe("<$0.01");
+    expect(formatMoney(0)).toBe("$0.00"); // an ACTUAL zero still renders as zero
+    expect(formatMoney(0.01)).toBe("$0.01"); // a full cent is never marked as sub-cent
+  });
+
+  it("formatMoneyCsv stays numeric-parseable but never collapses a real cost to 0.00 (I-6)", () => {
+    // Real generated output once emitted "unclassified,2026-01,0.00,1" for a
+    // session with genuine priced tokens — this is the case that produced it.
+    const csvCell = formatMoneyCsv(0.003);
+    expect(Number(csvCell)).toBeGreaterThan(0);
+    expect(csvCell).not.toBe("0.00");
+    expect(formatMoneyCsv(0)).toBe("0.00");
+    expect(formatMoneyCsv(12.5)).toBe("12.50");
   });
 
   it("reports trend only when a comparison is possible", () => {

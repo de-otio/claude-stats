@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, isAbsolute } from "node:path";
 import { Store } from "../store/index.js";
 import type { Config } from "../config.js";
 import {
@@ -200,6 +200,18 @@ describe("buildNonTicketRows", () => {
     ]);
     expect(buildNonTicketRows(byClass).map((r) => r.taskClass)).toEqual(["explore", "debug", "review"]);
   });
+
+  it("reports the cost-weighted majority confidence tier per class, and null when no breakdown was supplied (I-5)", () => {
+    const byClass = new Map([
+      ["debug", { cost: 10, sessionCount: 2, byConfidence: { high: 2, medium: 8, low: 0 } }],
+      ["explore", { cost: 5, sessionCount: 1 }], // no byConfidence at all
+    ]);
+    const rows = buildNonTicketRows(byClass);
+    const debug = rows.find((r) => r.taskClass === "debug")!;
+    const explore = rows.find((r) => r.taskClass === "explore")!;
+    expect(debug.confidence).toBe("medium"); // 8 > 2
+    expect(explore.confidence).toBeNull(); // never fabricated when there's no data
+  });
 });
 
 describe("buildPackMethodology — LOCAL-ONLY detail must never cross into the pack", () => {
@@ -279,6 +291,7 @@ describe("renderJustificationPackHtml — escaping", () => {
     const model: JustificationPackModel = {
       generatedAt: FIXED_NOW,
       period: { since: 0, until: 1, label: "2026-01" },
+      scope: { projectPath: null, accountUuid: null },
       sections: ["tickets"],
       headline: buildPackHeadline({ mode: "metered", currency: "USD", coverage: COVERAGE }),
       tickets: [
@@ -399,6 +412,7 @@ describe("CSV bundle rendering", () => {
     const model: JustificationPackModel = {
       generatedAt: FIXED_NOW,
       period: { since: 0, until: 1, label: "2026-01, has a comma" },
+      scope: { projectPath: null, accountUuid: null },
       sections: ["tickets"],
       headline: buildPackHeadline({ mode: "metered", currency: "USD", coverage: COVERAGE }),
       tickets: [{ ticketKey: "PROJ-1", cost: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, sessionCount: 1, confidence: "high" }],
@@ -414,6 +428,7 @@ describe("CSV bundle rendering", () => {
     const model: JustificationPackModel = {
       generatedAt: FIXED_NOW,
       period: { since: 0, until: 1, label: "2026-05" },
+      scope: { projectPath: null, accountUuid: null },
       sections: ["tickets"],
       headline: buildPackHeadline({ mode: "metered", currency: "USD", coverage: COVERAGE }),
       tickets: [{ ticketKey: "PROJ-9", cost: 12.5, inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheCreationTokens: 5, sessionCount: 3, confidence: "medium" }],
@@ -422,14 +437,39 @@ describe("CSV bundle rendering", () => {
       unavailableSections: { hygiene: null, constraint: null, calibration: null },
     };
     const lines = renderTicketsCsv(model).trim().split("\r\n");
-    expect(lines[0]).toBe("ticketKey,period,cost,inputTokens,outputTokens,cacheReadTokens,cacheCreationTokens,sessionCount,confidence");
-    expect(lines[1]).toBe("PROJ-9,2026-05,12.50,100,50,10,5,3,medium");
+    expect(lines[0]).toBe(
+      "ticketKey,period,projectPath,accountUuid,cost,inputTokens,outputTokens,cacheReadTokens,cacheCreationTokens,sessionCount,confidence",
+    );
+    expect(lines[1]).toBe("PROJ-9,2026-05,,,12.50,100,50,10,5,3,medium");
+  });
+
+  it("carries the scope columns through when the pack was filtered (I-2)", () => {
+    const model: JustificationPackModel = {
+      generatedAt: FIXED_NOW,
+      period: { since: 0, until: 1, label: "2026-05" },
+      scope: { projectPath: "/w/proj-a", accountUuid: "acct-1234" },
+      sections: ["tickets"],
+      headline: buildPackHeadline({ mode: "metered", currency: "USD", coverage: COVERAGE }),
+      tickets: [{ ticketKey: "PROJ-9", cost: 12.5, inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheCreationTokens: 5, sessionCount: 3, confidence: "medium" }],
+      nonTicket: null,
+      methodology: buildPackMethodology({ pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] }),
+      unavailableSections: { hygiene: null, constraint: null, calibration: null },
+    };
+    const lines = renderTicketsCsv(model).trim().split("\r\n");
+    expect(lines[1]).toBe("PROJ-9,2026-05,/w/proj-a,acct-1234,12.50,100,50,10,5,3,medium");
+    const html = renderJustificationPackHtml(model);
+    expect(html).toContain("/w/proj-a");
+    expect(html).toContain("acct-1234");
+    // An UNscoped pack must say so explicitly, not just omit the line.
+    const unscoped = renderJustificationPackHtml({ ...model, scope: { projectPath: null, accountUuid: null } });
+    expect(unscoped).toContain("unscoped");
   });
 
   it("doubles an embedded quote rather than emitting malformed CSV", () => {
     const model: JustificationPackModel = {
       generatedAt: FIXED_NOW,
       period: { since: 0, until: 1, label: `2026-01 "Q1"` },
+      scope: { projectPath: null, accountUuid: null },
       sections: ["tickets"],
       headline: buildPackHeadline({ mode: "metered", currency: "USD", coverage: COVERAGE }),
       tickets: [{ ticketKey: "PROJ-1", cost: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, sessionCount: 1, confidence: "high" }],
@@ -457,8 +497,56 @@ describe("CSV bundle rendering", () => {
       methodology: { pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] },
     });
     const lines = renderSummaryCsv(model).trim().split("\r\n");
-    expect(lines[0]).toBe("period,mode,currency,totalCost,coverageRatio,reconciledInvoiceTotal,reconciledRatio,withinTolerance");
-    expect(lines[1]).toBe("2026-04,metered,USD,100.00,0.6000,200.00,0.5000,false");
+    expect(lines[0]).toBe(
+      "period,projectPath,accountUuid,mode,currency,totalCost,coverageRatio,confidenceHigh,confidenceMedium,confidenceLow," +
+        "anyFallbackRates,unknownTokens,planFee,reconciledInvoiceTotal,reconciledRatio,withinTolerance",
+    );
+    // COVERAGE: byConfidence {high:40,medium:20,low:0}, attributedCost 60 → 0.6667/0.3333/0.0000.
+    expect(lines[1]).toBe("2026-04,,,metered,USD,100.00,0.6000,0.6667,0.3333,0.0000,false,0,,200.00,0.5000,false");
+  });
+
+  it("summary.csv carries the unpriced-token count and the fallback-rate flag (I-3, I-5)", () => {
+    const model = buildJustificationPackModel({
+      generatedAt: FIXED_NOW,
+      period: { since: 0, until: 1, label: "2026-04" },
+      sections: ["headline"],
+      headline: {
+        mode: "metered",
+        currency: "USD",
+        coverage: COVERAGE,
+        anyFallbackRates: true,
+        unknownTokens: 4500,
+      },
+      methodology: { pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] },
+    });
+    const lines = renderSummaryCsv(model).trim().split("\r\n");
+    expect(lines[1]).toContain(",true,4500,");
+  });
+
+  it("summary.csv carries the plan fee for a plan-mode pack, and blanks it for metered (I-4)", () => {
+    const plan = buildJustificationPackModel({
+      generatedAt: FIXED_NOW,
+      period: { since: 0, until: 1, label: "2026-04" },
+      sections: ["headline"],
+      headline: { mode: "plan", currency: "USD", coverage: COVERAGE, planFee: 200 },
+      methodology: { pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "plan", policyEvents: [] },
+    });
+    const planLines = renderSummaryCsv(plan).trim().split("\r\n");
+    expect(planLines[1]!.split(",")).toContain("200.00");
+    expect(plan.headline.planFee).toBe(200);
+    expect(renderJustificationPackHtml(plan)).toContain("Plan fee: $200.00/mo");
+
+    const metered = buildJustificationPackModel({
+      generatedAt: FIXED_NOW,
+      period: { since: 0, until: 1, label: "2026-04" },
+      sections: ["headline"],
+      // A stray planFee on a metered account must not leak into the pack —
+      // only plan mode states a plan fee (I-4).
+      headline: { mode: "metered", currency: "USD", coverage: COVERAGE, planFee: 200 },
+      methodology: { pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] },
+    });
+    expect(metered.headline.planFee).toBeNull();
+    expect(renderJustificationPackHtml(metered)).not.toContain("Plan fee");
   });
 
   it("nonticket.csv carries one row per task class, not just a header row", () => {
@@ -468,14 +556,17 @@ describe("CSV bundle rendering", () => {
       sections: ["nonticket"],
       headline: { mode: "metered", currency: "USD", coverage: COVERAGE },
       nonTicketByClass: new Map([
-        ["explore", { cost: 12.5, sessionCount: 4 }],
+        ["explore", { cost: 12.5, sessionCount: 4, byConfidence: { high: 12.5, medium: 0, low: 0 } }],
         ["debug", { cost: 3, sessionCount: 1 }],
       ]),
       methodology: { pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] },
     });
     const lines = renderNonTicketCsv(model).trim().split("\r\n");
-    expect(lines[0]).toBe("taskClass,period,cost,sessionCount");
-    expect(lines.slice(1)).toEqual(["explore,2026-04,12.50,4", "debug,2026-04,3.00,1"]);
+    expect(lines[0]).toBe("taskClass,period,projectPath,accountUuid,cost,sessionCount,confidence");
+    // "explore" carries its classifier confidence through; "debug" was given
+    // no byConfidence breakdown at all, so it's reported "n/a" rather than a
+    // fabricated tier (I-5).
+    expect(lines.slice(1)).toEqual(["explore,2026-04,,,12.50,4,high", "debug,2026-04,,,3.00,1,n/a"]);
   });
 });
 
@@ -644,6 +735,22 @@ describe("justification pack — generated against a seeded store", () => {
     expect(written.dir).toContain("claude-stats-pack-2026-01");
   });
 
+  it("resolves a relative outDir against the process cwd rather than leaving it ambiguous (I-7)", () => {
+    // The MCP tool's `outDir` param comes from an agent that has no reliable
+    // idea what the server process's cwd is — a relative path must not
+    // silently land somewhere neither of them expected.
+    const relOutDir = relative(process.cwd(), tmpDir);
+    const written = generateJustificationPack(
+      store,
+      config,
+      { period: "2026-01", timezone: "UTC", now: () => FIXED_NOW },
+      relOutDir,
+    );
+    expect(isAbsolute(written.dir)).toBe(true);
+    expect(written.dir).toBe(join(tmpDir, "claude-stats-pack-2026-01"));
+    expect(existsSync(written.htmlPath)).toBe(true);
+  });
+
   it("respects the default section set (headline,tickets,nonticket) when --sections is omitted", () => {
     const result = buildJustificationPack(store, config, { period: "2026-01", timezone: "UTC", now: () => FIXED_NOW });
     expect(result.model.sections).toEqual(["headline", "tickets", "nonticket"]);
@@ -783,5 +890,135 @@ describe("justification pack — generated against a seeded store", () => {
     expect(result.model.nonTicket).toEqual([]);
     expect(result.html).toContain("No ticket-attributed spend in this period.");
     expect(result.html).toContain("No non-ticket spend in this period.");
+  });
+
+  // ── I-2: scope must be visible, not just applied ──────────────────────────
+
+  it("a project-filtered pack states its scope, and an unfiltered one says 'unscoped' (I-2)", () => {
+    const filtered = buildJustificationPack(store, config, {
+      period: "2026-01",
+      timezone: "UTC",
+      sections: [...ALL_PACK_SECTIONS],
+      projectPath: "/w/alpha",
+      now: () => FIXED_NOW,
+    });
+    expect(filtered.model.scope).toEqual({ projectPath: "/w/alpha", accountUuid: null });
+    expect(filtered.html).toContain("/w/alpha");
+    expect(filtered.ticketsCsv.split("\r\n")[0]).toContain("projectPath");
+    // Every data row (not just the header) carries the scope, so a reader who
+    // only sees one row of a spreadsheet still knows what it was filtered to.
+    const ticketDataLines = filtered.ticketsCsv.trim().split("\r\n").slice(1);
+    for (const line of ticketDataLines) expect(line).toContain("/w/alpha");
+
+    const unfiltered = buildJustificationPack(store, config, {
+      period: "2026-01",
+      timezone: "UTC",
+      sections: [...ALL_PACK_SECTIONS],
+      now: () => FIXED_NOW,
+    });
+    expect(unfiltered.model.scope).toEqual({ projectPath: null, accountUuid: null });
+    // MUTATION-CAUGHT: a build that always renders the same "unscoped" text
+    // regardless of the actual filter would pass a bare toContain("unscoped")
+    // check on this branch alone — the assertion above on `filtered` (which
+    // must NOT contain "unscoped") is what makes that mutation visible.
+    expect(unfiltered.html).toContain("unscoped");
+    expect(filtered.html).not.toContain("unscoped");
+  });
+
+  // ── I-3: unpriced usage must reach the headline, not vanish ───────────────
+
+  it("a session on a model with no pricing row shows up as unpriced tokens, not a silent zero (I-3)", () => {
+    const window = resolvePackPeriod("2026-01", "UTC");
+    store.upsertSession({
+      sessionId: "s-unpriced-model",
+      projectPath: "/w/alpha",
+      sourceFile: "/w/alpha/s.jsonl",
+      firstTimestamp: window.since + 5_000,
+      lastTimestamp: window.since + 6_000,
+      claudeVersion: "2.1.70",
+      entrypoint: "claude-cli",
+      gitBranch: null,
+      permissionMode: "default",
+      isInteractive: true,
+      promptCount: 1,
+      assistantMessageCount: 1,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      webSearchRequests: 0,
+      webFetchRequests: 0,
+      toolUseCounts: [],
+      models: ["totally-unrecognized-future-model-9000"],
+      repoUrl: null,
+      accountUuid: null,
+      organizationUuid: null,
+      subscriptionType: null,
+      thinkingBlocks: 0,
+      parentSessionId: null,
+      isSubagent: false,
+      sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: 1000,
+      medianResponseTimeMs: 4000,
+    });
+    store.upsertMessages([
+      {
+        uuid: "s-unpriced-model-m0",
+        sessionId: "s-unpriced-model",
+        timestamp: window.since + 5_000,
+        claudeVersion: "2.1.70",
+        model: "totally-unrecognized-future-model-9000",
+        stopReason: "end_turn",
+        inputTokens: 900,
+        outputTokens: 300,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+        tools: [],
+        thinkingBlocks: 0,
+        serviceTier: null,
+        inferenceGeo: null,
+        ephemeral5mCacheTokens: 0,
+        ephemeral1hCacheTokens: 0,
+        promptText: null,
+      },
+    ]);
+
+    const result = buildJustificationPack(store, config, {
+      period: "2026-01",
+      timezone: "UTC",
+      sections: [...ALL_PACK_SECTIONS],
+      now: () => FIXED_NOW,
+    });
+    expect(result.model.headline.unknownTokens).toBe(1200); // 900 + 300
+    expect(result.html).toContain("1,200 tokens from unpriced models");
+    expect(result.summaryCsv).toContain(",1200,");
+
+    // A window with no unpriced usage at all must not render the caveat, and
+    // must report the count as exactly 0 (never omitted, per BuildHeadlineInput
+    // doc — a caller that forgets to wire it should see "0", not a vanished
+    // field it can mistake for "handled elsewhere").
+    const clean = buildJustificationPack(store, config, { period: "2020-01", timezone: "UTC", now: () => FIXED_NOW });
+    expect(clean.model.headline.unknownTokens).toBe(0);
+    expect(clean.html).not.toContain("unpriced models");
+  });
+
+  // ── I-5: the non-ticket breakdown must carry its own confidence ───────────
+
+  it("the non-ticket breakdown reports the classifier's own confidence per bucket, not a blank column (I-5)", () => {
+    const result = buildJustificationPack(store, config, {
+      period: "2026-01",
+      timezone: "UTC",
+      sections: [...ALL_PACK_SECTIONS],
+      now: () => FIXED_NOW,
+    });
+    expect(result.model.nonTicket).not.toBeNull();
+    expect(result.model.nonTicket!.length).toBeGreaterThan(0);
+    // At least one row was actually classified — proves the classifier
+    // confidence made it from `session_task_class` all the way into the pack
+    // row, not just the taskClass label.
+    expect(result.model.nonTicket!.some((r) => r.confidence !== null)).toBe(true);
+    const dataLines = result.nonTicketCsv.trim().split("\r\n").slice(1);
+    expect(dataLines.some((line) => !line.endsWith(",n/a"))).toBe(true);
   });
 });

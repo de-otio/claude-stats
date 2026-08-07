@@ -13,7 +13,7 @@
  * pack and the dashboard can never disagree about what a number means.
  */
 import { isTicketKey } from "./tickets.js";
-import { formatDevTime, confidenceCaveat, costCaveat } from "./insight.js";
+import { formatDevTime, formatMoney, formatMoneyCsv, formatPercent, confidenceCaveat, costCaveat } from "./insight.js";
 import type { AccountMode, Confidence, PolicyEvent, TaskClass, TicketCoverage } from "./types/insight.js";
 import type {
   JustificationPackModel,
@@ -22,6 +22,7 @@ import type {
   PackMethodology,
   PackNonTicketRow,
   PackReconciliation,
+  PackScope,
   PackTicketRow,
   PackUnavailableSections,
 } from "./types/pack.js";
@@ -74,6 +75,15 @@ export interface BuildHeadlineInput {
   /** Fraction, e.g. 0.05 for ±5%. Defaults to 0.05. */
   reconciliationTolerance?: number;
   anyFallbackRates?: boolean;
+  /** Configured monthly plan fee. Only rendered when `mode === "plan"` — a
+   *  metered account's fee field (if any) is not this figure's business
+   *  (I-4). */
+  planFee?: number | null;
+  /** Tokens with no pricing row this period — pass `TicketCostReport
+   *  .unknownTokens` straight through (I-3). Defaults to 0, never silently
+   *  dropped by an omitted field: a caller that forgets to wire it gets an
+   *  honest "no unpriced usage" rather than a caveat that happens to vanish. */
+  unknownTokens?: number;
 }
 
 export function buildPackHeadline(input: BuildHeadlineInput): PackHeadline {
@@ -101,6 +111,19 @@ export function buildPackHeadline(input: BuildHeadlineInput): PackHeadline {
     };
   }
 
+  // Attributed cost split by evidence tier, as a fraction of attributedCost —
+  // the same mix `coverageCaveat`'s prose already describes, as numbers a
+  // CSV/appendix reader can carry into a spreadsheet without re-parsing a
+  // sentence (I-5). Null when there's nothing attributed to split.
+  const confidenceMix: Readonly<Record<Confidence, number>> | null =
+    input.coverage.attributedCost > 0
+      ? {
+          high: (input.coverage.byConfidence.high ?? 0) / input.coverage.attributedCost,
+          medium: (input.coverage.byConfidence.medium ?? 0) / input.coverage.attributedCost,
+          low: (input.coverage.byConfidence.low ?? 0) / input.coverage.attributedCost,
+        }
+      : null;
+
   return {
     mode: input.mode,
     currency: input.currency,
@@ -122,6 +145,12 @@ export function buildPackHeadline(input: BuildHeadlineInput): PackHeadline {
       anyFallbackRates: input.anyFallbackRates ?? false,
     }),
     reconciliation,
+    // I-4: only a plan-mode pack states a plan fee — a metered account's fee
+    // field (if any exists in config) has no place in this headline.
+    planFee: input.mode === "plan" ? (input.planFee ?? null) : null,
+    anyFallbackRates: input.anyFallbackRates ?? false,
+    unknownTokens: input.unknownTokens ?? 0,
+    confidenceMix,
   };
 }
 
@@ -161,15 +190,41 @@ export function buildTicketRows(rows: readonly RawPackTicketRow[]): PackTicketRo
     .sort((a, b) => b.cost - a.cost || a.ticketKey.localeCompare(b.ticketKey));
 }
 
+/** Per-class aggregate the caller supplies to `buildNonTicketRows`.
+ *  `byConfidence` is optional so existing/simpler callers keep working; when
+ *  present it carries the classifier's own confidence for the sessions in
+ *  this bucket, cost-weighted, so the row can report which tier dominates
+ *  rather than dropping that information on the floor (I-5). */
+export interface NonTicketClassAggregate {
+  cost: number;
+  sessionCount: number;
+  byConfidence?: Readonly<Record<Confidence, number>>;
+}
+
 export function buildNonTicketRows(
-  byClass: ReadonlyMap<string, { cost: number; sessionCount: number }>,
+  byClass: ReadonlyMap<string, NonTicketClassAggregate>,
 ): PackNonTicketRow[] {
   return [...byClass.entries()]
-    .map(([taskClass, v]): PackNonTicketRow => ({
-      taskClass: taskClass as TaskClass | "unclassified",
-      cost: v.cost,
-      sessionCount: v.sessionCount,
-    }))
+    .map(([taskClass, v]): PackNonTicketRow => {
+      let confidence: Confidence | null = null;
+      if (v.byConfidence) {
+        const order: Confidence[] = ["high", "medium", "low"];
+        let bestValue = 0;
+        for (const c of order) {
+          const value = v.byConfidence[c] ?? 0;
+          if (value > bestValue) {
+            bestValue = value;
+            confidence = c;
+          }
+        }
+      }
+      return {
+        taskClass: taskClass as TaskClass | "unclassified",
+        cost: v.cost,
+        sessionCount: v.sessionCount,
+        confidence,
+      };
+    })
     .sort((a, b) => b.cost - a.cost || a.taskClass.localeCompare(b.taskClass));
 }
 
@@ -207,10 +262,14 @@ const UNAVAILABLE_TEXT: Readonly<Record<"hygiene" | "constraint" | "calibration"
 export interface BuildPackModelInput {
   generatedAt: number;
   period: { since: number; until: number; label: string };
+  /** What this generation was filtered to. Omitted (or a field left
+   *  undefined) defaults to "no filter" — an explicit, honest unscoped pack,
+   *  never a silently-blank one (I-2). */
+  scope?: { projectPath?: string | null; accountUuid?: string | null };
   sections: readonly JustificationPackSectionId[];
   headline: BuildHeadlineInput;
   tickets?: readonly RawPackTicketRow[];
-  nonTicketByClass?: ReadonlyMap<string, { cost: number; sessionCount: number }>;
+  nonTicketByClass?: ReadonlyMap<string, NonTicketClassAggregate>;
   methodology: BuildMethodologyInput;
 }
 
@@ -233,9 +292,15 @@ export function buildJustificationPackModel(input: BuildPackModelInput): Justifi
     calibration: wanted.has("calibration") ? UNAVAILABLE_TEXT.calibration : null,
   };
 
+  const scope: PackScope = {
+    projectPath: input.scope?.projectPath ?? null,
+    accountUuid: input.scope?.accountUuid ?? null,
+  };
+
   return {
     generatedAt: input.generatedAt,
     period: { ...input.period },
+    scope,
     sections: ALL_PACK_SECTIONS.filter((s) => wanted.has(s)),
     headline: buildPackHeadline(input.headline),
     tickets,
@@ -264,19 +329,43 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+// Money and percentages route through `insight.ts`'s shared formatters with
+// `precise: true` / 1 decimal — the pack is read closely (not glanced at like
+// a dashboard tile), so it keeps its finer precision, but through the SAME
+// implementation the dashboard uses, so the two can never quote different
+// figures for the same underlying number (I-1). `fmtMoney`/`fmtPct` are thin
+// currying wrappers kept only to avoid threading `currency` through every
+// call site below.
 function fmtMoney(n: number, currency: string): string {
-  const symbol = currency === "USD" ? "$" : currency === "EUR" ? "€" : `${currency} `;
-  return `${symbol}${n.toFixed(2)}`;
+  return formatMoney(n, currency, { precise: true });
 }
 
 function fmtPct(n: number): string {
-  return `${(n * 100).toFixed(1)}%`;
+  return formatPercent(n, 1);
+}
+
+/** Non-money integer with the same fixed-locale thousands separator as
+ *  `formatMoney` — used for the unpriced-token count, which is a count, not
+ *  a currency figure, and must not silently drift to a runtime locale. */
+function fmtInt(n: number): string {
+  return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 const MODE_LABEL: Record<AccountMode, string> = {
   plan: "Flat-rate plan (equivalent-API-value framing)",
   metered: "Metered / pay-per-token billing (actual cost)",
 };
+
+/** One human-readable line describing what a pack was filtered to — always
+ *  rendered, because "no filter" is itself a fact the reader needs (I-2): a
+ *  scoped pack must never be textually indistinguishable from a whole-machine
+ *  one, and an unscoped pack should say so rather than just omitting a line. */
+function scopeLabel(scope: PackScope): string {
+  const parts: string[] = [];
+  if (scope.projectPath) parts.push(`project ${scope.projectPath}`);
+  if (scope.accountUuid) parts.push(`account ${scope.accountUuid}`);
+  return parts.length > 0 ? parts.join(" · ") : "unscoped — all projects and accounts on this machine";
+}
 
 /**
  * Render the self-contained HTML document. No external assets, no scripts,
@@ -312,6 +401,7 @@ export function renderJustificationPackHtml(model: JustificationPackModel): stri
     `<h1>Claude Code usage — justification pack</h1>`,
     `<div class="meta">Period ${escapeHtml(model.period.label)} ` +
       `(${isoDate(model.period.since)} – ${isoDate(model.period.until)}) · ` +
+      `Scope: ${escapeHtml(scopeLabel(model.scope))} · ` +
       `generated ${escapeHtml(isoStamp(model.generatedAt))}</div>`,
   );
 
@@ -319,11 +409,20 @@ export function renderJustificationPackHtml(model: JustificationPackModel): stri
     parts.push(`<div class="headline">`);
     parts.push(`<div class="figure">${fmtMoney(h.totalCost, h.currency)}</div>`);
     if (h.devTimeLabel) parts.push(`<div>≈ ${escapeHtml(h.devTimeLabel)} at the configured rate</div>`);
+    if (h.planFee != null) {
+      parts.push(`<div>Plan fee: ${fmtMoney(h.planFee, h.currency)}/mo</div>`);
+    }
     if (h.coverageRatio != null) {
       parts.push(`<div>${fmtPct(h.coverageRatio)} of spend is ticket-attributable</div>`);
     }
     parts.push(`<div class="caveat">${escapeHtml(h.costCaveatText)}</div>`);
     if (h.coverageCaveat) parts.push(`<div class="caveat">${escapeHtml(h.coverageCaveat)}</div>`);
+    if (h.unknownTokens > 0) {
+      parts.push(
+        `<div class="caveat">${fmtInt(h.unknownTokens)} tokens from unpriced models are excluded from the ` +
+          `total above — the figure understates spend by that amount.</div>`,
+      );
+    }
     if (h.reconciliation) {
       const r = h.reconciliation;
       const verdict = r.withinTolerance ? "reconciles" : "does not reconcile";
@@ -358,12 +457,14 @@ export function renderJustificationPackHtml(model: JustificationPackModel): stri
     parts.push(`<h2>Non-ticket work</h2>`);
     if (model.nonTicket && model.nonTicket.length > 0) {
       parts.push(
-        `<table><thead><tr><th>Kind of work</th><th class="num">Sessions</th>` +
-          `<th class="num">Cost</th></tr></thead><tbody>`,
+        `<table><thead><tr><th>Kind of work</th><th>Classification confidence</th>` +
+          `<th class="num">Sessions</th><th class="num">Cost</th></tr></thead><tbody>`,
       );
       for (const row of model.nonTicket) {
+        const confidenceLabel = row.confidence ? CONFIDENCE_LABELS[row.confidence] : "—";
         parts.push(
           `<tr><td>${escapeHtml(TASK_CLASS_LABELS[row.taskClass] ?? row.taskClass)}</td>` +
+            `<td>${escapeHtml(confidenceLabel)}</td>` +
             `<td class="num">${row.sessionCount}</td><td class="num">${fmtMoney(row.cost, h.currency)}</td></tr>`,
         );
       }
@@ -383,6 +484,7 @@ export function renderJustificationPackHtml(model: JustificationPackModel): stri
 
   const m = model.methodology;
   parts.push(`<h2>Methodology</h2><dl class="appendix">`);
+  parts.push(`<dt>Scope</dt><dd>${escapeHtml(scopeLabel(model.scope))}.</dd>`);
   parts.push(`<dt>Pricing table</dt><dd>Verified ${escapeHtml(m.pricingVerifiedDate)}.</dd>`);
   parts.push(`<dt>Language mode</dt><dd>${escapeHtml(MODE_LABEL[m.languageMode])}.</dd>`);
   parts.push(
@@ -420,13 +522,18 @@ function csvLine(cells: readonly (string | number)[]): string {
   return cells.map(csvCell).join(",");
 }
 
-/** `ticketKey, period, cost, tokens, confidence, sessionCount` — the export
- *  shape 04 §4.1 defines, reused verbatim for the pack's CSV bundle. */
+/** `ticketKey, period, projectPath, accountUuid, cost, tokens, sessionCount,
+ *  confidence` — the export shape 04 §4.1 defines, extended with the pack's
+ *  scope columns (I-2) and reused for the pack's CSV bundle. `cost` goes
+ *  through `formatMoneyCsv` rather than a bare `toFixed(2)` so a genuinely
+ *  priced sub-cent row never renders as an indistinguishable "0.00" (I-6). */
 export function renderTicketsCsv(model: JustificationPackModel): string {
   const lines = [
     csvLine([
       "ticketKey",
       "period",
+      "projectPath",
+      "accountUuid",
       "cost",
       "inputTokens",
       "outputTokens",
@@ -441,7 +548,9 @@ export function renderTicketsCsv(model: JustificationPackModel): string {
       csvLine([
         t.ticketKey,
         model.period.label,
-        t.cost.toFixed(2),
+        model.scope.projectPath ?? "",
+        model.scope.accountUuid ?? "",
+        formatMoneyCsv(t.cost),
         t.inputTokens,
         t.outputTokens,
         t.cacheReadTokens,
@@ -454,33 +563,69 @@ export function renderTicketsCsv(model: JustificationPackModel): string {
   return lines.join("\r\n") + "\r\n";
 }
 
+/** `confidence` is the classification tier for the class bucket (or `"n/a"`
+ *  when the sessions in it were never classified) — I-5: a bare cost/session
+ *  count with no quality signal at all was the gap here, unlike `tickets.csv`
+ *  which already carried a confidence column per row. */
 export function renderNonTicketCsv(model: JustificationPackModel): string {
-  const lines = [csvLine(["taskClass", "period", "cost", "sessionCount"])];
+  const lines = [csvLine(["taskClass", "period", "projectPath", "accountUuid", "cost", "sessionCount", "confidence"])];
   for (const row of model.nonTicket ?? []) {
-    lines.push(csvLine([row.taskClass, model.period.label, row.cost.toFixed(2), row.sessionCount]));
+    lines.push(
+      csvLine([
+        row.taskClass,
+        model.period.label,
+        model.scope.projectPath ?? "",
+        model.scope.accountUuid ?? "",
+        formatMoneyCsv(row.cost),
+        row.sessionCount,
+        row.confidence ?? "n/a",
+      ]),
+    );
   }
   return lines.join("\r\n") + "\r\n";
 }
 
+/**
+ * Carries the same honesty obligations the HTML headline renders — the
+ * fallback-rate flag, the confidence mix, and unpriced tokens — into the CSV
+ * (I-5). Without these columns a spreadsheet reader gets a bare total with
+ * none of the qualification the HTML document carefully attaches to it.
+ */
 export function renderSummaryCsv(model: JustificationPackModel): string {
   const h = model.headline;
   const lines = [
     csvLine([
       "period",
+      "projectPath",
+      "accountUuid",
       "mode",
       "currency",
       "totalCost",
       "coverageRatio",
+      "confidenceHigh",
+      "confidenceMedium",
+      "confidenceLow",
+      "anyFallbackRates",
+      "unknownTokens",
+      "planFee",
       "reconciledInvoiceTotal",
       "reconciledRatio",
       "withinTolerance",
     ]),
     csvLine([
       model.period.label,
+      model.scope.projectPath ?? "",
+      model.scope.accountUuid ?? "",
       h.mode,
       h.currency,
-      h.totalCost.toFixed(2),
+      formatMoneyCsv(h.totalCost),
       h.coverageRatio != null ? h.coverageRatio.toFixed(4) : "",
+      h.confidenceMix ? h.confidenceMix.high.toFixed(4) : "",
+      h.confidenceMix ? h.confidenceMix.medium.toFixed(4) : "",
+      h.confidenceMix ? h.confidenceMix.low.toFixed(4) : "",
+      String(h.anyFallbackRates),
+      h.unknownTokens,
+      h.planFee != null ? h.planFee.toFixed(2) : "",
       h.reconciliation ? h.reconciliation.invoiceTotal.toFixed(2) : "",
       h.reconciliation ? h.reconciliation.ratio.toFixed(4) : "",
       h.reconciliation ? String(h.reconciliation.withinTolerance) : "",
