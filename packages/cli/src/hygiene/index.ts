@@ -17,7 +17,9 @@ import {
   type HygieneMessageRow,
   type HygieneThresholds,
   type RunHygieneDetectorsOptions,
+  type TierMismatchClassification,
 } from "@claude-stats/core/hygiene";
+import type { TaskClass, CoarseTaskClass, Confidence } from "@claude-stats/core/types/insight";
 import type { HygieneMessageStoreRow, Store } from "../store/index.js";
 
 export type { HygieneDigest, HygieneDetectorResult, HygieneFinding, HygieneDetectorId } from "@claude-stats/core/hygiene";
@@ -79,11 +81,40 @@ function totalCostOf(rows: readonly HygieneMessageRow[], overrides?: RateOverrid
   return total;
 }
 
-function runFor(rows: HygieneMessageRow[], opts: HygieneReportFilters): ReturnType<typeof buildHygieneDigest> {
+/**
+ * Build the sessionId → classification map the tier-mismatch detector needs
+ * (D2). One `getTaskClass` lookup per DISTINCT session in the window — bounded
+ * by the window's session count, same cost class as the rest of a local
+ * report over a machine's own history. A session with no stored row (never
+ * classified) is simply absent from the map, which `runHygieneDetectors`
+ * treats as "excluded from the comparison", not a guess.
+ */
+function buildTaskClassMap(
+  store: Store,
+  rows: readonly HygieneMessageRow[],
+): ReadonlyMap<string, TierMismatchClassification> {
+  const map = new Map<string, TierMismatchClassification>();
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (seen.has(r.sessionId)) continue;
+    seen.add(r.sessionId);
+    const stored = store.getTaskClass(r.sessionId);
+    if (!stored) continue;
+    map.set(r.sessionId, {
+      fine: stored.task_class as TaskClass,
+      coarse: stored.coarse_class as CoarseTaskClass,
+      confidence: stored.confidence as Confidence,
+    });
+  }
+  return map;
+}
+
+function runFor(store: Store, rows: HygieneMessageRow[], opts: HygieneReportFilters): ReturnType<typeof buildHygieneDigest> {
   const runOpts: RunHygieneDetectorsOptions = {
     thresholds: opts.thresholds,
     suppressions: opts.suppressions,
     rateOverrides: opts.rateOverrides,
+    taskClassBySession: buildTaskClassMap(store, rows),
   };
   return buildHygieneDigest(runHygieneDetectors(rows, runOpts));
 }
@@ -105,7 +136,7 @@ export function buildHygieneReport(store: Store, filters: HygieneReportFilters =
   });
   const rows = storeRows.map(toHygieneMessageRow);
   const totalCost = totalCostOf(rows, filters.rateOverrides);
-  const digest = runFor(rows, filters);
+  const digest = runFor(store, rows, filters);
   const hygieneRatio = totalCost > 0 ? digest.totalEstimatedWaste / totalCost : null;
 
   let previousHygieneRatio: number | null = null;
@@ -125,7 +156,7 @@ export function buildHygieneReport(store: Store, filters: HygieneReportFilters =
         .map(toHygieneMessageRow);
       const prevTotalCost = totalCostOf(prevRows, filters.rateOverrides);
       if (prevTotalCost > 0) {
-        const prevDigest = runFor(prevRows, filters);
+        const prevDigest = runFor(store, prevRows, filters);
         previousHygieneRatio = prevDigest.totalEstimatedWaste / prevTotalCost;
       }
     }

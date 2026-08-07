@@ -17,6 +17,7 @@
  * renderer can inject a translator around it without this module needing to
  * know about i18n.
  */
+import type { TaskClass, CoarseTaskClass, Confidence } from "../types/insight.js";
 
 /** One efficiency-hygiene detector's stable identifier. Also the suppression key
  *  in `config.hygiene.suppressions[]` (Phase 0). */
@@ -25,7 +26,8 @@ export type HygieneDetectorId =
   | "retry-loop"
   | "abandoned-spend"
   | "context-bloat"
-  | "re-entry-burn";
+  | "re-entry-burn"
+  | "tier-mismatch";
 
 /**
  * The row shape every detector consumes: one per stored message, already
@@ -86,6 +88,25 @@ export interface HygieneDetectorResult {
   suppressed: boolean;
 }
 
+/**
+ * One session's stored task classification — the join key the tier-mismatch
+ * detector needs that `HygieneMessageRow` does not carry (task class is a
+ * per-SESSION property, spec `session_task_class`; the message rows are
+ * per-message). Callers build a `sessionId → TierMismatchClassification` map
+ * from `store.getTaskClass()`; a session absent from the map is excluded from
+ * every comparison rather than guessed at — same honest-degrade convention a
+ * per-class cost figure uses for an unclassified session.
+ *
+ * `confidence` here is the CLASSIFIER's confidence in this session's fine
+ * class (spec §5.7 tiers: high/medium/low), not the tier-mismatch finding's
+ * own evidentiary bar (that lives in `HygieneThresholds.tierMismatch`).
+ */
+export interface TierMismatchClassification {
+  fine: TaskClass;
+  coarse: CoarseTaskClass;
+  confidence: Confidence;
+}
+
 /** Tunable thresholds, one block per detector. All have conservative
  *  (precision-favoring) defaults — see each detector module for the reasoning
  *  behind its specific numbers. */
@@ -129,6 +150,22 @@ export interface HygieneThresholds {
      *  session must start within to count as a continuation, not abandonment. */
     graceMs: number;
   };
+  tierMismatch: {
+    /** Minimum sessions on EACH tier (top and mid) within a task class before
+     *  a parity comparison is anything but noise — below this the class is
+     *  reported `insufficient-data`, never guessed at (constraint-impact/02
+     *  §2.6 "the lone bad week" / small-n honesty). */
+    minSessionsPerTier: number;
+    /**
+     * How much worse the mid tier's avg turns and tool-error rate may be,
+     * relative to the top tier's, and still count as "parity" (e.g. 0.15 =
+     * mid tier at most 15% worse on either metric). Conservative by
+     * construction: the dangerous direction is a FALSE "parity" claim (it
+     * tells a developer to downshift where the top tier actually helps), so
+     * this stays tight rather than generous.
+     */
+    maxRelativeGap: number;
+  };
 }
 
 /** Conservative defaults. Every number here is deliberately on the side of
@@ -139,4 +176,5 @@ export const DEFAULT_HYGIENE_THRESHOLDS: HygieneThresholds = {
   contextBloat: { minTurnInputTokens: 150_000, maxOutputRatio: 0.02, minOccurrences: 3 },
   reEntryBurn: { minGapMs: 30 * 60 * 1000, minCacheCreationTokens: 20_000 },
   abandonedSpend: { minCost: 1, graceMs: 2 * 60 * 60 * 1000 },
+  tierMismatch: { minSessionsPerTier: 8, maxRelativeGap: 0.15 },
 };

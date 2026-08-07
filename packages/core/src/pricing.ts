@@ -129,6 +129,24 @@ export function normalizeModelId(raw: string): NormalizedModel {
 }
 
 /**
+ * Coarse capability tier for a served model id — top (Opus/Fable/Mythos),
+ * mid (Sonnet), low (Haiku), or unknown (unrecognized id). Independent of the
+ * rate table: a model this build has never priced can still be tiered from
+ * its name, which is all the tier-mismatch detector (`hygiene/tierMismatch.ts`)
+ * needs — it compares OUTCOMES across a tier boundary, not dollars per tier.
+ */
+export type ModelTier = "top" | "mid" | "low" | "unknown";
+
+export function modelTier(raw: string): ModelTier {
+  const { canonical } = normalizeModelId(raw);
+  const id = canonical.toLowerCase();
+  if (id.includes("opus") || id.includes("fable") || id.includes("mythos")) return "top";
+  if (id.includes("sonnet")) return "mid";
+  if (id.includes("haiku")) return "low";
+  return "unknown";
+}
+
+/**
  * Per-source rate overrides, keyed by canonical model-id prefix (same
  * longest-prefix matching as the built-in table).
  *
