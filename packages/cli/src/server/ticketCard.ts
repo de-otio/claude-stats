@@ -29,14 +29,26 @@ function escapeHtml(s: string): string {
 
 /**
  * Render the ticket attribution card. `data` is `DashboardData.currentSessionTicket`
- * — `undefined` (attach never ran) and `null` (store empty) both render the
- * same honest empty state, since neither has anything to act on.
+ * — `undefined` and `null` are NOT the same state and must not render
+ * identically:
+ *
+ * - `null` means `attachTicketAttribution` ran and found no eligible session
+ *   (a genuinely empty store). "No sessions recorded yet" is honest here.
+ * - `undefined` means `attachTicketAttribution` never ran at all — the field
+ *   was never touched. The store may be full of sessions; this code has no
+ *   idea. Rendering the SAME "no sessions" copy for this case would be a
+ *   false honest-empty claim: a caller that forgot to wire the attach step
+ *   would silently tell every user their history is empty. Omit the card
+ *   entirely instead — no claim is safer than a wrong one (I1).
  */
 export function renderTicketAttributionCard(
   data: CurrentSessionTicket | null | undefined,
   t: TranslateFn,
 ): string {
-  if (!data) {
+  if (data === undefined) {
+    return "";
+  }
+  if (data === null) {
     return `<div class="cs-ticket-card" id="ticket-attribution-card">
       <div class="cs-card-title">${escapeHtml(t("dashboard:ticketCard.title"))}</div>
       <div class="cs-card-enablement">${escapeHtml(t("dashboard:ticketCard.noSession"))}</div>

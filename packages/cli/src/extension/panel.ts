@@ -465,20 +465,23 @@ export class DashboardPanel {
    * Link, negate, or remove a ticket link for a session, then refresh.
    * Webview-only — same trust plane as {@link setOutcome}: the served HTTP
    * path has no message channel and never reaches this handler. `key` is
-   * whatever the input box held; `store.addTicketLink`/`negateTicketLink`
-   * validate it via `requireTicketKey` and throw on a malformed key, which
-   * this treats as best-effort UI (swallowed, panel stays responsive).
+   * whatever the input box held; the store methods {@link applyTicketCorrection}
+   * dispatches to validate it via `requireTicketKey` and throw on a malformed
+   * key, which this treats as best-effort UI (swallowed, panel stays
+   * responsive).
+   *
+   * The action→store-call mapping itself lives in the standalone
+   * {@link applyTicketCorrection} (not inlined here) specifically so it can be
+   * unit-tested against a real `Store` without constructing a full
+   * `DashboardPanel` (which needs a live `vscode.window.createWebviewPanel`).
+   * See `ticket-panel-correction.test.ts` — its coverage is what would have
+   * caught the three action branches being interchangeable (e.g. Negate
+   * silently wired to `addTicketLink`) with the suite otherwise green.
    */
   private correctTicketLink(sessionId: string, key: string, action: "link" | "negate" | "remove"): void {
     const store = new Store();
     try {
-      if (action === "link") {
-        store.addTicketLink({ sessionId, ticketKey: key, source: "tag", confidence: "high" });
-      } else if (action === "negate") {
-        store.negateTicketLink(sessionId, key);
-      } else {
-        store.removeTicketLink(sessionId, key, "tag");
-      }
+      applyTicketCorrection(store, sessionId, key, action);
     } catch {
       // Invalid key shape or similar — best-effort UI, swallowed like setOutcome.
     } finally {
@@ -490,6 +493,32 @@ export class DashboardPanel {
   private dispose(): void {
     DashboardPanel.instance = undefined;
     for (const d of this.disposables) d.dispose();
+  }
+}
+
+/**
+ * The dashboard ticket card's action→store-call mapping, extracted from
+ * {@link DashboardPanel.correctTicketLink} so it can be exercised directly
+ * against a real `Store` in tests: constructing a `DashboardPanel` needs a
+ * live `vscode.window.createWebviewPanel`, which is exactly the kind of
+ * friction that leaves a handler like this one uncovered. Three branches, one
+ * store call each — a mutation swapping any two (e.g. Negate wired to
+ * `addTicketLink`, silently turning the "un-link" button into a "link"
+ * button) must fail a test that asserts the RESULTING row shape, not just
+ * that "some store method was called".
+ */
+export function applyTicketCorrection(
+  store: Store,
+  sessionId: string,
+  key: string,
+  action: "link" | "negate" | "remove",
+): void {
+  if (action === "link") {
+    store.addTicketLink({ sessionId, ticketKey: key, source: "tag", confidence: "high" });
+  } else if (action === "negate") {
+    store.negateTicketLink(sessionId, key);
+  } else {
+    store.removeTicketLink(sessionId, key, "tag");
   }
 }
 

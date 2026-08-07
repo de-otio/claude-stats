@@ -194,6 +194,25 @@ describe("attachTicketAttribution", () => {
     expect(header![1]).toContain(attached.sessionId.slice(0, 8));
   });
 
+  it("distinguishes `undefined` (attach never ran) from `null` (store genuinely empty) — undefined must NOT render the honest-empty copy", () => {
+    // Seed a session so the store is demonstrably NOT empty. If the card
+    // rendered `undefined` with the same "no sessions recorded yet" copy as
+    // `null`, this would be a false claim over a store full of sessions —
+    // exactly the failure mode a dropped `attachTicketAttribution` call
+    // produces (server/index.ts never invokes it, the field is left
+    // `undefined`, and the card would lie about the store being empty).
+    seedSession(store, "s-not-empty");
+
+    const undefinedHtml = renderTicketAttributionCard(undefined, t);
+    // Omit the card entirely rather than assert anything about the store.
+    expect(undefinedHtml).toBe("");
+    expect(undefinedHtml).not.toContain("dashboard:ticketCard.noSession");
+
+    // `null` (attach ran, found nothing) keeps the honest-empty state.
+    const nullHtml = renderTicketAttributionCard(null, t);
+    expect(nullHtml).toContain("dashboard:ticketCard.noSession");
+  });
+
   it("renders a session with no links as an honest empty list, not an empty card", () => {
     seedSession(store, "s1");
     const data = { currentSessionTicket: undefined } as { currentSessionTicket?: unknown };

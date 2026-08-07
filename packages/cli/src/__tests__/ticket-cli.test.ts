@@ -185,6 +185,41 @@ describe("claude-stats ticket (CLI verb)", () => {
     ).toBe(false);
   });
 
+  it("a manual link AFTER a --negate clears the tombstone and reports the truth (manual-wins is symmetric)", async () => {
+    await run("abc123def456", "PROJ-1", "--negate");
+    expect(
+      realStore.getTicketLinksForSession("abc123def456").find((l) => l.ticket_key === "PROJ-1"),
+    ).toEqual(expect.objectContaining({ negated: 1 }));
+    expect(realStore.getActiveTicketLinks().some((l) => l.ticket_key === "PROJ-1")).toBe(false);
+
+    const { out } = await run("abc123def456", "PROJ-1");
+
+    // The CLI must not claim success while the tombstone silently survives —
+    // this is the exact regression this test guards: without the fix, the
+    // row's `negated` flag stays 1 underneath a printed "Linked" message.
+    expect(out).toContain("PROJ-1");
+    const row = realStore
+      .getTicketLinksForSession("abc123def456")
+      .find((l) => l.ticket_key === "PROJ-1" && l.source === "tag")!;
+    expect(row.negated).toBe(0);
+    expect(realStore.getActiveTicketLinks().some((l) => l.ticket_key === "PROJ-1")).toBe(true);
+    expect(realStore.getTicketKeys().some((k) => k.ticket_key === "PROJ-1")).toBe(true);
+  });
+
+  it("--negate with no key errors instead of silently listing and exiting 0", async () => {
+    const { code, err, out } = await run("abc123def456", "--negate");
+    expect(code).toBe(1);
+    expect(err.length).toBeGreaterThan(0);
+    // Must not have taken the list-and-succeed path.
+    expect(out).not.toContain("Session");
+  });
+
+  it("--remove with no key errors instead of silently listing and exiting 0", async () => {
+    const { code, err } = await run("abc123def456", "--remove");
+    expect(code).toBe(1);
+    expect(err.length).toBeGreaterThan(0);
+  });
+
   it("re-running automatic extraction after --negate does not resurrect the key", async () => {
     seedSession(realStore, "extract-me", { gitBranch: "feature/PROJ-1-work" });
     runTicketExtraction(realStore, realStore.findSession("extract-me")!, { allowlist: ["PROJ"] });

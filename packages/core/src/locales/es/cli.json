@@ -470,6 +470,7 @@
   "ticket": {
     "sessionNoLinks": "Sesión {{sessionId}}: sin vínculos de tickets",
     "sessionLinks": "Sesión {{sessionId}}:",
+    "keyRequired": "Proporcione una clave de ticket con --negate/--remove.",
     "activeLabel": "activo",
     "negatedLabel": "anulado",
     "linked": "Se vinculó {{key}} a la sesión {{sessionId}}",

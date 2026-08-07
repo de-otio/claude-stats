@@ -494,8 +494,8 @@
     "noSession": "Aucune session enregistrée pour l'instant — rien à lier.",
     "session": "Session actuelle : {{sessionId}}…",
     "noLinks": "Aucun lien de ticket pour cette session.",
-    "negatedBadge": "exclu",
-    "negateAction": "Exclure",
+    "negatedBadge": "neutralisé",
+    "negateAction": "Neutraliser",
     "removeAction": "Supprimer",
     "linkAction": "Lier",
     "keyPlaceholder": "PROJ-123"

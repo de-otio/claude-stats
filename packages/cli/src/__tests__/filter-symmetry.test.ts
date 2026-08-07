@@ -432,11 +432,33 @@ describe("ticket-link storage seam", () => {
 
   it("never lets automatic extraction overwrite a manual assignment", () => {
     store.addTicketLink({ sessionId: "s1", ticketKey: "PROJ-9", source: "tag", confidence: "high" });
-    // A later extraction pass tries to downgrade the user's own row.
-    store.addTicketLink({ sessionId: "s1", ticketKey: "PROJ-9", source: "tag", confidence: "low", evidence: "guessed" });
+    // A later extraction pass (a real automatic source — extraction never
+    // writes `source: 'tag'`, see runTicketExtraction's doc comment) tries
+    // to downgrade the user's own row. Using "branch" here (not "tag") is
+    // load-bearing: it's what makes this "automatic vs. manual", as opposed
+    // to L-1's "a newer manual write overwrites an older manual write",
+    // which is a DIFFERENT rule this same seam deliberately allows (see
+    // `ticket-cli.test.ts`'s "manual link AFTER a --negate" test).
+    store.addTicketLink({ sessionId: "s1", ticketKey: "PROJ-9", source: "branch", confidence: "low", evidence: "guessed" });
     const links = store.getTicketLinksForSession("s1");
-    expect(links[0]!.confidence).toBe("high");
-    expect(links[0]!.evidence).toBeNull();
+    const manualRow = links.find((l) => l.source === "tag")!;
+    expect(manualRow.confidence).toBe("high");
+    expect(manualRow.evidence).toBeNull();
+  });
+
+  it("DOES let a fresh manual write overwrite an existing manual row (manual-wins is symmetric — see L-1)", () => {
+    store.addTicketLink({ sessionId: "s1", ticketKey: "PROJ-9", source: "tag", confidence: "high" });
+    store.negateTicketLink("s1", "PROJ-9");
+    let links = store.getTicketLinksForSession("s1");
+    expect(links.find((l) => l.source === "tag")!.negated).toBe(1);
+
+    // A later, explicit manual link (also source: 'tag') is a newer user
+    // statement — it must clear the earlier tombstone, not be silently
+    // dropped by the same guard that protects manual rows from AUTOMATIC
+    // overwrites.
+    store.addTicketLink({ sessionId: "s1", ticketKey: "PROJ-9", source: "tag", confidence: "high" });
+    links = store.getTicketLinksForSession("s1");
+    expect(links.find((l) => l.source === "tag")!.negated).toBe(0);
   });
 
   it("counts only non-negated links in the key index", () => {

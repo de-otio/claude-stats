@@ -204,6 +204,30 @@ export interface TicketCostReport {
 }
 
 /**
+ * The write-through half of `recap correct ticket <item> <key>`
+ * (`cli/index.ts`): a digest-item correction lives in the recap corrections
+ * DB (labels the item for rendering) but does nothing for cost aggregation,
+ * which reads `ticket_links`, not that DB. This links every session the item
+ * covers so `getActiveTicketLinks`/`getTicketCostReport` see the assignment.
+ *
+ * Extracted out of the CLI action (rather than left inline) specifically so a
+ * test can invoke the ACTUAL production write-through instead of
+ * re-implementing the loop inline — a test that duplicates the loop passes
+ * even after the loop is deleted from the CLI handler, since it never calls
+ * the handler's code at all. Call this from the handler; don't inline the
+ * loop there again.
+ */
+export function applyTicketCorrectionWriteThrough(
+  store: Store,
+  sessionIds: readonly string[],
+  ticketKey: string,
+): void {
+  for (const sessionId of sessionIds) {
+    store.addTicketLink({ sessionId, ticketKey, source: "tag", confidence: "high" });
+  }
+}
+
+/**
  * Per-ticket cost report for a period/project/account window, plus the
  * coverage figure (02 §2.6, `get_cost_per_ticket` / `report --ticket`).
  *
