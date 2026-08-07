@@ -21,13 +21,16 @@
  *     `"connection_retry"`) — one line per retry attempt, carrying
  *     `retryAttempt`, `maxRetries`, and — the load-bearing field —
  *     `retryInMs`: the client's OWN scheduled backoff before its next
- *     attempt. This was verified against real transcripts: comparing
- *     `retryInMs` on one attempt to the actual observed timestamp gap to the
- *     next attempt in the same retry chain matched within normal request
- *     latency in the overwhelming majority of cases (tens of samples, median
- *     error under two seconds against waits of 0.5–40s). Summing this field
- *     is therefore a MEASURED wait, not an inference — the client computed
- *     it and (empirically) acted on it.
+ *     attempt. This was verified against real transcripts by comparing
+ *     `retryInMs` on one attempt to the observed timestamp gap to the next
+ *     attempt in the same retry chain (42 measurable pairs): the observed
+ *     gap was NEVER shorter than the scheduled backoff (0 of 42), and
+ *     exceeded it by under five seconds in 35 of 42 — the remainder being
+ *     long request latency on the retried call. Summing this field is
+ *     therefore a measured LOWER BOUND on the wait the client actually
+ *     took, not an inference and not an over-statement: on that same
+ *     corpus the scheduled sum was roughly a quarter of the observed
+ *     elapsed time, so the figure errs conservatively (I1).
  *
  *  2. `type:"assistant", isApiErrorMessage:true` with a short `error` string
  *     (`"rate_limit"` | `"server_error"`) and `apiErrorStatus` (429 / 5xx) —
@@ -70,6 +73,18 @@
  * `eventCount === 0` for each half, same as every other honest-empty card in
  * this codebase.
  *
+ * ## The retry ladder also carries LOCAL failures
+ *
+ * A third correction, found by re-checking the corpus rather than the doc:
+ * a sizeable minority of retry-ladder entries carry no HTTP status at all
+ * and instead set `error.isNetworkDown: true` — the developer's own
+ * connection dropped. Same mechanism, same `retryInMs`, entirely different
+ * cause. Folding those into a figure whose rendered caveat asserts
+ * "Anthropic's own infrastructure availability" would attribute a local
+ * outage to Anthropic. `summarizeApiThrottle` therefore excludes them from
+ * the overload count and wait, and reports them in
+ * `networkDownRetryEvents` so they are visible rather than dropped.
+ *
  * Design: doc/analysis/constraint-impact/01-what-constraints-cost.md,
  * 03-measurement-mechanics.md §3.2.
  */
@@ -92,6 +107,15 @@ export interface ApiThrottleSummary {
   measuredOverloadWaitMs: number;
   overloadRetryEvents: number;
   overloadSessionsAffected: number;
+  /** Retry-ladder attempts the client itself flagged `isNetworkDown` — the
+   *  DEVELOPER's own connection dropped, not Anthropic's infrastructure.
+   *  Carried on the identical retry-ladder mechanism, so they must be split
+   *  out here: the overload figures above are rendered with a caveat that
+   *  asserts "Anthropic's own infrastructure availability", and a local
+   *  outage folded into them would be a false cause — the same defect class
+   *  this module was rebuilt to remove. Counted, never silently dropped, but
+   *  not currently rendered. */
+  networkDownRetryEvents: number;
   /** Events whose kind this module could not classify (an unrecognised
    *  status/error string) — tracked, never silently folded into either
    *  total, so an incomplete classification is visible rather than hidden. */
@@ -105,6 +129,7 @@ const EMPTY_SUMMARY: ApiThrottleSummary = {
   measuredOverloadWaitMs: 0,
   overloadRetryEvents: 0,
   overloadSessionsAffected: 0,
+  networkDownRetryEvents: 0,
   unknownEvents: 0,
 };
 
@@ -120,6 +145,7 @@ export function summarizeApiThrottle(events: readonly ApiErrorEvent[]): ApiThrot
   let serverErrorRejections = 0;
   let measuredOverloadWaitMs = 0;
   let overloadRetryEvents = 0;
+  let networkDownRetryEvents = 0;
   let unknownEvents = 0;
   const rateLimitSessions = new Set<string>();
   const overloadSessions = new Set<string>();
@@ -144,12 +170,23 @@ export function summarizeApiThrottle(events: readonly ApiErrorEvent[]): ApiThrot
       // toward the wait total too, since the WAIT is measured independent of
       // classification — only the two REJECTION counts above depend on
       // classification being exact.
-      if (e.retryInMs != null) {
-        measuredOverloadWaitMs += e.retryInMs;
-        overloadRetryEvents++;
-        overloadSessions.add(e.sessionId);
+      //
+      // EXCEPT when the client flagged `isNetworkDown`: that retry was the
+      // developer's OWN connection dropping, carried on the identical
+      // mechanism. The overload figures render a caveat asserting
+      // "Anthropic's own infrastructure availability", so counting a local
+      // outage there would state a cause the data contradicts. Split out,
+      // not dropped.
+      if (e.isNetworkDown) {
+        if (e.retryInMs != null) networkDownRetryEvents++;
+      } else {
+        if (e.retryInMs != null) {
+          measuredOverloadWaitMs += e.retryInMs;
+          overloadRetryEvents++;
+          overloadSessions.add(e.sessionId);
+        }
+        if (e.kind === "unknown") unknownEvents++;
       }
-      if (e.kind === "unknown") unknownEvents++;
     }
   }
 
@@ -160,6 +197,7 @@ export function summarizeApiThrottle(events: readonly ApiErrorEvent[]): ApiThrot
     measuredOverloadWaitMs,
     overloadRetryEvents,
     overloadSessionsAffected: overloadSessions.size,
+    networkDownRetryEvents,
     unknownEvents,
   };
 }

@@ -1083,6 +1083,10 @@ describe("parseSessionFile — apiErrorEvents", () => {
     expect(e.retryAttempt).toBe(3);
     expect(e.isNetworkDown).toBe(false);
     expect(e.sessionId).toBe(BASE_SESSION);
+    // A null timestamp would silently exclude the row from every
+    // since/until-scoped read in the store, zeroing the metric without any
+    // visible failure — assert the real value, not just its presence.
+    expect(e.timestamp).toBe(1_002_000);
   });
 
   it("parses a terminal rate_limit rejection with no wait duration attached", async () => {
@@ -1113,6 +1117,14 @@ describe("parseSessionFile — apiErrorEvents", () => {
     writeLines(filePath, [retryLadderEntry({ error: { status: 429, isNetworkDown: false } })]);
     const r = await parseSessionFile(filePath, "/proj");
     expect(r.apiErrorEvents[0]!.kind).toBe("rate_limit");
+  });
+
+  it("classifies the 5xx band inclusively at its lower edge (500, not just 529)", async () => {
+    // The classifier's band is `status >= 500`; nothing pinned the boundary,
+    // so `>` instead of `>=` silently demoted a plain 500 to "unknown".
+    writeLines(filePath, [retryLadderEntry({ error: { status: 500, isNetworkDown: false } })]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.apiErrorEvents[0]!.kind).toBe("server_error");
   });
 
   it("classifies an unrecognised error string/status as unknown rather than guessing", async () => {

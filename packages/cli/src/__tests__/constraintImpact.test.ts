@@ -77,6 +77,7 @@ describe("summarizeApiThrottle", () => {
       measuredOverloadWaitMs: 0,
       overloadRetryEvents: 0,
       overloadSessionsAffected: 0,
+      networkDownRetryEvents: 0,
       unknownEvents: 0,
     });
   });
@@ -151,6 +152,34 @@ describe("summarizeApiThrottle", () => {
     expect(s.unknownEvents).toBe(1);
   });
 
+  it("does NOT attribute a client-side network-down retry to Anthropic overload", () => {
+    // Real transcripts carry local connection failures on the SAME
+    // retry-ladder mechanism as a 529 (a substantial minority of ladder
+    // entries in the corpus this module was validated against). The overload
+    // headline's caveat asserts "Anthropic's own infrastructure
+    // availability" — folding a dropped wifi connection into it would state
+    // a cause the data contradicts, which is exactly the defect class this
+    // module was rebuilt to remove.
+    const s = summarizeApiThrottle([
+      retryLadder({ retryInMs: 3_000, isNetworkDown: true, kind: "unknown" as ApiErrorEvent["kind"], status: null }),
+      retryLadder({ retryInMs: 1_000 }), // genuine 529
+    ]);
+    expect(s.measuredOverloadWaitMs).toBe(1_000);
+    expect(s.overloadRetryEvents).toBe(1);
+    expect(s.overloadSessionsAffected).toBe(1);
+    expect(s.networkDownRetryEvents).toBe(1);
+  });
+
+  it("a network-down-only period abstains from the overload sentence entirely", () => {
+    const s = summarizeApiThrottle([
+      retryLadder({ retryInMs: 5_000, isNetworkDown: true, kind: "unknown" as ApiErrorEvent["kind"], status: null }),
+    ]);
+    expect(s.overloadRetryEvents).toBe(0);
+    const a = formatApiThrottle(t, s, "plan");
+    expect(a.overloadHeadline).toBeNull();
+    expect(a.overloadCaveat).toBeNull();
+  });
+
   it("a retry-ladder event with retryInMs null (defensive — parser should never emit one) contributes nothing", () => {
     const s = summarizeApiThrottle([retryLadder({ retryInMs: null })]);
     expect(s.measuredOverloadWaitMs).toBe(0);
@@ -168,6 +197,7 @@ describe("formatApiThrottle", () => {
     measuredOverloadWaitMs: 0,
     overloadRetryEvents: 0,
     overloadSessionsAffected: 0,
+    networkDownRetryEvents: 0,
     unknownEvents: 0,
   };
 
