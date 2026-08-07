@@ -38,6 +38,10 @@ import {
   confidenceCaveat,
 } from "@claude-stats/core/insight";
 import type { TicketCoverage } from "@claude-stats/core/types/insight";
+// The real `en` translator (setup.ts runs initCliI18n("en")). Deliberately not
+// a stub: these assertions then also prove every `common:insight.*` key the
+// formatters reach for actually exists, which a stub would hide.
+import { t } from "../i18n.js";
 import { parseTicketKey, isTicketKey, matchesProjectAllowlist } from "@claude-stats/core/tickets";
 import { buildCorpus, seedStore, FIXED_NOW, seededRandom } from "./fixtures/synthetic.js";
 import { estimateCost } from "@claude-stats/core/pricing";
@@ -196,10 +200,10 @@ describe("answer formatters", () => {
     expect(formatMoney(1234.56, "EUR")).toBe("€1,235");
     expect(formatPercent(0.834)).toBe("83%");
     expect(formatPercent(null)).toBe("—");
-    expect(formatDevTime(45, 90)).toBe("30 dev-minutes");
-    expect(formatDevTime(360, 90)).toBe("4.0 dev-hours");
-    expect(formatDevTime(1440, 90)).toBe("2.0 dev-days");
-    expect(formatDevTime(100, 0)).toBe("—");
+    expect(formatDevTime(t, 45, 90)).toBe("30 dev-minutes");
+    expect(formatDevTime(t, 360, 90)).toBe("4.0 dev-hours");
+    expect(formatDevTime(t, 1440, 90)).toBe("2.0 dev-days");
+    expect(formatDevTime(t, 100, 0)).toBe("—");
   });
 
   it("keeps two decimals in `precise` mode regardless of magnitude (I-1: the pack's own precision, same implementation)", () => {
@@ -243,41 +247,41 @@ describe("answer formatters", () => {
   });
 
   it("carries the plan-vs-metered vocabulary into Q1's caveat", () => {
-    const plan = answerCost({ mode: "plan", cost: 540, previousCost: 500, planFee: 100, planMultiplier: 5.4 });
+    const plan = answerCost(t, { mode: "plan", cost: 540, previousCost: 500, planFee: 100, planMultiplier: 5.4 });
     expect(plan.answer).toContain("5.4× your $100/mo plan");
     expect(plan.caveat).toContain("not what your plan charges");
 
-    const metered = answerCost({ mode: "metered", cost: 312, previousCost: 280, reconciledRatio: 0.987 });
+    const metered = answerCost(t, { mode: "metered", cost: 312, previousCost: 280, reconciledRatio: 0.987 });
     expect(metered.answer).toContain("$312");
     expect(metered.caveat).toContain("econciles with the invoice at 99%");
     expect(metered.caveat).not.toContain("not what your plan charges");
   });
 
   it("warns when partner usage was priced at fallback rates", () => {
-    const a = answerCost({ mode: "metered", cost: 100, previousCost: null, anyFallbackRates: true });
+    const a = answerCost(t, { mode: "metered", cost: 100, previousCost: null, anyFallbackRates: true });
     expect(a.caveat).toContain("first-party rates");
   });
 
   it("adds the salary denominator only when a rate is configured", () => {
-    const withRate = answerCost({ mode: "metered", cost: 720, previousCost: null, hourlyRate: 90 });
+    const withRate = answerCost(t, { mode: "metered", cost: 720, previousCost: null, hourlyRate: 90 });
     expect(withRate.answer).toContain("dev-days");
-    const without = answerCost({ mode: "metered", cost: 720, previousCost: null });
+    const without = answerCost(t, { mode: "metered", cost: 720, previousCost: null });
     expect(without.answer).not.toContain("dev-");
   });
 
   it("states an enablement path instead of rendering an empty card", () => {
-    const noCost = answerCost({ mode: "metered", cost: 0, previousCost: null });
+    const noCost = answerCost(t, { mode: "metered", cost: 0, previousCost: null });
     expect(noCost.value).toBeNull();
     expect(noCost.unavailable?.reason).toBe("no-data");
     expect(noCost.unavailable?.enablement.length).toBeGreaterThan(0);
 
-    const noTickets = answerBought({ completedTasks: 3, coverage: null, topTicket: null });
+    const noTickets = answerBought(t, { completedTasks: 3, coverage: null, topTicket: null });
     expect(noTickets.unavailable?.reason).toBe("not-enabled");
     expect(noTickets.unavailable?.enablement).toContain("project keys");
   });
 
   it("never reports coverage without its confidence mix", () => {
-    const a = answerBought({
+    const a = answerBought(t, {
       completedTasks: 41,
       coverage: coverage(),
       topTicket: { key: "PROJ-123", cost: 41 },
@@ -289,7 +293,7 @@ describe("answer formatters", () => {
   });
 
   it("surfaces ambiguity in the caveat rather than hiding it", () => {
-    const c = confidenceCaveat(coverage({ ambiguousSessions: 2 }));
+    const c = confidenceCaveat(t, coverage({ ambiguousSessions: 2 }));
     expect(c).toContain("2 sessions ambiguous");
   });
 
@@ -297,18 +301,18 @@ describe("answer formatters", () => {
   // it's the exact "confidently-wrong-looking-absent" case I1 exists to catch
   // (e.g. a team on a lowercase branch convention with no allowlist configured).
   it("gives a diagnostic hint instead of a bare null when there IS spend but NONE of it is attributed", () => {
-    const c = confidenceCaveat(coverage({ attributedCost: 0, totalCost: 200, ratio: 0, byConfidence: { high: 0, medium: 0, low: 0 } }));
+    const c = confidenceCaveat(t, coverage({ attributedCost: 0, totalCost: 200, ratio: 0, byConfidence: { high: 0, medium: 0, low: 0 } }));
     expect(c).not.toBeNull();
     expect(c).toContain("config.tickets.projectKeys");
   });
 
   it("stays null when there is no spend at all (nothing to enable)", () => {
-    const c = confidenceCaveat(coverage({ attributedCost: 0, totalCost: 0, ratio: null, byConfidence: { high: 0, medium: 0, low: 0 } }));
+    const c = confidenceCaveat(t, coverage({ attributedCost: 0, totalCost: 0, ratio: null, byConfidence: { high: 0, medium: 0, low: 0 } }));
     expect(c).toBeNull();
   });
 
   it("frames a measured policy impact as evidence, not proof", () => {
-    const a = answerSetup({
+    const a = answerSetup(t, {
       planVerdict: null,
       recommendedPlan: null,
       projectedSaving: null,
@@ -320,7 +324,7 @@ describe("answer formatters", () => {
   });
 
   it("falls back to plan fit when no policy event is configured", () => {
-    const a = answerSetup({
+    const a = answerSetup(t, {
       planVerdict: "Your usage fits Max 5x with headroom",
       recommendedPlan: "Max 5x",
       projectedSaving: 80,
@@ -329,13 +333,13 @@ describe("answer formatters", () => {
   });
 
   it("says nothing needs attention rather than inventing a recommendation", () => {
-    const a = answerChange({ recommendations: [], doingWell: "Cache hit rate is healthy." });
+    const a = answerChange(t, { recommendations: [], doingWell: "Cache hit rate is healthy." });
     expect(a.answer).toBe("Cache hit rate is healthy.");
     expect(a.value).toBeNull();
   });
 
   it("leads with the top recommendation and counts the rest", () => {
-    const a = answerChange({
+    const a = answerChange(t, {
       recommendations: [
         { title: "Downshift model tier on config chores", impact: "~$40/mo" },
         { title: "Trim context on long sessions" },
@@ -351,7 +355,7 @@ describe("answer formatters", () => {
   // numbers on one card. Every existing case had ≤3 recommendations, where the
   // two counts coincide, so nothing noticed.
   it("counts every recommendation beyond the lead, not just those in a top-N slice", () => {
-    const a = answerChange({
+    const a = answerChange(t, {
       recommendations: Array.from({ length: 7 }, (_, i) => ({ title: `Recommendation ${i}` })),
     });
     expect(a.value).toBe("7");
@@ -359,14 +363,14 @@ describe("answer formatters", () => {
   });
 
   it("names no companions at all when there is exactly one recommendation", () => {
-    const a = answerChange({ recommendations: [{ title: "Only one thing" }] });
+    const a = answerChange(t, { recommendations: [{ title: "Only one thing" }] });
     expect(a.value).toBe("1");
     expect(a.answer).toBe("Only one thing.");
     expect(a.answer).not.toContain("more");
   });
 
   it("handles a missing efficiency frontier honestly", () => {
-    const a = answerEfficiency({ recoverableWaste: null, cost: 100 });
+    const a = answerEfficiency(t, { recoverableWaste: null, cost: 100 });
     expect(a.unavailable?.reason).toBe("no-data");
   });
 
@@ -376,8 +380,8 @@ describe("answer formatters", () => {
         fc.double({ min: 0.01, max: 1e6, noNaN: true }),
         fc.constantFrom("plan" as const, "metered" as const),
         (cost, mode) => {
-          const once = JSON.stringify(answerCost({ mode, cost, previousCost: null }));
-          const twice = JSON.stringify(answerCost({ mode, cost, previousCost: null }));
+          const once = JSON.stringify(answerCost(t, { mode, cost, previousCost: null }));
+          const twice = JSON.stringify(answerCost(t, { mode, cost, previousCost: null }));
           expect(once).toBe(twice);
         },
       ),

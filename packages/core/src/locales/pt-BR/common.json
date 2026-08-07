@@ -68,6 +68,77 @@
     "promptsPerHr": "prompts/h",
     "outputPerPrompt": "saída/prompt"
   },
+  "insight": {
+    "punctuation": {
+      "sentence": "{{text}}.",
+      "clauseJoin": " — ",
+      "listJoin": ", ",
+      "dotJoin": " · "
+    },
+    "devTime": {
+      "minutes": "{{value}} minutos de desenvolvimento",
+      "hours": "{{value}} horas de desenvolvimento",
+      "days": "{{value}} dias de desenvolvimento"
+    },
+    "confidence": {
+      "high": "alta",
+      "medium": "média",
+      "low": "baixa"
+    },
+    "caveat": {
+      "plan": "Custo equivalente de API — não é o que seu plano cobra.",
+      "mixed": "Cobrança mista entre as contas em exibição — parte deste valor é equivalente de API frente a uma mensalidade de plano, parte é dinheiro medido de fato. Selecione uma única conta, ou defina pricing.mode, para ter um significado só.",
+      "metered": "Custo real medido.",
+      "reconciled": "Confere com a fatura em {{ratio}}.",
+      "fallbackRates": "Parte do uso foi precificada com tarifas first-party — configure as tarifas do parceiro para valores exatos.",
+      "reconciledAndFallback": "Confere com a fatura em {{ratio}}; parte do uso foi precificada com tarifas first-party — configure as tarifas do parceiro para valores exatos."
+    },
+    "coverage": {
+      "tier": "{{percent}} {{tier}}",
+      "mix": "{{parts}} de confiança.",
+      "mixAmbiguous_one": "{{parts}} de confiança · {{count}} sessão ambígua.",
+      "mixAmbiguous_other": "{{parts}} de confiança · {{count}} sessões ambíguas.",
+      "none": "Nenhum gasto atribuído a chaves de ticket neste período — verifique se os nomes de branch, os assuntos de commit ou os prompts contêm uma chave como PROJ-123, e se config.tickets.projectKeys lista o prefixo da sua equipe (necessário para reconhecer uma convenção em minúsculas ou de caixa mista)."
+    },
+    "cost": {
+      "unavailable": "Nenhum uso registrado neste período.",
+      "enablement": "Rode uma sessão do Claude Code e atualize — a coleta é automática.",
+      "thisPeriod": "{{money}} neste período",
+      "devTime": "≈ {{devTime}} pela taxa que você configurou",
+      "planMultiplier": "{{multiplier}}× o seu plano de {{fee}}/mês"
+    },
+    "bought": {
+      "unavailable": "Ainda não há gasto atribuído a itens de trabalho.",
+      "enablement": "Adicione as chaves do seu projeto em Configurações → Tickets para atribuir o gasto automaticamente.",
+      "completed_one": "{{count}} tarefa concluída",
+      "completed_other": "{{count}} tarefas concluídas",
+      "attributed": "{{percent}} do gasto atribuído a itens de trabalho",
+      "topTicket": "maior: {{key}} ({{cost}})"
+    },
+    "efficiency": {
+      "unavailable": "Trabalho concluído insuficiente para medir a eficiência.",
+      "enablement": "A eficiência precisa de algumas tarefas concluídas no período — volte depois de mais uso.",
+      "recoverable": "{{money}} recuperáveis ({{percent}} do gasto)",
+      "hygiene": "desperdício autoavaliado {{percent}}",
+      "hygieneDown": "desperdício autoavaliado {{percent}}, caiu de {{previous}}",
+      "hygieneUp": "desperdício autoavaliado {{percent}}, subiu de {{previous}}"
+    },
+    "setup": {
+      "unavailable": "Dados insuficientes para avaliar se o seu plano se encaixa.",
+      "enablement": "Avaliar o encaixe do plano exige algumas semanas de uso para ter significado.",
+      "policyImpact_one": "Desde a mudança de política em {{date}}, o custo por tarefa bem-sucedida subiu {{percent}} em {{count}} classe de tarefas.",
+      "policyImpact_other": "Desde a mudança de política em {{date}}, o custo por tarefa bem-sucedida subiu {{percent}} em {{count}} classes de tarefas.",
+      "policyCaveat": "Indício, não prova — comparado dentro das classes de tarefas, dos dois lados do limite.",
+      "verdictWithSaving": "{{verdict}} — mudar para {{plan}} economizaria cerca de {{saving}}/mês.",
+      "savingCaveat": "Estimado a partir do seu próprio uso aplicado aos limites de cada plano."
+    },
+    "change": {
+      "nothing": "No momento, nada precisa de atenção.",
+      "withImpact": "{{title}} — {{impact}}",
+      "more_one": "{{lead}} (+{{count}} outro).",
+      "more_other": "{{lead}} (+{{count}} outros)."
+    }
+  },
   "actions": {
     "connect": "Conectar",
     "disconnect": "Desconectar",

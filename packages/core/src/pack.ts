@@ -11,8 +11,19 @@
  *
  * Quotes `insight.ts`'s formatters rather than re-deriving strings, so the
  * pack and the dashboard can never disagree about what a number means.
+ *
+ * LOCALIZATION SCOPE, stated so the boundary is not mistaken for an oversight:
+ * the sentences this pack SHARES with the dashboard and the CLI — the cost
+ * caveat, the coverage caveat, the dev-time label — go through the injected
+ * `InsightT` and are localized. The pack's OWN chrome (section headings, the
+ * table column labels, `MODE_LABEL`, `TASK_CLASS_LABELS`, `UNAVAILABLE_TEXT`,
+ * `scopeLabel`) is still English. That is deliberate: those strings have
+ * exactly one surface, so localizing them cannot create the cross-surface drift
+ * this module exists to prevent, and folding them in would double this change.
+ * They are a separate, self-contained lane.
  */
 import { isTicketKey } from "./tickets.js";
+import type { InsightT } from "./insight.js";
 import { formatDevTime, formatMoney, formatMoneyCsv, formatPercent, confidenceCaveat, costCaveat } from "./insight.js";
 import type { AccountMode, Confidence, PolicyEvent, TaskClass, TicketCoverage } from "./types/insight.js";
 import type {
@@ -86,11 +97,11 @@ export interface BuildHeadlineInput {
   unknownTokens?: number;
 }
 
-export function buildPackHeadline(input: BuildHeadlineInput): PackHeadline {
+export function buildPackHeadline(t: InsightT, input: BuildHeadlineInput): PackHeadline {
   const totalCost = input.coverage.totalCost;
   const devTimeLabel =
     input.hourlyRate && input.hourlyRate > 0 && totalCost > 0
-      ? formatDevTime(totalCost, input.hourlyRate)
+      ? formatDevTime(t, totalCost, input.hourlyRate)
       : null;
 
   let reconciliation: PackReconciliation | null = null;
@@ -130,7 +141,7 @@ export function buildPackHeadline(input: BuildHeadlineInput): PackHeadline {
     totalCost,
     devTimeLabel,
     coverageRatio: input.coverage.ratio,
-    coverageCaveat: confidenceCaveat(input.coverage),
+    coverageCaveat: confidenceCaveat(t, input.coverage),
     // Deliberately NOT passing reconciliation.ratio into costCaveat here:
     // costCaveat's "reconciles with the invoice at X%" phrasing reads as an
     // affirmative claim at any X, which is actively misleading for a residual
@@ -140,7 +151,7 @@ export function buildPackHeadline(input: BuildHeadlineInput): PackHeadline {
     // correctly either way. The pack still quotes costCaveat for the mode
     // sentence and the fallback-rate caveat; it just doesn't feed it a number
     // whose wording that formatter doesn't yet handle safely.
-    costCaveatText: costCaveat(input.mode, {
+    costCaveatText: costCaveat(t, input.mode, {
       reconciledRatio: null,
       anyFallbackRates: input.anyFallbackRates ?? false,
     }),
@@ -276,7 +287,7 @@ export interface BuildPackModelInput {
 /** Assemble the whole pack model. The single place section opt-in is applied
  *  — every renderer downstream just reads what's present (05 §5.3: "the tool
  *  never produces a pack the developer hasn't reviewed"). */
-export function buildJustificationPackModel(input: BuildPackModelInput): JustificationPackModel {
+export function buildJustificationPackModel(t: InsightT, input: BuildPackModelInput): JustificationPackModel {
   const wanted = new Set(input.sections);
 
   const tickets =
@@ -302,7 +313,7 @@ export function buildJustificationPackModel(input: BuildPackModelInput): Justifi
     period: { ...input.period },
     scope,
     sections: ALL_PACK_SECTIONS.filter((s) => wanted.has(s)),
-    headline: buildPackHeadline(input.headline),
+    headline: buildPackHeadline(t, input.headline),
     tickets,
     nonTicket,
     methodology: buildPackMethodology(input.methodology),

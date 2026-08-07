@@ -68,6 +68,77 @@
     "promptsPerHr": "prompts/h",
     "outputPerPrompt": "salida/prompt"
   },
+  "insight": {
+    "punctuation": {
+      "sentence": "{{text}}.",
+      "clauseJoin": " — ",
+      "listJoin": ", ",
+      "dotJoin": " · "
+    },
+    "devTime": {
+      "minutes": "{{value}} minutos de desarrollo",
+      "hours": "{{value}} horas de desarrollo",
+      "days": "{{value}} días de desarrollo"
+    },
+    "confidence": {
+      "high": "alta",
+      "medium": "media",
+      "low": "baja"
+    },
+    "caveat": {
+      "plan": "Coste API equivalente — no es lo que cobra tu plan.",
+      "mixed": "Facturación mixta entre las cuentas a la vista — parte de esta cifra es valor API equivalente frente a una cuota de plan, y parte es dinero facturado por uso. Selecciona una sola cuenta, o define pricing.mode, para obtener un único significado.",
+      "metered": "Coste real facturado por uso.",
+      "reconciled": "Concuerda con la factura al {{ratio}}.",
+      "fallbackRates": "Parte del uso se tarificó con tarifas de primera parte — configura las tarifas del socio para obtener cifras exactas.",
+      "reconciledAndFallback": "Concuerda con la factura al {{ratio}}; parte del uso se tarificó con tarifas de primera parte — configura las tarifas del socio para obtener cifras exactas."
+    },
+    "coverage": {
+      "tier": "{{percent}} {{tier}}",
+      "mix": "{{parts}} de confianza.",
+      "mixAmbiguous_one": "{{parts}} de confianza · {{count}} sesión ambigua.",
+      "mixAmbiguous_other": "{{parts}} de confianza · {{count}} sesiones ambiguas.",
+      "none": "No se atribuyó ningún gasto a claves de ticket en este periodo — comprueba que los nombres de rama, los asuntos de commit o los prompts contengan una clave como PROJ-123, y que config.tickets.projectKeys incluya el prefijo de tu equipo (necesario para reconocer una convención en minúsculas o mixta)."
+    },
+    "cost": {
+      "unavailable": "No se registró uso en este periodo.",
+      "enablement": "Ejecuta una sesión de Claude Code y actualiza — la recopilación es automática.",
+      "thisPeriod": "{{money}} en este periodo",
+      "devTime": "≈ {{devTime}} según la tarifa que configuraste",
+      "planMultiplier": "{{multiplier}}× tu plan de {{fee}}/mes"
+    },
+    "bought": {
+      "unavailable": "Todavía no hay gasto atribuido a elementos de trabajo.",
+      "enablement": "Añade las claves de tu proyecto en Ajustes → Tickets para atribuir el gasto automáticamente.",
+      "completed_one": "{{count}} tarea completada",
+      "completed_other": "{{count}} tareas completadas",
+      "attributed": "{{percent}} del gasto atribuido a elementos de trabajo",
+      "topTicket": "el mayor: {{key}} ({{cost}})"
+    },
+    "efficiency": {
+      "unavailable": "No hay suficiente trabajo completado para medir la eficiencia.",
+      "enablement": "La eficiencia necesita algunas tareas completadas en el periodo — vuelve tras más uso.",
+      "recoverable": "{{money}} recuperables ({{percent}} del gasto)",
+      "hygiene": "desperdicio autoevaluado {{percent}}",
+      "hygieneDown": "desperdicio autoevaluado {{percent}}, ha bajado desde {{previous}}",
+      "hygieneUp": "desperdicio autoevaluado {{percent}}, ha subido desde {{previous}}"
+    },
+    "setup": {
+      "unavailable": "No hay datos suficientes para juzgar si tu plan encaja.",
+      "enablement": "Valorar el encaje del plan requiere algunas semanas de uso para ser significativo.",
+      "policyImpact_one": "Desde el cambio de política del {{date}}, el coste por tarea exitosa ha subido un {{percent}} en {{count}} clase de tareas.",
+      "policyImpact_other": "Desde el cambio de política del {{date}}, el coste por tarea exitosa ha subido un {{percent}} en {{count}} clases de tareas.",
+      "policyCaveat": "Indicio, no prueba — comparado dentro de cada clase de tareas a ambos lados del límite.",
+      "verdictWithSaving": "{{verdict}} — cambiar a {{plan}} ahorraría unos {{saving}}/mes.",
+      "savingCaveat": "Estimado a partir de tu propio uso aplicado a los límites de cada plan."
+    },
+    "change": {
+      "nothing": "Ahora mismo nada requiere atención.",
+      "withImpact": "{{title}} — {{impact}}",
+      "more_one": "{{lead}} (+{{count}} más).",
+      "more_other": "{{lead}} (+{{count}} más)."
+    }
+  },
   "actions": {
     "connect": "Conectar",
     "disconnect": "Desconectar",

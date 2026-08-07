@@ -1,10 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { renderCard, CARD_TOKENS_CSS, CARD_CSS } from "../server/card.js";
 import { answerCost, unavailable } from "@claude-stats/core/insight";
+// The CLI's own `en`-initialised translator (setup.ts calls initCliI18n("en")).
+// Using the real one rather than a stub means these assertions also prove the
+// `common:insight.*` keys resolve — a typo'd key would render as the raw key.
+import { t } from "../i18n.js";
 
 describe("renderCard — the shared card primitive", () => {
   it("renders the answer sentence, value, and evidence link for a normal answer", () => {
-    const answer = answerCost({ mode: "metered", cost: 12.5, previousCost: 10 });
+    const answer = answerCost(t, { mode: "metered", cost: 12.5, previousCost: 10 });
     const html = renderCard(answer);
     expect(html).toContain("cs-card");
     expect(html).not.toContain("cs-card-unavailable");
@@ -17,20 +21,20 @@ describe("renderCard — the shared card primitive", () => {
   });
 
   it("renders a trend glyph when trend is up or down, and none when unknown", () => {
-    const up = answerCost({ mode: "metered", cost: 20, previousCost: 10 }); // +100% -> up
+    const up = answerCost(t, { mode: "metered", cost: 20, previousCost: 10 }); // +100% -> up
     expect(renderCard(up)).toContain("cs-trend-up");
 
-    const down = answerCost({ mode: "metered", cost: 5, previousCost: 10 }); // -50% -> down
+    const down = answerCost(t, { mode: "metered", cost: 5, previousCost: 10 }); // -50% -> down
     expect(renderCard(down)).toContain("cs-trend-down");
 
     // Boundary: within trendOf's ±2% epsilon is "flat" — its own glyph and
     // class, not a silent fall-through to the no-glyph "unknown" rendering.
-    const flat = answerCost({ mode: "metered", cost: 10.1, previousCost: 10 });
+    const flat = answerCost(t, { mode: "metered", cost: 10.1, previousCost: 10 });
     expect(flat.trend).toBe("flat");
     expect(renderCard(flat)).toContain("cs-trend-flat");
     expect(renderCard(flat)).toContain("—");
 
-    const unknown = answerCost({ mode: "metered", cost: 5, previousCost: null });
+    const unknown = answerCost(t, { mode: "metered", cost: 5, previousCost: null });
     expect(unknown.trend).toBe("unknown");
     expect(renderCard(unknown)).not.toContain("cs-trend-up");
     expect(renderCard(unknown)).not.toContain("cs-trend-down");
@@ -40,7 +44,7 @@ describe("renderCard — the shared card primitive", () => {
   });
 
   it("renders the caveat when present", () => {
-    const answer = answerCost({ mode: "plan", cost: 5, previousCost: null });
+    const answer = answerCost(t, { mode: "plan", cost: 5, previousCost: null });
     const html = renderCard(answer);
     expect(answer.caveat).not.toBeNull();
     expect(html).toContain(answer.caveat!);
@@ -61,20 +65,20 @@ describe("renderCard — the shared card primitive", () => {
   });
 
   it("does not render an empty title block when no title is given", () => {
-    const answer = answerCost({ mode: "metered", cost: 1, previousCost: null });
+    const answer = answerCost(t, { mode: "metered", cost: 1, previousCost: null });
     const html = renderCard(answer);
     expect(html).not.toContain("cs-card-title");
   });
 
   it("renders a title when given", () => {
-    const answer = answerCost({ mode: "metered", cost: 1, previousCost: null });
+    const answer = answerCost(t, { mode: "metered", cost: 1, previousCost: null });
     const html = renderCard(answer, { title: "Estimated Cost" });
     expect(html).toContain("cs-card-title");
     expect(html).toContain("Estimated Cost");
   });
 
   it("sets the DOM id when given, for the two-click evidence path", () => {
-    const answer = answerCost({ mode: "metered", cost: 1, previousCost: null });
+    const answer = answerCost(t, { mode: "metered", cost: 1, previousCost: null });
     const html = renderCard(answer, { id: "card-cost" });
     expect(html).toContain('id="card-cost"');
   });
@@ -119,7 +123,7 @@ describe("renderCard — the shared card primitive", () => {
   });
 
   it("is pure — identical input renders identical output", () => {
-    const answer = answerCost({ mode: "metered", cost: 12.5, previousCost: 10 });
+    const answer = answerCost(t, { mode: "metered", cost: 12.5, previousCost: 10 });
     expect(renderCard(answer)).toBe(renderCard(answer));
   });
 

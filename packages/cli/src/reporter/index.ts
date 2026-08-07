@@ -1027,7 +1027,7 @@ export function printTicketReport(store: Store, opts: ReportOptions = {}, out: N
         ratio: formatPercent(report.coverage.ratio),
       }),
     );
-    const caveat = confidenceCaveat(report.coverage);
+    const caveat = confidenceCaveat(t, report.coverage);
     if (caveat) write(caveat);
     if (report.coverage.ambiguousSessions > 0) {
       write(t("cli:report.ticketAmbiguousNote", { count: report.coverage.ambiguousSessions }));

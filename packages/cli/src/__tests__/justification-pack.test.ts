@@ -37,6 +37,9 @@ import {
   type RawPackTicketRow,
 } from "@claude-stats/core/pack";
 import { formatDevTime, costCaveat, confidenceCaveat } from "@claude-stats/core/insight";
+// The real `en` translator (setup.ts runs initCliI18n("en")) — the same one the
+// pack's own shell injects, so these tests exercise the production path.
+import { t } from "../i18n.js";
 import { getTicketCostReport } from "../ticketing/index.js";
 import type { TicketCoverage } from "@claude-stats/core/types/insight";
 import type { JustificationPackModel } from "@claude-stats/core/types/pack";
@@ -107,18 +110,18 @@ const COVERAGE: TicketCoverage = {
 
 describe("buildPackHeadline", () => {
   it("quotes formatDevTime and costCaveat rather than re-deriving the sentence (anti-drift)", () => {
-    const h = buildPackHeadline({ mode: "metered", currency: "USD", coverage: COVERAGE, hourlyRate: 100 });
-    expect(h.devTimeLabel).toBe(formatDevTime(100, 100));
-    expect(h.costCaveatText).toBe(costCaveat("metered", { reconciledRatio: null, anyFallbackRates: false }));
+    const h = buildPackHeadline(t, { mode: "metered", currency: "USD", coverage: COVERAGE, hourlyRate: 100 });
+    expect(h.devTimeLabel).toBe(formatDevTime(t, 100, 100));
+    expect(h.costCaveatText).toBe(costCaveat(t, "metered", { reconciledRatio: null, anyFallbackRates: false }));
   });
 
   it("omits devTimeLabel when no hourly rate is configured", () => {
-    const h = buildPackHeadline({ mode: "metered", currency: "USD", coverage: COVERAGE });
+    const h = buildPackHeadline(t, { mode: "metered", currency: "USD", coverage: COVERAGE });
     expect(h.devTimeLabel).toBeNull();
   });
 
   it("computes reconciliation only for metered accounts with a positive invoice total", () => {
-    const metered = buildPackHeadline({
+    const metered = buildPackHeadline(t, {
       mode: "metered",
       currency: "USD",
       coverage: COVERAGE,
@@ -129,7 +132,7 @@ describe("buildPackHeadline", () => {
     expect(metered.reconciliation!.ratio).toBeCloseTo(100 / 105, 6);
     expect(metered.reconciliation!.withinTolerance).toBe(true);
 
-    const outOfTolerance = buildPackHeadline({
+    const outOfTolerance = buildPackHeadline(t, {
       mode: "metered",
       currency: "USD",
       coverage: COVERAGE,
@@ -138,7 +141,7 @@ describe("buildPackHeadline", () => {
     });
     expect(outOfTolerance.reconciliation!.withinTolerance).toBe(false);
 
-    const plan = buildPackHeadline({
+    const plan = buildPackHeadline(t, {
       mode: "plan",
       currency: "USD",
       coverage: COVERAGE,
@@ -255,7 +258,7 @@ describe("buildJustificationPackModel — section opt-in", () => {
   };
 
   it("omits tickets/nonTicket entirely when not opted into, even if data is supplied", () => {
-    const model = buildJustificationPackModel({
+    const model = buildJustificationPackModel(t, {
       ...baseInput,
       sections: ["headline"],
       tickets: [{ ticketKey: "PROJ-1", cost: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, sessionCount: 1, confidence: "high" }],
@@ -267,17 +270,17 @@ describe("buildJustificationPackModel — section opt-in", () => {
   });
 
   it("marks hygiene/constraint/calibration unavailable ONLY when opted into", () => {
-    const optedOut = buildJustificationPackModel({ ...baseInput, sections: ["headline"] });
+    const optedOut = buildJustificationPackModel(t, { ...baseInput, sections: ["headline"] });
     expect(optedOut.unavailableSections).toEqual({ hygiene: null, constraint: null, calibration: null });
 
-    const optedIn = buildJustificationPackModel({ ...baseInput, sections: ["headline", "hygiene", "calibration"] });
+    const optedIn = buildJustificationPackModel(t, { ...baseInput, sections: ["headline", "hygiene", "calibration"] });
     expect(optedIn.unavailableSections.hygiene).not.toBeNull();
     expect(optedIn.unavailableSections.calibration).not.toBeNull();
     expect(optedIn.unavailableSections.constraint).toBeNull();
   });
 
   it("canonicalizes section order regardless of input order", () => {
-    const model = buildJustificationPackModel({ ...baseInput, sections: ["calibration", "headline", "tickets"] });
+    const model = buildJustificationPackModel(t, { ...baseInput, sections: ["calibration", "headline", "tickets"] });
     expect(model.sections).toEqual(["headline", "tickets", "calibration"]);
   });
 });
@@ -293,7 +296,7 @@ describe("renderJustificationPackHtml — escaping", () => {
       period: { since: 0, until: 1, label: "2026-01" },
       scope: { projectPath: null, accountUuid: null },
       sections: ["tickets"],
-      headline: buildPackHeadline({ mode: "metered", currency: "USD", coverage: COVERAGE }),
+      headline: buildPackHeadline(t, { mode: "metered", currency: "USD", coverage: COVERAGE }),
       tickets: [
         {
           ticketKey: "<script>alert(1)</script>",
@@ -331,7 +334,7 @@ describe("renderJustificationPackHtml — headline", () => {
   };
   const render = (over: Partial<Parameters<typeof buildPackHeadline>[0]> = {}) =>
     renderJustificationPackHtml(
-      buildJustificationPackModel({
+      buildJustificationPackModel(t, {
         generatedAt: FIXED_NOW,
         period: { since: 0, until: 1, label: "2026-01" },
         sections: ["headline"],
@@ -358,18 +361,18 @@ describe("renderJustificationPackHtml — headline", () => {
   });
 
   it("renders the confidence-tier caveat verbatim from confidenceCaveat (I1)", () => {
-    const caveat = confidenceCaveat(COVERAGE);
+    const caveat = confidenceCaveat(t, COVERAGE);
     expect(caveat).not.toBeNull();
     expect(render()).toContain(caveat!);
   });
 
   it("renders the dev-time equivalence line quoted from formatDevTime", () => {
-    expect(render()).toContain(formatDevTime(COVERAGE.totalCost, 100));
+    expect(render()).toContain(formatDevTime(t, COVERAGE.totalCost, 100));
   });
 
   it("renders the fallback-rate caveat rather than asserting 'Actual metered cost.'", () => {
     expect(render({ anyFallbackRates: true })).toContain(
-      costCaveat("metered", { reconciledRatio: null, anyFallbackRates: true }),
+      costCaveat(t, "metered", { reconciledRatio: null, anyFallbackRates: true }),
     );
     expect(render({ anyFallbackRates: true })).not.toContain("Actual metered cost.");
     expect(render({ anyFallbackRates: false })).toContain("Actual metered cost.");
@@ -389,7 +392,7 @@ describe("renderJustificationPackHtml — headline", () => {
 describe("renderJustificationPackHtml — unavailable sections carry the RIGHT heading", () => {
   it("pairs each opted-in placeholder with its own heading, never another section's", () => {
     const html = renderJustificationPackHtml(
-      buildJustificationPackModel({
+      buildJustificationPackModel(t, {
         generatedAt: FIXED_NOW,
         period: { since: 0, until: 1, label: "2026-01" },
         sections: ["constraint"],
@@ -414,7 +417,7 @@ describe("CSV bundle rendering", () => {
       period: { since: 0, until: 1, label: "2026-01, has a comma" },
       scope: { projectPath: null, accountUuid: null },
       sections: ["tickets"],
-      headline: buildPackHeadline({ mode: "metered", currency: "USD", coverage: COVERAGE }),
+      headline: buildPackHeadline(t, { mode: "metered", currency: "USD", coverage: COVERAGE }),
       tickets: [{ ticketKey: "PROJ-1", cost: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, sessionCount: 1, confidence: "high" }],
       nonTicket: null,
       methodology: buildPackMethodology({ pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] }),
@@ -430,7 +433,7 @@ describe("CSV bundle rendering", () => {
       period: { since: 0, until: 1, label: "2026-05" },
       scope: { projectPath: null, accountUuid: null },
       sections: ["tickets"],
-      headline: buildPackHeadline({ mode: "metered", currency: "USD", coverage: COVERAGE }),
+      headline: buildPackHeadline(t, { mode: "metered", currency: "USD", coverage: COVERAGE }),
       tickets: [{ ticketKey: "PROJ-9", cost: 12.5, inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheCreationTokens: 5, sessionCount: 3, confidence: "medium" }],
       nonTicket: null,
       methodology: buildPackMethodology({ pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] }),
@@ -449,7 +452,7 @@ describe("CSV bundle rendering", () => {
       period: { since: 0, until: 1, label: "2026-05" },
       scope: { projectPath: "/w/proj-a", accountUuid: "acct-1234" },
       sections: ["tickets"],
-      headline: buildPackHeadline({ mode: "metered", currency: "USD", coverage: COVERAGE }),
+      headline: buildPackHeadline(t, { mode: "metered", currency: "USD", coverage: COVERAGE }),
       tickets: [{ ticketKey: "PROJ-9", cost: 12.5, inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheCreationTokens: 5, sessionCount: 3, confidence: "medium" }],
       nonTicket: null,
       methodology: buildPackMethodology({ pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] }),
@@ -471,7 +474,7 @@ describe("CSV bundle rendering", () => {
       period: { since: 0, until: 1, label: `2026-01 "Q1"` },
       scope: { projectPath: null, accountUuid: null },
       sections: ["tickets"],
-      headline: buildPackHeadline({ mode: "metered", currency: "USD", coverage: COVERAGE }),
+      headline: buildPackHeadline(t, { mode: "metered", currency: "USD", coverage: COVERAGE }),
       tickets: [{ ticketKey: "PROJ-1", cost: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, sessionCount: 1, confidence: "high" }],
       nonTicket: null,
       methodology: buildPackMethodology({ pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] }),
@@ -483,7 +486,7 @@ describe("CSV bundle rendering", () => {
   // The two CSVs below had no content assertion at all: emptying either of
   // them left every other test green.
   it("summary.csv carries the headline figures, not just a header row", () => {
-    const model = buildJustificationPackModel({
+    const model = buildJustificationPackModel(t, {
       generatedAt: FIXED_NOW,
       period: { since: 0, until: 1, label: "2026-04" },
       sections: ["headline"],
@@ -506,7 +509,7 @@ describe("CSV bundle rendering", () => {
   });
 
   it("summary.csv carries the unpriced-token count and the fallback-rate flag (I-3, I-5)", () => {
-    const model = buildJustificationPackModel({
+    const model = buildJustificationPackModel(t, {
       generatedAt: FIXED_NOW,
       period: { since: 0, until: 1, label: "2026-04" },
       sections: ["headline"],
@@ -524,7 +527,7 @@ describe("CSV bundle rendering", () => {
   });
 
   it("summary.csv carries the plan fee for a plan-mode pack, and blanks it for metered (I-4)", () => {
-    const plan = buildJustificationPackModel({
+    const plan = buildJustificationPackModel(t, {
       generatedAt: FIXED_NOW,
       period: { since: 0, until: 1, label: "2026-04" },
       sections: ["headline"],
@@ -536,7 +539,7 @@ describe("CSV bundle rendering", () => {
     expect(plan.headline.planFee).toBe(200);
     expect(renderJustificationPackHtml(plan)).toContain("Plan fee: $200.00/mo");
 
-    const metered = buildJustificationPackModel({
+    const metered = buildJustificationPackModel(t, {
       generatedAt: FIXED_NOW,
       period: { since: 0, until: 1, label: "2026-04" },
       sections: ["headline"],
@@ -550,7 +553,7 @@ describe("CSV bundle rendering", () => {
   });
 
   it("nonticket.csv carries one row per task class, not just a header row", () => {
-    const model = buildJustificationPackModel({
+    const model = buildJustificationPackModel(t, {
       generatedAt: FIXED_NOW,
       period: { since: 0, until: 1, label: "2026-04" },
       sections: ["nonticket"],
@@ -801,7 +804,7 @@ describe("justification pack — generated against a seeded store", () => {
       { period: "2026-01", timezone: "UTC", now: () => FIXED_NOW },
     );
     expect(planned.model.headline.mode).toBe("plan");
-    expect(planned.model.headline.costCaveatText).toBe(costCaveat("plan"));
+    expect(planned.model.headline.costCaveatText).toBe(costCaveat(t, "plan"));
     expect(planned.html).toContain("Equivalent API cost");
     // A flat-rate plan has no invoice to reconcile a bottom-up total against.
     expect(planned.model.headline.reconciliation).toBeNull();
@@ -873,7 +876,7 @@ describe("justification pack — generated against a seeded store", () => {
 
     const withFallback = buildJustificationPack(store, config, { period: "2026-01", timezone: "UTC", now: () => FIXED_NOW });
     expect(withFallback.model.headline.costCaveatText).toBe(
-      costCaveat("metered", { reconciledRatio: null, anyFallbackRates: true }),
+      costCaveat(t, "metered", { reconciledRatio: null, anyFallbackRates: true }),
     );
     expect(withFallback.html).not.toContain("Actual metered cost.");
 
