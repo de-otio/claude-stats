@@ -50,8 +50,11 @@ describe("webview path — nav + card survive patchForWebview", () => {
     const webview = patchForWebview(served, "vscode-webview://abc", "vscode-resource://chart.js", "overview");
 
     // The card module's output round-trips through the webview patch.
+    // NB: assert the class ATTRIBUTE, not the bare token — `CARD_CSS` is
+    // embedded in every page and itself contains "cs-card-unavailable", so
+    // the bare token is satisfied by any render at all.
     expect(webview).toContain('id="card-cost"');
-    expect(webview).toContain("cs-card-unavailable");
+    expect(webview).toContain('class="cs-card cs-card-unavailable"');
     expect(webview).toContain("No usage recorded for this period.");
 
     // The nav-driven tab bar round-trips too — energy/spending/context/
@@ -64,6 +67,21 @@ describe("webview path — nav + card survive patchForWebview", () => {
     // The webview CSP nonce rewrite reached the inline scripts our card CSS
     // sits beside — i.e. the page is still one coherent document, not two
     // that diverged at the seam.
-    expect(webview).toMatch(/<meta http-equiv="Content-Security-Policy"/);
+    //
+    // Asserting only that the CSP <meta> exists proves nothing: patchForWebview
+    // injects it unconditionally, in a step entirely separate from the <script>
+    // nonce rewrite. If the nonce rewrite regressed, the meta tag would still be
+    // there and the webview would render a blank page (CSP blocks un-nonced
+    // inline script). So: extract the nonce the CSP actually declares, and
+    // require that every <script> in the document carries it.
+    const csp = webview.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)"/);
+    expect(csp).not.toBeNull();
+    const nonce = csp![1]!.match(/'nonce-([A-Za-z0-9]+)'/)?.[1];
+    expect(nonce).toBeTruthy();
+    const scriptTags = webview.match(/<script\b[^>]*>/g) ?? [];
+    expect(scriptTags.length).toBeGreaterThan(0);
+    for (const tag of scriptTags) {
+      expect(tag).toContain(`nonce="${nonce}"`);
+    }
   });
 });

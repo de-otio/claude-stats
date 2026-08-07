@@ -8,7 +8,10 @@ describe("renderCard — the shared card primitive", () => {
     const html = renderCard(answer);
     expect(html).toContain("cs-card");
     expect(html).not.toContain("cs-card-unavailable");
-    expect(html).toContain("$12.50");
+    // The answer SENTENCE also embeds "$12.50", so a bare
+    // `toContain("$12.50")` passes even when the headline value element is
+    // deleted entirely (verified by mutation). Assert the value element.
+    expect(html).toMatch(/<div class="cs-card-value">[\s\S]*?<span>\$12\.50<\/span>/);
     expect(html).toContain(`data-evidence-link="${answer.evidenceLink}"`);
     expect(html).toContain(answer.answer);
   });
@@ -20,9 +23,20 @@ describe("renderCard — the shared card primitive", () => {
     const down = answerCost({ mode: "metered", cost: 5, previousCost: 10 }); // -50% -> down
     expect(renderCard(down)).toContain("cs-trend-down");
 
+    // Boundary: within trendOf's ±2% epsilon is "flat" — its own glyph and
+    // class, not a silent fall-through to the no-glyph "unknown" rendering.
+    const flat = answerCost({ mode: "metered", cost: 10.1, previousCost: 10 });
+    expect(flat.trend).toBe("flat");
+    expect(renderCard(flat)).toContain("cs-trend-flat");
+    expect(renderCard(flat)).toContain("—");
+
     const unknown = answerCost({ mode: "metered", cost: 5, previousCost: null });
+    expect(unknown.trend).toBe("unknown");
     expect(renderCard(unknown)).not.toContain("cs-trend-up");
     expect(renderCard(unknown)).not.toContain("cs-trend-down");
+    // "unknown" must render NO glyph at all — not a flat dash standing in for
+    // a comparison that was never made.
+    expect(renderCard(unknown)).not.toContain("cs-trend-flat");
   });
 
   it("renders the caveat when present", () => {
@@ -77,6 +91,33 @@ describe("renderCard — the shared card primitive", () => {
     expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
   });
 
+  it("escapes every caller-supplied field that lands in an attribute", () => {
+    // The unavailable-branch test above never exercises the caveat, value,
+    // evidence-link or title paths at all — and `title`/`evidenceLink` are
+    // interpolated into quoted ATTRIBUTES, where an unescaped `"` breaks out
+    // of the attribute rather than merely rendering a stray tag.
+    const answer = {
+      question: "cost" as const,
+      answer: 'a"b',
+      value: '<b>1</b>',
+      trend: "up" as const,
+      caveat: '<i>c</i>',
+      evidenceLink: 'x" onmouseover="alert(1)',
+    };
+    const html = renderCard(answer, { title: 'T" onclick="alert(1)', id: 'i" onfocus="alert(1)' });
+    // The payloads must survive whole INSIDE their attribute — i.e. the
+    // caller's `"` became `&quot;` and never terminated the attribute early.
+    // (`onfocus=` still appears as inert text within the quoted value; that is
+    // correct, so don't assert on the substring.)
+    expect(html).toContain('id="i&quot; onfocus=&quot;alert(1)"');
+    expect(html).toContain('data-evidence-link="x&quot; onmouseover=&quot;alert(1)"');
+    expect(html).toContain('href="#x&quot; onmouseover=&quot;alert(1)"');
+    // No attribute-delimiting quote is ever contributed by caller data.
+    expect(html.match(/\bid="/g)?.length).toBe(1);
+    expect(html).toContain("&lt;b&gt;1&lt;/b&gt;");
+    expect(html).toContain("&lt;i&gt;c&lt;/i&gt;");
+  });
+
   it("is pure — identical input renders identical output", () => {
     const answer = answerCost({ mode: "metered", cost: 12.5, previousCost: 10 });
     expect(renderCard(answer)).toBe(renderCard(answer));
@@ -88,6 +129,14 @@ describe("renderCard — the shared card primitive", () => {
     // CARD_TOKENS_CSS.
     const declared = new Set([...CARD_TOKENS_CSS.matchAll(/--cs-card-[a-z-]+(?=:)/g)].map((m) => m[0]));
     const used = new Set([...CARD_CSS.matchAll(/var\((--cs-card-[a-z-]+)/g)].map((m) => m[1]));
+    // Without these guards the loop below is vacuously green whenever the
+    // regexes stop matching — the exact way a drift check silently dies.
+    expect(declared.size).toBeGreaterThan(0);
+    expect(used.size).toBeGreaterThan(0);
+    // Every `var(--cs-card-*)` in CARD_CSS must resolve, and the count must
+    // match what a naive scan finds, so a token name outside the `[a-z-]`
+    // character class can't slip past the regex unnoticed.
+    expect(used.size).toBe(new Set([...CARD_CSS.matchAll(/var\((--[^,)]+)/g)].map((m) => m[1])).size);
     for (const name of used) {
       expect(declared.has(name!)).toBe(true);
     }

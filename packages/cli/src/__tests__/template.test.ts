@@ -1183,6 +1183,13 @@ describe("renderDashboard", () => {
       const html = renderDashboard(withSpending, t);
       expect(html).toContain('data-tab="spending"');
       expect(html).toContain(">Spending<");
+      // `>Spending<` alone cannot distinguish "localized" from "hardcoded" —
+      // the en translation of dashboard:tabs.spending is the literal string
+      // "Spending", so the old hardcoded button satisfies it too (verified by
+      // mutation). Render with an identity translator: the label must arrive
+      // as the i18n KEY, which only happens if it goes through t().
+      const raw = renderDashboard(withSpending, (k) => k);
+      expect(raw).toContain('data-tab="spending">dashboard:tabs.spending<');
     });
 
     it("the first visible tab is marked active", () => {
@@ -1196,12 +1203,39 @@ describe("renderDashboard", () => {
   // rendered `<div class="value">$3.75</div>`; the post-migration renderCard()
   // card must still surface the exact figure "$3.75" for the same
   // DashboardData, just inside new markup.
+  //
+  // Every assertion below is made against `costCard(html)`, NOT the whole page.
+  // Page-wide `toContain` is vacuous here in two independent ways, both
+  // verified by mutation: (a) the summary bar prints the identical dollar
+  // figure in four other tiles, so `expect(html).toContain("$3.75")` still
+  // passes when renderCard() emits no headline value at all; (b) `CARD_CSS` —
+  // embedded in every page — literally contains the substring
+  // "cs-card-unavailable", so `expect(html).toContain("cs-card-unavailable")`
+  // passes for every render whether or not any card is in that state.
+  /** The rendered cost card element, sliced out of the full page. */
+  function costCard(html: string): string {
+    const start = html.indexOf('<div class="cs-card');
+    expect(start).toBeGreaterThan(-1);
+    // renderCard() closes the card at 4-space indent; its inner elements
+    // close at 6. The first 4-space `</div>` after the open tag is the end.
+    const end = html.indexOf("\n    </div>", start);
+    expect(end).toBeGreaterThan(start);
+    const card = html.slice(start, end);
+    // Guard against the slice silently degenerating to nothing useful.
+    expect(card.length).toBeGreaterThan(40);
+    expect(card).toContain('id="card-cost"');
+    return card;
+  }
+
   describe("cost card — migrated to renderCard()", () => {
     it("renders the same dollar figure as before migration for a representative cost", () => {
       // mockData.summary.estimatedCost === 3.75, planFee === 0 (metered mode).
-      const html = renderDashboard(mockData, t);
-      expect(html).toContain('id="card-cost"');
-      expect(html).toContain("$3.75");
+      const card = costCard(renderDashboard(mockData, t));
+      // The headline value, not merely the answer sentence: the sentence also
+      // embeds "$3.75", so asserting on the card as a whole would still pass
+      // with the value element deleted.
+      expect(card).toMatch(/<div class="cs-card-value">[\s\S]*?<span>\$3\.75<\/span>/);
+      expect(card).not.toContain("cs-card-unavailable");
     });
 
     it("carries the plan-mode caveat and multiplier clause when on a plan", () => {
@@ -1209,10 +1243,11 @@ describe("renderDashboard", () => {
         ...mockData,
         summary: { ...mockData.summary, planFee: 100, planMultiplier: 3.75 },
       };
-      const html = renderDashboard(withPlan, t);
-      expect(html).toContain('id="card-cost"');
-      expect(html).toContain("3.8"); // plan multiplier clause, rounded to 1 decimal
-      expect(html).toContain("Equivalent API cost");
+      const card = costCard(renderDashboard(withPlan, t));
+      // "3.8" alone is a 3-character substring that occurs elsewhere on the
+      // page; anchor it to the multiplier clause inside the card.
+      expect(card).toMatch(/3\.8×/);
+      expect(card).toContain("Equivalent API cost");
     });
 
     it("renders the honest-unavailable state, not a fabricated $0.00, when there is no usage", () => {
@@ -1221,9 +1256,12 @@ describe("renderDashboard", () => {
         summary: { ...mockData.summary, estimatedCost: 0 },
       };
       const html = renderDashboard(noUsage, t);
-      expect(html).toContain('id="card-cost"');
-      expect(html).toContain("cs-card-unavailable");
-      expect(html).toContain("No usage recorded for this period.");
+      const card = costCard(html);
+      // Match the class attribute the unavailable branch actually emits, not
+      // the bare token that CARD_CSS also contains.
+      expect(card).toContain('class="cs-card cs-card-unavailable"');
+      expect(card).toContain("No usage recorded for this period.");
+      expect(card).not.toContain("cs-card-value");
       expect(html).not.toContain("$0.00");
     });
   });
