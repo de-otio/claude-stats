@@ -68,6 +68,77 @@
     "promptsPerHr": "promptów/godz",
     "outputPerPrompt": "wyjście/prompt"
   },
+  "insight": {
+    "punctuation": {
+      "sentence": "{{text}}.",
+      "clauseJoin": " — ",
+      "listJoin": ", ",
+      "dotJoin": " · "
+    },
+    "devTime": {
+      "minutes": "{{value}} minut pracy programisty",
+      "hours": "{{value}} godzin pracy programisty",
+      "days": "{{value}} dni pracy programisty"
+    },
+    "confidence": {
+      "high": "wysoka",
+      "medium": "średnia",
+      "low": "niska"
+    },
+    "caveat": {
+      "plan": "Równoważny koszt API — nie jest to kwota, którą nalicza Twój plan.",
+      "mixed": "Mieszane rozliczenie na kontach objętych widokiem — część tej kwoty to równoważna wartość API wobec opłaty abonamentowej, a część to realnie naliczone pieniądze. Wybierz jedno konto albo ustaw pricing.mode, aby uzyskać jedno znaczenie.",
+      "metered": "Rzeczywisty koszt rozliczany za zużycie.",
+      "reconciled": "Zgadza się z fakturą w {{ratio}}.",
+      "fallbackRates": "Część użycia wyceniono stawkami first-party — skonfiguruj stawki partnera, aby uzyskać dokładne kwoty.",
+      "reconciledAndFallback": "Zgadza się z fakturą w {{ratio}}; część użycia wyceniono stawkami first-party — skonfiguruj stawki partnera, aby uzyskać dokładne kwoty."
+    },
+    "coverage": {
+      "tier": "{{percent}} {{tier}}",
+      "mix": "{{parts}} pewności.",
+      "mixAmbiguous_one": "{{parts}} pewności · {{count}} sesja niejednoznaczna.",
+      "mixAmbiguous_other": "{{parts}} pewności · {{count}} sesji niejednoznacznych.",
+      "none": "W tym okresie żadne wydatki nie zostały przypisane do kluczy zgłoszeń — sprawdź, czy nazwy gałęzi, tytuły commitów lub prompty zawierają klucz taki jak PROJ-123 oraz czy config.tickets.projectKeys wymienia prefiks Twojego zespołu (wymagane, aby rozpoznać konwencję pisaną małymi literami lub mieszaną)."
+    },
+    "cost": {
+      "unavailable": "W tym okresie nie odnotowano użycia.",
+      "enablement": "Uruchom sesję Claude Code, a następnie odśwież — zbieranie danych działa automatycznie.",
+      "thisPeriod": "{{money}} w tym okresie",
+      "devTime": "≈ {{devTime}} według skonfigurowanej stawki",
+      "planMultiplier": "{{multiplier}}× Twojego planu za {{fee}}/mies."
+    },
+    "bought": {
+      "unavailable": "Na razie żadne wydatki nie zostały przypisane do zadań.",
+      "enablement": "Dodaj klucze swojego projektu w Ustawienia → Zgłoszenia, aby automatycznie przypisywać wydatki.",
+      "completed_one": "{{count}} zadanie ukończone",
+      "completed_other": "{{count}} zadań ukończonych",
+      "attributed": "{{percent}} wydatków przypisano do zadań",
+      "topTicket": "największe: {{key}} ({{cost}})"
+    },
+    "efficiency": {
+      "unavailable": "Za mało ukończonej pracy, aby zmierzyć wydajność.",
+      "enablement": "Wydajność wymaga kilku ukończonych zadań w okresie — wróć po dłuższym użytkowaniu.",
+      "recoverable": "{{money}} do odzyskania ({{percent}} wydatków)",
+      "hygiene": "samodzielnie oszacowane marnotrawstwo {{percent}}",
+      "hygieneDown": "samodzielnie oszacowane marnotrawstwo {{percent}}, spadek z {{previous}}",
+      "hygieneUp": "samodzielnie oszacowane marnotrawstwo {{percent}}, wzrost z {{previous}}"
+    },
+    "setup": {
+      "unavailable": "Za mało danych, aby ocenić dopasowanie Twojego planu.",
+      "enablement": "Ocena dopasowania planu wymaga kilku tygodni użytkowania, aby była miarodajna.",
+      "policyImpact_one": "Od zmiany zasad w dniu {{date}} koszt jednego udanego zadania wzrósł o {{percent}} w {{count}} klasie zadań.",
+      "policyImpact_other": "Od zmiany zasad w dniu {{date}} koszt jednego udanego zadania wzrósł o {{percent}} w {{count}} klasach zadań.",
+      "policyCaveat": "Przesłanka, nie dowód — porównanie w obrębie klas zadań po obu stronach granicy.",
+      "verdictWithSaving": "{{verdict}} — przejście na {{plan}} pozwoliłoby zaoszczędzić około {{saving}}/mies.",
+      "savingCaveat": "Oszacowane na podstawie Twojego własnego użycia odtworzonego wobec limitów planów."
+    },
+    "change": {
+      "nothing": "Na razie nic nie wymaga uwagi.",
+      "withImpact": "{{title}} — {{impact}}",
+      "more_one": "{{lead}} (+{{count}} więcej).",
+      "more_other": "{{lead}} (+{{count}} więcej)."
+    }
+  },
   "actions": {
     "connect": "Połącz",
     "disconnect": "Rozłącz",

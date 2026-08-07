@@ -404,6 +404,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         : t("dashboard:insights.verdict.noPlan")
     : null;
   const insightAnswers = buildInsightAnswers(data, {
+    t,
     vocabulary: costVocabulary,
     hourlyRate: data.insights?.hourlyRate ?? null,
     currency: data.insights?.currency ?? "USD",

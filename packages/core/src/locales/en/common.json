@@ -68,6 +68,77 @@
     "promptsPerHr": "prompts/hr",
     "outputPerPrompt": "output/prompt"
   },
+  "insight": {
+    "punctuation": {
+      "sentence": "{{text}}.",
+      "clauseJoin": " — ",
+      "listJoin": ", ",
+      "dotJoin": " · "
+    },
+    "devTime": {
+      "minutes": "{{value}} dev-minutes",
+      "hours": "{{value}} dev-hours",
+      "days": "{{value}} dev-days"
+    },
+    "confidence": {
+      "high": "high",
+      "medium": "medium",
+      "low": "low"
+    },
+    "caveat": {
+      "plan": "Equivalent API cost — not what your plan charges.",
+      "mixed": "Mixed billing across the accounts in view — part of this figure is equivalent API value against a plan fee, part is metered money. Select a single account, or set pricing.mode, for one meaning.",
+      "metered": "Actual metered cost.",
+      "reconciled": "Reconciles with the invoice at {{ratio}}.",
+      "fallbackRates": "Some usage priced at first-party rates — configure partner rates for exact figures.",
+      "reconciledAndFallback": "Reconciles with the invoice at {{ratio}}; some usage priced at first-party rates — configure partner rates for exact figures."
+    },
+    "coverage": {
+      "tier": "{{percent}} {{tier}}",
+      "mix": "{{parts}} confidence.",
+      "mixAmbiguous_one": "{{parts}} confidence · {{count}} session ambiguous.",
+      "mixAmbiguous_other": "{{parts}} confidence · {{count}} sessions ambiguous.",
+      "none": "No spend attributed to ticket keys this period — check that branch names, commit subjects, or prompts contain a key like PROJ-123, and that config.tickets.projectKeys lists your team's prefix (required for a lowercase or mixed-case convention to be picked up)."
+    },
+    "cost": {
+      "unavailable": "No usage recorded for this period.",
+      "enablement": "Run a Claude Code session, then refresh — collection is automatic.",
+      "thisPeriod": "{{money}} this period",
+      "devTime": "≈ {{devTime}} at your configured rate",
+      "planMultiplier": "{{multiplier}}× your {{fee}}/mo plan"
+    },
+    "bought": {
+      "unavailable": "No spend attributed to work items yet.",
+      "enablement": "Add your project keys under Settings → Tickets to attribute spend automatically.",
+      "completed_one": "{{count}} task completed",
+      "completed_other": "{{count}} tasks completed",
+      "attributed": "{{percent}} of spend attributed to work items",
+      "topTicket": "biggest: {{key}} ({{cost}})"
+    },
+    "efficiency": {
+      "unavailable": "Not enough completed work to measure efficiency.",
+      "enablement": "Efficiency needs a few completed tasks in the period — check back after more usage.",
+      "recoverable": "{{money}} recoverable ({{percent}} of spend)",
+      "hygiene": "self-audited waste {{percent}}",
+      "hygieneDown": "self-audited waste {{percent}}, down from {{previous}}",
+      "hygieneUp": "self-audited waste {{percent}}, up from {{previous}}"
+    },
+    "setup": {
+      "unavailable": "Not enough data to judge your plan fit.",
+      "enablement": "Plan fit needs a few weeks of usage to be meaningful.",
+      "policyImpact_one": "Since the policy change on {{date}}, cost per successful task is up {{percent}} in {{count}} task class.",
+      "policyImpact_other": "Since the policy change on {{date}}, cost per successful task is up {{percent}} in {{count}} task classes.",
+      "policyCaveat": "Evidence, not proof — compared within task classes across the boundary.",
+      "verdictWithSaving": "{{verdict}} — switching to {{plan}} would save about {{saving}}/mo.",
+      "savingCaveat": "Estimated from your own usage replayed against plan limits."
+    },
+    "change": {
+      "nothing": "Nothing needs attention right now.",
+      "withImpact": "{{title}} — {{impact}}",
+      "more_one": "{{lead}} (+{{count}} more).",
+      "more_other": "{{lead}} (+{{count}} more)."
+    }
+  },
   "actions": {
     "connect": "Connect",
     "disconnect": "Disconnect",

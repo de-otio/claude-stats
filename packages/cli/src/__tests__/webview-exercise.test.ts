@@ -22,6 +22,12 @@ vi.mock("vscode", () => ({
 import { renderDashboard } from "../server/template.js";
 import { patchForWebview } from "../extension/panel.js";
 import type { DashboardData } from "../dashboard/index.js";
+// `panel.ts` renders with a REAL translator (`renderDashboard(data, t)`); the
+// `t` parameter's identity default exists only for callers that have no i18n
+// at all. Passing it here keeps this exercise on the production path — and is
+// required now that the card's sentences come from `common:insight.*` keys
+// rather than from English literals baked into the formatter.
+import { t } from "../i18n.js";
 
 const minimalData: DashboardData = {
   generated: "2026-01-15T10:00:00.000Z",
@@ -61,7 +67,7 @@ const populatedData: DashboardData = {
 
 describe("webview path — nav + card survive patchForWebview", () => {
   it("renders the honest-unavailable cost card and the reduced nav in the webview-patched HTML", () => {
-    const served = renderDashboard(minimalData);
+    const served = renderDashboard(minimalData, t);
     const webview = patchForWebview(served, "vscode-webview://abc", "vscode-resource://chart.js", "overview");
 
     // The card module's output round-trips through the webview patch.
@@ -118,7 +124,7 @@ describe("webview path — the Insights tab, in the VS Code host", () => {
     // No `activeTab` argument: this is a freshly opened panel, so the host
     // supplies nothing and the page must land on its own default.
     const webview = patchForWebview(
-      renderDashboard(populatedData), "vscode-webview://abc", "vscode-resource://chart.js");
+      renderDashboard(populatedData, t), "vscode-webview://abc", "vscode-resource://chart.js");
 
     expect(webview).toMatch(/<button class="tab-btn active" data-tab="insights">/);
     expect(webview).toContain('<div class="tab-panel active" id="tab-insights">');
@@ -132,13 +138,13 @@ describe("webview path — the Insights tab, in the VS Code host", () => {
 
   it("honours a remembered tab, so the default does not override the user's last choice", () => {
     const webview = patchForWebview(
-      renderDashboard(populatedData), "vscode-webview://abc", "vscode-resource://chart.js", "plan");
+      renderDashboard(populatedData, t), "vscode-webview://abc", "vscode-resource://chart.js", "plan");
     expect(webview).toContain("window.__ACTIVE_TAB__='plan'");
   });
 
   it("keeps the Insights CSS inside the nonce-protected document", () => {
     const webview = patchForWebview(
-      renderDashboard(populatedData), "vscode-webview://abc", "vscode-resource://chart.js");
+      renderDashboard(populatedData, t), "vscode-webview://abc", "vscode-resource://chart.js");
     // The tab's own layout class, and the VS Code theme variable the alert
     // token maps to — proof the tokens reached the webview, where they are the
     // whole point (the served host only ever sees the fallbacks).

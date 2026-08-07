@@ -15,6 +15,7 @@ import type { Store } from "../store/index.js";
 import type { Config } from "../config.js";
 import { getTicketCostReport } from "../ticketing/index.js";
 import { dayWindowInTz } from "../recap/index.js";
+import { t } from "../i18n.js";
 import { PRICING_VERIFIED_DATE } from "@claude-stats/core/pricing";
 import { TASK_CLASS_VERSION } from "@claude-stats/core/taskClass";
 import {
@@ -137,7 +138,10 @@ export function buildJustificationPack(store: Store, config: Config, opts: PackG
     nonTicketByClass.set(key, cur);
   }
 
-  const model = buildJustificationPackModel({
+  // The CLI's i18n singleton is injected here, at the imperative shell — the
+  // pure builders take it as a parameter so they never reach for a singleton
+  // themselves (and so a test can hand them an identity translator).
+  const model = buildJustificationPackModel(t, {
     generatedAt: now(),
     period,
     scope: { projectPath: opts.projectPath ?? null, accountUuid: opts.accountUuid ?? null },

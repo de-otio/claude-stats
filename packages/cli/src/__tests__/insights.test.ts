@@ -134,6 +134,7 @@ const goldenData: DashboardData = {
 };
 
 const buildOpts: InsightBuildOptions = {
+  t,
   vocabulary: "metered",
   hourlyRate: 90,
   currency: "USD",
@@ -452,9 +453,9 @@ describe("cost vocabulary — resolving one answer for a dashboard spanning N ac
     // to render a multiplier the dashboard suppresses. (This test exists
     // because the first version of the mixed-card test below passed with the
     // formatter's guard broken.)
-    const mixed = answerCost({ mode: "mixed", cost: 312.4, previousCost: null, planFee: 100, planMultiplier: 3.1 });
+    const mixed = answerCost(t, { mode: "mixed", cost: 312.4, previousCost: null, planFee: 100, planMultiplier: 3.1 });
     expect(mixed.answer).not.toContain("3.1×");
-    const plan = answerCost({ mode: "plan", cost: 312.4, previousCost: null, planFee: 100, planMultiplier: 3.1 });
+    const plan = answerCost(t, { mode: "plan", cost: 312.4, previousCost: null, planFee: 100, planMultiplier: 3.1 });
     expect(plan.answer).toContain("3.1× your $100/mo plan");
   });
 

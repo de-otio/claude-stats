@@ -9,19 +9,29 @@
  * report. So the sentence is computed once, here, and every surface renders the
  * result rather than composing its own.
  *
- * Pure by construction: no clock, no I/O, no locale lookup. Time is always
- * passed in, so a pack regenerated tomorrow from the same store is byte-
- * identical to today's — the determinism the pack's credibility depends on.
+ * Pure by construction: no clock, no I/O, no ambient locale lookup. Time and
+ * the translator are always passed in, so a pack regenerated tomorrow from the
+ * same store and the same translator is byte-identical to today's — the
+ * determinism the pack's credibility depends on.
  *
- * LOCALIZATION — deliberately deferred, and this is the seam.
- * These sentences are English source strings today because nothing renders them
- * yet; Phase 0 ships the contract, not a surface. The first lane to put them on
- * screen (the Insights tab) owns translating them, and should do it by
- * injecting a translator rather than by moving the composition into the
- * renderer — the moment two surfaces compose their own sentences, the pack and
- * the dashboard are free to disagree, which is the entire failure this module
- * exists to prevent. The structured return shape (answer / value / caveat as
- * separate fields, not one blob) is what makes that injection tractable.
+ * LOCALIZATION — the seam is `InsightT`, injected.
+ * Every sentence, caveat and enablement line below is a `common:insight.*` key
+ * resolved through a translator the CALLER supplies. It is a parameter, never a
+ * module-level i18n singleton: a singleton would make these functions
+ * untestable without booting i18next, bind a pure module to a stateful one, and
+ * — worst — let the sentence's language depend on import order rather than on
+ * the surface rendering it. The composition stays here rather than moving into
+ * the renderers because the moment two surfaces compose their own sentences,
+ * the pack and the dashboard are free to disagree, which is the entire failure
+ * this module exists to prevent.
+ *
+ * Punctuation is keyed too (`insight.punctuation.*`). A sentence terminator and
+ * a clause separator are prose in ja/zh ("。", "、"), not ASCII furniture, and a
+ * hardcoded "." would be the same defect as a hardcoded word, just quieter.
+ *
+ * The guard against regression is `insight-localization.test.ts`: it drives
+ * every formatter through an identity translator and fails on any English
+ * residue, so a formatter added without a key cannot ship silently.
  *
  * Design: doc/analysis/gui-redesign/02 §2.2, 03 §3.4;
  *         doc/analysis/ticket-attribution/05 §5.3.
@@ -33,6 +43,70 @@ import type {
   InsightQuestion,
   TicketCoverage,
 } from "./types/insight.js";
+
+/**
+ * The injected translator. Structurally identical to the `t` every surface
+ * already has (i18next's, the dashboard's `TranslateFn`, the CLI's `t`), so a
+ * caller passes the one it holds — no adapter, no second i18n stack.
+ *
+ * Declared here rather than imported from `./i18n.js` deliberately: this module
+ * must not depend on i18next at all, and the CONTRACT is only "key in, string
+ * out". That is what lets a test pass `(key) => key` and see exactly which keys
+ * a formatter used.
+ */
+export type InsightT = (key: string, options?: Record<string, unknown>) => string;
+
+/**
+ * Interpolate `values` into `key` normally, but splice `literals` in AFTER
+ * translation, so caller-supplied text is never itself read as a template.
+ *
+ * Why this exists. i18next's interpolator rescans the string it is building, so
+ * a value containing `{{…}}` gets substituted in turn. Before localization the
+ * answer sentences were built with template literals, where that was
+ * impossible; routing a recommendation title or a plan verdict through `t()`
+ * quietly made it possible. Observed, not theorised: a lead titled
+ * `"{{count}} injected"` rendered as
+ *
+ *     "1 injected — x (+{{count}} more)."
+ *
+ * — the caller's text absorbed the recommendation count, and the count's own
+ * slot was left raw on the card. A silently mangled sentence on the default tab
+ * is exactly the I1 failure ("a confident number that is quietly wrong"), so
+ * caller text is kept out of the template pass entirely rather than trusted.
+ *
+ * The slot marker is U+0000, which cannot occur in a locale file, in any
+ * formatter's output, or in a `{{...}}` placeholder name — so a marker can
+ * never collide with real content, and a caller's own text cannot forge one.
+ */
+const SLOT = "\u0000";
+
+function tLiteral(
+  t: InsightT,
+  key: string,
+  values: Record<string, unknown>,
+  literals: Record<string, string>,
+): string {
+  const slots: string[] = [];
+  const withSlots: Record<string, unknown> = { ...values };
+  for (const [name, text] of Object.entries(literals)) {
+    withSlots[name] = `${SLOT}${slots.length}${SLOT}`;
+    // Strip any U+0000 the caller's own string carries, so it cannot forge a
+    // slot marker and displace another value. Costs nothing on real input —
+    // no legitimate title, verdict or ticket key contains a NUL.
+    slots.push(text.split(SLOT).join(""));
+  }
+  return t(key, withSlots).replace(
+    new RegExp(`${SLOT}(\\d+)${SLOT}`, "g"),
+    (_m, i: string) => slots[Number(i)] ?? "",
+  );
+}
+
+/** Wrap composed clauses as one sentence — the terminator is a locale's, not
+ *  ASCII's. `text` is always already-composed content (often caller-supplied),
+ *  so it goes in as a literal. */
+function sentence(t: InsightT, text: string): string {
+  return tLiteral(t, "common:insight.punctuation.sentence", {}, { text });
+}
 
 // ─── Primitives ───────────────────────────────────────────────────────────────
 
@@ -94,14 +168,16 @@ export function formatPercent(ratio: number | null, decimals = 0): string {
  * Express a cost as developer time. The lever that turns a token bill into a
  * number a manager already has intuitions about — a month of heavy usage is
  * typically a low single-digit percentage of one salary.
+ *
+ * The NUMBER is fixed-locale (same reason as `formatMoney`); only the unit is
+ * translated, because "dev-hours" is a word.
  */
-export function formatDevTime(cost: number, hourlyRate: number): string {
+export function formatDevTime(t: InsightT, cost: number, hourlyRate: number): string {
   if (hourlyRate <= 0) return "—";
   const hours = cost / hourlyRate;
-  if (hours < 1) return `${Math.round(hours * 60)} dev-minutes`;
-  if (hours < 8) return `${hours.toFixed(1)} dev-hours`;
-  const days = hours / 8;
-  return `${days.toFixed(1)} dev-days`;
+  if (hours < 1) return t("common:insight.devTime.minutes", { value: Math.round(hours * 60) });
+  if (hours < 8) return t("common:insight.devTime.hours", { value: hours.toFixed(1) });
+  return t("common:insight.devTime.days", { value: (hours / 8).toFixed(1) });
 }
 
 /** Direction of travel vs the previous comparable period. */
@@ -140,23 +216,27 @@ export type CostVocabulary = AccountMode | "mixed";
  * figure rendered without its caveat is a figure that has quietly dropped the
  * thing that makes it defensible.
  */
-export function costCaveat(mode: CostVocabulary, opts: { reconciledRatio?: number | null; anyFallbackRates?: boolean } = {}): string {
-  if (mode === "plan") return "Equivalent API cost — not what your plan charges.";
-  if (mode === "mixed") {
-    return (
-      "Mixed billing across the accounts in view — part of this figure is " +
-      "equivalent API value against a plan fee, part is metered money. " +
-      "Select a single account, or set pricing.mode, for one meaning."
-    );
-  }
-  const parts: string[] = [];
-  if (opts.reconciledRatio != null && Number.isFinite(opts.reconciledRatio)) {
-    parts.push(`reconciles with the invoice at ${formatPercent(opts.reconciledRatio)}`);
-  }
-  if (opts.anyFallbackRates) {
-    parts.push("some usage priced at first-party rates — configure partner rates for exact figures");
-  }
-  return parts.length > 0 ? capitalize(parts.join("; ")) + "." : "Actual metered cost.";
+export function costCaveat(
+  t: InsightT,
+  mode: CostVocabulary,
+  opts: { reconciledRatio?: number | null; anyFallbackRates?: boolean } = {},
+): string {
+  if (mode === "plan") return t("common:insight.caveat.plan");
+  if (mode === "mixed") return t("common:insight.caveat.mixed");
+
+  // The metered branch has two independent qualifiers, so four outcomes. Each
+  // is its own COMPLETE sentence key rather than fragments joined with "; " and
+  // run through a capitalizer: a translator handed "some usage priced at…"
+  // cannot know whether it will land sentence-initial, and the capitalize()
+  // this replaces was an English typographic rule applied blind to ten
+  // languages (a no-op in ja/zh, wrong for a Slavic clause that must inflect
+  // differently in each position).
+  const reconciled = opts.reconciledRatio != null && Number.isFinite(opts.reconciledRatio);
+  const ratio = reconciled ? formatPercent(opts.reconciledRatio!) : "";
+  if (reconciled && opts.anyFallbackRates) return t("common:insight.caveat.reconciledAndFallback", { ratio });
+  if (reconciled) return t("common:insight.caveat.reconciled", { ratio });
+  if (opts.anyFallbackRates) return t("common:insight.caveat.fallbackRates");
+  return t("common:insight.caveat.metered");
 }
 
 /**
@@ -171,29 +251,24 @@ export function costCaveat(mode: CostVocabulary, opts: { reconciledRatio?: numbe
  * returning null, so the caller never renders "0%" with no explanation.
  * `totalCost <= 0` (no spend at all) stays null — there's nothing to enable.
  */
-export function confidenceCaveat(coverage: TicketCoverage): string | null {
+export function confidenceCaveat(t: InsightT, coverage: TicketCoverage): string | null {
   if (coverage.attributedCost <= 0) {
-    return coverage.totalCost > 0
-      ? "No spend attributed to ticket keys this period — check that branch names, " +
-        "commit subjects, or prompts contain a key like PROJ-123, and that " +
-        "config.tickets.projectKeys lists your team's prefix (required for a " +
-        "lowercase or mixed-case convention to be picked up)."
-      : null;
+    return coverage.totalCost > 0 ? t("common:insight.coverage.none") : null;
   }
   const order: Confidence[] = ["high", "medium", "low"];
   const parts = order
     .filter((c) => (coverage.byConfidence[c] ?? 0) > 0)
-    .map((c) => `${formatPercent((coverage.byConfidence[c] ?? 0) / coverage.attributedCost)} ${c}`);
+    .map((c) =>
+      t("common:insight.coverage.tier", {
+        percent: formatPercent((coverage.byConfidence[c] ?? 0) / coverage.attributedCost),
+        tier: t(`common:insight.confidence.${c}`),
+      }),
+    );
   if (parts.length === 0) return null;
-  const ambiguity =
-    coverage.ambiguousSessions > 0
-      ? ` · ${coverage.ambiguousSessions} session${coverage.ambiguousSessions === 1 ? "" : "s"} ambiguous`
-      : "";
-  return `${parts.join(" · ")} confidence${ambiguity}.`;
-}
-
-function capitalize(s: string): string {
-  return s.length === 0 ? s : s[0]!.toUpperCase() + s.slice(1);
+  const joined = parts.join(t("common:insight.punctuation.dotJoin"));
+  return coverage.ambiguousSessions > 0
+    ? t("common:insight.coverage.mixAmbiguous", { parts: joined, count: coverage.ambiguousSessions })
+    : t("common:insight.coverage.mix", { parts: joined });
 }
 
 // ─── The five answers ─────────────────────────────────────────────────────────
@@ -212,35 +287,42 @@ export interface CostAnswerInput {
   anyFallbackRates?: boolean;
 }
 
-export function answerCost(input: CostAnswerInput): InsightAnswer {
+export function answerCost(t: InsightT, input: CostAnswerInput): InsightAnswer {
   const currency = input.currency ?? "USD";
   const money = formatMoney(input.cost, currency);
 
   if (input.cost <= 0) {
-    return unavailable("cost", "No usage recorded for this period.", {
+    return unavailable("cost", t("common:insight.cost.unavailable"), {
       reason: "no-data",
-      enablement: "Run a Claude Code session, then refresh — collection is automatic.",
+      enablement: t("common:insight.cost.enablement"),
     });
   }
 
-  const clauses: string[] = [`${money} this period`];
+  const clauses: string[] = [t("common:insight.cost.thisPeriod", { money })];
   if (input.hourlyRate && input.hourlyRate > 0) {
-    clauses.push(`≈ ${formatDevTime(input.cost, input.hourlyRate)} at your configured rate`);
+    clauses.push(
+      t("common:insight.cost.devTime", { devTime: formatDevTime(t, input.cost, input.hourlyRate) }),
+    );
   }
   // `plan` only — never `mixed`. A multiplier against the plan fee divides the
   // WHOLE period's cost by a fee that covers only part of it, which overstates
   // the plan's value by however much metered spend is in scope. Under a mixed
   // vocabulary the multiplier is dropped and the caveat says why.
   if (input.mode === "plan" && input.planFee && input.planMultiplier) {
-    clauses.push(`${input.planMultiplier.toFixed(1)}× your ${formatMoney(input.planFee, currency)}/mo plan`);
+    clauses.push(
+      t("common:insight.cost.planMultiplier", {
+        multiplier: input.planMultiplier.toFixed(1),
+        fee: formatMoney(input.planFee, currency),
+      }),
+    );
   }
 
   return {
     question: "cost",
-    answer: `${clauses.join(" — ")}.`,
+    answer: sentence(t, clauses.join(t("common:insight.punctuation.clauseJoin"))),
     value: money,
     trend: trendOf(input.cost, input.previousCost),
-    caveat: costCaveat(input.mode, {
+    caveat: costCaveat(t, input.mode, {
       reconciledRatio: input.reconciledRatio ?? null,
       anyFallbackRates: input.anyFallbackRates ?? false,
     }),
@@ -257,29 +339,38 @@ export interface BoughtAnswerInput {
   previousCoverageRatio?: number | null;
 }
 
-export function answerBought(input: BoughtAnswerInput): InsightAnswer {
+export function answerBought(t: InsightT, input: BoughtAnswerInput): InsightAnswer {
   if (!input.coverage || input.coverage.totalCost <= 0) {
-    return unavailable("bought", "No spend attributed to work items yet.", {
+    return unavailable("bought", t("common:insight.bought.unavailable"), {
       reason: "not-enabled",
-      enablement: "Add your project keys under Settings → Tickets to attribute spend automatically.",
+      enablement: t("common:insight.bought.enablement"),
     });
   }
   const currency = input.currency ?? "USD";
   const clauses: string[] = [];
   if (input.completedTasks !== null) {
-    clauses.push(`${input.completedTasks} task${input.completedTasks === 1 ? "" : "s"} completed`);
+    clauses.push(t("common:insight.bought.completed", { count: input.completedTasks }));
   }
-  clauses.push(`${formatPercent(input.coverage.ratio)} of spend attributed to work items`);
+  clauses.push(t("common:insight.bought.attributed", { percent: formatPercent(input.coverage.ratio) }));
   if (input.topTicket) {
-    clauses.push(`biggest: ${input.topTicket.key} (${formatMoney(input.topTicket.cost, currency)})`);
+    clauses.push(
+      // `key` is caller data (validated as a ticket key, but caller data), so
+      // it is spliced rather than interpolated — same rule everywhere.
+      tLiteral(
+        t,
+        "common:insight.bought.topTicket",
+        { cost: formatMoney(input.topTicket.cost, currency) },
+        { key: input.topTicket.key },
+      ),
+    );
   }
 
   return {
     question: "bought",
-    answer: `${capitalize(clauses.join(", "))}.`,
+    answer: sentence(t, clauses.join(t("common:insight.punctuation.listJoin"))),
     value: formatPercent(input.coverage.ratio),
     trend: trendOf(input.coverage.ratio ?? 0, input.previousCoverageRatio ?? null),
-    caveat: confidenceCaveat(input.coverage),
+    caveat: confidenceCaveat(t, input.coverage),
     evidenceLink: "tickets-and-value",
   };
 }
@@ -294,35 +385,42 @@ export interface EfficiencyAnswerInput {
   previousHygieneRatio?: number | null;
 }
 
-export function answerEfficiency(input: EfficiencyAnswerInput): InsightAnswer {
+export function answerEfficiency(t: InsightT, input: EfficiencyAnswerInput): InsightAnswer {
   if (input.recoverableWaste === null) {
-    return unavailable("efficiency", "Not enough completed work to measure efficiency.", {
+    return unavailable("efficiency", t("common:insight.efficiency.unavailable"), {
       reason: "no-data",
-      enablement: "Efficiency needs a few completed tasks in the period — check back after more usage.",
+      enablement: t("common:insight.efficiency.enablement"),
     });
   }
   const currency = input.currency ?? "USD";
   const share = input.cost > 0 ? input.recoverableWaste / input.cost : 0;
   const clauses = [
-    `${formatMoney(input.recoverableWaste, currency)} recoverable (${formatPercent(share)} of spend)`,
+    t("common:insight.efficiency.recoverable", {
+      money: formatMoney(input.recoverableWaste, currency),
+      percent: formatPercent(share),
+    }),
   ];
   if (input.hygieneRatio != null) {
-    const dir =
-      input.previousHygieneRatio != null
-        ? input.hygieneRatio < input.previousHygieneRatio
-          ? "down from"
-          : "up from"
-        : null;
+    const percent = formatPercent(input.hygieneRatio);
+    // Three complete sentence keys rather than a "{{direction}}" slot: "down
+    // from"/"up from" is a preposition that governs the case of the noun after
+    // it in several target languages, so it cannot be swapped independently of
+    // the clause it sits in.
     clauses.push(
-      dir
-        ? `self-audited waste ${formatPercent(input.hygieneRatio)}, ${dir} ${formatPercent(input.previousHygieneRatio!)}`
-        : `self-audited waste ${formatPercent(input.hygieneRatio)}`,
+      input.previousHygieneRatio == null
+        ? t("common:insight.efficiency.hygiene", { percent })
+        : t(
+            input.hygieneRatio < input.previousHygieneRatio
+              ? "common:insight.efficiency.hygieneDown"
+              : "common:insight.efficiency.hygieneUp",
+            { percent, previous: formatPercent(input.previousHygieneRatio) },
+          ),
     );
   }
 
   return {
     question: "efficiency",
-    answer: `${capitalize(clauses.join(" — "))}.`,
+    answer: sentence(t, clauses.join(t("common:insight.punctuation.clauseJoin"))),
     value: formatMoney(input.recoverableWaste, currency),
     // Falling waste is an improvement, so the trend is inverted deliberately:
     // "down" here means the number got better, matching how the card reads.
@@ -342,35 +440,45 @@ export interface SetupAnswerInput {
   policyImpact?: { date: string; classes: number; costPerTaskDelta: number } | null;
 }
 
-export function answerSetup(input: SetupAnswerInput): InsightAnswer {
+export function answerSetup(t: InsightT, input: SetupAnswerInput): InsightAnswer {
   const currency = input.currency ?? "USD";
   if (input.policyImpact) {
     const pct = formatPercent(input.policyImpact.costPerTaskDelta);
     return {
       question: "setup",
-      answer: `Since the policy change on ${input.policyImpact.date}, cost per successful task is up ${pct} in ${input.policyImpact.classes} task class${input.policyImpact.classes === 1 ? "" : "es"}.`,
+      answer: t("common:insight.setup.policyImpact", {
+        date: input.policyImpact.date,
+        percent: pct,
+        count: input.policyImpact.classes,
+      }),
       value: pct,
       trend: "up",
-      caveat: "Evidence, not proof — compared within task classes across the boundary.",
+      caveat: t("common:insight.setup.policyCaveat"),
       evidenceLink: "plan-and-policy",
     };
   }
   if (!input.planVerdict) {
-    return unavailable("setup", "Not enough data to judge your plan fit.", {
+    return unavailable("setup", t("common:insight.setup.unavailable"), {
       reason: "no-data",
-      enablement: "Plan fit needs a few weeks of usage to be meaningful.",
+      enablement: t("common:insight.setup.enablement"),
     });
   }
-  const saving =
-    input.projectedSaving && input.recommendedPlan
-      ? ` — switching to ${input.recommendedPlan} would save about ${formatMoney(input.projectedSaving, currency)}/mo`
-      : "";
+  // `planVerdict` arrives already localized — the caller owns it because the
+  // verdict vocabulary is the plan surface's, not this module's.
+  const hasSaving = Boolean(input.projectedSaving && input.recommendedPlan);
   return {
     question: "setup",
-    answer: `${input.planVerdict}${saving}.`,
+    answer: hasSaving
+      ? tLiteral(
+          t,
+          "common:insight.setup.verdictWithSaving",
+          { saving: formatMoney(input.projectedSaving!, currency) },
+          { verdict: input.planVerdict, plan: input.recommendedPlan! },
+        )
+      : sentence(t, input.planVerdict),
     value: input.recommendedPlan,
     trend: "unknown",
-    caveat: saving ? "Estimated from your own usage replayed against plan limits." : null,
+    caveat: hasSaving ? t("common:insight.setup.savingCaveat") : null,
     evidenceLink: "plan-and-policy",
   };
 }
@@ -388,11 +496,13 @@ export interface ChangeAnswerInput {
   doingWell?: string | null;
 }
 
-export function answerChange(input: ChangeAnswerInput): InsightAnswer {
+export function answerChange(t: InsightT, input: ChangeAnswerInput): InsightAnswer {
   if (input.recommendations.length === 0) {
     return {
       question: "change",
-      answer: input.doingWell ?? "Nothing needs attention right now.",
+      // `doingWell` arrives already localized and already terminated — it is a
+      // whole sentence the caller composed, so it is NOT wrapped again.
+      answer: input.doingWell ?? t("common:insight.change.nothing"),
       value: null,
       trend: "flat",
       caveat: null,
@@ -407,11 +517,16 @@ export function answerChange(input: ChangeAnswerInput): InsightAnswer {
   // module exists to prevent. Below four recommendations the two counts
   // coincide, which is exactly why the defect was invisible.
   const others = input.recommendations.length - 1;
-  const rest = others > 0 ? ` (+${others} more)` : "";
-  const impact = lead.impact ? ` — ${lead.impact}` : "";
+  // `title`/`impact` are engine-composed strings the caller already localized.
+  const leadText = lead.impact
+    ? tLiteral(t, "common:insight.change.withImpact", {}, { title: lead.title, impact: lead.impact })
+    : lead.title;
   return {
     question: "change",
-    answer: `${lead.title}${impact}${rest}.`,
+    answer:
+      others > 0
+        ? tLiteral(t, "common:insight.change.more", { count: others }, { lead: leadText })
+        : sentence(t, leadText),
     value: String(input.recommendations.length),
     trend: "unknown",
     caveat: null,
@@ -423,6 +538,11 @@ export function answerChange(input: ChangeAnswerInput): InsightAnswer {
  * Build an answer that says why it can't answer. Never returns an empty string
  * or a zero — an empty widget teaches the reader the tool is broken, whereas a
  * stated enablement path is how a feature gets discovered.
+ *
+ * Takes no translator: `answer` and `detail.enablement` are ALREADY-TRANSLATED
+ * sentences, because only the caller knows which question it is answering. The
+ * `reason` discriminant (`"no-data"` / `"not-enabled"`) is a machine value and
+ * is deliberately NOT localized — surfaces branch on it.
  */
 export function unavailable(
   question: InsightQuestion,

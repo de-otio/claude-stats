@@ -156,6 +156,17 @@ export function resolveDashboardCostVocabulary(data: DashboardData, config: Conf
 
 /** Everything the answers need that does not live on `DashboardData`. */
 export interface InsightBuildOptions {
+  /**
+   * The translator the formatters compose their sentences with.
+   *
+   * Carried in the options bag rather than as a positional argument so it sits
+   * beside the other per-render context (currency, rate, vocabulary) — all of
+   * which come from the same place at the one call site in `template.ts`. It is
+   * required, not optional-with-a-default: a default would let a caller render
+   * the default tab in English by forgetting a field, which is precisely the
+   * defect this lane exists to remove.
+   */
+  t: TranslateFn;
   vocabulary: CostVocabulary;
   /** `config.rate.hourly`, or null — never invented. */
   hourlyRate: number | null;
@@ -184,7 +195,7 @@ export function buildInsightAnswers(data: DashboardData, opts: InsightBuildOptio
   const ins = data.insights;
   const coverage: TicketCoverage | null = ins?.ticketCoverage ?? null;
 
-  const cost = answerCost({
+  const cost = answerCost(opts.t, {
     mode: opts.vocabulary,
     cost: data.summary.estimatedCost,
     // No previous-period figure is available: `buildDashboard` returns one
@@ -206,7 +217,7 @@ export function buildInsightAnswers(data: DashboardData, opts: InsightBuildOptio
     anyFallbackRates: data.summary.anyFallbackRates,
   });
 
-  const bought = answerBought({
+  const bought = answerBought(opts.t, {
     // Successes, not attempts: "what it bought" is work that landed.
     completedTasks: cpt ? cpt.successCount : null,
     coverage,
@@ -214,13 +225,13 @@ export function buildInsightAnswers(data: DashboardData, opts: InsightBuildOptio
     currency: opts.currency,
   });
 
-  const efficiency = answerEfficiency({
+  const efficiency = answerEfficiency(opts.t, {
     recoverableWaste: cpt?.efficiency ? cpt.efficiency.recoverableWaste : null,
     cost: data.summary.estimatedCost,
     currency: opts.currency,
   });
 
-  const setup = answerSetup({
+  const setup = answerSetup(opts.t, {
     planVerdict: opts.verdictSentence,
     // Lane E (pricing-model comparison) computes the projected saving; until it
     // lands there is no defensible figure, and a plausible-looking invented one
@@ -230,7 +241,7 @@ export function buildInsightAnswers(data: DashboardData, opts: InsightBuildOptio
     currency: opts.currency,
   });
 
-  const change = answerChange({
+  const change = answerChange(opts.t, {
     recommendations: data.recommendations.map((r) => ({
       title: r.title,
       impact: r.impact ?? null,

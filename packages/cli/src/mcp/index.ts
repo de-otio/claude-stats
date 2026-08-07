@@ -21,6 +21,7 @@ import { searchHistory } from "../history/index.js";
 import { sanitizePromptText } from "@claude-stats/core/sanitize";
 import type { ReportOptions } from "../reporter/index.js";
 import { MCP_VERSION } from "./version.js";
+import { t } from "../i18n.js";
 import { readClaudeAccount } from "../account.js";
 import {
   PLAN_MECHANICS_VERIFIED_DATE,
@@ -568,9 +569,12 @@ export function createMcpServer(store: Store): McpServer {
         accountUuid: resolved.accountUuid,
       });
 
+      // The empty-period sentence is the SAME fact `answerCost` states on the
+      // dashboard, so it quotes the same key rather than a local literal that
+      // was already free to drift from it.
       const coverageLine = report.coverage.totalCost > 0
         ? `${formatMoney(report.coverage.attributedCost)} of ${formatMoney(report.coverage.totalCost)} attributed (${formatPercent(report.coverage.ratio)}).`
-        : "No usage recorded for this period.";
+        : t("common:insight.cost.unavailable");
 
       const base = {
         window: { since: new Date(range.since).toISOString(), until: new Date(range.until).toISOString() },
@@ -582,7 +586,7 @@ export function createMcpServer(store: Store): McpServer {
           byConfidence: report.coverage.byConfidence,
           ambiguousSessions: report.coverage.ambiguousSessions,
           summary: coverageLine,
-          confidenceCaveat: confidenceCaveat(report.coverage),
+          confidenceCaveat: confidenceCaveat(t, report.coverage),
         },
         unknownModelTokens: report.unknownTokens,
       };

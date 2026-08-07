@@ -68,6 +68,77 @@
     "promptsPerHr": "prompts/h",
     "outputPerPrompt": "sortie/prompt"
   },
+  "insight": {
+    "punctuation": {
+      "sentence": "{{text}}.",
+      "clauseJoin": " — ",
+      "listJoin": ", ",
+      "dotJoin": " · "
+    },
+    "devTime": {
+      "minutes": "{{value}} minutes-développeur",
+      "hours": "{{value}} heures-développeur",
+      "days": "{{value}} jours-développeur"
+    },
+    "confidence": {
+      "high": "élevée",
+      "medium": "moyenne",
+      "low": "faible"
+    },
+    "caveat": {
+      "plan": "Coût API équivalent — pas ce que votre abonnement facture.",
+      "mixed": "Facturation mixte sur les comptes affichés — une partie de ce montant est une valeur API équivalente face à un abonnement, l'autre est de l'argent réellement facturé. Sélectionnez un seul compte, ou définissez pricing.mode, pour obtenir une signification unique.",
+      "metered": "Coût réellement facturé.",
+      "reconciled": "Concorde avec la facture à {{ratio}}.",
+      "fallbackRates": "Une partie de l'usage a été tarifée aux tarifs first-party — configurez les tarifs partenaires pour des montants exacts.",
+      "reconciledAndFallback": "Concorde avec la facture à {{ratio}} ; une partie de l'usage a été tarifée aux tarifs first-party — configurez les tarifs partenaires pour des montants exacts."
+    },
+    "coverage": {
+      "tier": "{{percent}} {{tier}}",
+      "mix": "{{parts}} de confiance.",
+      "mixAmbiguous_one": "{{parts}} de confiance · {{count}} session ambiguë.",
+      "mixAmbiguous_other": "{{parts}} de confiance · {{count}} sessions ambiguës.",
+      "none": "Aucune dépense attribuée à une clé de ticket sur cette période — vérifiez que les noms de branches, les objets de commit ou les prompts contiennent une clé comme PROJ-123, et que config.tickets.projectKeys liste le préfixe de votre équipe (nécessaire pour qu'une convention en minuscules ou en casse mixte soit reconnue)."
+    },
+    "cost": {
+      "unavailable": "Aucun usage enregistré pour cette période.",
+      "enablement": "Lancez une session Claude Code, puis actualisez — la collecte est automatique.",
+      "thisPeriod": "{{money}} sur cette période",
+      "devTime": "≈ {{devTime}} au taux que vous avez configuré",
+      "planMultiplier": "{{multiplier}}× votre abonnement à {{fee}}/mois"
+    },
+    "bought": {
+      "unavailable": "Aucune dépense encore attribuée à des éléments de travail.",
+      "enablement": "Ajoutez vos clés de projet dans Paramètres → Tickets pour attribuer les dépenses automatiquement.",
+      "completed_one": "{{count}} tâche terminée",
+      "completed_other": "{{count}} tâches terminées",
+      "attributed": "{{percent}} des dépenses attribuées à des éléments de travail",
+      "topTicket": "le plus important : {{key}} ({{cost}})"
+    },
+    "efficiency": {
+      "unavailable": "Pas assez de travail terminé pour mesurer l'efficacité.",
+      "enablement": "L'efficacité nécessite quelques tâches terminées sur la période — revenez après davantage d'usage.",
+      "recoverable": "{{money}} récupérables ({{percent}} des dépenses)",
+      "hygiene": "gaspillage auto-évalué {{percent}}",
+      "hygieneDown": "gaspillage auto-évalué {{percent}}, en baisse depuis {{previous}}",
+      "hygieneUp": "gaspillage auto-évalué {{percent}}, en hausse depuis {{previous}}"
+    },
+    "setup": {
+      "unavailable": "Pas assez de données pour juger l'adéquation de votre abonnement.",
+      "enablement": "L'adéquation de l'abonnement demande quelques semaines d'usage pour être significative.",
+      "policyImpact_one": "Depuis le changement de politique du {{date}}, le coût par tâche réussie a augmenté de {{percent}} dans {{count}} classe de tâches.",
+      "policyImpact_other": "Depuis le changement de politique du {{date}}, le coût par tâche réussie a augmenté de {{percent}} dans {{count}} classes de tâches.",
+      "policyCaveat": "Un indice, pas une preuve — comparaison faite au sein des classes de tâches, de part et d'autre de la limite.",
+      "verdictWithSaving": "{{verdict}} — passer à {{plan}} économiserait environ {{saving}}/mois.",
+      "savingCaveat": "Estimé à partir de votre propre usage rejoué face aux limites des abonnements."
+    },
+    "change": {
+      "nothing": "Rien ne requiert votre attention pour le moment.",
+      "withImpact": "{{title}} — {{impact}}",
+      "more_one": "{{lead}} (+{{count}} autre).",
+      "more_other": "{{lead}} (+{{count}} autres)."
+    }
+  },
   "actions": {
     "connect": "Connecter",
     "disconnect": "Déconnecter",
