@@ -174,7 +174,8 @@
     "costPerTaskByModel": "Die Metrik nach dominantem Modell aufschlüsseln",
     "costPerTaskCalibrate": "Kalibrierungsmetriken (Übereinstimmung von Proxy/Signal mit deinen Labels) als JSON ausgeben",
     "costPerTaskLlmJudge": "Den optionalen LLM-Richter für mehrdeutige Aufgaben ausführen (benötigt llmJudge-Konfiguration; sendet eine anonymisierte Aufgabenzusammenfassung an deinen Endpunkt)",
-    "costPerTaskLlmJudgeUnconfigured": "--llm-judge angefordert, aber llmJudge.endpoint/model sind nicht gesetzt; Richter wird übersprungen."
+    "costPerTaskLlmJudgeUnconfigured": "--llm-judge angefordert, aber llmJudge.endpoint/model sind nicht gesetzt; Richter wird übersprungen.",
+    "reportTicket": "Kosten/Tokens/Sessions anzeigen, die einem Ticket-Key (z. B. PROJ-123) zugeordnet sind, samt Abdeckung des Zeitraums"
   },
   "collection": {
     "collecting": "Erfassung läuft...",
@@ -273,7 +274,18 @@
     "costPerTaskByModel": "Nach Modell",
     "costPerTaskSuccessShort": "Erfolg",
     "costPerTaskInsufficient": "n/a (<{{min}} Beob.)",
-    "costPerTaskObsShort": "Beob."
+    "costPerTaskObsShort": "Beob.",
+    "ticketTitle": "Ticket {{key}} — {{period}}",
+    "ticketNotFound": "Keine zugeordneten Kosten für {{key}} in diesem Zeitraum gefunden — prüfen Sie den Key und den Datumsbereich.",
+    "ticketTokensLabel": "Tokens",
+    "ticketSourcesLabel": "Quellen",
+    "ticketCoverageTitle": "Abdeckung des Zeitraums",
+    "ticketCoverageLine": "{{attributed}} von {{total}} zugeordnet ({{ratio}})",
+    "ticketCoverageNone": "Für diesen Zeitraum wurde keine Nutzung erfasst.",
+    "ticketAmbiguousNote": "{{count}} Session(s) mehrdeutig (mit mehr als einem Ticket verknüpft).",
+    "confidenceHigh": "hohe Konfidenz",
+    "confidenceMedium": "mittlere Konfidenz",
+    "confidenceLow": "niedrige Konfidenz"
   },
   "status": {
     "databaseSize": "Datenbankgröße",

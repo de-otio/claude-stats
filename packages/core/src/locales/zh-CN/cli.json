@@ -174,7 +174,8 @@
     "costPerTaskByModel": "按主要模型细分该指标",
     "costPerTaskCalibrate": "以 JSON 输出校准指标（代理/信号与你的标签的一致性）",
     "costPerTaskLlmJudge": "对模糊任务运行可选的 LLM 评判（需要 llmJudge 配置；会将匿名化的任务摘要发送到你的端点）",
-    "costPerTaskLlmJudgeUnconfigured": "请求了 --llm-judge，但未配置 llmJudge.endpoint/model；跳过评判。"
+    "costPerTaskLlmJudgeUnconfigured": "请求了 --llm-judge，但未配置 llmJudge.endpoint/model；跳过评判。",
+    "reportTicket": "显示归属于某个工单编号（例如 PROJ-123）的费用/token/session，以及该时段的覆盖情况"
   },
   "collection": {
     "collecting": "收集中...",
@@ -273,7 +274,18 @@
     "costPerTaskByModel": "按模型",
     "costPerTaskSuccessShort": "成功",
     "costPerTaskInsufficient": "n/a（<{{min}} 次观测）",
-    "costPerTaskObsShort": "观测"
+    "costPerTaskObsShort": "观测",
+    "ticketTitle": "工单 {{key}} — {{period}}",
+    "ticketNotFound": "在此时段内未找到归属于 {{key}} 的用量 — 请检查工单编号和日期范围。",
+    "ticketTokensLabel": "Token",
+    "ticketSourcesLabel": "来源",
+    "ticketCoverageTitle": "时段覆盖情况",
+    "ticketCoverageLine": "{{total}} 中已归属 {{attributed}}（{{ratio}}）",
+    "ticketCoverageNone": "此时段未记录任何用量。",
+    "ticketAmbiguousNote": "{{count}} 个 session 存在歧义（关联到多个工单）。",
+    "confidenceHigh": "高置信度",
+    "confidenceMedium": "中置信度",
+    "confidenceLow": "低置信度"
   },
   "status": {
     "databaseSize": "数据库大小",

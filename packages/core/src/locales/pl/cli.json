@@ -174,7 +174,8 @@
     "costPerTaskByModel": "Rozbij metrykę według dominującego modelu",
     "costPerTaskCalibrate": "Wypisz metryki kalibracji (zgodność proxy/sygnału z Twoimi etykietami) jako JSON",
     "costPerTaskLlmJudge": "Uruchom opcjonalnego sędziego LLM dla niejednoznacznych zadań (wymaga konfiguracji llmJudge; wysyła zanonimizowane podsumowanie zadania do Twojego endpointu)",
-    "costPerTaskLlmJudgeUnconfigured": "Zażądano --llm-judge, ale llmJudge.endpoint/model nie są ustawione; pomijanie sędziego."
+    "costPerTaskLlmJudgeUnconfigured": "Zażądano --llm-judge, ale llmJudge.endpoint/model nie są ustawione; pomijanie sędziego.",
+    "reportTicket": "Pokaż koszt/tokeny/sesje przypisane do jednego klucza zgłoszenia (np. PROJ-123) oraz pokrycie okresu"
   },
   "collection": {
     "collecting": "Zbieranie...",
@@ -273,7 +274,18 @@
     "costPerTaskByModel": "Według modelu",
     "costPerTaskSuccessShort": "sukces",
     "costPerTaskInsufficient": "n/a (<{{min}} obs.)",
-    "costPerTaskObsShort": "obs."
+    "costPerTaskObsShort": "obs.",
+    "ticketTitle": "Zgłoszenie {{key}} — {{period}}",
+    "ticketNotFound": "Nie znaleziono przypisanych kosztów dla {{key}} w tym okresie — sprawdź klucz i zakres dat.",
+    "ticketTokensLabel": "Tokeny",
+    "ticketSourcesLabel": "Źródła",
+    "ticketCoverageTitle": "Pokrycie okresu",
+    "ticketCoverageLine": "Przypisano {{attributed}} z {{total}} ({{ratio}})",
+    "ticketCoverageNone": "Brak zarejestrowanego użycia w tym okresie.",
+    "ticketAmbiguousNote": "Niejednoznaczne sesje: {{count}} (powiązane z więcej niż jednym zgłoszeniem).",
+    "confidenceHigh": "wysoka pewność",
+    "confidenceMedium": "średnia pewność",
+    "confidenceLow": "niska pewność"
   },
   "status": {
     "databaseSize": "Rozmiar bazy danych",

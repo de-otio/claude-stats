@@ -262,6 +262,49 @@ export function getProjectGitActivity(
   };
 }
 
+/**
+ * Commit subjects on HEAD within [startMs, endMs) for one project — the
+ * ticket-attribution rung-3 signal (doc/analysis/ticket-attribution/02 §2.4).
+ *
+ * Deliberately NOT author-scoped, unlike `getProjectGitActivity`: a commit
+ * that lands during a session's window is relevant corroborating evidence
+ * regardless of which of the repo's configured identities made it (a
+ * teammate's fix-up commit on the same ticket still corroborates), whereas
+ * the daily-recap queries are inherently "my activity" scoped. Same SR-1
+ * execFileSync-array-argv discipline as the rest of this module: no shell,
+ * date arguments are ISO strings we construct, `--` separates flags from the
+ * (non-existent, here) pathspec position.
+ *
+ * Returns `[]` — never throws — when git is missing, the path isn't a repo,
+ * or the window has no commits. Subjects are capped at `MAX_SUBJECT_LEN`
+ * chars each and the result at `MAX_SUBJECTS`, matching the per-day reader.
+ */
+export function getCommitSubjectsInWindow(projectPath: string, startMs: number, endMs: number): string[] {
+  const p = resolveGitDir(projectPath);
+  if (p === null) return [];
+
+  const startIso = new Date(startMs).toISOString();
+  const endIso = new Date(endMs).toISOString();
+
+  let rawOutput: string;
+  try {
+    rawOutput = execFileSync(
+      'git',
+      ['-C', p, 'log', `--since=${startIso}`, `--until=${endIso}`, '--format=%s', '--'],
+      { encoding: 'utf8', maxBuffer: MAX_BUFFER },
+    );
+  } catch {
+    return [];
+  }
+
+  const subjects = rawOutput
+    .split('\n')
+    .map((s) => s.trim().slice(0, MAX_SUBJECT_LEN))
+    .filter((s) => s.length > 0);
+
+  return subjects.length <= MAX_SUBJECTS ? subjects : subjects.slice(0, MAX_SUBJECTS);
+}
+
 // ─── Windowed (multi-day) git provider ──────────────────────────────────────
 //
 // Performance: the per-day `getProjectGitActivity` above spawns FOUR

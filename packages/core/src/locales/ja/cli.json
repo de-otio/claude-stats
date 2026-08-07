@@ -174,7 +174,8 @@
     "costPerTaskByModel": "主要モデル別にメトリクスを分解する",
     "costPerTaskCalibrate": "キャリブレーション指標（プロキシ/シグナルとラベルの一致度）を JSON で出力する",
     "costPerTaskLlmJudge": "曖昧なタスクに対してオプションの LLM ジャッジを実行する（llmJudge 設定が必要; 匿名化したタスク要約をエンドポイントに送信）",
-    "costPerTaskLlmJudgeUnconfigured": "--llm-judge が指定されましたが llmJudge.endpoint/model が未設定のため、ジャッジをスキップします。"
+    "costPerTaskLlmJudgeUnconfigured": "--llm-judge が指定されましたが llmJudge.endpoint/model が未設定のため、ジャッジをスキップします。",
+    "reportTicket": "1 つのチケットキー (例: PROJ-123) に紐付くコスト/トークン/セッションと、期間のカバレッジを表示します"
   },
   "collection": {
     "collecting": "収集中...",
@@ -273,7 +274,18 @@
     "costPerTaskByModel": "モデル別",
     "costPerTaskSuccessShort": "成功",
     "costPerTaskInsufficient": "n/a (<{{min}} 観測)",
-    "costPerTaskObsShort": "観測"
+    "costPerTaskObsShort": "観測",
+    "ticketTitle": "チケット {{key}} — {{period}}",
+    "ticketNotFound": "この期間に {{key}} へ紐付いた使用量は見つかりませんでした。キーと日付範囲を確認してください。",
+    "ticketTokensLabel": "トークン",
+    "ticketSourcesLabel": "ソース",
+    "ticketCoverageTitle": "期間のカバレッジ",
+    "ticketCoverageLine": "{{total}} 中 {{attributed}} が紐付け済み ({{ratio}})",
+    "ticketCoverageNone": "この期間に記録された使用量はありません。",
+    "ticketAmbiguousNote": "{{count}} 件のセッションが曖昧です (複数のチケットに紐付いています)。",
+    "confidenceHigh": "信頼度: 高",
+    "confidenceMedium": "信頼度: 中",
+    "confidenceLow": "信頼度: 低"
   },
   "status": {
     "databaseSize": "データベースサイズ",

@@ -108,6 +108,10 @@
       "types": "./dist/tickets.d.ts",
       "default": "./dist/tickets.js"
     },
+    "./attribution": {
+      "types": "./dist/attribution.d.ts",
+      "default": "./dist/attribution.js"
+    },
     "./insight": {
       "types": "./dist/insight.d.ts",
       "default": "./dist/insight.js"
