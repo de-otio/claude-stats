@@ -193,7 +193,8 @@
     "constraintImpact": "Was eine deklarierte Richtlinienänderung (Budgetgrenze, Entfernung einer Modellstufe) pro Aufgabenklasse gekostet oder eingespart hat – JSON-Ausgabe; an jq weiterleiten",
     "constraintImpactDate": "Welches deklarierte Policy-Ereignis als Vergleichspunkt dient (muss einem Datum in config.policyEvents entsprechen). Standard: das jüngste",
     "constraintImpactCsv": "Die Klassen-Tabelle zusätzlich in diesen CSV-Pfad schreiben",
-    "constraintImpactMinSessions": "Mindestanzahl Sessions pro Klasse und Seite (Standard: 8)"
+    "constraintImpactMinSessions": "Mindestanzahl Sessions pro Klasse und Seite (Standard: 8)",
+    "packDiscloseScope": "Den literalen Projektpfad / die Account-UUID in die Scope-Zeile des Packs und in die CSV-Spalten aufnehmen. Standardmäßig zurückgehalten – ein lokaler Pfad kann einen Kunden oder ein unveröffentlichtes Produkt verraten, und das Pack ist dafür gedacht, diesen Computer zu verlassen."
   },
   "collection": {
     "collecting": "Erfassung läuft...",

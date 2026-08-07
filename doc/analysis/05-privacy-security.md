@@ -210,3 +210,132 @@ that already-reduced, structurally-narrower payload is sent. There is no code
 path in either direction by which the org plane could obtain, store, or
 decrypt personal-plane ciphertext, raw transcripts, or `prompt_text` — the
 aggregate payload type simply has no field shaped to carry any of them.
+
+---
+
+## DRAFT AMENDMENT — pending human review
+
+**Status: DRAFT.** Everything below this line documents what a large build
+(the "Insight Suite": ticket attribution, efficiency-hygiene detectors, a
+task classifier, a constraint-impact engine, outcome calibration, invoice
+reconciliation, and the justification pack) actually changed in this file's
+subject matter, verified against the source as of this writing. It has not
+been reviewed by a human as an amendment to the document above. Nothing
+above this line has been edited to match — where the two disagree, the
+change below is the newer, correct statement, and the section above needs a
+human edit pass to fold it in (or supersede it) properly. Read this section
+before trusting anything above it that touches ticket keys, prompt-derived
+data, or artifacts that leave the machine.
+
+None of what follows is softened. If a change below widens what is stored or
+what could leave the machine, it is stated as such, not qualified away.
+
+### New local storage
+
+Four additions to the local SQLite database, all local-only except where
+"The justification pack" section below says otherwise.
+
+1. **Ticket keys are extracted from prompt text and persisted, in a new
+   `ticket_links` table.** This is a materially different practice from
+   "prompt text is stored" (already documented above since schema V8): the
+   extractor now *reads* `messages.prompt_text` (and git branch names and
+   commit subjects) looking for work-item key patterns (`PROJ-123`-shaped
+   strings) and writes a **derived, structured fact** — "this session touched
+   this ticket" — into a table that other features (cost-per-ticket
+   reporting, the justification pack, the dashboard) read directly, without
+   going back through `prompt_text`. `ticket_links.evidence` can hold a
+   fragment of the matched prompt text, branch name, or commit subject — it
+   inherits `prompt_text`'s sensitivity, not a lower one, and is **not**
+   passed through `sanitizePromptText`. This table is never synced to the
+   org plane (see "Two-Plane Model" above — the aggregate payload has no
+   field for it) and never appears in the justification pack (see below).
+2. **`messages.git_branch`** stores a git branch name **per message**, not
+   just once per session as `sessions.git_branch` already did. This is a
+   precision increase on an already-documented Medium-sensitivity field
+   (branch names may reveal feature names or ticket IDs), not a new category
+   of data — but it does mean a session that switches branches now has that
+   fact recorded turn-by-turn rather than only at first-seen.
+3. **`session_task_class`** stores a classification label per session (e.g.
+   "debug", "refactor-multi-file", "greenfield") plus the rule and classifier
+   version that produced it. Low sensitivity — it is a closed-enum label, not
+   free text, and cannot carry prompt content — but it is a new inference
+   *about* a session's content that did not exist before.
+4. **`api_error_events`** persists structured API-error and retry signals
+   (error kind, HTTP status, retry timing) per session. Low sensitivity — no
+   prompt or response content — but it is new: this data was previously
+   discarded rather than stored.
+
+### The justification pack: the first artifact designed to leave the machine
+
+Every prior local-plane feature (the SQLite DB, the transcript archive) is
+local-only by default, and the two opt-in ways data has ever left a machine
+before this build were (a) the org/team-sync aggregate payload (day-bucketed
+totals only, no prompt content, described above) and (b) the personal-plane
+encrypted backup (a blind ciphertext blob, described above). **The
+justification pack is a third, new kind of thing: a plaintext document the
+tool generates specifically so a human can hand it to another human who does
+not run claude-stats** — typically a manager, typically over email, typically
+outside any encryption or sync channel this document has previously
+described. The tool itself does not transmit the pack over a network; it
+writes an HTML file and a CSV bundle to local disk (`claude-stats pack` /
+`generate_justification_pack`), and the user is the one who moves it from
+there. That the *distribution* step is manual does not change the privacy
+analysis — the document is built to leave, and does.
+
+**Redaction: what does NOT appear in the pack.** The pack runs the same
+redaction the org-sync plane uses, enforced at compile time (a TypeScript
+type-level check fails the build if a pack row type ever grows one of these
+fields) — never prompt text, file contents, transcript bytes, session ids,
+or per-session evidence text (`ticket_links.evidence`). A policy event's
+`detail` field (marked local-only in the source, e.g. `"opus"` or
+`"usd:1500/mo"`) is also structurally excluded from the pack even when the
+`constraint` section is requested.
+
+**What DOES appear in the pack, and is worth stating plainly:**
+
+- **Ticket keys** (e.g. `PROJ-123`) themselves — the whole point of the
+  `tickets` section — along with their cost, token counts, session count, and
+  confidence tier. A ticket key that itself encodes something sensitive (an
+  unreleased product codename used as a Jira project prefix, for instance)
+  leaves the machine in this document.
+- **The FACT that a pack was scoped, but not the scope's literal value.** The
+  pack always states its own scope as a line of text ("no filter" is treated as
+  a fact the reader needs, not an omission). When `--project` or `--account`
+  was used, that line — and the `projectPath`/`accountUuid` column on every CSV
+  row — renders a stable marker (`[withheld:a1b2c3d4]`) rather than the value.
+  This was **not** the case when this amendment was first drafted: the raw
+  absolute path was embedded in the scope line and in every row of two CSVs. A
+  local path like `/Users/alice/repos/<client>/<codename>` is Medium
+  sensitivity per the classification table at the top of this document, and
+  this is the one artifact built to leave the machine, so shipping it by
+  default inverted the pack's own rule that every section is opt-in and the
+  default is the minimum. The marker is deterministic (two packs scoped alike
+  compare; a series stays readable) and non-reversible, though it is **not** a
+  security boundary — an eight-hex digest of a guessable path is guessable. It
+  defeats disclosure *by accident*, which is the actual failure mode: a path
+  pasted into a document nobody reread before sending. `--disclose-scope` opts
+  back into the literal values for the case where the recipient is entitled to
+  them.
+- **Cost figures, coverage ratios, confidence-tier mixes, and (in `mode:
+  "plan"`) the configured monthly plan fee** — all of this is the intended
+  content of the document.
+
+**Sections not yet wired.** `hygiene`, `constraint`, and `calibration` can be
+requested but currently render an honest "not available in this build" block
+— those engines exist and are reachable through their own commands, but the
+pack renderer does not yet pull from them. No number is fabricated in their
+place; nothing from those subsystems currently leaves via the pack at all.
+
+### What did not change
+
+The classification table, the "What the Tool Stores Locally / Does NOT
+Store" lists, the quarantine-table section, the org/team-sync rules, the
+opt-in philosophy, the transcript archive section, and the personal-plane
+backup/sync section above all remain accurate as written for the data they
+describe — none of the four subsystems above changes what those sections
+say about `prompt_text`, file contents, or the transcript archive itself.
+The one place they interact: `ticket_links` is a *second* place derived
+prompt-text-adjacent content now lives, alongside the `prompt_text` column
+those sections already cover, and a human reviewer should decide whether
+this document's retention/access-control sections should name it explicitly
+rather than leaving it implied.

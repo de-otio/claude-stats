@@ -193,7 +193,8 @@
     "constraintImpact": "Lo que costó o ahorró un cambio de política declarado (límite de presupuesto, retirada de un nivel de modelo), por clase de tarea — salida JSON; canalizar a jq",
     "constraintImpactDate": "Qué evento de política declarado usar como punto de comparación (debe coincidir con una fecha de config.policyEvents). Por defecto: el más reciente",
     "constraintImpactCsv": "Escribir también la tabla por clase en esta ruta CSV",
-    "constraintImpactMinSessions": "Umbral mínimo de sesiones por clase y lado (por defecto: 8)"
+    "constraintImpactMinSessions": "Umbral mínimo de sesiones por clase y lado (por defecto: 8)",
+    "packDiscloseScope": "Incluye la ruta literal del proyecto o el UUID de la cuenta en la línea de ámbito del paquete y en las columnas del CSV. Se omite de forma predeterminada: una ruta local puede revelar el nombre de un cliente o de un producto sin publicar, y el paquete está pensado para salir de este equipo."
   },
   "collection": {
     "collecting": "Recopilando...",

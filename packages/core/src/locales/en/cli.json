@@ -193,7 +193,8 @@
     "constraintImpact": "What a declared policy change (budget cap, model-tier removal) cost or saved, per task class — JSON output; pipe to jq",
     "constraintImpactDate": "Which declared policy event to compare around (must match a config.policyEvents date). Default: the most recent",
     "constraintImpactCsv": "Also write the per-class table to this CSV path",
-    "constraintImpactMinSessions": "Sample-size floor per class, per side (default: 8)"
+    "constraintImpactMinSessions": "Sample-size floor per class, per side (default: 8)",
+    "packDiscloseScope": "Include the literal project path / account UUID in the pack's scope line and CSV columns. Withheld by default — a local path can name a client or an unreleased product, and the pack is meant to leave this machine."
   },
   "collection": {
     "collecting": "Collecting...",

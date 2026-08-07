@@ -118,7 +118,78 @@ Last collected  : 3/8/2026, 9:15:04 AM
 
 The dashboard presents the same data as the terminal report in graphical form. It is produced either by `claude-stats serve` (live, browser-based) or by `claude-stats report --html` (static file).
 
+### Tabs
+
+The dashboard's tab bar, in order, and what each shows:
+
+| Tab | Shown when | Content |
+|---|---|---|
+| **Insights** | Always — this is the default/landing tab | Five business-question cards, an alerts strip, and (if configured) the reconciliation panel. See below |
+| **Overview** | Always | Summary bar, cost-per-successful-task card, chart panels — the token-mechanics view described in the sections below |
+| **Energy** | Energy data present | CO₂/energy estimate for the period |
+| **Spending** | Spending data present | The same breakdown as the `spending` command (by model, top sessions, top tools, MCP servers, anomalies) |
+| **Projects** | Always | Per-project usage breakdown |
+| **Sessions** | Always | Session list/detail |
+| **Plan** | Always | Plan verdict, seat sizing |
+| **Context** | Context-analysis data present | Prompt/context size analysis |
+| **Efficiency** | Model-efficiency data present | Model-choice recommendations |
+| **Classify** | Always | Project-cluster classification (`account classify`) |
+| **Settings** | Always | Config, backup & sync, team sync |
+
+**Insights is the default tab, deliberately.** The dashboard grew into ten
+tabs, dozens of charts and KPI tiles in which "what did AI cost and was it
+worth it" had no single home — Insights is the answer-first front door, and
+it carries no data-presence condition: an Insights tab that disappeared on a
+fresh install would hide the exact honest-empty states that teach a new user
+what to enable, from the user who most needs them.
+
+### Insights tab
+
+Three things are always on this tab, top to bottom:
+
+**1. The alerts strip** (only rendered when non-empty — absence is
+information, not a missing feature). Alerts fire only on a stated fact or a
+thresholded dollar figure, never on a heuristic that would trip for every new
+install — e.g. a partner account (Bedrock/Vertex) pricing at first-party
+rates because no partner rate table is configured, a configured invoice
+figure crossing its reconciliation tolerance band, or a critical-severity
+efficiency recommendation (model-tier waste at or above a real dollar floor).
+Each alert links straight to the tab and, where applicable, the exact panel
+that has the evidence.
+
+**2. Five cards, always five, in this order** — a card with no data still
+renders, in its own honest "unavailable, and here's how to enable it" form,
+so the tab's shape never changes with how much you've configured:
+
+| Question | Card | What it answers |
+|---|---|---|
+| Q1 | **What did AI cost?** | Total estimated spend for the period, in the resolved cost vocabulary (`plan` — equivalent value against a flat fee — or `metered` — actual dollars, with reconciliation available). States the vocabulary basis when it's ambiguous (a `mixed` verdict across accounts with different billing). |
+| Q2 | **What did it buy?** | Completed tasks and, when ticket attribution is configured, the top ticket by cost — with its coverage denominator and confidence caveat, never asserting attribution beyond what's checked. |
+| Q3 | **Was it efficient?** | Self-audited recoverable waste as a share of spend (from `get_efficiency_hints`'s underlying detectors). |
+| Q4 | **Is the setup right?** | The plan verdict — good value / underusing / no plan — for the account(s) in scope. |
+| Q5 | **What should change?** | The efficiency engine's top actionable recommendation, if any. |
+
+No card is ever a single composite score ("AI ROI: 87/100") — five honest,
+independently-checkable sentences, never one manufactured number.
+
+**3. The reconciliation panel** (only rendered when
+`config.reconciliation.invoiceTotal` is set) — the local estimate, the
+imported invoice figure, the residual, the tolerance band, and (when the
+residual exceeds tolerance) the candidate causes: unpriced usage, fallback
+partner rates, or an unconfirmed scope match between the local store and the
+invoice. Reconciliation is allowed to conclude the local estimate is
+**wrong** — that is the point of comparing against a real invoice, not a
+caveat on the feature.
+
+Every figure and caveat on this tab is produced by
+`packages/core/src/insight.ts`'s formatters and never phrased locally by the
+tab itself — the same formatters the CLI header, `report --ticket`, and the
+justification pack quote, so none of these surfaces can drift from what the
+others say about the same number.
+
 ### Summary bar
+
+The Overview tab (not Insights — see [Tabs](#tabs) above) shows the token-mechanics view described in the rest of this section.
 
 At the top of the page, five stats are always visible:
 

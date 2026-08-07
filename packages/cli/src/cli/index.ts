@@ -9,6 +9,7 @@ import { printSummary, printStatus, printSearchResults, printSessionList, printS
 import { searchHistory } from "../history/index.js";
 import { loadConfig, saveConfig, createJudgeProviderFromConfig, ticketProjectKeys } from "../config.js";
 import { generateJustificationPack, parseSections } from "../pack/index.js";
+import { setDiscloseScopeValues } from "@claude-stats/core/pack";
 import { parseCostExplorerCsv, formatCsvImportError } from "@claude-stats/core/reconciliation";
 import type { CalibrationScope } from "@claude-stats/core/calibration";
 import { checkThresholds } from "../alerts.js";

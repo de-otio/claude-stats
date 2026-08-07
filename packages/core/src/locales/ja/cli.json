@@ -193,7 +193,8 @@
     "constraintImpact": "宣言されたポリシー変更 (予算上限、モデル階層の削除) がタスククラスごとにどれだけのコストまたは節約になったか — JSON 出力、jq へパイプしてください",
     "constraintImpactDate": "比較の基準とする宣言済みポリシーイベント (config.policyEvents の日付と一致させる必要があります)。デフォルト: 最新のもの",
     "constraintImpactCsv": "クラス別テーブルをこの CSV パスにも書き出します",
-    "constraintImpactMinSessions": "クラスごと・片側ごとの最小セッション数のしきい値 (デフォルト: 8)"
+    "constraintImpactMinSessions": "クラスごと・片側ごとの最小セッション数のしきい値 (デフォルト: 8)",
+    "packDiscloseScope": "パックのスコープ行と CSV 列に、実際のプロジェクトパス/アカウント UUID をそのまま含めます。既定では出力されません — ローカルパスには取引先名や未公開製品名が含まれる場合があり、パックはこのマシンの外に持ち出されることを想定しているためです。"
   },
   "collection": {
     "collecting": "収集中...",

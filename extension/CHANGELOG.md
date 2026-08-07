@@ -2,6 +2,60 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## Unreleased
+
+### Added — The Insight Suite: ticket attribution, self-audit, calibration, and the justification pack
+
+The dashboard's **Insights tab is now the default landing tab.** It answers
+five questions in plain sentences — what did AI cost, what did it buy, was it
+efficient, is the setup right, what should change — instead of opening on raw
+token mechanics. See [output-guide.md](../doc/user-doc/output-guide.md#insights-tab).
+
+- **Ticket attribution** (`claude-stats ticket`, `report --ticket`,
+  `get_cost_per_ticket`). Cost attributed to work-item keys (e.g. `PROJ-123`)
+  from locally observed evidence — git branch names, commit subjects, and
+  prompt-text mentions. No tracker API is called. Every figure carries a
+  confidence tier and a coverage denominator; nothing claims 100%
+  attribution without checking it. Configure `tickets.projectKeys` to raise
+  precision to `high` confidence.
+- **Six efficiency-hygiene detectors** (`get_efficiency_hints`): cache churn,
+  retry loops, abandoned spend, context bloat, re-entry burn, and a
+  tier-mismatch check. Self-audit only — nothing here ranks developers, and
+  nothing leaves the machine.
+- **A task classifier** (`claude-stats task-class`) labels sessions into fine
+  and coarse task classes, versioned so a rule change reclassifies only the
+  affected sessions.
+- **A constraint-impact engine** (`claude-stats constraint-impact`,
+  `get_constraint_impact`) measures what a *declared* policy boundary
+  (`config.policyEvents`) — a budget cap, a model-tier removal, a quota
+  change — actually cost or saved, per task class, on both sides. Never
+  infers a boundary from the data.
+- **Outcome calibration** (`get_calibration`) reports whether ticket
+  attribution's and task-outcome's confidence tiers have ever agreed with
+  your own corrections — an agreement rate on the reviewed subset, explicitly
+  not accuracy, and "uncalibrated" below a minimum sample of 30.
+- **Invoice reconciliation** (`config.reconciliation`, `pack --invoice-csv`)
+  compares the local estimate against an imported invoice total and can
+  conclude the estimate is wrong — that's the point.
+- **The justification pack** (`claude-stats pack`,
+  `generate_justification_pack`) writes a self-contained HTML + CSV bundle
+  for one month — the first artifact in this project designed to leave the
+  machine. It runs the stricter org-plane redaction (no prompt text, file
+  paths, or session ids), not the looser local rules. See the draft privacy
+  amendment in [05-privacy-security.md](../doc/analysis/05-privacy-security.md).
+- **`claude-stats recap correct ticket`** assigns a ticket key to a whole
+  clustered recap item at once, linking every session it covers.
+
+### Changed — What's now stored locally
+
+Ticket keys extracted from prompt text are persisted in a new `ticket_links`
+table; a per-message git branch is now stored (`messages.git_branch`,
+alongside the existing session-level branch); sessions carry a task
+classification (`session_task_class`); and structured API-error/retry events
+are persisted (`api_error_events`). All of this stays local-only, same as the
+rest of the database, with the single exception of the justification pack
+above. See the draft privacy amendment for the full accounting.
+
 ## 0.18.1 — 2026-07-25
 
 ### Fixed — Token, prompt and cost figures are now correct per period

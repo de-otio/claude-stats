@@ -193,7 +193,8 @@
     "constraintImpact": "O que uma mudança de política declarada (limite de orçamento, remoção de um nível de modelo) custou ou economizou, por classe de tarefa — saída JSON; encaminhe para o jq",
     "constraintImpactDate": "Qual evento de política declarado usar como ponto de comparação (deve corresponder a uma data em config.policyEvents). Padrão: o mais recente",
     "constraintImpactCsv": "Também grava a tabela por classe neste caminho CSV",
-    "constraintImpactMinSessions": "Limite mínimo de sessões por classe e lado (padrão: 8)"
+    "constraintImpactMinSessions": "Limite mínimo de sessões por classe e lado (padrão: 8)",
+    "packDiscloseScope": "Incluir o caminho literal do projeto / UUID da conta na linha de escopo do pacote e nas colunas do CSV. Omitido por padrão — um caminho local pode revelar o nome de um cliente ou de um produto não lançado, e o pacote foi feito para sair desta máquina."
   },
   "collection": {
     "collecting": "Coletando...",

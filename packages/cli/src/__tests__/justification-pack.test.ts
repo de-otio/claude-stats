@@ -458,11 +458,17 @@ describe("CSV bundle rendering", () => {
       methodology: buildPackMethodology({ pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] }),
       unavailableSections: { hygiene: null, constraint: null, calibration: null },
     };
+    // Scope columns carry a stable marker, never the literal path or uuid —
+    // see pack-scope-redaction.test.ts. Everything else on the row is pinned
+    // exactly, so a change to any other cell still fails here.
     const lines = renderTicketsCsv(model).trim().split("\r\n");
-    expect(lines[1]).toBe("PROJ-9,2026-05,/w/proj-a,acct-1234,12.50,100,50,10,5,3,medium");
+    expect(lines[1]).toMatch(
+      /^PROJ-9,2026-05,\[withheld:[0-9a-f]{8}\],\[withheld:[0-9a-f]{8}\],12\.50,100,50,10,5,3,medium$/,
+    );
     const html = renderJustificationPackHtml(model);
-    expect(html).toContain("/w/proj-a");
-    expect(html).toContain("acct-1234");
+    expect(html).not.toContain("/w/proj-a");
+    expect(html).not.toContain("acct-1234");
+    expect(html).toContain("withheld:");
     // An UNscoped pack must say so explicitly, not just omit the line.
     const unscoped = renderJustificationPackHtml({ ...model, scope: { projectPath: null, accountUuid: null } });
     expect(unscoped).toContain("unscoped");
@@ -973,12 +979,22 @@ describe("justification pack — generated against a seeded store", () => {
       now: () => FIXED_NOW,
     });
     expect(filtered.model.scope).toEqual({ projectPath: "/w/alpha", accountUuid: null });
-    expect(filtered.html).toContain("/w/alpha");
+    // The FACT of scoping is rendered; the literal path is NOT, by default.
+    // A local path routinely names a client or an unreleased product in a
+    // parent directory, and this document exists to be handed to someone
+    // outside the machine — see pack-scope-redaction.test.ts for the full
+    // contract and the `--disclose-scope` opt-in that turns it back on.
+    expect(filtered.html).not.toContain("/w/alpha");
+    expect(filtered.html).toContain("withheld:");
     expect(filtered.ticketsCsv.split("\r\n")[0]).toContain("projectPath");
-    // Every data row (not just the header) carries the scope, so a reader who
-    // only sees one row of a spreadsheet still knows what it was filtered to.
+    // Every data row (not just the header) carries the scope MARKER, so a
+    // reader who only sees one row of a spreadsheet still knows it was
+    // filtered — and two packs scoped alike still compare.
     const ticketDataLines = filtered.ticketsCsv.trim().split("\r\n").slice(1);
-    for (const line of ticketDataLines) expect(line).toContain("/w/alpha");
+    for (const line of ticketDataLines) {
+      expect(line).toContain("withheld:");
+      expect(line).not.toContain("/w/alpha");
+    }
 
     const unfiltered = buildJustificationPack(store, config, {
       period: "2026-01",

@@ -193,7 +193,8 @@
     "constraintImpact": "Co zadeklarowana zmiana polityki (limit budżetu, usunięcie poziomu modelu) kosztowała lub zaoszczędziła, w podziale na klasę zadań — wyjście JSON; przekieruj do jq",
     "constraintImpactDate": "Które zadeklarowane zdarzenie polityki ma być punktem porównania (musi odpowiadać dacie w config.policyEvents). Domyślnie: najnowsze",
     "constraintImpactCsv": "Zapisz też tabelę klas pod tą ścieżką CSV",
-    "constraintImpactMinSessions": "Minimalna liczba sesji na klasę i stronę (domyślnie: 8)"
+    "constraintImpactMinSessions": "Minimalna liczba sesji na klasę i stronę (domyślnie: 8)",
+    "packDiscloseScope": "Dołącz dosłowną ścieżkę projektu / UUID konta w wierszu zakresu pakietu i w kolumnach CSV. Domyślnie pomijane — lokalna ścieżka może zdradzać nazwę klienta lub niewydanego produktu, a pakiet z założenia opuszcza ten komputer."
   },
   "collection": {
     "collecting": "Zbieranie...",

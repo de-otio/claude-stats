@@ -387,9 +387,57 @@ const MODE_LABEL: Record<AccountMode, string> = {
  *  one, and an unscoped pack should say so rather than just omitting a line. */
 function scopeLabel(scope: PackScope): string {
   const parts: string[] = [];
-  if (scope.projectPath) parts.push(`project ${scope.projectPath}`);
-  if (scope.accountUuid) parts.push(`account ${scope.accountUuid}`);
+  if (scope.projectPath) parts.push(`project ${redactScopeValue(scope.projectPath)}`);
+  if (scope.accountUuid) parts.push(`account ${redactScopeValue(scope.accountUuid)}`);
   return parts.length > 0 ? parts.join(" · ") : "unscoped — all projects and accounts on this machine";
+}
+
+/**
+ * Opt-in disclosure of literal scope values. Module-level rather than threaded
+ * through every renderer because it is a document-wide decision, not a per-row
+ * one, and every call site would otherwise have to remember to pass it - which
+ * is exactly the omission that produced this defect.
+ */
+let DISCLOSE_SCOPE_VALUES = false;
+
+/** Set disclosure mode; returns the previous value so a test can restore it
+ *  and not leak the setting into its neighbours. */
+export function setDiscloseScopeValues(disclose: boolean): boolean {
+  const prev = DISCLOSE_SCOPE_VALUES;
+  DISCLOSE_SCOPE_VALUES = disclose;
+  return prev;
+}
+
+/**
+ * A scope value as it may appear in an outward-facing document.
+ *
+ * The reader needs to know a pack was filtered - a one-project total and a
+ * whole-machine total must never read alike. They do not need the literal
+ * value, and the literal value is the risky part: an absolute project path
+ * routinely encodes an employer, a client, or an unreleased product name in a
+ * parent directory. This document is built to be handed to someone outside the
+ * machine, so emitting one by default inverts this module's own rule that the
+ * default is the minimum.
+ */
+function redactScopeValue(value: string): string {
+  return DISCLOSE_SCOPE_VALUES ? value : `[withheld:${shortDigest(value)}]`;
+}
+
+/**
+ * Deterministic, non-reversible short marker (FNV-1a). Not a security boundary
+ * - an eight-hex digest of a guessable path is guessable - and not meant to be
+ * one: it defeats disclosure BY ACCIDENT, which is the real failure mode here,
+ * a path pasted into a document nobody reread before sending. Two packs scoped
+ * alike carry the same marker so a series stays comparable, and it is
+ * deterministic because the pack must regenerate byte-identically.
+ */
+function shortDigest(value: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
 }
 
 /**
@@ -585,8 +633,8 @@ export function renderTicketsCsv(model: JustificationPackModel): string {
       csvLine([
         t.ticketKey,
         model.period.label,
-        model.scope.projectPath ?? "",
-        model.scope.accountUuid ?? "",
+        model.scope.projectPath ? redactScopeValue(model.scope.projectPath) : "",
+        model.scope.accountUuid ? redactScopeValue(model.scope.accountUuid) : "",
         formatMoneyCsv(t.cost),
         t.inputTokens,
         t.outputTokens,
@@ -611,8 +659,8 @@ export function renderNonTicketCsv(model: JustificationPackModel): string {
       csvLine([
         row.taskClass,
         model.period.label,
-        model.scope.projectPath ?? "",
-        model.scope.accountUuid ?? "",
+        model.scope.projectPath ? redactScopeValue(model.scope.projectPath) : "",
+        model.scope.accountUuid ? redactScopeValue(model.scope.accountUuid) : "",
         formatMoneyCsv(row.cost),
         row.sessionCount,
         row.confidence ?? "n/a",
@@ -654,8 +702,8 @@ export function renderSummaryCsv(model: JustificationPackModel): string {
     ]),
     csvLine([
       model.period.label,
-      model.scope.projectPath ?? "",
-      model.scope.accountUuid ?? "",
+      model.scope.projectPath ? redactScopeValue(model.scope.projectPath) : "",
+      model.scope.accountUuid ? redactScopeValue(model.scope.accountUuid) : "",
       h.mode,
       h.currency,
       formatMoneyCsv(h.totalCost),
