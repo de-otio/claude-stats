@@ -1154,7 +1154,7 @@ describe("renderDashboard", () => {
     it("renders exactly the tabs NAV_TABS says are visible for this data, in order", () => {
       const html = renderDashboard(mockData, t);
       // mockData has no energy/spending/contextAnalysis/modelEfficiency.
-      const order = ["overview", "projects", "sessions", "plan", "classify", "settings"];
+      const order = ["insights", "overview", "projects", "sessions", "plan", "classify", "settings"];
       let cursor = -1;
       for (const id of order) {
         const idx = html.indexOf(`data-tab="${id}"`);
@@ -1193,9 +1193,14 @@ describe("renderDashboard", () => {
       expect(raw).toContain('data-tab="spending">dashboard:tabs.spending<');
     });
 
-    it("the first visible tab is marked active", () => {
+    it("the first visible tab is marked active — and it is Insights, the default", () => {
       const html = renderDashboard(mockData, t);
-      expect(html).toMatch(/<button class="tab-btn active" data-tab="overview">/);
+      expect(html).toMatch(/<button class="tab-btn active" data-tab="insights">/);
+      // Exactly one button carries `active`; a second would leave two tabs lit.
+      expect(html.match(/class="tab-btn active"/g)).toHaveLength(1);
+      // …and the panel that starts visible is the same one.
+      expect(html).toContain('<div class="tab-panel active" id="tab-insights">');
+      expect(html).toContain('<div class="tab-panel" id="tab-overview">');
     });
   });
 
@@ -1213,9 +1218,18 @@ describe("renderDashboard", () => {
   // embedded in every page — literally contains the substring
   // "cs-card-unavailable", so `expect(html).toContain("cs-card-unavailable")`
   // passes for every render whether or not any card is in that state.
-  /** The rendered cost card element, sliced out of the full page. */
+  /**
+   * The rendered cost card element, sliced out of the full page.
+   *
+   * Anchored on `id="card-cost"` rather than "the first `.cs-card` on the
+   * page": since the Insights tab landed, the page's first card is Insights'
+   * Q1 — which renders the SAME answer object — so a positional slice would
+   * quietly stop testing the Overview card it names.
+   */
   function costCard(html: string): string {
-    const start = html.indexOf('<div class="cs-card');
+    const idAt = html.indexOf('id="card-cost"');
+    expect(idAt).toBeGreaterThan(-1);
+    const start = html.lastIndexOf('<div class="cs-card', idAt);
     expect(start).toBeGreaterThan(-1);
     // renderCard() closes the card at 4-space indent; its inner elements
     // close at 6. The first 4-space `</div>` after the open tag is the end.

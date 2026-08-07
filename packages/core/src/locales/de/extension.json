@@ -239,6 +239,23 @@
           "body": "Die Projektklassifizierung ist im VS Code-Panel verfügbar; das im Browser bereitgestellte Dashboard bietet sie nicht."
         }
       ]
+    },
+    "insights": {
+      "title": "Erkenntnisse",
+      "sections": [
+        {
+          "heading": "Was Sie hier sehen",
+          "body": "Die fünf geschäftlichen Fragen, für deren Beantwortung dieses Tool existiert: Was hat KI gekostet, was hat es gebracht, war es effizient, stimmt das Setup und was sollte sich ändern. Je ein Satz und eine Zahl, mit Link zu den zugrunde liegenden Belegen."
+        },
+        {
+          "heading": "Karten, die sagen, dass sie nicht antworten können",
+          "body": "Eine Karte ohne Daten nennt, was fehlt und wie man es aktiviert, statt ein leeres Widget oder eine erfundene Null zu zeigen. Bei einer neuen Installation starten die meisten Karten so und nennen jeweils den nächsten Schritt."
+        },
+        {
+          "heading": "Die Hinweisleiste",
+          "body": "Wird nur angezeigt, wenn wirklich etwas Aufmerksamkeit braucht — bewusst zurückhaltend: Ein Hinweis, der bei Rauschen auslöst, bringt Ihnen bei, die Leiste zu ignorieren."
+        }
+      ]
     }
   },
   "panel": {

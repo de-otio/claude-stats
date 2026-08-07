@@ -10,7 +10,8 @@
     "energy": "能耗",
     "settings": "设置",
     "classify": "分类",
-    "spending": "支出"
+    "spending": "支出",
+    "insights": "洞察"
   },
   "toolbar": {
     "period": "时间段:",
@@ -468,5 +469,24 @@
     "splitHint": "拆分会将每个 session 的费用归到实际运行它的账户。适用于跨订阅共享的项目（例如当单个套餐的额度不够用时）。",
     "apply": "应用",
     "applying": "应用中…"
+  },
+  "insights": {
+    "lede": "本工具旨在回答的五个问题。每张卡片都可跳转到对应证据。",
+    "cards": {
+      "cost": "AI 花了多少钱？",
+      "bought": "换来了什么？",
+      "efficiency": "是否高效？",
+      "setup": "配置是否合适？",
+      "change": "应该改变什么？"
+    },
+    "alerts": {
+      "fallbackRates": "部分用量在合作伙伴平台（Bedrock 或 Vertex）上按第一方费率计价。在配置合作伙伴费率之前，此处所有金额均为估算值。",
+      "action": "查看"
+    },
+    "verdict": {
+      "goodValue": "按你的用量，当前套餐物有所值",
+      "underusing": "你的用量低于套餐所覆盖的额度",
+      "noPlan": "未检测到套餐 — 费用按用量计费方式计算"
+    }
   }
 }

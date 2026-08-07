@@ -255,6 +255,23 @@
           "body": "All settings are saved to ~/.claude-stats/config.json. You can also edit this file directly."
         }
       ]
+    },
+    "insights": {
+      "title": "Insights",
+      "sections": [
+        {
+          "heading": "What you're seeing",
+          "body": "The five business questions this tool exists to answer: what AI cost, what it bought, whether it was efficient, whether the setup is right, and what should change. One sentence and one number each, with a link to the evidence behind it."
+        },
+        {
+          "heading": "Cards that say they cannot answer",
+          "body": "A card with no data states what is missing and how to enable it, instead of showing an empty widget or a fabricated zero. On a fresh install most cards start that way, and each one names the next step."
+        },
+        {
+          "heading": "The alerts strip",
+          "body": "Shown only when something genuinely needs attention, and deliberately quiet: an alert that fires on noise trains you to ignore the strip."
+        }
+      ]
     }
   },
   "panel": {

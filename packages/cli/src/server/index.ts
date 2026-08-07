@@ -355,8 +355,9 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
           // split when two accounts hold different plans.
           if (!opts.accountFees) opts.accountFees = cfg.accountFees;
           const data = buildDashboard(store, opts);
-          const { attachCostPerTask } = await import("../dashboard/index.js");
+          const { attachCostPerTask, attachInsights } = await import("../dashboard/index.js");
           await attachCostPerTask(store, data, opts);
+          attachInsights(store, data, opts, cfg);
           // sec#1 / sec#8: strip email and raw tier/billing/seat from unauth path.
           const html = await tryRenderDashboard(redactDashboardForHttp(data));
           // Set auth cookie so SPA can authenticate subsequent mutating
@@ -370,10 +371,12 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
 
         if (req.method === "GET" && pathname === "/api/dashboard") {
           const opts = parseOpts(url);
-          if (!opts.accountFees) opts.accountFees = loadConfig().accountFees;
+          const apiCfg = loadConfig();
+          if (!opts.accountFees) opts.accountFees = apiCfg.accountFees;
           const data = buildDashboard(store, opts);
-          const { attachCostPerTask } = await import("../dashboard/index.js");
+          const { attachCostPerTask, attachInsights } = await import("../dashboard/index.js");
           await attachCostPerTask(store, data, opts);
+          attachInsights(store, data, opts, apiCfg);
           // sec#1 / sec#8: strip email and raw tier/billing/seat from unauth path.
           sendJson(res, 200, redactDashboardForHttp(data));
           return;

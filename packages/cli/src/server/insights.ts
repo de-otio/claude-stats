@@ -1,0 +1,422 @@
+/**
+ * The Insights tab — the answer-first surface, and the dashboard's front door.
+ *
+ * The dashboard grew into ten tabs, twenty-eight charts and forty-seven KPI
+ * tiles, in which "what did AI cost us and was it worth it" has no single home
+ * (doc/analysis/gui-redesign/01-diagnosis.md). This module renders the five
+ * business questions that analysis identifies, each as a sentence with a
+ * number, with depth still one click away
+ * (02-answer-first-ia.md §2.2).
+ *
+ * Three rules shape everything here, and each is a rule because breaking it is
+ * cheap and the damage is invisible:
+ *
+ * 1. **Never format a number locally.** Every sentence, value and caveat comes
+ *    from `@claude-stats/core/insight`, so the tab, the exported justification
+ *    pack and the CLI header cannot drift (03-migration-and-mechanics.md §3.4).
+ *    This module chooses INPUTS and renders RESULTS; it composes no copy about
+ *    a figure.
+ * 2. **No composite score.** Five honest sentences, never one manufactured
+ *    number — a "AI ROI: 87/100" tile would destroy the honesty property that
+ *    makes the other five credible (02 §2.6).
+ * 3. **No silent emptiness.** A card with nothing to say states what is missing
+ *    and how to enable it. On a fresh install most cards WILL be empty, and
+ *    that first impression is the product — an empty widget teaches the reader
+ *    the tool is broken, a stated enablement path is how a feature is
+ *    discovered.
+ *
+ * Everything above `renderInsightsTab` is pure: no clock, no store, no I/O.
+ * That is what lets the test contract be a behaviour comparison — golden
+ * `DashboardData` in, exact rendered figures out — instead of a DOM snapshot.
+ */
+import type { InsightAnswer, TicketCoverage } from "@claude-stats/core/types/insight";
+import type { CostVocabulary } from "@claude-stats/core/insight";
+import {
+  answerBought,
+  answerChange,
+  answerCost,
+  answerEfficiency,
+  answerSetup,
+} from "@claude-stats/core/insight";
+import type { DashboardData } from "../dashboard/index.js";
+import type { Config } from "../config.js";
+import { renderCard } from "./card.js";
+import type { NavTabId } from "./nav.js";
+
+/** Minimal translator signature — same shape `template.ts` accepts. */
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
+
+// ─── The cost vocabulary for a whole dashboard ────────────────────────────────
+
+/**
+ * How the dashboard's cost vocabulary was decided. Carried alongside the
+ * vocabulary itself so the surface can explain a `mixed` verdict rather than
+ * leaving the reader to guess why the usual plan language vanished.
+ */
+export type VocabularyBasis =
+  /** `config.pricing.mode` — the user declared it; nothing else is consulted. */
+  | "config"
+  /** Every in-scope account agrees. */
+  | "accounts"
+  /** In-scope accounts disagree; no single vocabulary is correct. */
+  | "mixed-accounts"
+  /** No per-account billing evidence at all — the plan-fee proxy decided it. */
+  | "fee-proxy";
+
+export interface VocabularyResolution {
+  vocabulary: CostVocabulary;
+  basis: VocabularyBasis;
+  /** In-scope accounts whose billing evidence reads as a plan seat. */
+  planAccounts: number;
+  /** In-scope accounts whose billing evidence reads as metered. */
+  meteredAccounts: number;
+}
+
+/**
+ * Decide the cost vocabulary for a whole dashboard.
+ *
+ * `resolveAccountMode(config, subscriptionType)` (config.ts) answers this for
+ * ONE account and has been implemented, unit-tested and unwired since Phase 0
+ * for a genuine reason: a dashboard can span several accounts with mixed plan
+ * and metered billing, and there is then no single correct mode. `template.ts`
+ * meanwhile inferred the mode from the `planFee > 0` proxy. This function is
+ * the missing piece — it reduces N accounts to one vocabulary, or to the
+ * explicit `mixed` verdict, and reports which rule fired.
+ *
+ * Precedence, most authoritative first:
+ *
+ * 1. **`config.pricing.mode`** wins outright. The user declared the vocabulary
+ *    for their reports; second-guessing a declaration with inference is how a
+ *    tool loses an argument with its own user.
+ * 2. **Per-account billing evidence**, when any exists. An account counts as a
+ *    plan seat if it has a detected subscription type OR a plan fee is being
+ *    charged for it. Both matter: a fee configured by hand under
+ *    `accountFees` is real money on a real plan even when the subscription
+ *    metadata never made it into the store, and treating that account as
+ *    metered would relabel its equivalent-value figure "actual metered cost" —
+ *    a quietly wrong claim of exactly the kind I1 forbids. If every in-scope
+ *    account lands on the same answer, that is the vocabulary; if they
+ *    disagree, the answer is `mixed`.
+ * 3. **The plan-fee proxy** (`summary.planFee > 0`), used only when there is no
+ *    per-account evidence whatsoever. That is precisely today's behaviour, so
+ *    a dashboard with no account metadata keeps rendering exactly as it did.
+ *
+ * Pure: reads only the payload and the config.
+ */
+export function resolveDashboardCostVocabulary(data: DashboardData, config: Config): VocabularyResolution {
+  if (config.pricing?.mode) {
+    return { vocabulary: config.pricing.mode, basis: "config", planAccounts: 0, meteredAccounts: 0 };
+  }
+
+  // Per-account evidence. `planUtilization.byAccount` is the richer source —
+  // it carries the detected fee as well as the subscription type, and it is
+  // already narrowed to the selected account by `buildDashboard`.
+  // `availableAccounts` is deliberately NOT so narrowed ("independent of the
+  // account filter"), so it is filtered here before use; using it unfiltered
+  // would let an account the user has filtered OUT flip the whole dashboard to
+  // `mixed`.
+  const evidence: Array<{ subscriptionType: string | null; fee: number | null }> =
+    data.planUtilization && data.planUtilization.byAccount.length > 0
+      ? data.planUtilization.byAccount.map((a) => ({
+          subscriptionType: a.subscriptionType,
+          fee: a.detectedPlanFee,
+        }))
+      : data.availableAccounts
+          .filter((a) => data.selectedAccountUuid === null || a.accountUuid === data.selectedAccountUuid)
+          .map((a) => ({ subscriptionType: a.subscriptionType, fee: null }));
+
+  if (evidence.length === 0) {
+    return {
+      vocabulary: data.summary.planFee > 0 ? "plan" : "metered",
+      basis: "fee-proxy",
+      planAccounts: 0,
+      meteredAccounts: 0,
+    };
+  }
+
+  let planAccounts = 0;
+  let meteredAccounts = 0;
+  for (const acct of evidence) {
+    if (acct.subscriptionType || (acct.fee ?? 0) > 0) planAccounts += 1;
+    else meteredAccounts += 1;
+  }
+
+  if (planAccounts > 0 && meteredAccounts > 0) {
+    return { vocabulary: "mixed", basis: "mixed-accounts", planAccounts, meteredAccounts };
+  }
+  return {
+    vocabulary: planAccounts > 0 ? "plan" : "metered",
+    basis: "accounts",
+    planAccounts,
+    meteredAccounts,
+  };
+}
+
+// ─── Building the five answers ────────────────────────────────────────────────
+
+/** Everything the answers need that does not live on `DashboardData`. */
+export interface InsightBuildOptions {
+  vocabulary: CostVocabulary;
+  /** `config.rate.hourly`, or null — never invented. */
+  hourlyRate: number | null;
+  /** `config.rate.currency`, default USD. */
+  currency: string;
+  /**
+   * The plan verdict as a full, localized sentence. `answerSetup` renders the
+   * verdict verbatim, and `planUtilization.currentPlanVerdict` is a bare code
+   * (`"good-value"`), so the caller translates it. Null when there is no
+   * verdict to state — the card then renders its honest-unavailable branch.
+   */
+  verdictSentence: string | null;
+}
+
+/**
+ * The five answers, always five, always in this order.
+ *
+ * A question with no data still produces an answer object — its honest
+ * `unavailable` variant — so the tab's shape never changes with data
+ * availability. Conditional cards are the same defect as the conditional tabs
+ * the diagnosis calls out: a mental map that moves teaches mistrust
+ * (01 §1.5, 03 §3.3 item 5).
+ */
+export function buildInsightAnswers(data: DashboardData, opts: InsightBuildOptions): InsightAnswer[] {
+  const cpt = data.costPerTask;
+  const ins = data.insights;
+  const coverage: TicketCoverage | null = ins?.ticketCoverage ?? null;
+
+  const cost = answerCost({
+    mode: opts.vocabulary,
+    cost: data.summary.estimatedCost,
+    // No previous-period figure is available: `buildDashboard` returns one
+    // window, and computing a comparison would mean a second full build over
+    // the prior window. Rather than invent a baseline, the trend renders
+    // "unknown" — the formatter's own honest state for a missing comparison.
+    previousCost: null,
+    currency: opts.currency,
+    hourlyRate: opts.hourlyRate,
+    // Passed unconditionally: these are facts about the payload, and whether
+    // the plan clause is APPROPRIATE for the vocabulary is the formatter's
+    // decision, not the caller's. Gating them here instead would make
+    // `answerCost`'s own guard unreachable from this call site — so the pack
+    // and the CLI header, which build their own inputs, would be free to
+    // render a multiplier the dashboard suppresses. (Verified by mutation:
+    // with the gate here, breaking the formatter's guard changed nothing.)
+    planFee: data.summary.planFee,
+    planMultiplier: data.summary.planMultiplier,
+    anyFallbackRates: data.summary.anyFallbackRates,
+  });
+
+  const bought = answerBought({
+    // Successes, not attempts: "what it bought" is work that landed.
+    completedTasks: cpt ? cpt.successCount : null,
+    coverage,
+    topTicket: ins?.topTicket ?? null,
+    currency: opts.currency,
+  });
+
+  const efficiency = answerEfficiency({
+    recoverableWaste: cpt?.efficiency ? cpt.efficiency.recoverableWaste : null,
+    cost: data.summary.estimatedCost,
+    currency: opts.currency,
+  });
+
+  const setup = answerSetup({
+    planVerdict: opts.verdictSentence,
+    // Lane E (pricing-model comparison) computes the projected saving; until it
+    // lands there is no defensible figure, and a plausible-looking invented one
+    // is the worst possible placeholder on a card a manager reads.
+    recommendedPlan: null,
+    projectedSaving: null,
+    currency: opts.currency,
+  });
+
+  const change = answerChange({
+    recommendations: data.recommendations.map((r) => ({
+      title: r.title,
+      impact: r.impact ?? null,
+      severity: r.severity,
+    })),
+  });
+
+  return [cost, bought, efficiency, setup, change];
+}
+
+// ─── The alerts strip ─────────────────────────────────────────────────────────
+
+/** One line of the alerts strip: a stated condition plus where to act on it. */
+export interface InsightAlert {
+  /** Stable id — the rule that fired, for suppression and for tests. */
+  id: string;
+  severity: "critical" | "warning";
+  /** The sentence. Already localized by the builder's translator. */
+  text: string;
+  /** Tab to open for the evidence. */
+  tab: NavTabId;
+}
+
+/**
+ * The things that genuinely warrant attention now — and nothing else.
+ *
+ * **Precision over recall is the whole design.** An alert that fires on noise
+ * trains the reader to ignore the strip, and a strip that is ignored is worse
+ * than no strip, because it also consumes the top of the default screen. Every
+ * rule below therefore fires on a fact or a thresholded dollar figure, never on
+ * a heuristic that a fresh install would trip.
+ *
+ * Deliberately NOT alerts, and why:
+ *  - **Low ticket coverage.** Zero coverage is the default state before Lane A
+ *    is configured; it would fire for every new user forever. It belongs on
+ *    Q2's caveat, which is where `confidenceCaveat` already puts it with its
+ *    enablement path.
+ *  - **Uncalibrated success rate.** Same shape: below the minimum label count
+ *    is the normal starting condition, not an incident.
+ *  - **A mixed cost vocabulary.** Real, but it is a property of the headline
+ *    figure, so it belongs on that figure's caveat. Saying it twice would make
+ *    the strip look busy on an ordinary two-account setup.
+ *  - **Reconciliation drift, hygiene findings, policy damage.** Their inputs
+ *    (Lanes R, D1, M) have not landed. A rule with no data is a rule that
+ *    cannot be tested, so none is written.
+ */
+export function buildAlerts(data: DashboardData, t: TranslateFn): InsightAlert[] {
+  const alerts: InsightAlert[] = [];
+
+  // A partner platform (Bedrock/Vertex) priced at first-party rates because no
+  // partner rate table is configured. A FACT, not an inference: the store
+  // recorded that at least one priced message fell back. It leads the strip
+  // because it qualifies every other money figure on the page.
+  if (data.summary.anyFallbackRates) {
+    alerts.push({
+      id: "fallback-rates",
+      severity: "warning",
+      text: t("dashboard:insights.alerts.fallbackRates"),
+      tab: "settings",
+    });
+  }
+
+  // The recommendation engine's own top tier. Only its dollar-thresholded rules
+  // reach `critical` (model-tier waste at >= $25 saveable), so this inherits a
+  // real floor rather than adding a new guess on top of one.
+  for (const rec of data.recommendations) {
+    if (rec.severity !== "critical") continue;
+    alerts.push({
+      id: `rec:${rec.id}`,
+      severity: "critical",
+      text: rec.impact ? `${rec.title} — ${rec.impact}` : rec.title,
+      tab: "efficiency",
+    });
+  }
+
+  return alerts;
+}
+
+// ─── Rendering ────────────────────────────────────────────────────────────────
+
+/**
+ * Where each answer's evidence lives **today**.
+ *
+ * The formatters return domain-view ids (`"cost-and-controlling"`) because that
+ * is the destination the IA describes — but those views are G2/G3 in Phase 3
+ * and do not exist yet. The evidence itself does: it is in the current tabs.
+ * Mapping here keeps the canonical id on the element (as `data-evidence-link`,
+ * which is what a later lane re-points) while the href reaches a tab that is
+ * actually on the page. A link to a non-existent anchor would be the "two-click
+ * evidence" promise silently broken.
+ */
+export const EVIDENCE_TAB: Readonly<Record<string, NavTabId>> = {
+  "cost-and-controlling": "spending",
+  "tickets-and-value": "projects",
+  "efficiency-and-hygiene": "efficiency",
+  "plan-and-policy": "plan",
+};
+
+/** i18n key for each question's card title, in `buildInsightAnswers` order. */
+const QUESTION_TITLE_KEY: Readonly<Record<InsightAnswer["question"], string>> = {
+  cost: "dashboard:insights.cards.cost",
+  bought: "dashboard:insights.cards.bought",
+  efficiency: "dashboard:insights.cards.efficiency",
+  setup: "dashboard:insights.cards.setup",
+  change: "dashboard:insights.cards.change",
+};
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
+/**
+ * Render the Insights tab body: the alerts strip (only when non-empty —
+ * absence is information) followed by the five cards.
+ *
+ * Takes the already-built answers and alerts rather than the payload, so the
+ * assembly above stays independently testable and this function stays a
+ * string-builder with no decisions in it.
+ */
+export function renderInsightsTab(
+  answers: readonly InsightAnswer[],
+  alerts: readonly InsightAlert[],
+  t: TranslateFn,
+): string {
+  const alertsHtml =
+    alerts.length === 0
+      ? ""
+      : `<div class="cs-alerts" role="status">
+      ${alerts
+        .map(
+          (a) =>
+            `<div class="cs-alert cs-alert-${escapeHtml(a.severity)}" data-alert-id="${escapeHtml(a.id)}">
+        <span class="cs-alert-text">${escapeHtml(a.text)}</span>
+        <a class="cs-alert-action" href="#${escapeHtml(a.tab)}" data-evidence-link="${escapeHtml(a.tab)}">${escapeHtml(t("dashboard:insights.alerts.action"))}</a>
+      </div>`,
+        )
+        .join("\n      ")}
+    </div>`;
+
+  const cardsHtml = answers
+    .map((answer) => {
+      const domainId = answer.evidenceLink;
+      const tab = domainId ? EVIDENCE_TAB[domainId] : undefined;
+      return renderCard(answer, {
+        id: `insight-${answer.question}`,
+        title: t(QUESTION_TITLE_KEY[answer.question]),
+        evidenceHref: tab ? `#${tab}` : undefined,
+      });
+    })
+    .join("\n      ");
+
+  return `
+    <p class="cs-insights-lede">${escapeHtml(t("dashboard:insights.lede"))}</p>
+    ${alertsHtml}
+    <div class="cs-insights-grid">
+      ${cardsHtml}
+    </div>`;
+}
+
+/**
+ * Layout CSS for the tab. Card-level styling stays in `CARD_CSS`.
+ *
+ * `--cs-alert-warning` is declared here rather than in `CARD_TOKENS_CSS`
+ * because it has exactly one consumer and `card.ts`'s token contract is
+ * "every `--cs-card-*` token is used by `CARD_CSS`" — a card token consumed
+ * only from this file would quietly break that. Same `var(--vscode-…,
+ * fallback)` shape, so it themes identically in both hosts.
+ */
+export const INSIGHTS_CSS = `
+    :root {
+      --cs-alert-warning: var(--vscode-inputValidation-warningBorder, #f28e2b);
+    }
+    .cs-insights-lede {
+      font-size: 0.75rem; color: var(--cs-card-fg-muted); margin: 0 0 0.75rem;
+    }
+    .cs-insights-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 0.75rem; align-items: start;
+    }
+    .cs-alerts { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.9rem; }
+    .cs-alert {
+      display: flex; align-items: baseline; gap: 0.6rem; font-size: 0.78rem;
+      padding: 0.45rem 0.7rem; border-radius: 5px; border-left: 3px solid;
+      background: var(--cs-card-bg); color: var(--cs-card-fg);
+    }
+    .cs-alert-critical { border-left-color: var(--cs-card-down); }
+    .cs-alert-warning { border-left-color: var(--cs-alert-warning); }
+    .cs-alert-text { flex: 1; }
+    .cs-alert-action { color: var(--cs-card-accent); text-decoration: none; white-space: nowrap; }`;

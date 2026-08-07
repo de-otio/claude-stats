@@ -255,6 +255,23 @@
           "body": "Klasyfikacja projektów jest dostępna w panelu VS Code; pulpit nawigacyjny udostępniany w przeglądarce jej nie oferuje."
         }
       ]
+    },
+    "insights": {
+      "title": "Wnioski",
+      "sections": [
+        {
+          "heading": "Co tu widzisz",
+          "body": "Pięć biznesowych pytań, dla których powstało to narzędzie: ile kosztowała AI, co za to uzyskano, czy było to efektywne, czy konfiguracja jest właściwa i co należy zmienić. Po jednym zdaniu i jednej liczbie, z odnośnikiem do dowodów."
+        },
+        {
+          "heading": "Karty, które mówią, że nie potrafią odpowiedzieć",
+          "body": "Karta bez danych podaje, czego brakuje i jak to włączyć, zamiast pokazywać pusty widżet albo zmyślone zero. Przy nowej instalacji większość kart tak właśnie zaczyna i każda wskazuje następny krok."
+        },
+        {
+          "heading": "Pasek alertów",
+          "body": "Pokazywany tylko wtedy, gdy coś naprawdę wymaga uwagi, i celowo oszczędny: alert wyzwalany przez szum uczy cię ignorować cały pasek."
+        }
+      ]
     }
   },
   "panel": {

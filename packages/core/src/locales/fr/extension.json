@@ -255,6 +255,23 @@
           "body": "La classification des projets est disponible dans le panneau VS Code ; le tableau de bord servi dans le navigateur ne la propose pas."
         }
       ]
+    },
+    "insights": {
+      "title": "Analyses",
+      "sections": [
+        {
+          "heading": "Ce que vous voyez",
+          "body": "Les cinq questions métier auxquelles cet outil existe pour répondre : combien l'IA a coûté, ce que cela a apporté, si c'était efficace, si la configuration est la bonne et ce qu'il faut changer. Une phrase et un chiffre chacune, avec un lien vers les preuves."
+        },
+        {
+          "heading": "Les cartes qui disent ne pas pouvoir répondre",
+          "body": "Une carte sans données indique ce qui manque et comment l'activer, plutôt que d'afficher un widget vide ou un zéro fabriqué. Sur une installation neuve, la plupart des cartes commencent ainsi et chacune nomme l'étape suivante."
+        },
+        {
+          "heading": "Le bandeau d'alertes",
+          "body": "Affiché uniquement quand quelque chose mérite vraiment votre attention, et volontairement discret : une alerte qui se déclenche sur du bruit vous apprend à ignorer le bandeau."
+        }
+      ]
     }
   },
   "panel": {
