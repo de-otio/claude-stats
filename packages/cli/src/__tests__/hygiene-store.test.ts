@@ -337,7 +337,7 @@ describe("buildHygieneReport — tier-mismatch (D2)", () => {
     expect(report.digest.totalEstimatedWaste).toBeGreaterThanOrEqual(finding.estimatedWaste);
   });
 
-  it("does NOT fire when sessions are never classified — no session_task_class rows at all", () => {
+  it("does NOT fire when sessions are never classified — no session_task_class rows at all — and reports COMPUTED FALSE, not a silent zero (D2-2)", () => {
     // Same message shapes as seedParityClass, but no setTaskClass calls.
     for (let i = 0; i < N; i++) {
       const topId = `top-${i}`;
@@ -350,6 +350,35 @@ describe("buildHygieneReport — tier-mismatch (D2)", () => {
     const report = buildHygieneReport(store, {});
     const tierMismatch = report.digest.active.find((d) => d.detectorId === "tier-mismatch");
     expect(tierMismatch!.findings).toEqual([]);
+    // D2-2: the CLI glue never ran `store.setTaskClass()`, so
+    // `getTaskClassVersions()` is empty and `buildTaskClassMap` returns
+    // `undefined` — this must surface as `computed: false`, distinguishable
+    // from the real "classifier ran, found nothing" empty-map case tested
+    // in `runHygieneDetectors — tier-mismatch wiring` (core package).
+    expect(tierMismatch!.computed).toBe(false);
+    expect(tierMismatch!.enablementPath).toMatch(/task-class/);
+
+    // MUTATION CHECK: reverting `buildTaskClassMap` to always return a
+    // (possibly empty) `Map` instead of `undefined` here makes
+    // `tierMismatch!.computed` come back `true` — confirmed by temporarily
+    // re-inlining the pre-fix body, run, observed failure, reverted.
+  });
+
+  it("reports COMPUTED TRUE once at least one session has been classified, even if this specific window's classes don't clear the parity floor", () => {
+    // The classifier HAS run store-wide (`getTaskClassVersions()` is
+    // non-empty), so this must NOT collapse into the "never ran" case above
+    // even though this window's own two sessions produce no parity finding.
+    store.upsertSession(session("solo-top"));
+    store.upsertMessages([message("solo-top-m0", "solo-top", { timestamp: FIXED_NOW, model: "claude-opus-5" })]);
+    store.setTaskClass({
+      sessionId: "solo-top", taskClass: "debug", coarseClass: "diagnose", confidence: "high",
+      rule: "diagnosis", classifierVersion: 2, classifiedAt: FIXED_NOW,
+    });
+    const report = buildHygieneReport(store, {});
+    const tierMismatch = report.digest.active.find((d) => d.detectorId === "tier-mismatch");
+    expect(tierMismatch!.findings).toEqual([]);
+    expect(tierMismatch!.computed).toBe(true);
+    expect(tierMismatch!.enablementPath).toBeUndefined();
   });
 
   it("is suppressible via config.hygiene.suppressions end-to-end, like the other five detectors", () => {
@@ -565,6 +594,45 @@ describe("get_efficiency_hints (MCP) — tier-mismatch", () => {
     expect(findings[0]).toHaveProperty("remedy");
     const sessionIds = (findings[0]!["sessionIds"] as string[]).sort();
     expect(sessionIds).toEqual(Array.from({ length: N }, (_, i) => `top-${i}`).sort());
+    expect(tierMismatch!["computed"]).toBe(true);
+    expect(tierMismatch).not.toHaveProperty("enablementPath");
+  });
+});
+
+describe("get_efficiency_hints (MCP) — tier-mismatch never classified (D2-2)", () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "claude-stats-mcp-tier-mismatch-uncomputed-test-"));
+  let store: Store;
+  let client: Client;
+
+  beforeAll(async () => {
+    store = new Store(join(tmpDir, "test.db"));
+    // Real usage, but `setTaskClass` is never called — the classifier has
+    // never run against this store at all.
+    store.upsertSession(session("s1"));
+    store.upsertMessages([message("s1-m0", "s1", { timestamp: FIXED_NOW, model: "claude-opus-5" })]);
+
+    const server = createMcpServer(store);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    client = new Client({ name: "test-client-tier-mismatch-uncomputed", version: "1.0.0" });
+    await client.connect(clientTransport);
+  });
+
+  afterAll(() => {
+    store.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("surfaces `computed: false` and an enablement path through the real MCP tool call, not a bare empty findings list", async () => {
+    const result = await client.callTool({ name: "get_efficiency_hints", arguments: { period: "all" } });
+    const content = (result as { content: unknown }).content as Array<{ type: string; text: string }>;
+    const data = JSON.parse(content[0]!.text) as Record<string, unknown>;
+    const detectors = data["detectors"] as Array<Record<string, unknown>>;
+    const tierMismatch = detectors.find((d) => d["detectorId"] === "tier-mismatch");
+    expect(tierMismatch).toBeDefined();
+    expect(tierMismatch!["findings"]).toEqual([]);
+    expect(tierMismatch!["computed"]).toBe(false);
+    expect(tierMismatch!["enablementPath"]).toMatch(/task-class/);
   });
 });
 

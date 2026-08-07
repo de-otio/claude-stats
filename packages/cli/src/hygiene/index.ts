@@ -88,11 +88,22 @@ function totalCostOf(rows: readonly HygieneMessageRow[], overrides?: RateOverrid
  * report over a machine's own history. A session with no stored row (never
  * classified) is simply absent from the map, which `runHygieneDetectors`
  * treats as "excluded from the comparison", not a guess.
+ *
+ * Returns `undefined` — not an empty map — when the classifier has NEVER run
+ * (`session_task_class` has no rows at all, checked store-wide via
+ * `getTaskClassVersions()`, independent of this window). That distinction is
+ * what lets `runHygieneDetectors` report tier-mismatch as `computed: false`
+ * ("nothing to compare yet") instead of quietly returning zero findings,
+ * which would be indistinguishable from "no tier mismatch found" (D2-2).
+ * A classifier that HAS run, even if none of ITS rows fall in this window,
+ * still returns a (possibly empty) map — that is a real computed result.
  */
 function buildTaskClassMap(
   store: Store,
   rows: readonly HygieneMessageRow[],
-): ReadonlyMap<string, TierMismatchClassification> {
+): ReadonlyMap<string, TierMismatchClassification> | undefined {
+  if (store.getTaskClassVersions().length === 0) return undefined;
+
   const map = new Map<string, TierMismatchClassification>();
   const seen = new Set<string>();
   for (const r of rows) {

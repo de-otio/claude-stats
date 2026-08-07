@@ -86,6 +86,22 @@ export interface HygieneDetectorResult {
    *  findings are still computed (so a digest can report "1 suppressed") but
    *  must not be surfaced as an active card. */
   suppressed: boolean;
+  /**
+   * False when the detector could not run at all for lack of a required
+   * input — distinct from "ran and found nothing" (I1: a number's absence
+   * must carry its own reason, not collapse into a zero that reads as
+   * clean). Every detector but tier-mismatch only needs the message rows
+   * every window already has, so `computed` is always true for them.
+   * Tier-mismatch additionally needs the task classifier's per-session
+   * output (`session_task_class`); when the classifier has never run, the
+   * caller has nothing to join against and sets this false rather than
+   * silently reporting zero findings that would read as "no mismatch".
+   */
+  computed: boolean;
+  /** Set only when `computed` is false — the concrete step that would
+   *  produce the missing input (e.g. "run `task-class` at least once").
+   *  Absent when `computed` is true. */
+  enablementPath?: string;
 }
 
 /**
