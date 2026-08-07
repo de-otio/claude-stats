@@ -231,6 +231,59 @@ describe("reconciliationDetail formats through the shared money formatter", () =
   });
 });
 
+/**
+ * Every test above pins a MONEY figure or a translation key. The panel also
+ * renders three quantities that are neither: the verdict's ratio, the
+ * residual's percentage, and the tolerance band. Mutation-tested at review:
+ * the verdict's `rec.ratio` could be replaced by `rec.residualRatio` or by
+ * `invoiceTotal / bottomUp`, the residual's denominator could be swapped from
+ * the invoice to the local estimate, and the band could be multiplied by 100 —
+ * all four with the whole suite still green, because the only band assertion
+ * was `toContain("±5")`, which "±500%" satisfies.
+ *
+ * The fixture is chosen so each quantity is a DIFFERENT number, and every
+ * plausible wrong divisor is a different number again. 80 against 100 gives
+ * ratio 80%, residual-over-invoice 20%, residual-over-local 25%, and
+ * invoice-over-local 125% — four values no single assertion could confuse.
+ */
+describe("the panel's three percentages, and the divisor each is taken over", () => {
+  /** ratio 0.8 · residual 20 · residualRatio 0.2 · tolerance band 5%. */
+  const EIGHTY: Reconciliation = computeReconciliation({
+    bottomUp: 80,
+    invoiceTotal: 100,
+    tolerance: 0.05,
+  })!;
+
+  it("states the verdict's ratio as the local estimate over the invoice", () => {
+    const { verdict } = reconciliationDetail(t, EIGHTY, "USD");
+    expect(verdict).toContain("80%");
+    // The two figures that are also to hand and would each be wrong: the
+    // residual's share (20%) and the inverted divisor (125%).
+    expect(verdict).not.toContain("20%");
+    expect(verdict).not.toContain("125%");
+  });
+
+  it("takes the residual's percentage over the INVOICE, not over the local estimate", () => {
+    // 20/100, not 20/80. The sentence around it names both quantities, so the
+    // reader has no way to tell which denominator produced the number — which
+    // is exactly why it has to be the one the verdict already uses.
+    const residual = reconciliationDetail(t, EIGHTY, "USD").lines.find((l) => l.id === "residual")!;
+    expect(residual.value).toContain("$20.00");
+    expect(residual.value).toContain("(20%)");
+    expect(residual.value).not.toContain("25%");
+  });
+
+  it("states the tolerance band at its own magnitude, exactly", () => {
+    // Not `toContain("±5")`: that passes for "±500%" and for "±5000%". The
+    // band is the threshold the verdict was decided against, so a hundredfold
+    // error here turns "does not reconcile" into an unreadable claim.
+    const tolerance = reconciliationDetail(t, EIGHTY, "USD").lines.find(
+      (l) => l.id === "tolerance",
+    )!;
+    expect(tolerance.value).toBe("±5%");
+  });
+});
+
 // ─── End to end: the alert and the evidence on the same page ──────────────────
 
 const T0 = 1_700_000_000_000;
