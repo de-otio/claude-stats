@@ -645,6 +645,89 @@ export function createMcpServer(store: Store): McpServer {
     },
   );
 
+  // ── get_efficiency_hints ───────────────────────────────────────────────────
+  server.tool(
+    "get_efficiency_hints",
+    "Self-audit tool: find your OWN wasted spend in patterns the store already " +
+      "holds — cache churn (context rebuilt instead of read back), retry loops " +
+      "(turns burned retrying the same failing tool call), abandoned spend " +
+      "(costly sessions that end in error with no follow-up), context bloat " +
+      "(huge input per turn for little output), and re-entry burn (cache " +
+      "rebuilt after an idle/throttle gap). This is NOT a scoreboard — nothing " +
+      "here ranks developers, and nothing leaves this machine; it exists so a " +
+      "developer can find and fix their own waste before someone else points " +
+      "it out.\n\n" +
+      "Every finding carries its RULE and THRESHOLD in plain language (judge the " +
+      "claim yourself, don't just trust it), the specific `sessionIds` it fired " +
+      "on (checkable), and one remedy sentence. `estimatedWaste` is a " +
+      "conservative equivalent-API-dollar estimate, never the whole session's " +
+      "cost unless the rule says so. Detectors favor precision over recall — a " +
+      "detector finding nothing is a real, good result, not a sign it's broken. " +
+      "A detector id in `suppressedDetectors` was dismissed via " +
+      "`config.hygiene.suppressions` and still ran, but its findings are " +
+      "withheld here.\n\n" +
+      "`hygieneRatio` is self-audited waste as a share of the window's total " +
+      "cost; `previousHygieneRatio` is the same ratio for the immediately " +
+      "preceding window of equal length (null when the window has no `since`/" +
+      "`until` or the prior window had no spend) — this pair is the trend line " +
+      "a justification pack cites (\"self-audited waste down from 14% to 6%\").",
+    {
+      ...dateRangeShape,
+      project: z.string().optional()
+        .describe("Filter to a specific project path"),
+      account: z.string().optional()
+        .describe("Filter to a specific account UUID (full or prefix match)"),
+    },
+    async ({ period, since, until, project, account }) => {
+      const resolved = resolveAccountFilter(store, account);
+      if (!resolved.ok) return formatResult({ error: resolved.error });
+      const effectivePeriod = period ?? "week";
+      const { periodRange } = await import("../reporter/index.js");
+      const { loadConfig } = await import("../config.js");
+      const { buildHygieneReport } = await import("../hygiene/index.js");
+      const { formatMoney, formatPercent } = await import("@claude-stats/core/insight");
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const range = periodRange({ period: effectivePeriod, since, until }, tz);
+      const config = loadConfig();
+
+      const report = buildHygieneReport(store, {
+        since: range.since > 0 ? range.since : undefined,
+        until: range.until,
+        projectPath: project,
+        accountUuid: resolved.accountUuid,
+        suppressions: config.hygiene?.suppressions,
+        rateOverrides: config.pricing?.rates,
+      });
+
+      const summary = report.totalCost > 0
+        ? `${formatMoney(report.digest.totalEstimatedWaste)} of ${formatMoney(report.totalCost)} self-audited as recoverable waste (${formatPercent(report.hygieneRatio)}).`
+        : "No usage recorded for this period.";
+
+      return formatResult({
+        window: { since: new Date(range.since).toISOString(), until: new Date(range.until).toISOString() },
+        totalCost: report.totalCost,
+        summary,
+        hygieneRatio: report.hygieneRatio,
+        previousHygieneRatio: report.previousHygieneRatio,
+        totalEstimatedWaste: report.digest.totalEstimatedWaste,
+        totalFindings: report.digest.totalFindings,
+        suppressedDetectors: report.digest.suppressedIds,
+        detectors: report.digest.active.map((d) => ({
+          detectorId: d.detectorId,
+          title: d.title,
+          findings: d.findings.map((f) => ({
+            sessionIds: f.sessionIds,
+            estimatedWaste: f.estimatedWaste,
+            rule: f.rule,
+            threshold: f.threshold,
+            remedy: f.remedy,
+            detail: f.detail,
+          })),
+        })),
+      });
+    },
+  );
+
   // ── get_account_info ──────────────────────────────────────────────────────
   server.tool(
     "get_account_info",
