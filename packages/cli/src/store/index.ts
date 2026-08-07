@@ -2470,15 +2470,18 @@ export class Store {
    * This is what makes a rule change safe. Bumping `TASK_CLASS_VERSION` makes
    * every stored row stale, this query finds them, and the pass rewrites them —
    * no purge, no full re-parse, and resumable if it is interrupted.
+   *
+   * Returns the FULL work list, unbounded: batching is the pass's concern, and
+   * a `LIMIT` here would give the caller a second, redundant way to bound the
+   * run while making `remaining` uncomputable. The result is session ids only.
    */
-  getSessionIdsNeedingTaskClass(currentVersion: number, limit?: number): string[] {
-    const cap = limit !== undefined && limit > 0 ? ` LIMIT ${Math.floor(limit)}` : "";
+  getSessionIdsNeedingTaskClass(currentVersion: number): string[] {
     const stmt = this.db.prepare(
       `SELECT s.session_id AS session_id
          FROM sessions s
          LEFT JOIN session_task_class tc ON tc.session_id = s.session_id
         WHERE tc.session_id IS NULL OR tc.classifier_version < ?
-        ORDER BY s.session_id${cap}`,
+        ORDER BY s.session_id`,
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = (stmt.all as (...args: any[]) => unknown[])(currentVersion) as Array<{ session_id: string }>;
