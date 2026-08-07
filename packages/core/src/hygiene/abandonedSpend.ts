@@ -21,6 +21,7 @@
 import type { HygieneFinding, HygieneThresholds, HygieneMessageRow } from "./types.js";
 import { groupBySession, sumCost } from "./util.js";
 import type { RateOverrides } from "../pricing.js";
+import { formatMoney } from "../insight.js";
 
 export function detectAbandonedSpend(
   rows: readonly HygieneMessageRow[],
@@ -68,7 +69,7 @@ export function detectAbandonedSpend(
       rule: "The session's last message has a failed tool call, cost is at or above threshold, and no same-project session starts within the grace window afterward.",
       threshold: `≥$${thresholds.minCost.toFixed(2)} session cost, no same-project follow-up within ${Math.round(thresholds.graceMs / 60_000)} min`,
       remedy: "Review what stalled the task before spending more on it; consider a smaller scope next attempt.",
-      detail: `Session ended on a failed tool call; cost ${cost.toFixed(2)}; no follow-up in this project within the grace window.`,
+      detail: `Session ended on a failed tool call; cost ${formatMoney(cost)}; no follow-up in this project within the grace window.`,
     });
   }
   return findings;

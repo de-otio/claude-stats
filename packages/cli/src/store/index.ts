@@ -2854,37 +2854,19 @@ export class Store {
    * query needs `project_path` in the SELECT list itself — the abandoned-spend
    * detector groups sessions by project to find same-project successors.
    */
-  getMessagesForHygiene(filters: {
-    projectPath?: string;
-    repoUrl?: string;
-    accountUuid?: string;
-    since?: number;
-    until?: number;
-  } = {}): HygieneMessageStoreRow[] {
-    const conditions: string[] = [];
-    const params: unknown[] = [];
-    if (filters.since !== undefined) {
-      conditions.push("m.timestamp >= ?");
-      params.push(filters.since);
-    }
-    if (filters.until !== undefined) {
-      conditions.push("m.timestamp < ?");
-      params.push(filters.until);
-    }
-    if (filters.projectPath) {
-      conditions.push("s.project_path = ?");
-      params.push(filters.projectPath);
-    }
-    if (filters.repoUrl) {
-      conditions.push("s.repo_url = ?");
-      params.push(filters.repoUrl);
-    }
-    if (filters.accountUuid) {
-      // Matches `buildMessageFilter`'s account predicate exactly (`s.account_uuid`).
-      conditions.push("s.account_uuid = ?");
-      params.push(filters.accountUuid);
-    }
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  getMessagesForHygiene(
+    filters: Pick<
+      MessageFilter,
+      "projectPath" | "repoUrl" | "accountUuid" | "since" | "until" | "includeCI" | "includeDeleted"
+    > = {},
+  ): HygieneMessageStoreRow[] {
+    // Routed through the same `buildMessageFilter`/`messageWhereJoin` every
+    // other message-scoped aggregate uses (INNER-JOIN form, since this query
+    // needs `s.project_path` in the SELECT list — see class doc above). Doing
+    // it by hand here would let this query silently diverge from includeCI/
+    // includeDeleted narrowing the rest of the product applies; see F4 in
+    // `filter-symmetry.test.ts`.
+    const f = this.buildMessageFilter(filters);
     const sql = `
       SELECT m.session_id, s.project_path, m.uuid, m.timestamp, m.model,
              m.input_tokens, m.output_tokens,
@@ -2892,12 +2874,12 @@ export class Store {
              m.tool_error_count
       FROM messages m
       JOIN sessions s ON s.session_id = m.session_id
-      ${where}
-      ORDER BY m.timestamp ASC
+      WHERE ${this.messageWhereJoin(f)}
+      ORDER BY m.timestamp ASC, m.uuid ASC
     `;
     const stmt = this.db.prepare(sql);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (stmt.all as (...args: any[]) => unknown[])(...params) as HygieneMessageStoreRow[];
+    return (stmt.all as (...args: any[]) => unknown[])(...f.params) as HygieneMessageStoreRow[];
   }
 
   /**
