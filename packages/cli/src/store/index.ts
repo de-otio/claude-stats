@@ -2846,6 +2846,61 @@ export class Store {
   }
 
   /**
+   * Returns per-message rows for the efficiency-hygiene detectors
+   * (`packages/core/src/hygiene/`): everything they need in one seek, ordered
+   * by timestamp so a caller can group into per-session, per-project sequences
+   * without a second query. INNER JOIN (not the EXISTS-membership pattern used
+   * by the neighboring `getMessagesFor*` methods) because, unlike those, this
+   * query needs `project_path` in the SELECT list itself — the abandoned-spend
+   * detector groups sessions by project to find same-project successors.
+   */
+  getMessagesForHygiene(filters: {
+    projectPath?: string;
+    repoUrl?: string;
+    accountUuid?: string;
+    since?: number;
+    until?: number;
+  } = {}): HygieneMessageStoreRow[] {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (filters.since !== undefined) {
+      conditions.push("m.timestamp >= ?");
+      params.push(filters.since);
+    }
+    if (filters.until !== undefined) {
+      conditions.push("m.timestamp < ?");
+      params.push(filters.until);
+    }
+    if (filters.projectPath) {
+      conditions.push("s.project_path = ?");
+      params.push(filters.projectPath);
+    }
+    if (filters.repoUrl) {
+      conditions.push("s.repo_url = ?");
+      params.push(filters.repoUrl);
+    }
+    if (filters.accountUuid) {
+      // Matches `buildMessageFilter`'s account predicate exactly (`s.account_uuid`).
+      conditions.push("s.account_uuid = ?");
+      params.push(filters.accountUuid);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const sql = `
+      SELECT m.session_id, s.project_path, m.uuid, m.timestamp, m.model,
+             m.input_tokens, m.output_tokens,
+             m.cache_read_tokens, m.cache_creation_tokens,
+             m.tool_error_count
+      FROM messages m
+      JOIN sessions s ON s.session_id = m.session_id
+      ${where}
+      ORDER BY m.timestamp ASC
+    `;
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(...params) as HygieneMessageStoreRow[];
+  }
+
+  /**
    * Build the message-level seek WHERE clause + params shared by every energy
    * aggregation query. Uses the same `m.session_id IN (SELECT session_id FROM
    * sessions WHERE <session filters>)` membership subquery as
@@ -3861,6 +3916,20 @@ export interface ContextMessageRow {
   input_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+}
+
+/** Row shape for `getMessagesForHygiene` — see `core/src/hygiene/`. */
+export interface HygieneMessageStoreRow {
+  session_id: string;
+  project_path: string;
+  uuid: string;
+  timestamp: number | null;
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  tool_error_count: number;
 }
 
 export interface EnergyMessageRow {

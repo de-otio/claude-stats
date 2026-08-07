@@ -123,6 +123,10 @@
     "./taskClass": {
       "types": "./dist/taskClass/index.d.ts",
       "default": "./dist/taskClass/index.js"
+    },
+    "./hygiene": {
+      "types": "./dist/hygiene/index.d.ts",
+      "default": "./dist/hygiene/index.js"
     }
   },
   "scripts": {
