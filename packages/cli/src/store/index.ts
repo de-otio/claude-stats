@@ -26,7 +26,7 @@ import { estimateCost } from "@claude-stats/core/pricing";
 import { requireTicketKey } from "@claude-stats/core/tickets";
 import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
-const SCHEMA_VERSION = 20;
+const SCHEMA_VERSION = 21;
 
 /**
  * SQL narrowing a session-id column to sessions attributed to one ticket key.
@@ -46,6 +46,23 @@ const SCHEMA_VERSION = 20;
 function ticketPredicate(col: string): string {
   return `${col} IN (SELECT tl.session_id FROM ticket_links tl WHERE tl.ticket_key = ? AND tl.negated = 0)
     AND ${col} NOT IN (SELECT tn.session_id FROM ticket_links tn WHERE tn.ticket_key = ? AND tn.negated = 1)`;
+}
+
+/**
+ * SQL narrowing a session-id column to one task class (schema V21).
+ *
+ * Parameterised by BOTH the column and the class column, for the same reason
+ * `ticketPredicate` is parameterised by column: `getSessions` queries the
+ * unaliased `sessions` table while `buildMessageFilter` queries an aliased `s`,
+ * and the fine and coarse grains are two dimensions over the same table. Four
+ * hand-written copies would be four chances to drift, and drift between the two
+ * halves is exactly what the filter-symmetry contract exists to catch.
+ *
+ * `field` is a compile-time union, never caller input — it is interpolated into
+ * SQL, so it must never become a string parameter. Binds one param, the class.
+ */
+function taskClassPredicate(col: string, field: "task_class" | "coarse_class"): string {
+  return `${col} IN (SELECT tc.session_id FROM session_task_class tc WHERE tc.${field} = ?)`;
 }
 
 export class Store {
@@ -99,6 +116,7 @@ export class Store {
     if (current < 18) this.migrateToV18();
     if (current < 19) this.migrateToV19();
     if (current < 20) this.migrateToV20();
+    if (current < 21) this.migrateToV21();
 
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
@@ -661,6 +679,47 @@ export class Store {
       }
     };
     addColumn("messages", "git_branch", "TEXT");
+  }
+
+  /**
+   * V21 — task-class storage (`doc/analysis/constraint-impact/05-task-class-spec.md` §5.9).
+   *
+   * One row per session: the fine class, the coarse class, the confidence, the
+   * rule id that decided, the abstain reason, and the CLASSIFIER VERSION that
+   * produced them.
+   *
+   * The version column is the invalidation mechanism, and it is why this is a
+   * table rather than two columns on `sessions`. The classify pass selects
+   * sessions with no row or a row below the current version, so a rule change
+   * reclassifies exactly the affected corpus with no manual purge — and a store
+   * holding rows at two versions can SAY so, which a before/after comparison
+   * spanning a rule change must be able to do rather than mixing grains
+   * silently.
+   *
+   * `rule` and `abstain_reason` are closed enums from the classifier, never free
+   * text: they are the audit trail from a per-class delta back to a reason, and
+   * a free-text column here would be a field capable of carrying prompt content
+   * into a table the report layer reads.
+   *
+   * Additive + idempotent; zero backfill (classification is an explicit pass).
+   */
+  private migrateToV21(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS session_task_class (
+        session_id         TEXT PRIMARY KEY,
+        task_class         TEXT NOT NULL,
+        coarse_class       TEXT NOT NULL,
+        confidence         TEXT NOT NULL,
+        rule               TEXT NOT NULL,
+        abstain_reason     TEXT,
+        classifier_version INTEGER NOT NULL,
+        classified_at      INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_session_task_class_fine ON session_task_class (task_class);
+      CREATE INDEX IF NOT EXISTS idx_session_task_class_coarse ON session_task_class (coarse_class);
+      CREATE INDEX IF NOT EXISTS idx_session_task_class_version ON session_task_class (classifier_version);
+    `);
   }
 
   /**
@@ -1719,6 +1778,21 @@ export class Store {
       sessionConditions.push("s.session_id IN (SELECT session_id FROM session_tags WHERE tag = ?)");
       params.push(filters.tag);
     }
+    // Task-class symmetry (schema V21). Phase 0 deliberately left this out —
+    // there was no table to filter against — so it lands here with the table.
+    // An unclassified session matches NEITHER dimension, which is correct and
+    // deliberate: a per-class cost figure must price only sessions the
+    // classifier actually placed, and silently folding the unclassified
+    // remainder into a class would be the fabricated-attribution failure the
+    // honesty invariant forbids.
+    if (filters.taskClass) {
+      sessionConditions.push(taskClassPredicate("s.session_id", "task_class"));
+      params.push(filters.taskClass);
+    }
+    if (filters.coarseTaskClass) {
+      sessionConditions.push(taskClassPredicate("s.session_id", "coarse_class"));
+      params.push(filters.coarseTaskClass);
+    }
     // CI / deleted symmetry. `getSessions` narrows the SESSION set on these two
     // flags; if the message-scoped reads ignore them, the two halves of every
     // aggregate describe different work again — cost would keep counting a CI
@@ -1902,6 +1976,14 @@ export class Store {
      * symmetry contract there.
      */
     ticket?: string;
+    /**
+     * Narrow to sessions the classifier placed in this FINE task class
+     * (schema V21). Unclassified sessions match nothing. Mirrored in
+     * `MessageFilter` — see the symmetry contract there.
+     */
+    taskClass?: string;
+    /** Same, at the coarse grain (`build` | `diagnose` | `support` | `unknown`). */
+    coarseTaskClass?: string;
     since?: number;
     /**
      * Include sessions that were ACTIVE at/after this epoch-ms — i.e. their last
@@ -1956,6 +2038,14 @@ export class Store {
     if (filters.ticket) {
       conditions.push(ticketPredicate("session_id"));
       params.push(filters.ticket, filters.ticket);
+    }
+    if (filters.taskClass) {
+      conditions.push(taskClassPredicate("session_id", "task_class"));
+      params.push(filters.taskClass);
+    }
+    if (filters.coarseTaskClass) {
+      conditions.push(taskClassPredicate("session_id", "coarse_class"));
+      params.push(filters.coarseTaskClass);
     }
     if (filters.since !== undefined) {
       conditions.push("first_timestamp >= ?");
@@ -2313,6 +2403,139 @@ export class Store {
           GROUP BY ticket_key ORDER BY session_count DESC, ticket_key`,
       )
       .all() as Array<{ ticket_key: string; session_count: number }>;
+  }
+
+  // ─── Task classes (schema V21) ─────────────────────────────────────────────
+  //
+  // Storage seam only. The classifier itself is pure and lives in
+  // `@claude-stats/core/taskClass`, so its rules can be property-tested and
+  // measured against a labelled corpus without a database anywhere near them.
+
+  /**
+   * Record one session's classification. Idempotent: re-running the pass at the
+   * same version rewrites the row rather than duplicating it, and re-running at
+   * a NEWER version overwrites the stale one — which is the whole invalidation
+   * story (spec §5.9). `classifiedAt` is injected, never `Date.now()` here, so
+   * a test can pin it.
+   */
+  setTaskClass(row: {
+    sessionId: string;
+    taskClass: string;
+    coarseClass: string;
+    confidence: string;
+    rule: string;
+    abstainReason?: string | null;
+    classifierVersion: number;
+    classifiedAt: number;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO session_task_class
+           (session_id, task_class, coarse_class, confidence, rule,
+            abstain_reason, classifier_version, classified_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (session_id) DO UPDATE SET
+           task_class         = excluded.task_class,
+           coarse_class       = excluded.coarse_class,
+           confidence         = excluded.confidence,
+           rule               = excluded.rule,
+           abstain_reason     = excluded.abstain_reason,
+           classifier_version = excluded.classifier_version,
+           classified_at      = excluded.classified_at`,
+      )
+      .run(
+        row.sessionId,
+        row.taskClass,
+        row.coarseClass,
+        row.confidence,
+        row.rule,
+        row.abstainReason ?? null,
+        row.classifierVersion,
+        row.classifiedAt,
+      );
+  }
+
+  /** One session's stored classification, or null when it has never been classified. */
+  getTaskClass(sessionId: string): TaskClassRow | null {
+    const stmt = this.db.prepare("SELECT * FROM session_task_class WHERE session_id = ?");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row = (stmt.get as (...args: any[]) => unknown)(sessionId) as TaskClassRow | undefined;
+    return row ?? null;
+  }
+
+  /**
+   * Session ids the classify pass still owes work on: never classified, or
+   * classified by an OLDER classifier version.
+   *
+   * This is what makes a rule change safe. Bumping `TASK_CLASS_VERSION` makes
+   * every stored row stale, this query finds them, and the pass rewrites them —
+   * no purge, no full re-parse, and resumable if it is interrupted.
+   */
+  getSessionIdsNeedingTaskClass(currentVersion: number, limit?: number): string[] {
+    const cap = limit !== undefined && limit > 0 ? ` LIMIT ${Math.floor(limit)}` : "";
+    const stmt = this.db.prepare(
+      `SELECT s.session_id AS session_id
+         FROM sessions s
+         LEFT JOIN session_task_class tc ON tc.session_id = s.session_id
+        WHERE tc.session_id IS NULL OR tc.classifier_version < ?
+        ORDER BY s.session_id${cap}`,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (stmt.all as (...args: any[]) => unknown[])(currentVersion) as Array<{ session_id: string }>;
+    return rows.map((r) => r.session_id);
+  }
+
+  /**
+   * Session counts per class at both grains, plus the abstention breakdown.
+   *
+   * Returns the UNCLASSIFIED count too, because that is the coverage
+   * denominator: a per-class table without it implies a completeness it does
+   * not have. Callers must surface it.
+   */
+  getTaskClassCounts(): {
+    fine: Array<{ task_class: string; n: number }>;
+    coarse: Array<{ coarse_class: string; n: number }>;
+    abstain: Array<{ abstain_reason: string; n: number }>;
+    unclassified: number;
+  } {
+    const fine = this.db
+      .prepare("SELECT task_class, COUNT(*) AS n FROM session_task_class GROUP BY task_class ORDER BY n DESC, task_class")
+      .all() as Array<{ task_class: string; n: number }>;
+    const coarse = this.db
+      .prepare("SELECT coarse_class, COUNT(*) AS n FROM session_task_class GROUP BY coarse_class ORDER BY n DESC, coarse_class")
+      .all() as Array<{ coarse_class: string; n: number }>;
+    const abstain = this.db
+      .prepare(
+        `SELECT abstain_reason, COUNT(*) AS n FROM session_task_class
+          WHERE abstain_reason IS NOT NULL GROUP BY abstain_reason ORDER BY n DESC, abstain_reason`,
+      )
+      .all() as Array<{ abstain_reason: string; n: number }>;
+    const { n } = this.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM sessions s
+          LEFT JOIN session_task_class tc ON tc.session_id = s.session_id
+          WHERE tc.session_id IS NULL`,
+      )
+      .get() as { n: number };
+    return { fine, coarse, abstain, unclassified: n };
+  }
+
+  /**
+   * Distinct classifier versions present, with counts.
+   *
+   * A report spanning a rule change MUST be able to see that its two periods
+   * were classified by different rules — otherwise the rule change shows up as
+   * a workload shift, which is precisely the confound the whole per-class
+   * design exists to remove. More than one row here means "reclassify before
+   * quoting a per-class delta".
+   */
+  getTaskClassVersions(): Array<{ classifier_version: number; n: number }> {
+    return this.db
+      .prepare(
+        `SELECT classifier_version, COUNT(*) AS n FROM session_task_class
+          GROUP BY classifier_version ORDER BY classifier_version`,
+      )
+      .all() as Array<{ classifier_version: number; n: number }>;
   }
 
   // ─── Usage windows ──────────────────────────────────────────────────────────
@@ -3427,6 +3650,22 @@ export interface MessageRow {
   account_uuid?: string | null;
 }
 
+/**
+ * A raw `session_task_class` row (schema V21). Column types only — the closed
+ * enums live with the classifier in `@claude-stats/core/taskClass`, so the
+ * store never has an opinion about which classes exist.
+ */
+export interface TaskClassRow {
+  session_id: string;
+  task_class: string;
+  coarse_class: string;
+  confidence: string;
+  rule: string;
+  abstain_reason: string | null;
+  classifier_version: number;
+  classified_at: number;
+}
+
 /** A raw `ticket_links` row (schema V19). */
 export interface TicketLinkRow {
   session_id: string;
@@ -3469,6 +3708,15 @@ export interface MessageFilter {
   ticket?: string;
   /** Session tag (schema V5 `session_tags`). Mirrors `getSessions({tag})`. */
   tag?: string;
+  /**
+   * Fine task class (schema V21 `session_task_class`). Uses the same
+   * `taskClassPredicate` SQL as `getSessions` so the two halves cannot diverge.
+   * Unclassified sessions match nothing — a per-class cost figure must price
+   * only what the classifier actually placed.
+   */
+  taskClass?: string;
+  /** Coarse task class (`build` | `diagnose` | `support` | `unknown`). */
+  coarseTaskClass?: string;
   since?: number;
   until?: number;
   /** Explicit `false` excludes non-interactive (CI) sessions. */

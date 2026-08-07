@@ -40,7 +40,7 @@ tokens and costs $Z/month in dev time — net −$W."
 | 3 | Report stance | Two-sided by construction — name the classes where the constraint is harmless, then the classes where it isn't | [02](02-model-policy-impact.md) |
 | 4 | Report output | A costed tiered-access / cap-adjustment proposal, not a reversal demand | [02](02-model-policy-impact.md) |
 | 5 | Causal honesty | Within-task-class comparison, distributions not means, "evidence not proof" labelling | [02](02-model-policy-impact.md) |
-| 6 | Comparison stability | A small deterministic task-class taxonomy (new work) — recap clusters have no cross-month identity | [03](03-measurement-mechanics.md) |
+| 6 | Comparison stability | A small deterministic task-class taxonomy (new work) — recap clusters have no cross-month identity | [03](03-measurement-mechanics.md), spec in [05](05-task-class-spec.md) |
 | 7 | Policy boundary | An explicit policy-event marker in config; never inferred from the data | [03](03-measurement-mechanics.md) |
 | 8 | Plan vs metered | Two constraint vocabularies: windows/throttles for seat plans, quotas/caps/model-allowlists for Enterprise & Bedrock — never mixed in one report | [01](01-what-constraints-cost.md), [03](03-measurement-mechanics.md) |
 
@@ -52,6 +52,7 @@ tokens and costs $Z/month in dev time — net −$W."
 | 02 | [02-model-policy-impact.md](02-model-policy-impact.md) | The model-tier-removal report: metrics, the natural experiment, two-sidedness, the tiered-access proposal, prospective mode |
 | 03 | [03-measurement-mechanics.md](03-measurement-mechanics.md) | What the store already captures, the gaps (task-class taxonomy, policy markers, escalation chains, metered throttling, outcome calibration), surfaces |
 | 04 | [04-pricing-model-comparison.md](04-pricing-model-comparison.md) | The constructive counter-offer: price the org's real usage under seat plans vs metered — save the same money without the capability loss |
+| 05 | [05-task-class-spec.md](05-task-class-spec.md) | **Implemented.** The task-class taxonomy (choice 6 above): class definitions with inclusion/exclusion rules, the signals used and the one deliberately excluded, the decision procedure and thresholds, storage and version-stamped invalidation, and the measured agreement against a labelled corpus |
 
 ## Relationship to existing analysis
 

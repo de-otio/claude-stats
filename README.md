@@ -134,6 +134,7 @@ claude-stats report --html        # export a standalone HTML dashboard file
 | `search`       | Search prompt history by keyword                                |
 | `dashboard`    | Output pre-aggregated dashboard JSON to stdout                  |
 | `tag` / `tags` | Tag sessions and list tags                                      |
+| `task-class`   | Classify sessions into task classes and show the distribution   |
 | `config`       | View or set cost alert thresholds                               |
 | `backfill`     | Re-parse all session files to populate newly added fields       |
 | `diagnose`     | Show quarantine counts and schema health                        |

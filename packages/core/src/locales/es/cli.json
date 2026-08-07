@@ -174,7 +174,9 @@
     "costPerTaskByModel": "Desglosar la métrica por modelo dominante",
     "costPerTaskCalibrate": "Mostrar métricas de calibración (concordancia proxy/señal con tus etiquetas) como JSON",
     "costPerTaskLlmJudge": "Ejecutar el juez LLM opcional en tareas ambiguas (requiere configuración llmJudge; envía un resumen anonimizado de la tarea a tu endpoint)",
-    "costPerTaskLlmJudgeUnconfigured": "Se solicitó --llm-judge pero llmJudge.endpoint/model no están configurados; se omite el juez."
+    "costPerTaskLlmJudgeUnconfigured": "Se solicitó --llm-judge pero llmJudge.endpoint/model no están configurados; se omite el juez.",
+    "taskClass": "Clasifica las sesiones en clases de tarea y muestra la distribución",
+    "taskClassLimit": "Clasificar como máximo este número de sesiones en esta ejecución (reanudable)"
   },
   "collection": {
     "collecting": "Recopilando...",
@@ -428,5 +430,14 @@
     "deviceRemoved": "Device '{{name}}' removed.",
     "newDeviceDetected": "New device detected in sync group: {{name}} ({{id}}). Review in settings.",
     "mergeConflict": "Merge conflict resolved using latest timestamp."
+  },
+  "taskClass": {
+    "passSummary": "Se clasificaron {{classified}} sesión(es); {{alreadyCurrent}} ya estaban al día, {{remaining}} pendientes (clasificador v{{version}}).",
+    "noSessions": "Aún no hay sesiones clasificadas: ejecuta antes 'collect'.",
+    "fineHeader": "Por clase de tarea:",
+    "coarseHeader": "Por clase general:",
+    "abstainHeader": "Clasificación omitida:",
+    "coverage": "Cobertura: {{classified}} sesión(es) clasificadas, {{unclassified}} aún sin clasificar.",
+    "mixedVersions": "⚠  Las sesiones se clasificaron con más de una versión del clasificador ({{versions}}). Vuelve a ejecutar 'task-class' antes de comparar clases de un periodo."
   }
 }

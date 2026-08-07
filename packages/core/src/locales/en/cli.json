@@ -153,6 +153,8 @@
     "tagRemove": "Remove the specified tags instead of adding",
     "tagList": "List tags for the session",
     "tags": "List all tags with session counts",
+    "taskClass": "Classify sessions into task classes and show the distribution",
+    "taskClassLimit": "Classify at most this many sessions in this run (resumable)",
     "backfill": "Re-parse all session files to backfill new fields (e.g. prompt_text)",
     "backfillVerbose": "Show per-file progress",
     "dashboard": "Output dashboard-ready JSON to stdout",
@@ -305,6 +307,15 @@
     "noTagsFound": "No tags found.",
     "tagCount_one": "session",
     "tagCount_other": "sessions"
+  },
+  "taskClass": {
+    "passSummary": "Classified {{classified}} session(s); {{alreadyCurrent}} already current, {{remaining}} remaining (classifier v{{version}}).",
+    "noSessions": "No sessions classified yet — run 'collect' first.",
+    "fineHeader": "By task class:",
+    "coarseHeader": "By coarse class:",
+    "abstainHeader": "Declined to classify:",
+    "coverage": "Coverage: {{classified}} session(s) classified, {{unclassified}} not yet classified.",
+    "mixedVersions": "⚠  Sessions were classified by more than one classifier version ({{versions}}). Re-run 'task-class' before comparing classes across a period."
   },
   "backfill": {
     "resetCheckpoints": "Reset {{count}} file checkpoints. Running full re-collection...",

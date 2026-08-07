@@ -174,7 +174,9 @@
     "costPerTaskByModel": "Ventiler la métrique par modèle dominant",
     "costPerTaskCalibrate": "Afficher les métriques de calibration (accord proxy/signal avec vos labels) en JSON",
     "costPerTaskLlmJudge": "Exécuter le juge LLM optionnel sur les tâches ambiguës (nécessite la config llmJudge ; envoie un résumé anonymisé de la tâche à votre endpoint)",
-    "costPerTaskLlmJudgeUnconfigured": "--llm-judge demandé mais llmJudge.endpoint/model ne sont pas définis ; juge ignoré."
+    "costPerTaskLlmJudgeUnconfigured": "--llm-judge demandé mais llmJudge.endpoint/model ne sont pas définis ; juge ignoré.",
+    "taskClass": "Classer les sessions par classe de tâche et afficher la répartition",
+    "taskClassLimit": "Classer au plus ce nombre de sessions lors de cette exécution (reprise possible)"
   },
   "collection": {
     "collecting": "Collecte en cours...",
@@ -428,5 +430,14 @@
     "deviceRemoved": "Device '{{name}}' removed.",
     "newDeviceDetected": "New device detected in sync group: {{name}} ({{id}}). Review in settings.",
     "mergeConflict": "Merge conflict resolved using latest timestamp."
+  },
+  "taskClass": {
+    "passSummary": "{{classified}} session(s) classée(s) ; {{alreadyCurrent}} déjà à jour, {{remaining}} restante(s) (classifieur v{{version}}).",
+    "noSessions": "Aucune session classée pour l'instant — exécutez d'abord « collect ».",
+    "fineHeader": "Par classe de tâche :",
+    "coarseHeader": "Par classe générale :",
+    "abstainHeader": "Classification refusée :",
+    "coverage": "Couverture : {{classified}} session(s) classée(s), {{unclassified}} pas encore classée(s).",
+    "mixedVersions": "⚠  Les sessions ont été classées par plusieurs versions du classifieur ({{versions}}). Réexécutez « task-class » avant de comparer les classes sur une période."
   }
 }
