@@ -360,9 +360,15 @@ export function answerChange(input: ChangeAnswerInput): InsightAnswer {
       evidenceLink: "efficiency-and-hygiene",
     };
   }
-  const top = input.recommendations.slice(0, 3);
-  const lead = top[0]!;
-  const rest = top.length > 1 ? ` (+${top.length - 1} more)` : "";
+  const lead = input.recommendations[0]!;
+  // Counted over ALL recommendations, not over a top-N slice. The card's
+  // headline value is the full count, so a slice-derived "(+2 more)" would put
+  // two contradicting numbers on one card as soon as there are more than three
+  // — the same figure disagreeing with itself, which is the I1 failure this
+  // module exists to prevent. Below four recommendations the two counts
+  // coincide, which is exactly why the defect was invisible.
+  const others = input.recommendations.length - 1;
+  const rest = others > 0 ? ` (+${others} more)` : "";
   const impact = lead.impact ? ` — ${lead.impact}` : "";
   return {
     question: "change",
