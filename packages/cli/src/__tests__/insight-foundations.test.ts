@@ -260,6 +260,20 @@ describe("answer formatters", () => {
     expect(c).toContain("2 sessions ambiguous");
   });
 
+  // A2/I1: 0% ticket coverage must never render as a bare, unexplained zero —
+  // it's the exact "confidently-wrong-looking-absent" case I1 exists to catch
+  // (e.g. a team on a lowercase branch convention with no allowlist configured).
+  it("gives a diagnostic hint instead of a bare null when there IS spend but NONE of it is attributed", () => {
+    const c = confidenceCaveat(coverage({ attributedCost: 0, totalCost: 200, ratio: 0, byConfidence: { high: 0, medium: 0, low: 0 } }));
+    expect(c).not.toBeNull();
+    expect(c).toContain("config.tickets.projectKeys");
+  });
+
+  it("stays null when there is no spend at all (nothing to enable)", () => {
+    const c = confidenceCaveat(coverage({ attributedCost: 0, totalCost: 0, ratio: null, byConfidence: { high: 0, medium: 0, low: 0 } }));
+    expect(c).toBeNull();
+  });
+
   it("frames a measured policy impact as evidence, not proof", () => {
     const a = answerSetup({
       planVerdict: null,

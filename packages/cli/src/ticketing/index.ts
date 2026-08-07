@@ -20,7 +20,11 @@ import {
   type Observation,
 } from "@claude-stats/core/attribution";
 import type { AttributionSource, Confidence, TicketCoverage } from "@claude-stats/core/types/insight";
-import { getCommitSubjectsInWindow } from "../recap/git.js";
+import {
+  getCommitSubjectsInWindowCached,
+  createCommitSubjectsCache,
+  type CommitSubjectsCache,
+} from "../recap/git.js";
 import type { MessageFilter, SessionRow, Store } from "../store/index.js";
 
 /**
@@ -36,6 +40,19 @@ export interface RunExtractionOptions {
   /** `config.tickets.projectKeys`. Absent/empty is a real, documented mode
    *  (extraction runs, confidence caps at medium) — never treated as "skip". */
   allowlist?: readonly string[];
+  /**
+   * Memoized commit-subject cache (recap/git.ts `CommitSubjectsCache`),
+   * keyed by project path + a day-aligned time bucket (A3). Callers
+   * processing many sessions in one run — `collect`'s per-session loop is
+   * the one that matters, since `backfill` resets checkpoints and re-runs it
+   * over every session file — should create ONE cache via
+   * `createCommitSubjectsCache()` and pass it to every call, so sessions
+   * sharing a project and a nearby time window reuse a single blocking
+   * `git log` subprocess instead of spawning one per session. Defaults to a
+   * fresh, call-scoped cache when omitted: still correct (same commits
+   * returned either way), just without cross-call reuse.
+   */
+  commitCache?: CommitSubjectsCache;
 }
 
 /**
@@ -76,12 +93,15 @@ export function runTicketExtraction(store: Store, session: SessionRow, opts: Run
   if (session.first_timestamp != null) {
     const start = session.first_timestamp;
     const end = (session.last_timestamp ?? session.first_timestamp) + COMMIT_WINDOW_PAD_MS;
-    commits = getCommitSubjectsInWindow(session.project_path, start, end).map((subject) => ({ text: subject }));
+    const cache = opts.commitCache ?? createCommitSubjectsCache();
+    commits = getCommitSubjectsInWindowCached(cache, session.project_path, start, end).map((subject) => ({ text: subject }));
   }
 
+  // A4: a targeted `uuid, prompt_text` read — `getSessionMessages` (`SELECT
+  // *`) would pull back every column (prompt_text is the largest in the
+  // table) just to discard all but these two.
   const prompts: Observation[] = store
-    .getSessionMessages(session.session_id)
-    .filter((m): m is typeof m & { prompt_text: string } => Boolean(m.prompt_text))
+    .getSessionPromptTexts(session.session_id)
     .map((m) => ({ text: m.prompt_text, uuid: m.uuid }));
 
   const links = extractTicketLinks({

@@ -24,6 +24,7 @@ import { createMcpServer } from "../mcp/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { seedStore, FIXED_NOW } from "./fixtures/synthetic.js";
+import { estimateCost } from "@claude-stats/core/pricing";
 
 // ─── Extraction (pure) ──────────────────────────────────────────────────────
 
@@ -151,14 +152,30 @@ describe("extractTicketLinks", () => {
     expect(links).toHaveLength(1);
   });
 
-  // Characterization, NOT an endorsement: the scan regex anchors on `[A-Z]`, so
-  // `parseTicketKey`'s own `.toUpperCase()` is unreachable from this path and a
-  // lowercase/mixed-case key is invisible. That silently zero-attributes the
-  // very common `feature/proj-42-…` branch convention. Pinned here so the
-  // behavior is a deliberate decision (relaxing it trades false negatives for
-  // false positives — `utf-8`, `sha-1`, `covid-19` in prompt text would all
-  // start matching) rather than an accident nothing asserts either way.
-  it("does NOT match a lowercase or mixed-case key (current, deliberate limitation)", () => {
+  // A2: case-insensitive scanning is safe ONLY when a configured allowlist
+  // can reject shape-alike false positives — see the doc comment on
+  // `scanKeys` in attribution.ts. These four tests pin both directions.
+
+  it("finds a lowercase or mixed-case key when an allowlist makes it safe (A2)", () => {
+    for (const branch of ["feature/proj-1-work", "feature/Proj-1-work", "feature/PROJ-1-work"]) {
+      const links = extractTicketLinks({
+        sessionId: "s1",
+        branches: [{ text: branch }],
+        commits: [],
+        prompts: [],
+        allowlist: ["PROJ"],
+      });
+      expect(links).toHaveLength(1);
+      // Normalised to uppercase regardless of the casing it was typed in —
+      // two casings of one key must never become two rows in a cost report.
+      expect(links[0]!.ticketKey).toBe("PROJ-1");
+    }
+  });
+
+  it("still does NOT match a lowercase or mixed-case key without an allowlist (A2)", () => {
+    // Without an allowlist there is nothing to reject `utf-8`-shaped noise,
+    // so the scan stays conservative (uppercase-only) — today's behavior,
+    // unchanged. Only the ALL-CAPS form matches.
     for (const branch of ["feature/proj-1-work", "feature/Proj-1-work"]) {
       expect(
         extractTicketLinks({
@@ -166,21 +183,52 @@ describe("extractTicketLinks", () => {
           branches: [{ text: branch }],
           commits: [],
           prompts: [],
-          allowlist: ["PROJ"],
         }),
       ).toHaveLength(0);
     }
-    // …while the all-caps form on the same branch shape does match, so the
-    // assertion above is about CASE, not about the branch pattern.
     expect(
       extractTicketLinks({
         sessionId: "s1",
         branches: [{ text: "feature/PROJ-1-work" }],
         commits: [],
         prompts: [],
-        allowlist: ["PROJ"],
       }),
     ).toHaveLength(1);
+  });
+
+  it("never turns utf-8/sha-1/base-64/http-2-shaped text into a ticket, even with an allowlist configured (A2)", () => {
+    const noise = [
+      "encode as utf-8 before hashing",
+      "verify the sha-1 checksum",
+      "switch the payload to base-64",
+      "the client now speaks http-2",
+    ];
+    for (const text of noise) {
+      const links = extractTicketLinks({
+        sessionId: "s1",
+        branches: [{ text }],
+        commits: [{ text }],
+        prompts: [{ text, uuid: "m1" }],
+        allowlist: ["PROJ", "CORE"], // realistic Jira-style allowlist — never "UTF"/"SHA"/"BASE"/"HTTP"
+      });
+      expect(links).toHaveLength(0);
+    }
+  });
+
+  it("DOES turn a shape-alike string into a ticket only when its prefix is itself configured (A2, precision boundary)", () => {
+    // Pathological but honest: if a team's own project key happens to collide
+    // with a common technical token, the allowlist is what makes that an
+    // intentional choice rather than an accident — same contract as any other
+    // configured prefix.
+    const links = extractTicketLinks({
+      sessionId: "s1",
+      branches: [{ text: "encode as utf-8 before hashing" }],
+      commits: [],
+      prompts: [],
+      allowlist: ["UTF"],
+    });
+    expect(links).toHaveLength(1);
+    expect(links[0]!.ticketKey).toBe("UTF-8");
   });
 
   // ── Properties ──────────────────────────────────────────────────────────
@@ -286,7 +334,17 @@ describe("aggregateTicketCosts", () => {
     confidence: fc.constantFrom<Confidence>("high", "medium", "low"),
   });
 
-  it("property: attributed + unattributed cost equals the period total, and byConfidence sums to attributed — for ANY link/cost combination", () => {
+  // A6: the original version of this test computed
+  // `unattributed = coverage.totalCost - coverage.attributedCost` and then
+  // asserted `attributedCost + unattributed ≈ totalCost` — which reduces
+  // algebraically to "totalCost was echoed back unchanged" (aggregateTicketCosts
+  // literally assigns `coverage.totalCost = totalCost`) and never constrained
+  // `attributedCost` at all: an implementation that always returned
+  // `attributedCost = 0`, or one that double-counted every session, would have
+  // passed this identity just as well. Fixed by computing the expected
+  // attributed total INDEPENDENTLY from the fixture's own ground truth — never
+  // from the function's output — and comparing against that.
+  it("property: attributedCost equals the independently-computed ground truth (one contribution per linked, in-window session), and byConfidence sums to it — for ANY link/cost combination", () => {
     fc.assert(
       fc.property(
         fc.array(linkArb, { maxLength: 25 }),
@@ -306,10 +364,23 @@ describe("aggregateTicketCosts", () => {
           for (const c of sessionCosts.values()) totalCost += c;
 
           const { coverage } = aggregateTicketCosts(links, sessionCosts, totalCost);
-          const unattributed = coverage.totalCost - coverage.attributedCost;
 
-          expect(coverage.attributedCost).toBeGreaterThanOrEqual(-1e-9);
-          expect(coverage.attributedCost + unattributed).toBeCloseTo(totalCost, 6);
+          // Ground truth, computed directly from `links`/`sessionCosts` — NOT
+          // from `coverage` — per the documented contract: a session
+          // contributes its cost to `attributedCost` exactly once iff it has
+          // at least one active link AND is in the reporting window (present
+          // in `sessionCosts`), no matter how many distinct keys it's linked
+          // to (the ambiguous-session, no-silent-split rule).
+          const linkedInWindowSessions = new Set(
+            links.map((l) => l.sessionId).filter((sid) => sessionCosts.has(sid)),
+          );
+          let expectedAttributed = 0;
+          for (const sid of linkedInWindowSessions) expectedAttributed += sessionCosts.get(sid)!;
+
+          expect(coverage.attributedCost).toBeCloseTo(expectedAttributed, 6);
+          expect(coverage.totalCost).toBe(totalCost);
+
+          const unattributed = coverage.totalCost - coverage.attributedCost;
           expect(unattributed).toBeGreaterThanOrEqual(-1e-9);
 
           const sumByConf = coverage.byConfidence.high + coverage.byConfidence.medium + coverage.byConfidence.low;
@@ -427,6 +498,43 @@ describe("runTicketExtraction (write path)", () => {
     });
   });
 
+  // A4: `getSessionMessages` is `SELECT *` — the largest column in the table
+  // (`prompt_text`) plus every other column, when extraction only ever reads
+  // `uuid` + `prompt_text`. Prove the write path uses the targeted query
+  // instead by asserting the expensive one is never called.
+  it("reads prompt signal via the targeted getSessionPromptTexts query, never the full-row getSessionMessages (A4)", () => {
+    seedSession("s-a4", { gitBranch: null });
+    store.upsertMessages([
+      {
+        uuid: "s-a4-m0",
+        sessionId: "s-a4",
+        timestamp: FIXED_NOW,
+        claudeVersion: "2.1.70",
+        model: "claude-sonnet-5",
+        stopReason: "end_turn",
+        inputTokens: 100,
+        outputTokens: 10,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+        tools: [],
+        thinkingBlocks: 0,
+        serviceTier: null,
+        inferenceGeo: null,
+        ephemeral5mCacheTokens: 0,
+        ephemeral1hCacheTokens: 0,
+        promptText: "about PROJ-3",
+      },
+    ]);
+
+    const fullRowSpy = vi.spyOn(store, "getSessionMessages");
+    runTicketExtraction(store, store.findSession("s-a4")!, { allowlist: ["PROJ"] });
+    expect(fullRowSpy).not.toHaveBeenCalled();
+    fullRowSpy.mockRestore();
+
+    const links = store.getTicketLinksForSession("s-a4");
+    expect(links.some((l) => l.ticket_key === "PROJ-3" && l.source === "prompt")).toBe(true);
+  });
+
   it("picks up a commit-sourced key from the project's real git log (rung 3 wiring)", () => {
     const repoDir = mkdtempSync(join(tmpdir(), "claude-stats-ticket-commit-wiring-"));
     try {
@@ -531,12 +639,30 @@ describe("getTicketCostReport (query path)", () => {
     try { fs.unlinkSync(dbPath); } catch { /* ok */ }
   });
 
-  it("over the synthetic corpus: coverage.attributedCost + unattributed === totalCost, and every ticket key is honestly graded", () => {
+  it("over the synthetic corpus: coverage.attributedCost matches an independently-computed ground truth, and every ticket key is honestly graded", () => {
     const corpus = seedStore(store, { sessions: 20, seed: 11, ticketCoverage: 0.6 });
     const report = getTicketCostReport(store, {});
 
-    const unattributed = report.coverage.totalCost - report.coverage.attributedCost;
-    expect(report.coverage.attributedCost + unattributed).toBeCloseTo(report.coverage.totalCost, 6);
+    // A6: `unattributed = totalCost - attributedCost; expect(attributedCost +
+    // unattributed).toBeCloseTo(totalCost)` is an algebraic identity — it
+    // reduces to "totalCost was echoed back unchanged" and never actually
+    // checks `attributedCost`. Compute the expected attributed total
+    // INDEPENDENTLY instead: sum, from the fixture's own `corpus.links` +
+    // `corpus.messagesBySession` (never from `report` itself), the cost of
+    // every session that has at least one linked ticket key — the same
+    // primitive (`estimateCost`) the production code uses, but driven purely
+    // from the fixture's ground truth.
+    const linkedSessionIds = new Set(corpus.links.map((l) => l.sessionId));
+    let expectedAttributed = 0;
+    for (const sessionId of linkedSessionIds) {
+      const messages = corpus.messagesBySession.get(sessionId) ?? [];
+      for (const m of messages) {
+        if (!m.model) continue;
+        const priced = estimateCost(m.model, m.inputTokens, m.outputTokens, m.cacheReadTokens, m.cacheCreationTokens);
+        if (priced.known) expectedAttributed += priced.cost;
+      }
+    }
+    expect(report.coverage.attributedCost).toBeCloseTo(expectedAttributed, 6);
     expect(report.coverage.totalCost).toBeGreaterThan(0);
 
     // Every key the fixture recorded a link for shows up in the report
@@ -583,6 +709,56 @@ describe("getTicketCostReport (query path)", () => {
     for (const row of scoped.tickets) {
       for (const sid of row.sessionIds) expect(alphaIds.has(sid)).toBe(true);
     }
+  });
+
+  // A5: `getActiveTicketLinks` had no ORDER BY, so equal-cost tickets resolved
+  // in SQLite's unspecified scan order — a latent flake for any caller/test
+  // indexing `tickets[0]`. Insert deliberately OUT of the expected order and
+  // assert the store still returns them sorted: this only passes if an
+  // explicit ORDER BY is doing the work, not by accident of insertion order.
+  it("returns active ticket links in a deterministic total order, not insertion order (A5)", () => {
+    store.upsertSession({
+      sessionId: "s-a5",
+      projectPath: "/w/a5",
+      sourceFile: "/tmp/s-a5.jsonl",
+      firstTimestamp: FIXED_NOW,
+      lastTimestamp: FIXED_NOW + 1_000,
+      claudeVersion: "2.1.70",
+      entrypoint: "claude-cli",
+      gitBranch: null,
+      permissionMode: "default",
+      isInteractive: true,
+      promptCount: 1,
+      assistantMessageCount: 1,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      webSearchRequests: 0,
+      webFetchRequests: 0,
+      toolUseCounts: [],
+      models: ["claude-sonnet-5"],
+      repoUrl: null,
+      accountUuid: null,
+      organizationUuid: null,
+      subscriptionType: null,
+      thinkingBlocks: 0,
+      parentSessionId: null,
+      isSubagent: false,
+      sourceDeleted: false,
+      throttleEvents: 0,
+      activeDurationMs: null,
+      medianResponseTimeMs: null,
+    });
+
+    // Inserted in REVERSE key order on purpose.
+    store.addTicketLink({ sessionId: "s-a5", ticketKey: "PROJ-9", source: "branch", confidence: "high" });
+    store.addTicketLink({ sessionId: "s-a5", ticketKey: "PROJ-2", source: "branch", confidence: "high" });
+    store.addTicketLink({ sessionId: "s-a5", ticketKey: "PROJ-5", source: "branch", confidence: "high" });
+
+    const links = store.getActiveTicketLinks();
+    const keys = links.filter((l) => l.session_id === "s-a5").map((l) => l.ticket_key);
+    expect(keys).toEqual(["PROJ-2", "PROJ-5", "PROJ-9"]);
   });
 });
 
@@ -690,6 +866,74 @@ describe("get_cost_per_ticket (MCP)", () => {
     const result = await client.callTool({ name: "get_cost_per_ticket", arguments: { period: "all", ticket: "NOPE-999999" } });
     const data = textOf(result);
     expect(data).toHaveProperty("error");
+  });
+});
+
+// ─── A1: tool descriptions must never promise a CLI surface that doesn't exist ─
+//
+// `get_cost_per_ticket`'s description told the calling model to run
+// `claude-stats ticket <session> <KEY>` (manual link) and `--negate`
+// (tombstone) — neither verb is registered by the CLI (Lane L / Phase 2
+// work). An LLM reading the description has no way to know that; it would
+// confidently hand the user a command that fails. This check is mechanical
+// and general — it fails for ANY tool whose description references a
+// `claude-stats <verb>` invocation the CLI doesn't actually register, so the
+// class of drift (not just this one instance) is caught as lanes land.
+
+describe("MCP tool descriptions never reference an unregistered CLI verb (A1)", () => {
+  it("every `claude-stats <verb>` mentioned in a tool description names a real registered command", async () => {
+    const { buildCli } = await import("../cli/index.js");
+    const program = await buildCli();
+
+    // Every registered command name, walked recursively so nested
+    // subcommands (`recap precompute`, `tags rename`, …) count too — though
+    // only the FIRST word after `claude-stats ` (the verb) is ever checked
+    // below, since that's what `get_cost_per_ticket` got wrong.
+    type CliCommand = Awaited<ReturnType<typeof buildCli>>;
+    const registered = new Set<string>();
+    const collectNames = (cmd: CliCommand): void => {
+      for (const sub of cmd.commands as CliCommand[]) {
+        registered.add(sub.name());
+        collectNames(sub);
+      }
+    };
+    collectNames(program);
+    expect(registered.size).toBeGreaterThan(0); // sanity: the walk actually found commands
+
+    const localTmpDir = mkdtempSync(join(tmpdir(), "claude-stats-mcp-drift-test-"));
+    const localDbPath = join(localTmpDir, "test.db");
+    const localStore = new Store(localDbPath);
+    try {
+      const server = createMcpServer(localStore);
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await server.connect(serverTransport);
+      const driftClient = new Client({ name: "drift-check-client", version: "1.0.0" });
+      await driftClient.connect(clientTransport);
+
+      const { tools } = await driftClient.listTools();
+      expect(tools.length).toBeGreaterThan(0);
+
+      // Scoped to backtick-fenced spans — this codebase's convention for a
+      // literal command example (see `get_cost_per_ticket`'s own
+      // `` `claude-stats report --ticket <KEY>` `` reference below) — so
+      // prose that merely mentions the product name ("the running
+      // claude-stats version") is never mistaken for an invocation.
+      const verbPattern = /`claude-stats\s+([a-zA-Z][\w-]*)/g;
+      const offenders: string[] = [];
+      for (const tool of tools) {
+        const description = tool.description ?? "";
+        for (const match of description.matchAll(verbPattern)) {
+          const verb = match[1]!;
+          if (!registered.has(verb)) {
+            offenders.push(`${tool.name}: references "claude-stats ${verb}" (${match[0]}…), which the CLI does not register`);
+          }
+        }
+      }
+      expect(offenders).toEqual([]);
+    } finally {
+      localStore.close();
+      rmSync(localTmpDir, { recursive: true, force: true });
+    }
   });
 });
 
