@@ -60,19 +60,6 @@
         }
       ]
     },
-    "models": {
-      "title": "Modele",
-      "sections": [
-        {
-          "heading": "Tokeny według modelu",
-          "body": "Skumulowany słupek pokazujący zużycie tokenów wejściowych i wyjściowych na model. Pomaga zobaczyć, których modeli używasz najintensywniej."
-        },
-        {
-          "heading": "Powody zatrzymania",
-          "body": "Jak często występuje każdy powód zatrzymania. „end_turn\" oznacza, że model zakończył naturalnie, „tool_use\" oznacza, że wywołał narzędzie, „max_tokens\" oznacza, że osiągnął limit wyjścia."
-        }
-      ]
-    },
     "projects": {
       "title": "Projekty",
       "sections": [
@@ -253,6 +240,19 @@
         {
           "heading": "Gdzie są zapisywane ustawienia",
           "body": "Wszystkie ustawienia są zapisywane w ~/.claude-stats/config.json. Możesz także edytować ten plik bezpośrednio."
+        }
+      ]
+    },
+    "classify": {
+      "title": "Klasyfikacja",
+      "sections": [
+        {
+          "heading": "Do czego służy ta karta",
+          "body": "Przypisz każdy projekt do subskrypcji, która ma być za niego rozliczana. Projekty są uszeregowane według kosztu, więc sklasyfikowanie kilku pierwszych obejmuje większość Twoich wydatków."
+        },
+        {
+          "heading": "Tylko w VS Code",
+          "body": "Klasyfikacja projektów jest dostępna w panelu VS Code; pulpit nawigacyjny udostępniany w przeglądarce jej nie oferuje."
         }
       ]
     }

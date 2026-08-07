@@ -6,6 +6,9 @@
 import type { DashboardData } from "../dashboard/index.js";
 import { PRICING, PRICING_VERIFIED_DATE } from "@claude-stats/core/pricing";
 import { formatEnergy, formatCO2, REGIONS } from "@claude-stats/core/energy";
+import { answerCost } from "@claude-stats/core/insight";
+import { visibleNavTabs } from "./nav.js";
+import { renderCard, CARD_TOKENS_CSS, CARD_CSS } from "./card.js";
 
 export { DashboardData };
 
@@ -31,7 +34,6 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     .replace(/</g, "\\u003c")
     .replace(/-->/g, "--\\u003e");
 
-  const formattedCost = `$${data.summary.estimatedCost.toFixed(2)}`;
   const cacheEff = `${data.summary.cacheEfficiency.toFixed(1)}%`;
   const planFee = data.summary.planFee;
   const showPlan = planFee > 0;
@@ -501,6 +503,8 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     .footer {
       margin-top: 1.5rem; font-size: 0.7rem; color: #555; text-align: center;
     }
+${CARD_TOKENS_CSS}
+${CARD_CSS}
   </style>
 </head>
 <body>
@@ -532,16 +536,9 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   </div>
 
   <div class="tab-bar">
-    <button class="tab-btn active" data-tab="overview">${t("dashboard:tabs.overview")}</button>
-    ${data.energy ? `<button class="tab-btn" data-tab="energy">${t("dashboard:tabs.energy")}</button>` : ""}
-    ${data.spending ? `<button class="tab-btn" data-tab="spending">Spending</button>` : ""}
-    <button class="tab-btn" data-tab="projects">${t("dashboard:tabs.projects")}</button>
-    <button class="tab-btn" data-tab="sessions">${t("dashboard:tabs.sessions")}</button>
-    <button class="tab-btn" data-tab="plan">${t("dashboard:tabs.plan")}</button>
-    ${data.contextAnalysis ? `<button class="tab-btn" data-tab="context">${t("dashboard:tabs.context")}</button>` : ""}
-    ${data.modelEfficiency ? `<button class="tab-btn" data-tab="efficiency">${t("dashboard:tabs.efficiency")}</button>` : ""}
-    <button class="tab-btn" data-tab="classify">${t("dashboard:tabs.classify")}</button>
-    <button class="tab-btn" data-tab="settings">${t("dashboard:tabs.settings")}</button>
+    ${visibleNavTabs(data)
+      .map((tab, i) => `<button class="tab-btn${i === 0 ? " active" : ""}" data-tab="${tab.id}">${t(tab.labelKey)}</button>`)
+      .join("\n    ")}
   </div>
 
   <!-- ═══════════════ TAB: Overview ═══════════════ -->
@@ -587,10 +584,16 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <div class="label">${t("dashboard:summary.cacheEfficiency")}</div>
         <div class="value">${cacheEff}</div>
       </div>
-      <div class="summary-card">
-        <div class="label">${t("dashboard:summary.estCost")}</div>
-        <div class="value">${formattedCost}</div>
-      </div>
+      ${renderCard(
+        answerCost({
+          mode: showPlan ? "plan" : "metered",
+          cost: data.summary.estimatedCost,
+          previousCost: null,
+          planFee: showPlan ? planFee : null,
+          planMultiplier: showPlan ? data.summary.planMultiplier : null,
+        }),
+        { id: "card-cost", title: t("dashboard:summary.estCost") },
+      )}
       ${(cpt && cpt.tasksTotal > 0 && cpt.costPerSuccessfulTask !== null) ? `
       <div class="summary-card">
         <div class="label">${t("dashboard:costPerTask.title")}</div>

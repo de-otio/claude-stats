@@ -60,19 +60,6 @@
         }
       ]
     },
-    "models": {
-      "title": "Modelle",
-      "sections": [
-        {
-          "heading": "Token nach Modell",
-          "body": "Gestapelter Balken mit Eingabe- und Ausgabe-Token-Verbrauch pro Modell. Hilft Ihnen zu erkennen, welche Modelle Sie am intensivsten nutzen."
-        },
-        {
-          "heading": "Abbruchgründe",
-          "body": "Wie häufig jeder Abbruchgrund auftritt. «end_turn» bedeutet, das Modell hat regulär beendet, «tool_use» bedeutet, es hat ein Tool aufgerufen, «max_tokens» bedeutet, es hat das Ausgabelimit erreicht."
-        }
-      ]
-    },
     "projects": {
       "title": "Projekte",
       "sections": [
@@ -237,6 +224,19 @@
         {
           "heading": "Wo Einstellungen gespeichert werden",
           "body": "Alle Einstellungen werden in ~/.claude-stats/config.json gespeichert. Sie können diese Datei auch direkt bearbeiten."
+        }
+      ]
+    },
+    "classify": {
+      "title": "Klassifizieren",
+      "sections": [
+        {
+          "heading": "Wozu dieser Tab dient",
+          "body": "Ordnen Sie jedes Projekt dem Abonnement zu, über das es abgerechnet werden soll. Die Projekte sind nach Kosten sortiert – wenn Sie die obersten klassifizieren, ist der Großteil Ihrer Ausgaben abgedeckt."
+        },
+        {
+          "heading": "Nur in VS Code",
+          "body": "Die Projektklassifizierung ist im VS Code-Panel verfügbar; das im Browser bereitgestellte Dashboard bietet sie nicht."
         }
       ]
     }

@@ -2,6 +2,7 @@
   "pageTitle": "Claude Stats — {{period}} ({{date}})",
   "tabs": {
     "overview": "Overview",
+    "spending": "Spending",
     "projects": "Projects",
     "sessions": "Sessions",
     "plan": "Plan",

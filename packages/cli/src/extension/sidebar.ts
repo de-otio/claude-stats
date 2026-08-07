@@ -7,9 +7,12 @@
 import * as vscode from "vscode";
 import { getNonce, escapeHtml } from "./utils.js";
 import { t } from "./i18n.js";
+import { NAV_TAB_IDS } from "../server/nav.js";
 
-/** Known tab IDs for help content lookup. */
-const TAB_IDS = ["overview", "spending", "models", "projects", "sessions", "plan", "context", "efficiency", "energy", "settings"] as const;
+/** Known tab IDs for help content lookup — derived from the single nav
+ *  definition in `server/nav.ts` so this list can't drift from the tab bar
+ *  the dashboard actually renders (doc/analysis/gui-redesign/03 §3.3 item 2). */
+const TAB_IDS = NAV_TAB_IDS;
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = "claude-stats.dashboardView";

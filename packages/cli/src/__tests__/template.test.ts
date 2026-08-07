@@ -6,7 +6,14 @@ import { initI18n } from "@claude-stats/core/i18n";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const enDashboard = require("@claude-stats/core/locales/en/dashboard.json") as Record<string, unknown>;
+// Deliberately NOT `require("@claude-stats/core/locales/en/dashboard.json")`:
+// that's a raw Node `require`, unaffected by Vite/vitest aliasing, and Node's
+// own package resolution from inside a git worktree (no local node_modules)
+// walks up to the PARENT repo's node_modules/@claude-stats/core — a
+// different checkout's dist — so a locale key added in this worktree would
+// silently read as missing. A relative path into this worktree's own source
+// is the only resolution that can't drift from the file under test.
+const enDashboard = require("../../../core/src/locales/en/dashboard.json") as Record<string, unknown>;
 
 const i18nInstance = await initI18n({
   lng: "en",
@@ -1138,6 +1145,86 @@ describe("renderDashboard", () => {
       // Host bridge present for both hosts (fetch + postMessage).
       expect(html).toContain("/api/backup/");
       expect(html).toContain("backupAction");
+    });
+  });
+
+  // ─── G0: nav definition drives the tab bar ─────────────────────────────────
+  describe("tab bar — driven by the single nav definition", () => {
+    it("renders exactly the tabs NAV_TABS says are visible for this data, in order", () => {
+      const html = renderDashboard(mockData, t);
+      // mockData has no energy/spending/contextAnalysis/modelEfficiency.
+      const order = ["overview", "projects", "sessions", "plan", "classify", "settings"];
+      let cursor = -1;
+      for (const id of order) {
+        const idx = html.indexOf(`data-tab="${id}"`);
+        expect(idx).toBeGreaterThan(cursor);
+        cursor = idx;
+      }
+      expect(html).not.toContain('data-tab="energy"');
+      expect(html).not.toContain('data-tab="spending"');
+      expect(html).not.toContain('data-tab="context"');
+      expect(html).not.toContain('data-tab="efficiency"');
+    });
+
+    it("shows the Spending tab, localized (no longer a hardcoded literal), when data.spending is present", () => {
+      const withSpending: DashboardData = {
+        ...mockData,
+        spending: {
+          topSessionsByCost: [],
+          topToolsByCost: [],
+          costByModel: [],
+          expensivePrompts: [],
+          cacheEfficiency: { overallHitRate: 0, estimatedSavings: 0 },
+          mcpServers: [],
+          mcpServerUsage: [],
+          subagentOverhead: { totalCost: 0, agentCount: 0 },
+        } as unknown as DashboardData["spending"],
+      };
+      const html = renderDashboard(withSpending, t);
+      expect(html).toContain('data-tab="spending"');
+      expect(html).toContain(">Spending<");
+    });
+
+    it("the first visible tab is marked active", () => {
+      const html = renderDashboard(mockData, t);
+      expect(html).toMatch(/<button class="tab-btn active" data-tab="overview">/);
+    });
+  });
+
+  // ─── G0: card module — behavior comparison, not a DOM snapshot ─────────────
+  // Numbers must not move when markup moves. The pre-migration cost card
+  // rendered `<div class="value">$3.75</div>`; the post-migration renderCard()
+  // card must still surface the exact figure "$3.75" for the same
+  // DashboardData, just inside new markup.
+  describe("cost card — migrated to renderCard()", () => {
+    it("renders the same dollar figure as before migration for a representative cost", () => {
+      // mockData.summary.estimatedCost === 3.75, planFee === 0 (metered mode).
+      const html = renderDashboard(mockData, t);
+      expect(html).toContain('id="card-cost"');
+      expect(html).toContain("$3.75");
+    });
+
+    it("carries the plan-mode caveat and multiplier clause when on a plan", () => {
+      const withPlan: DashboardData = {
+        ...mockData,
+        summary: { ...mockData.summary, planFee: 100, planMultiplier: 3.75 },
+      };
+      const html = renderDashboard(withPlan, t);
+      expect(html).toContain('id="card-cost"');
+      expect(html).toContain("3.8"); // plan multiplier clause, rounded to 1 decimal
+      expect(html).toContain("Equivalent API cost");
+    });
+
+    it("renders the honest-unavailable state, not a fabricated $0.00, when there is no usage", () => {
+      const noUsage: DashboardData = {
+        ...mockData,
+        summary: { ...mockData.summary, estimatedCost: 0 },
+      };
+      const html = renderDashboard(noUsage, t);
+      expect(html).toContain('id="card-cost"');
+      expect(html).toContain("cs-card-unavailable");
+      expect(html).toContain("No usage recorded for this period.");
+      expect(html).not.toContain("$0.00");
     });
   });
 });
