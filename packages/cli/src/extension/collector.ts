@@ -13,6 +13,7 @@ import type * as vscode from "vscode";
 import { paths } from "@claude-stats/core/paths";
 import { Store } from "../store/index.js";
 import { collect } from "../aggregator/index.js";
+import { loadConfig, ticketProjectKeys } from "../config.js";
 
 const DEBOUNCE_MS = 5_000;
 
@@ -85,7 +86,7 @@ export class AutoCollector implements vscode.Disposable {
     try {
       const store = new Store();
       try {
-        await collect(store, {});
+        await collect(store, { ticketAllowlist: ticketProjectKeys(loadConfig()) });
       } finally {
         store.close();
       }

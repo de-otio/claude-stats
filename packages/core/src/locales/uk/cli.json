@@ -174,7 +174,8 @@
     "costPerTaskByModel": "Розбити метрику за домінуючою моделлю",
     "costPerTaskCalibrate": "Вивести метрики калібрування (узгодженість проксі/сигналів з вашими мітками) у форматі JSON",
     "costPerTaskLlmJudge": "Запустити опціонального LLM-суддю для неоднозначних завдань (потребує налаштування llmJudge; надсилає знеособлену зведену інформацію про завдання на ваш ендпоінт)",
-    "costPerTaskLlmJudgeUnconfigured": "Запитано --llm-judge, але llmJudge.endpoint/model не задані; суддю пропущено."
+    "costPerTaskLlmJudgeUnconfigured": "Запитано --llm-judge, але llmJudge.endpoint/model не задані; суддю пропущено.",
+    "reportTicket": "Показати вартість/токени/сесії, віднесені до одного ключа тікета (напр. PROJ-123), а також покриття за період"
   },
   "collection": {
     "collecting": "Збирання...",
@@ -273,7 +274,18 @@
     "costPerTaskByModel": "За моделлю",
     "costPerTaskSuccessShort": "успіх",
     "costPerTaskInsufficient": "n/a (<{{min}} спост.)",
-    "costPerTaskObsShort": "спост."
+    "costPerTaskObsShort": "спост.",
+    "ticketTitle": "Тікет {{key}} — {{period}}",
+    "ticketNotFound": "Не знайдено витрат, віднесених до {{key}} за цей період — перевірте ключ і діапазон дат.",
+    "ticketTokensLabel": "Токени",
+    "ticketSourcesLabel": "Джерела",
+    "ticketCoverageTitle": "Покриття періоду",
+    "ticketCoverageLine": "{{attributed}} з {{total}} віднесено ({{ratio}})",
+    "ticketCoverageNone": "За цей період використання не зафіксовано.",
+    "ticketAmbiguousNote": "Неоднозначних сесій: {{count}} (пов'язані з кількома тікетами).",
+    "confidenceHigh": "висока достовірність",
+    "confidenceMedium": "середня достовірність",
+    "confidenceLow": "низька достовірність"
   },
   "status": {
     "databaseSize": "Розмір бази даних",

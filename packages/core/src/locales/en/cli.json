@@ -131,6 +131,7 @@
     "reportDetail": "Show per-session listing instead of aggregate",
     "reportTrend": "Show usage broken down by time period instead of aggregate",
     "reportTag": "Filter sessions by tag",
+    "reportTicket": "Show cost/tokens/sessions attributed to one ticket key (e.g. PROJ-123), plus the period's coverage",
     "reportSession": "Show detailed view of a single session",
     "reportHtml": "Write a self-contained HTML report to a file",
     "status": "Show database size, row counts, and last collection time",
@@ -273,7 +274,18 @@
     "costPerTaskByModel": "By model",
     "costPerTaskSuccessShort": "success",
     "costPerTaskInsufficient": "n/a (<{{min}} obs)",
-    "costPerTaskObsShort": "obs"
+    "costPerTaskObsShort": "obs",
+    "ticketTitle": "Ticket {{key}} — {{period}}",
+    "ticketNotFound": "No attributed spend found for {{key}} in this period — check the key and the date range.",
+    "ticketTokensLabel": "Tokens",
+    "ticketSourcesLabel": "Sources",
+    "ticketCoverageTitle": "Period coverage",
+    "ticketCoverageLine": "{{attributed}} of {{total}} attributed ({{ratio}})",
+    "ticketCoverageNone": "No usage recorded for this period.",
+    "ticketAmbiguousNote": "{{count}} session(s) ambiguous (linked to more than one ticket).",
+    "confidenceHigh": "high confidence",
+    "confidenceMedium": "medium confidence",
+    "confidenceLow": "low confidence"
   },
   "status": {
     "databaseSize": "Database size",

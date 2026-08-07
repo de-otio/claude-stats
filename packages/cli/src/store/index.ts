@@ -2315,6 +2315,41 @@ export class Store {
       .all() as Array<{ ticket_key: string; session_count: number }>;
   }
 
+  /**
+   * Every ACTIVE (non-tombstoned) `ticket_links` row, source-graded, across the
+   * whole store. Query-path building block for per-ticket cost aggregation
+   * (`packages/cli/src/ticketing/index.ts`): the caller already knows which
+   * sessions fall in its reporting window (from `getSessionIdsWithMessages`
+   * under the SAME filters used to price them), so intersecting there — rather
+   * than this method taking its own period/project/account filter — keeps
+   * exactly one source of truth for "which sessions are in scope" instead of
+   * two overlapping filter implementations that could drift apart.
+   *
+   * Same two-clause tombstone rule as `getTicketKeys` / `ticketPredicate`, at
+   * row (not just distinct-key) granularity, since aggregation needs every
+   * corroborating source row to grade confidence correctly.
+   */
+  getActiveTicketLinks(): Array<{
+    session_id: string;
+    ticket_key: string;
+    source: string;
+    confidence: string;
+  }> {
+    return this.db
+      .prepare(
+        `SELECT tl.session_id, tl.ticket_key, tl.source, tl.confidence
+           FROM ticket_links tl
+          WHERE tl.negated = 0
+            AND NOT EXISTS (
+              SELECT 1 FROM ticket_links tn
+               WHERE tn.session_id = tl.session_id
+                 AND tn.ticket_key = tl.ticket_key
+                 AND tn.negated = 1
+            )`,
+      )
+      .all() as Array<{ session_id: string; ticket_key: string; source: string; confidence: string }>;
+  }
+
   // ─── Usage windows ──────────────────────────────────────────────────────────
 
   upsertUsageWindow(w: UsageWindow): void {

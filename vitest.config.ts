@@ -12,6 +12,7 @@ export default defineConfig({
       "@claude-stats/core/types/shard": path.resolve(__dirname, "packages/core/src/types/shard.ts"),
       "@claude-stats/core/types/insight": path.resolve(__dirname, "packages/core/src/types/insight.ts"),
       "@claude-stats/core/tickets": path.resolve(__dirname, "packages/core/src/tickets.ts"),
+      "@claude-stats/core/attribution": path.resolve(__dirname, "packages/core/src/attribution.ts"),
       "@claude-stats/core/insight": path.resolve(__dirname, "packages/core/src/insight.ts"),
       "@claude-stats/core/bundle": path.resolve(__dirname, "packages/core/src/bundle/index.ts"),
       "@claude-stats/core/types": path.resolve(__dirname, "packages/core/src/types.ts"),

@@ -5,9 +5,9 @@
 import { Command } from "commander";
 import { collect } from "../aggregator/index.js";
 import { Store, validateTag } from "../store/index.js";
-import { printSummary, printStatus, printSearchResults, printSessionList, printSessionDetail, printTrend, printSpendingReport, periodRange } from "../reporter/index.js";
+import { printSummary, printStatus, printSearchResults, printSessionList, printSessionDetail, printTrend, printSpendingReport, printTicketReport, periodRange } from "../reporter/index.js";
 import { searchHistory } from "../history/index.js";
-import { loadConfig, saveConfig, createJudgeProviderFromConfig } from "../config.js";
+import { loadConfig, saveConfig, createJudgeProviderFromConfig, ticketProjectKeys } from "../config.js";
 import { checkThresholds } from "../alerts.js";
 import { formatCost } from "@claude-stats/core/pricing";
 import { buildDashboard } from "../dashboard/index.js";
@@ -72,7 +72,7 @@ export async function buildCli(): Promise<Command> {
       const store = new Store();
       try {
         console.log(t("cli:collection.collecting"));
-        const result = await collect(store, { verbose: opts.verbose });
+        const result = await collect(store, { verbose: opts.verbose, ticketAllowlist: ticketProjectKeys(loadConfig()) });
         const msg = result.accountsMatched > 0
           ? t("cli:collection.doneWithAccounts", {
               filesProcessed: result.filesProcessed,
@@ -137,6 +137,7 @@ export async function buildCli(): Promise<Command> {
     .option("--detail", t("cli:commands.reportDetail"))
     .option("--trend", t("cli:commands.reportTrend"))
     .option("--tag <tag>", t("cli:commands.reportTag"))
+    .option("--ticket <key>", t("cli:commands.reportTicket"))
     .option("--session <id>", t("cli:commands.reportSession"))
     .option("--html [outfile]", t("cli:commands.reportHtml"))
     .action(
@@ -154,6 +155,7 @@ export async function buildCli(): Promise<Command> {
         trend?: boolean;
         session?: string;
         tag?: string;
+        ticket?: string;
         html?: string | boolean;
       }) => {
         loadCachedPricing();
@@ -174,6 +176,7 @@ export async function buildCli(): Promise<Command> {
             accountUuid: opts.account,
             entrypoint: opts.source,
             tag: opts.tag,
+            ticket: opts.ticket,
             period: opts.period as "day" | "week" | "month" | "all" | undefined,
             since: opts.since,
             until: opts.until,
@@ -195,7 +198,9 @@ export async function buildCli(): Promise<Command> {
             console.log(t("cli:report.wroteFile", { file: outfile }));
             return;
           }
-          if (opts.session) {
+          if (opts.ticket) {
+            printTicketReport(store, reportOpts);
+          } else if (opts.session) {
             printSessionDetail(store, opts.session, reportOpts);
           } else if (opts.trend) {
             // Default to "month" when --trend used without explicit --period
@@ -317,7 +322,7 @@ export async function buildCli(): Promise<Command> {
         process.stderr.write(t("cli:commands.costPerTaskLlmJudgeUnconfigured") + "\n");
       }
       const store = new Store();
-      await collect(store);
+      await collect(store, { ticketAllowlist: ticketProjectKeys(config) });
       try {
         let embeddingProvider = null;
         try {
@@ -383,7 +388,7 @@ export async function buildCli(): Promise<Command> {
         }
       }
       const store = new Store();
-      await collect(store);
+      await collect(store, { ticketAllowlist: ticketProjectKeys(loadConfig()) });
       try {
         const digest = await buildDailyDigest(store, {});
         const item = await resolveItem(digest, itemSelector);
@@ -695,7 +700,7 @@ export async function buildCli(): Promise<Command> {
       try {
         const count = store.resetCheckpoints();
         console.log(t("cli:backfill.resetCheckpoints", { count }));
-        const result = await collect(store, { verbose: opts.verbose });
+        const result = await collect(store, { verbose: opts.verbose, ticketAllowlist: ticketProjectKeys(loadConfig()) });
         console.log(
           t("cli:backfill.complete", {
             filesProcessed: result.filesProcessed,
@@ -808,7 +813,7 @@ export async function buildCli(): Promise<Command> {
       const { createEmbeddingProvider } = await import("../recap/embeddings.js");
       const { printDailyRecap } = await import("../reporter/index.js");
       const store = new Store();
-      await collect(store);
+      await collect(store, { ticketAllowlist: ticketProjectKeys(loadConfig()) });
 
       // Parse and validate --embeddings flag
       const rawMode = opts.embeddings ?? 'auto';

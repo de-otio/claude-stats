@@ -174,7 +174,8 @@
     "costPerTaskByModel": "Desglosar la métrica por modelo dominante",
     "costPerTaskCalibrate": "Mostrar métricas de calibración (concordancia proxy/señal con tus etiquetas) como JSON",
     "costPerTaskLlmJudge": "Ejecutar el juez LLM opcional en tareas ambiguas (requiere configuración llmJudge; envía un resumen anonimizado de la tarea a tu endpoint)",
-    "costPerTaskLlmJudgeUnconfigured": "Se solicitó --llm-judge pero llmJudge.endpoint/model no están configurados; se omite el juez."
+    "costPerTaskLlmJudgeUnconfigured": "Se solicitó --llm-judge pero llmJudge.endpoint/model no están configurados; se omite el juez.",
+    "reportTicket": "Mostrar coste/tokens/sesiones atribuidos a una clave de ticket (p. ej. PROJ-123), además de la cobertura del periodo"
   },
   "collection": {
     "collecting": "Recopilando...",
@@ -273,7 +274,18 @@
     "costPerTaskByModel": "Por modelo",
     "costPerTaskSuccessShort": "éxito",
     "costPerTaskInsufficient": "n/a (<{{min}} obs.)",
-    "costPerTaskObsShort": "obs."
+    "costPerTaskObsShort": "obs.",
+    "ticketTitle": "Ticket {{key}} — {{period}}",
+    "ticketNotFound": "No se ha encontrado gasto atribuido a {{key}} en este periodo: comprueba la clave y el intervalo de fechas.",
+    "ticketTokensLabel": "Tokens",
+    "ticketSourcesLabel": "Fuentes",
+    "ticketCoverageTitle": "Cobertura del periodo",
+    "ticketCoverageLine": "{{attributed}} de {{total}} atribuido ({{ratio}})",
+    "ticketCoverageNone": "No se ha registrado uso en este periodo.",
+    "ticketAmbiguousNote": "{{count}} sesión(es) ambigua(s) (vinculadas a más de un ticket).",
+    "confidenceHigh": "confianza alta",
+    "confidenceMedium": "confianza media",
+    "confidenceLow": "confianza baja"
   },
   "status": {
     "databaseSize": "Tamaño de la base de datos",

@@ -174,7 +174,8 @@
     "costPerTaskByModel": "Разбить метрику по доминирующей модели",
     "costPerTaskCalibrate": "Вывести метрики калибровки (согласие прокси/сигналов с вашими метками) в формате JSON",
     "costPerTaskLlmJudge": "Запустить опциональный LLM-судью для неоднозначных задач (требует настройки llmJudge; отправляет обезличенную сводку задачи на ваш эндпоинт)",
-    "costPerTaskLlmJudgeUnconfigured": "Запрошен --llm-judge, но llmJudge.endpoint/model не заданы; судья пропускается."
+    "costPerTaskLlmJudgeUnconfigured": "Запрошен --llm-judge, но llmJudge.endpoint/model не заданы; судья пропускается.",
+    "reportTicket": "Показать стоимость, токены и сессии, отнесённые к одному ключу задачи (например, PROJ-123), а также покрытие за период"
   },
   "collection": {
     "collecting": "Сбор...",
@@ -273,7 +274,18 @@
     "costPerTaskByModel": "По моделям",
     "costPerTaskSuccessShort": "успех",
     "costPerTaskInsufficient": "n/a (<{{min}} набл.)",
-    "costPerTaskObsShort": "набл."
+    "costPerTaskObsShort": "набл.",
+    "ticketTitle": "Задача {{key}} — {{period}}",
+    "ticketNotFound": "Расходы, отнесённые к {{key}}, за этот период не найдены — проверьте ключ и диапазон дат.",
+    "ticketTokensLabel": "Токены",
+    "ticketSourcesLabel": "Источники",
+    "ticketCoverageTitle": "Покрытие периода",
+    "ticketCoverageLine": "Отнесено {{attributed}} из {{total}} ({{ratio}})",
+    "ticketCoverageNone": "За этот период использование не зафиксировано.",
+    "ticketAmbiguousNote": "Неоднозначных сессий: {{count}} (связаны более чем с одной задачей).",
+    "confidenceHigh": "высокая достоверность",
+    "confidenceMedium": "средняя достоверность",
+    "confidenceLow": "низкая достоверность"
   },
   "status": {
     "databaseSize": "Размер базы данных",

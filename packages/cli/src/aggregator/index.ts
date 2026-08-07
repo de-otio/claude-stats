@@ -19,9 +19,19 @@ import { assignAccounts } from "../attribution/assign.js";
 import type { ExternalAccountInfo } from "../attribution/assign.js";
 import { collectLiveSessionPins } from "../attribution/anchors.js";
 import { resolveOwner } from "../attribution/ownership.js";
+import { runTicketExtraction } from "../ticketing/index.js";
 
 export interface CollectOptions {
   verbose?: boolean;
+  /**
+   * `config.tickets.projectKeys` (ticket-attribution/01 §1.1). Threaded
+   * through explicitly, like the `now` clock below, rather than `collect`
+   * calling `loadConfig()` itself — keeps this function's behavior fully
+   * determined by its arguments, which is what makes it testable without a
+   * config file on disk. Callers: `loadConfig().tickets?.projectKeys` (or
+   * `ticketProjectKeys(loadConfig())` from `../config.js`).
+   */
+  ticketAllowlist?: readonly string[];
 }
 
 export interface CollectResult {
@@ -236,6 +246,16 @@ export async function collect(
       // transaction as the upserts, so a crash can't leave the two disagreeing.
       if (parsed.session) {
         store.recomputeSessionAggregates([parsed.session.sessionId]);
+
+        // Ticket extraction (ticket-attribution/02 §2.4) — runs per upserted
+        // session, after aggregates so `first/last_timestamp` and `git_branch`
+        // reflect the full session rather than just this parse's slice. Reads
+        // back the fresh row rather than reusing `parsed.session`, which for
+        // the incremental (append) path only carries THIS run's delta.
+        const freshSession = store.findSession(parsed.session.sessionId);
+        if (freshSession) {
+          runTicketExtraction(store, freshSession, { allowlist: opts.ticketAllowlist });
+        }
       }
 
       store.upsertCheckpoint({

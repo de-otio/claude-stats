@@ -521,6 +521,127 @@ export function createMcpServer(store: Store): McpServer {
     },
   );
 
+  // ── get_cost_per_ticket ────────────────────────────────────────────────────
+  server.tool(
+    "get_cost_per_ticket",
+    "Get cost attributed to work-item (Jira-style) ticket keys, from locally " +
+      "observed evidence — git branch names, commit subjects, and prompt-text " +
+      "mentions. No Jira API is called; the ticket key is the entire interface.\n\n" +
+      "Every figure carries its CONFIDENCE tier (high/medium/low — see the accuracy " +
+      "ladder in doc/analysis/ticket-attribution/01) and the report's `coverage` " +
+      "field states what fraction of the WINDOW's total spend is attributed at all " +
+      "— never claim 100% attribution without checking it. A session linked to more " +
+      "than one ticket with no message-level evidence to split on is AMBIGUOUS: its " +
+      "cost is counted once in `coverage` but shown under every key it's linked to " +
+      "in `tickets` (never silently split), so per-ticket costs can sum to more than " +
+      "`coverage.attributedCost` when ambiguity exists — read `coverage.ambiguousSessions`.\n\n" +
+      "Pass `ticket` to drill into ONE key's evidence (which sessions, which source, " +
+      "which branch/commit matched) instead of the whole-window table. " +
+      "READ-ONLY: use the CLI `claude-stats ticket <session> <KEY>` (manual link) or " +
+      "`--negate` (tombstone a wrong automatic one) to correct attribution.",
+    {
+      ...dateRangeShape,
+      project: z.string().optional()
+        .describe("Filter to a specific project path"),
+      account: z.string().optional()
+        .describe("Filter to a specific account UUID (full or prefix match)"),
+      ticket: z.string().optional()
+        .describe("Drill into one ticket key (e.g. PROJ-123) and return its linked sessions with evidence"),
+    },
+    async ({ period, since, until, project, account, ticket }) => {
+      const resolved = resolveAccountFilter(store, account);
+      if (!resolved.ok) return formatResult({ error: resolved.error });
+      const effectivePeriod = period ?? "month";
+      const { periodRange } = await import("../reporter/index.js");
+      const { getTicketCostReport } = await import("../ticketing/index.js");
+      const { formatMoney, formatPercent, confidenceCaveat } = await import("@claude-stats/core/insight");
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const range = periodRange({ period: effectivePeriod, since, until }, tz);
+
+      const report = getTicketCostReport(store, {
+        since: range.since > 0 ? range.since : undefined,
+        until: range.until,
+        projectPath: project,
+        accountUuid: resolved.accountUuid,
+      });
+
+      const coverageLine = report.coverage.totalCost > 0
+        ? `${formatMoney(report.coverage.attributedCost)} of ${formatMoney(report.coverage.totalCost)} attributed (${formatPercent(report.coverage.ratio)}).`
+        : "No usage recorded for this period.";
+
+      const base = {
+        window: { since: new Date(range.since).toISOString(), until: new Date(range.until).toISOString() },
+        coverage: {
+          attributedCost: report.coverage.attributedCost,
+          totalCost: report.coverage.totalCost,
+          unattributedCost: Math.max(0, report.coverage.totalCost - report.coverage.attributedCost),
+          ratio: report.coverage.ratio,
+          byConfidence: report.coverage.byConfidence,
+          ambiguousSessions: report.coverage.ambiguousSessions,
+          summary: coverageLine,
+          confidenceCaveat: confidenceCaveat(report.coverage),
+        },
+        unknownModelTokens: report.unknownTokens,
+      };
+
+      if (ticket) {
+        const row = report.tickets.find((t) => t.ticketKey === ticket.trim().toUpperCase());
+        if (!row) {
+          return formatResult({
+            ...base,
+            ticket: ticket.trim().toUpperCase(),
+            error: "No attributed spend found for this key in the given window — check the key and the period.",
+          });
+        }
+        // Evidence drill-down: which sessions, which source, what matched.
+        const sessions = row.sessionIds.map((sessionId) => {
+          const links = store
+            .getTicketLinksForSession(sessionId)
+            .filter((l) => l.ticket_key === row.ticketKey && l.negated === 0);
+          return {
+            sessionId,
+            links: links.map((l) => ({
+              source: l.source,
+              confidence: l.confidence,
+              granularity: l.granularity,
+              evidence: l.evidence,
+            })),
+          };
+        });
+        return formatResult({
+          ...base,
+          ticket: {
+            ticketKey: row.ticketKey,
+            cost: row.cost,
+            inputTokens: row.inputTokens,
+            outputTokens: row.outputTokens,
+            cacheReadTokens: row.cacheReadTokens,
+            cacheCreationTokens: row.cacheCreationTokens,
+            sessionCount: row.sessionCount,
+            confidence: row.confidence,
+            sources: row.sources,
+            sessions,
+          },
+        });
+      }
+
+      return formatResult({
+        ...base,
+        tickets: report.tickets.map((t) => ({
+          ticketKey: t.ticketKey,
+          cost: t.cost,
+          inputTokens: t.inputTokens,
+          outputTokens: t.outputTokens,
+          cacheReadTokens: t.cacheReadTokens,
+          cacheCreationTokens: t.cacheCreationTokens,
+          sessionCount: t.sessionCount,
+          confidence: t.confidence,
+          sources: t.sources,
+        })),
+      });
+    },
+  );
+
   // ── get_account_info ──────────────────────────────────────────────────────
   server.tool(
     "get_account_info",
@@ -655,6 +776,7 @@ export async function startMcpServer(): Promise<void> {
   const { Store } = await import("../store/index.js");
   const { collect } = await import("../aggregator/index.js");
   const { initPricingCache } = await import("../pricing-cache.js");
+  const { loadConfig, ticketProjectKeys } = await import("../config.js");
 
   // Load the fetched pricing cache before serving any tool calls — otherwise
   // this long-lived process runs its whole lifetime on DEFAULT_PRICING alone
@@ -662,7 +784,7 @@ export async function startMcpServer(): Promise<void> {
   await initPricingCache();
 
   const store = new Store();
-  await collect(store);
+  await collect(store, { ticketAllowlist: ticketProjectKeys(loadConfig()) });
 
   const server = createMcpServer(store);
   const transport = new StdioServerTransport();
