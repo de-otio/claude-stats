@@ -45,6 +45,7 @@ import { Store } from "../store/index.js";
 import type { DailyDigest, DailyDigestItem } from "../recap/types.js";
 import { FIXED_NOW } from "./fixtures/synthetic.js";
 
+let tmpRoot: string;
 let cliDbPath: string;
 
 vi.mock("../store/index.js", async (importOriginal) => {
@@ -157,8 +158,15 @@ describe("claude-stats recap correct ticket (CLI verb, end-to-end)", () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    cliDbPath = path.join(os.tmpdir(), `cs-recap-ticket-cli-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
-    corrDbPath = path.join(os.tmpdir(), `cs-recap-ticket-corr-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+    // Own subdirectory, not `os.tmpdir()` itself: `openCorrections` calls
+    // `ensurePrivateDir(path.dirname(dbPath))`, which chmods 0700. Pointed at
+    // the OS temp ROOT that raises EPERM — but only where the process does not
+    // own it, so this passed under a sandbox with a private TMPDIR and failed
+    // on a real machine. `mkdtempSync` also removes the Date.now()/Math.random()
+    // the path was using for uniqueness.
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cs-recap-ticket-"));
+    cliDbPath = path.join(tmpRoot, "cli.db");
+    corrDbPath = path.join(tmpRoot, "corrections.db");
     realStore = new Store();
     seedSession(realStore, "cli-ticket-sess-1");
     seedSession(realStore, "cli-ticket-sess-2");
@@ -167,8 +175,7 @@ describe("claude-stats recap correct ticket (CLI verb, end-to-end)", () => {
 
   afterEach(() => {
     realStore.close();
-    try { fs.unlinkSync(cliDbPath); } catch { /* ok */ }
-    try { fs.unlinkSync(corrDbPath); } catch { /* ok */ }
+    try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch { /* ok */ }
     vi.restoreAllMocks();
   });
 
