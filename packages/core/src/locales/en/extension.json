@@ -60,16 +60,16 @@
         }
       ]
     },
-    "models": {
-      "title": "Models",
+    "classify": {
+      "title": "Classify",
       "sections": [
         {
-          "heading": "Tokens by Model",
-          "body": "Stacked bar showing input and output token consumption per model. Helps you see which models you use most heavily."
+          "heading": "What this tab is for",
+          "body": "Assign each project to the subscription that should be billed for it. Projects are ranked by cost, so classifying the top few covers most of your spend."
         },
         {
-          "heading": "Stop Reasons",
-          "body": "How often each stop reason occurs. \"end_turn\" means the model finished naturally, \"tool_use\" means it called a tool, \"max_tokens\" means it hit the output limit."
+          "heading": "VS Code only",
+          "body": "Project classification is available in the VS Code panel; the browser-served dashboard does not offer it."
         }
       ]
     },

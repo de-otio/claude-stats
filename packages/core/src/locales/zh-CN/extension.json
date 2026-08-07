@@ -60,19 +60,6 @@
         }
       ]
     },
-    "models": {
-      "title": "模型",
-      "sections": [
-        {
-          "heading": "按模型分布的 Token",
-          "body": "显示每个模型的输入和输出 Token 消耗的堆叠柱状图。帮助您了解哪些模型使用最频繁。"
-        },
-        {
-          "heading": "停止原因",
-          "body": "每种停止原因的发生频率。「end_turn」表示模型自然结束，「tool_use」表示它调用了工具，「max_tokens」表示达到输出限制。"
-        }
-      ]
-    },
     "projects": {
       "title": "项目",
       "sections": [
@@ -253,6 +240,19 @@
         {
           "heading": "设置存储位置",
           "body": "所有设置保存在 ~/.claude-stats/config.json。您也可以直接编辑此文件。"
+        }
+      ]
+    },
+    "classify": {
+      "title": "分类",
+      "sections": [
+        {
+          "heading": "此选项卡的用途",
+          "body": "为每个项目指定应为其计费的订阅。项目按费用排序，因此对排在前面的几个项目进行分类即可覆盖大部分支出。"
+        },
+        {
+          "heading": "仅限 VS Code",
+          "body": "项目分类功能仅在 VS Code 面板中可用；浏览器提供的仪表板不支持该功能。"
         }
       ]
     }
