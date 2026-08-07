@@ -36,6 +36,10 @@ Read in order for full context, or jump to 07 and 02 to start implementing.
 | [value-per-cost/](value-per-cost/) | Reanalysis of the above: splits the one value-flavoured number into efficiency (machine-owned) + output/survival + value (user-owned), to answer "was the AI investment justified, was it efficient, what to change?" |
 | [account-attribution/](account-attribution/) | "Whose account ran this?" — reliably attributing usage to one of several accounts that share a machine, when transcripts carry no account id; observation-timeline + anchors + optional OTEL |
 | [data-planes/](data-planes/) | How backup, cross-device sync, and team features relate — one two-plane model (personal E2E plane vs org aggregate plane), the encrypted-bundle keystone, per-class optional encryption, and the effortless/dummy-proof UX; reconciles cross-device-sync/, team-dashboard/, and team-app/ |
+| [ticket-attribution/](ticket-attribution/) | Token cost per Jira ticket — evidence-graded attribution (branch/commit/prompt/tag), a coverage-honest report shape, and the org-plane/backend changes for automated team reporting; the attribution layer under value-per-cost/ |
+| [constraint-impact/](constraint-impact/) | What withholding capability costs — budget caps, model-tier removal ("no Opus"), throttling/quotas — measured as cost-per-outcome and dev-time deltas across a policy boundary; two-sided by construction, outputs a costed tiered-access proposal; the mirror of ticket-attribution/ |
+| [efficiency-hygiene/](efficiency-hygiene/) | Local, deterministic waste detectors (cache churn, retry loops, abandoned spend, context bloat, tier mismatch) — the clean-hands half that makes justification reports credible; strictly local, only the trend is shareable |
+| [gui-redesign/](gui-redesign/) | Answer-first dashboard IA: an Insights default layer (five business-question cards + alerts) with the full guru surface re-homed under Explore; how ticket/constraint/hygiene data surfaces without new tabs; migration without a rewrite |
 
 ## Architecture Summary
 
