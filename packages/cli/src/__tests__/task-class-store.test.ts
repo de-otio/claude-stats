@@ -317,3 +317,83 @@ describe("the classify pass", () => {
     expect(r.classified).toBe(3);
   });
 });
+
+/**
+ * The `messages.file_paths` round-trip.
+ *
+ * The three sessions above are all classified by tool-name evidence alone —
+ * `explore` needs no paths, `greenfield` keys only on `Write` counts, `sparse`
+ * has no messages. So every assertion above would still pass if the path column
+ * never reached the classifier at all, and the two classes that depend entirely
+ * on it (`config-chore` via the §5.6 path rule, `refactor-multi-file` via the
+ * distinct edited-file count) would silently collapse to
+ * `unknown` / `below-threshold` with nothing failing.
+ *
+ * These two pin the column end to end: JSON-encoded on the way in, parsed back
+ * on the way out, and reduced to `editedFiles` / `configFiles` by the pass.
+ */
+describe("the classify pass — file_paths must survive the store", () => {
+  let store: Store;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+    // Config dominance: 3 of 3 edited paths are config by the path rule.
+    store.upsertSession(session("s-config"));
+    store.upsertMessages([
+      message("c0", "s-config", ["Read", "Edit"], ["/w/alpha/package.json"]),
+      message("c1", "s-config", ["Edit"], ["/w/alpha/tsconfig.json"]),
+      message("c2", "s-config", ["Edit"], ["/w/alpha/.github/workflows/ci.yml"]),
+      message("c3", "s-config", ["Bash"], []),
+    ]);
+    // A broad sweep: 5 distinct edited code paths, 6 edit calls.
+    store.upsertSession(session("s-sweep"));
+    store.upsertMessages([
+      message("r0", "s-sweep", ["Edit", "Edit"], ["/w/alpha/a.ts", "/w/alpha/b.ts"]),
+      message("r1", "s-sweep", ["Edit", "Edit"], ["/w/alpha/c.ts", "/w/alpha/d.ts"]),
+      message("r2", "s-sweep", ["Edit", "Edit"], ["/w/alpha/e.ts", "/w/alpha/a.ts"]),
+    ]);
+  });
+  afterEach(() => {
+    store.close();
+    try { fs.unlinkSync(dbPath); } catch { /* best effort */ }
+  });
+
+  it("recovers a config chore whose class depends only on the path column", () => {
+    runTaskClassPass(store, { now: frozenClock() });
+    expect(store.getTaskClass("s-config")).toMatchObject({
+      task_class: "config-chore",
+      coarse_class: "build",
+      rule: "config-dominant",
+      abstain_reason: null,
+    });
+  });
+
+  it("recovers a multi-file sweep whose class depends on the DISTINCT path count", () => {
+    runTaskClassPass(store, { now: frozenClock() });
+    expect(store.getTaskClass("s-sweep")).toMatchObject({
+      task_class: "refactor-multi-file",
+      coarse_class: "build",
+      rule: "multi-file-sweep",
+      abstain_reason: null,
+    });
+  });
+
+  it("re-editing one file through the store is not a sweep", () => {
+    // The distinct-path reduction has to happen after the JSON round-trip too,
+    // not only on hand-built message objects.
+    store.upsertSession(session("s-narrow"));
+    store.upsertMessages([
+      message("n0", "s-narrow", ["Edit", "Edit"], ["/w/alpha/a.ts"]),
+      message("n1", "s-narrow", ["Edit", "Edit"], ["/w/alpha/a.ts"]),
+      message("n2", "s-narrow", ["Edit", "Edit"], ["/w/alpha/a.ts"]),
+    ]);
+    runTaskClassPass(store, { now: frozenClock() });
+    expect(store.getTaskClass("s-narrow")).toMatchObject({
+      task_class: "unknown",
+      abstain_reason: "below-threshold",
+      coarse_class: "build",
+    });
+  });
+});
