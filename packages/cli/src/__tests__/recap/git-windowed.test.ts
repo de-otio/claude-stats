@@ -14,6 +14,19 @@ import os from 'node:os';
 import path from 'node:path';
 import { getProjectGitActivity, createWindowedGitProvider } from '../../recap/git.js';
 
+/**
+ * These tests shell out to real `git` — `init`, several `commit`s, then the
+ * reads under test — so a single case is ~2s of subprocess work even on an idle
+ * machine. Vitest's 5s default is comfortable in isolation and too tight under
+ * a full-suite run, where a dozen workers contend for process slots and disk;
+ * the result was a test that passed alone and timed out in CI-shaped runs.
+ *
+ * Declaring the real cost is the honest fix. Raising the cap does not hide a
+ * slow implementation: the code under test does no I/O of its own beyond the
+ * `git` calls the fixture forces, and the parity assertions are unchanged.
+ */
+const GIT_SUBPROCESS_TIMEOUT_MS = 30_000;
+
 const tmpDirs: string[] = [];
 
 afterEach(() => {
@@ -118,4 +131,4 @@ describe('createWindowedGitProvider', () => {
     expect(day16!.subjects.length).toBe(6); // 5 + "+N more"
     expect(day16!.subjects[5]).toMatch(/^\+2 more$/);
   });
-});
+}, GIT_SUBPROCESS_TIMEOUT_MS);

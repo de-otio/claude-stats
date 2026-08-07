@@ -173,6 +173,16 @@ function tmpRepo(opts: RepoOpts = {}): string {
 // Tests
 // ---------------------------------------------------------------------------
 
+/**
+ * Every case here builds a real temp repo and shells out to `git` several
+ * times, so the wall-clock is dominated by subprocess spawn, not by the code
+ * under test. Vitest's 5s default fits when the file runs alone and does not
+ * when a dozen workers contend for process slots — the observed failure mode
+ * was a timeout in the full suite and a clean pass in isolation. See the same
+ * note in git-windowed.test.ts.
+ */
+const GIT_SUBPROCESS_TIMEOUT_MS = 30_000;
+
 describe('getProjectGitActivity', () => {
   // -------------------------------------------------------------------------
   // Test 1: Author commits in window
@@ -457,7 +467,7 @@ describe('getProjectGitActivity', () => {
     const evilFiles = findEvilFiles(process.pid);
     expect(evilFiles).toHaveLength(0);
   });
-});
+}, GIT_SUBPROCESS_TIMEOUT_MS);
 
 // ---------------------------------------------------------------------------
 // getLastCommitSha
