@@ -450,6 +450,8 @@
     "coarseHeader": "按粗粒度类别：",
     "abstainHeader": "未进行分类：",
     "coverage": "覆盖率：已分类 {{classified}} 个 session，{{unclassified}} 个尚未分类。",
-    "mixedVersions": "⚠  这些 session 由多个分类器版本（{{versions}}）分类。跨时间段比较类别前，请重新运行 'task-class'。"
+    "mixedVersions": "⚠  这些 session 由多个分类器版本（{{versions}}）分类。跨时间段比较类别前，请重新运行 'task-class'。",
+    "confidenceMix": "置信度：{{high}} 高，{{medium}} 中，{{low}} 低",
+    "caveat": "注意：一致性是针对生成的语料库测得的 — 依据的是生成器的意图，而非真实 session 上的人工标注。细粒度类别仅在此前提下可用于报告；引用任何单个类别的数据时，请连同本说明及上述置信度分布一并给出，或改用粗粒度类别。"
   }
 }

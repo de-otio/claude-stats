@@ -450,6 +450,8 @@
     "coarseHeader": "Według klasy ogólnej:",
     "abstainHeader": "Odmowa klasyfikacji:",
     "coverage": "Pokrycie: {{classified}} sesji sklasyfikowanych, {{unclassified}} jeszcze niesklasyfikowanych.",
-    "mixedVersions": "⚠  Sesje zostały sklasyfikowane przez więcej niż jedną wersję klasyfikatora ({{versions}}). Uruchom ponownie 'task-class' przed porównywaniem klas w danym okresie."
+    "mixedVersions": "⚠  Sesje zostały sklasyfikowane przez więcej niż jedną wersję klasyfikatora ({{versions}}). Uruchom ponownie 'task-class' przed porównywaniem klas w danym okresie.",
+    "confidenceMix": "pewność: {{high}} wysoka, {{medium}} średnia, {{low}} niska",
+    "caveat": "Zastrzeżenie: zgodność mierzono względem wygenerowanego korpusu — wobec intencji generatora, a nie ludzkich etykiet z rzeczywistych sesji. Szczegółowe klasy nadają się do raportowania wyłącznie z tym zastrzeżeniem; każdą wartość dla pojedynczej klasy podawaj razem z nim oraz z powyższym rozkładem pewności albo używaj klas zgrubnych."
   }
 }

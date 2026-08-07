@@ -22,8 +22,14 @@ import type { TaskClass, CoarseTaskClass, Confidence } from "../types/insight.js
  * a row below the current version, so a bump reclassifies exactly the affected
  * corpus with no manual purge, and a store holding two versions can say so
  * rather than silently mixing them in a before/after comparison (spec §5.9).
+ *
+ * v2 — feature derivation stopped counting Bash `cwd` and Glob `dirname`
+ * entries of `messages.file_paths` as edited files, and the config path rule
+ * stopped scanning bare generic directory names (`deploy`, `charts`, `k8s`,
+ * `helm`, `terraform`) that an absolute path matches on any ancestor. Both move
+ * sessions between classes, so every stored row is stale.
  */
-export const TASK_CLASS_VERSION = 1;
+export const TASK_CLASS_VERSION = 2;
 
 /**
  * Which rule decided. A closed enum, not free text — it is stored, and it is

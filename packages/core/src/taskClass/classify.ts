@@ -69,6 +69,15 @@ function decided(
   };
 }
 
+/**
+ * Abstain, fixing the coarse class AT THE ABSTENTION SITE (spec §5.5).
+ *
+ * There is deliberately no second, independent coarse rule chain. Each of the
+ * three abstentions has exactly one defensible coarse answer — `sparse` knows
+ * nothing, `prose-dominant` and `below-threshold` both demonstrably changed
+ * files — so a parallel chain would add a way for the two stored columns to
+ * diverge in exchange for no reachable outcome it cannot already produce.
+ */
 function abstained(
   reason: TaskClassAbstainReason,
   coarse: CoarseTaskClass,

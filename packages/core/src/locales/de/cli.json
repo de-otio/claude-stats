@@ -450,6 +450,8 @@
     "coarseHeader": "Nach Grobklasse:",
     "abstainHeader": "Klassifizierung abgelehnt:",
     "coverage": "Abdeckung: {{classified}} Session(s) klassifiziert, {{unclassified}} noch nicht klassifiziert.",
-    "mixedVersions": "⚠  Sessions wurden mit mehr als einer Klassifizierer-Version ({{versions}}) klassifiziert. Führen Sie 'task-class' erneut aus, bevor Sie Klassen über einen Zeitraum hinweg vergleichen."
+    "mixedVersions": "⚠  Sessions wurden mit mehr als einer Klassifizierer-Version ({{versions}}) klassifiziert. Führen Sie 'task-class' erneut aus, bevor Sie Klassen über einen Zeitraum hinweg vergleichen.",
+    "confidenceMix": "Konfidenz: {{high}} hoch, {{medium}} mittel, {{low}} niedrig",
+    "caveat": "Vorbehalt: Die Übereinstimmung wurde anhand eines generierten Korpus gemessen — gegen die Absicht des Generators, nicht gegen menschliche Labels aus echten Sessions. Die feingranularen Klassen sind nur unter diesem Vorbehalt berichtsfähig; nennen Sie jede klassenspezifische Zahl stets zusammen mit ihm und mit der obigen Konfidenzverteilung, oder verwenden Sie die groben Klassen."
   }
 }

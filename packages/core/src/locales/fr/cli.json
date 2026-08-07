@@ -450,6 +450,8 @@
     "coarseHeader": "Par classe générale :",
     "abstainHeader": "Classification refusée :",
     "coverage": "Couverture : {{classified}} session(s) classée(s), {{unclassified}} pas encore classée(s).",
-    "mixedVersions": "⚠  Les sessions ont été classées par plusieurs versions du classifieur ({{versions}}). Réexécutez « task-class » avant de comparer les classes sur une période."
+    "mixedVersions": "⚠  Les sessions ont été classées par plusieurs versions du classifieur ({{versions}}). Réexécutez « task-class » avant de comparer les classes sur une période.",
+    "confidenceMix": "confiance : {{high}} élevée, {{medium}} moyenne, {{low}} faible",
+    "caveat": "Mise en garde : la concordance a été mesurée sur un corpus généré — l'intention du générateur, et non des annotations humaines sur des sessions réelles. Les classes fines ne sont exploitables dans un rapport que sous cette réserve ; citez tout chiffre par classe avec celle-ci et avec la répartition de confiance ci-dessus, ou utilisez les classes générales."
   }
 }

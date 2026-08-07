@@ -96,12 +96,33 @@ informed by wide reading — as a multi-file refactor, which is a confidently
 wrong label in the class most likely to be quoted in a tier argument.
 `filesTouched` is still derived and carried for context; no rule reads it.
 
-Attributing a path to a change is an approximation, and this is its ceiling:
-tool names and path arguments are stored per message but not paired, so a
-message containing at least one mutating tool has all of its paths attributed
-to the change. That over-counts when one message mixes a Read and an Edit. It
-is the same approximation `cost-per-task/evidence/gather.ts` already makes when
-building edit events; pairing them properly would need a parser change.
+**Not every `messages.file_paths` entry is a file.** The parser fills that one
+column from three different shapes: the `file_path` argument of
+`Read`/`Edit`/`Write`/`MultiEdit`; the Bash tool's `input.cwd`, which is a
+**directory**; and `dirname(pattern)` for `Glob`, which is a directory or a
+literal wildcard such as `src/**` when the pattern nests. Counting all three
+lets a session cross `REFACTOR_MIN_FILES` on directories it never edited, and
+lets a `cwd` be attributed as an edited file.
+
+Tool names and paths are stored per message but not paired, so the per-message
+**tool set** is what decides, and two of the three cases are fully decidable:
+
+| Message contains | Paths in it |
+|---|---|
+| no file-taking tool | came from Bash or Glob only → **dropped** |
+| file-taking tools, no Bash/Glob | all real files → **kept as stored** |
+| both | a mixture → kept only if structurally file-like (no glob metacharacter, and an extension or a known extension-less config basename) |
+
+The mixed case is the only heuristic one, and it is biased to drop: an
+extension-less `LICENSE` edited in the same message as a Bash call is lost,
+which costs a file from a count rather than inventing one.
+
+Attributing a kept path to a *change* remains an approximation, and this is its
+ceiling: a message containing at least one mutating tool has all of its kept
+paths attributed to the change. That over-counts when one message mixes a Read
+and an Edit. It is the same approximation `cost-per-task/evidence/gather.ts`
+already makes when building edit events; pairing them properly would need a
+parser change.
 
 Rows ingested before V10 carry no paths at all. Every rule that consumes a file
 count requires a **positive** one — the shares have a zero denominator and the
@@ -178,9 +199,22 @@ is the point of §5.5.
 The relation is fixed: `debug → diagnose`; `greenfield`,
 `refactor-multi-file`, `config-chore` → `build`; `explore`, `review` →
 `support`. When the fine class is decided, the coarse class is its image under
-that map — enforced by construction so the two can never disagree. When the
-fine class abstains, coarse rules decide independently, and they abstain only
-on `sparse`.
+that map — enforced by construction so the two can never disagree.
+
+**There is no second, independent coarse rule chain, and that is deliberate.**
+When the fine class abstains, the coarse class is fixed *at the abstention
+site*, by the rule that declined: `sparse` → `unknown` (there was not enough
+tool activity to say anything at all), `prose-dominant` → `build` (the session
+demonstrably changed files, only not code), `below-threshold` → `build` (same).
+Those are the only three abstentions, each has exactly one defensible coarse
+answer, and hard-coding it there is what makes the "two columns can never
+disagree" property hold by construction rather than by a second chain that would
+have to be kept in step with the first. A parallel chain would add a way for the
+two columns to diverge in exchange for no additional outcome — every coarse
+value it could produce is already reachable — so it does not earn its keep.
+
+The observable consequence is the one that matters: **every session gets a
+coarse class, and only `sparse` sessions get coarse `unknown`.**
 
 This is what makes the mandated fallback structural rather than a mode switch.
 A consumer that cannot get a defensible fine-grained number reads the coarse
@@ -198,12 +232,33 @@ archetype classifier documents (`cost-per-task/efficiency/archetype.ts`).
   .properties .lock .tf .tfvars .hcl .gradle .bzl .plist`
 - **Config basenames:** `dockerfile makefile procfile .gitignore .dockerignore
   .npmrc .nvmrc .editorconfig .eslintrc .prettierrc .babelrc .gitattributes`
-- **Config segments:** `.github .circleci .gitlab .vscode k8s helm charts
-  terraform deploy`
+- **Config segments:** `.github .circleci .gitlab .vscode` — **dot-prefixed
+  only**, and matched on any segment except the basename
 - **Prose extensions:** `.md .mdx .txt .rst .adoc`
 
 `package-lock.json` lands in config by extension, which is correct: a lockfile
 churn session is config-chore work.
+
+**Why the segment set is dot-prefixed only.** Stored paths are absolute, so a
+segment scan sees the whole home and repository prefix, not just the part inside
+the project. `.github`, `.circleci`, `.gitlab` and `.vscode` are tool-reserved
+names that mean the same thing wherever they appear. The bare generic names an
+earlier draft also scanned — `k8s`, `helm`, `charts`, `terraform`, `deploy` —
+are only meaningful *relative to the project root*, which the classifier does
+not receive. Scanned absolutely they matched any ancestor: a five-file
+TypeScript rename sweep inside a repository or monorepo package named `deploy`
+was reported as `config-chore`, and at **high** confidence, because `configShare`
+was then 1.
+
+Threading a project root would move that boundary rather than remove it — a
+monorepo package named `deploy` is still misread unless generic segments are
+additionally restricted to the *first* root-relative segment, at which point
+they catch almost nothing the extension rule missed: real files under
+`terraform/`, `k8s/`, `helm/` and `charts/` already match on `.tf`, `.tfvars`,
+`.hcl`, `.yaml`, `.yml` or `.json`. The residual recall loss is a non-config
+extension inside such a directory (`deploy/rollout.sh`); the false positive it
+removes is unbounded and lands at high confidence. Where the rule cannot be made
+precise it abstains — §5.1's precision-over-recall rule applied to a path set.
 
 ## 5.7 The decision procedure
 
@@ -319,6 +374,17 @@ exactly the affected corpus with no manual purge. A store holding rows at more
 than one version can report that fact, so a mixed-version comparison is visible
 rather than silent.
 
+**Versions to date.** v1 shipped the rules as first written. **v2** is the
+current stamp: the feature derivation stopped counting Bash `cwd` and Glob
+`dirname` entries as edited files (§5.3), and the config path rule stopped
+scanning bare generic directory names (§5.6). Both move sessions between
+classes, so every v1 row is stale and the next `task-class` run rewrites it.
+
+The confidence tier is not just stored, it is **queryable**: the counts seam
+returns the fine class crossed with its tier, so no surface is structurally
+unable to show one. A per-class figure printed without its tier and without
+§5.10's caveat is a defect in that surface, not a formatting preference.
+
 `taskClass` and `coarseTaskClass` join the filter-symmetry contract as
 narrowing dimensions in **both** halves — `getSessions` and
 `buildMessageFilter`. Phase 0 deliberately deferred this because there was no
@@ -326,21 +392,21 @@ table to filter against.
 
 ## 5.10 Measured agreement (v1)
 
-Measured against the generated corpus of §5.8 — 14 recipes (11 decidable, 3
-ambiguous), 20 sessions each: **220 decidable + 60 ambiguous**. Seeded;
+Measured against the generated corpus of §5.8 — 15 recipes (12 decidable, 3
+ambiguous), 20 sessions each: **240 decidable + 60 ambiguous**. Seeded;
 reproduced by `packages/cli/src/__tests__/task-class-agreement.test.ts`, which
 prints these figures on every run.
 
 | Grain | Measured | Threshold | Verdict |
 |---|---|---|---|
-| Fine, overall | **0.968** | ≥ 0.80 | pass |
-| Fine, worst per-class recall | **0.875** (`refactor-multi-file`) | ≥ 0.60 | pass |
-| Coarse, overall | **0.991** | ≥ 0.90 | pass |
+| Fine, overall | **0.971** | ≥ 0.80 | pass |
+| Fine, worst per-class recall | **0.917** (`refactor-multi-file`) | ≥ 0.60 | pass |
+| Coarse, overall | **0.992** | ≥ 0.90 | pass |
 | Abstention on ambiguous recipes | **1.000** | ≥ 0.70 | pass |
 
 Per-class recall: `config-chore` 1.000 (40/40) · `debug` 0.967 (58/60) ·
 `explore` 1.000 (40/40) · `greenfield` 1.000 (40/40) ·
-`refactor-multi-file` 0.875 (35/40).
+`refactor-multi-file` 0.917 (55/60).
 
 **The fine grain ships.** Both of its conditions are met, so reports may use it,
 and the coarse column stays alongside as the always-computed companion rather
@@ -377,6 +443,32 @@ ambiguous recipes and abstains correctly. That gap is worth recording: a
 generated corpus only falsifies the shapes its author thought to generate, and
 the aggregate agreement figure was blind to a defect that a single missing
 recipe hid.
+
+### And then missed two more of exactly the same kind
+
+Two further defects shipped past this corpus, both because the generator did
+not produce the shape:
+
+1. **Directories counted as edited files.** Every `Bash` and `Glob` call in
+   every recipe contributed *no* path, so the corpus never exercised the two
+   non-file shapes the parser actually writes into `file_paths`. The generator
+   now adds them the way the parser does — a Bash `cwd` and a Glob `dirname`,
+   into the same column, indistinguishable from a real argument. Reverting the
+   §5.3 fix under this corpus drops `config-chore` recall from 1.000 to 0.650
+   (the extra directory dilutes `configShare` below its floor).
+2. **An ancestor directory name deciding the class.** Every recipe worked in one
+   project, `/w/alpha`, whose path contains no infrastructure-like segment. A
+   `rename-sweep-in-infra-named-repo` recipe now works in a repository called
+   `deploy`. Reverting the §5.6 fix under this corpus drops
+   `refactor-multi-file` recall to 0.583 — **below the 0.60 release floor** —
+   and inverts the miss ratio to 22 wrong labels against 5 abstentions, so the
+   harness fails twice over.
+
+The pattern is now three for three: every defect this corpus missed was missed
+because the generator's *inputs* were cleaner than the store's. That is the
+standing weakness of a generated corpus, and it argues for growing the recipe
+set toward the parser's real output shapes rather than toward more sessions per
+recipe.
 
 ### Read these numbers with §5.8's limitation in front of them
 

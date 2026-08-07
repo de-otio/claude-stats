@@ -450,6 +450,8 @@
     "coarseHeader": "Por clase general:",
     "abstainHeader": "Clasificación omitida:",
     "coverage": "Cobertura: {{classified}} sesión(es) clasificadas, {{unclassified}} aún sin clasificar.",
-    "mixedVersions": "⚠  Las sesiones se clasificaron con más de una versión del clasificador ({{versions}}). Vuelve a ejecutar 'task-class' antes de comparar clases de un periodo."
+    "mixedVersions": "⚠  Las sesiones se clasificaron con más de una versión del clasificador ({{versions}}). Vuelve a ejecutar 'task-class' antes de comparar clases de un periodo.",
+    "confidenceMix": "confianza: {{high}} alta, {{medium}} media, {{low}} baja",
+    "caveat": "Advertencia: la concordancia se midió frente a un corpus generado, es decir, frente a la intención del generador y no a etiquetas humanas sobre sesiones reales. Las clases detalladas solo tienen calidad de informe bajo esa advertencia; cite cualquier cifra por clase junto con ella y con la mezcla de confianza anterior, o utilice las clases generales."
   }
 }
