@@ -244,6 +244,7 @@ export async function buildCli(): Promise<Command> {
     .option("--out <dir>", t("cli:commands.packOut"))
     .option("--json", t("cli:commands.packJson"))
     .option("--invoice-csv <path>", t("cli:commands.packInvoiceCsv"))
+    .option("--disclose-scope", t("cli:commands.packDiscloseScope"))
     .action(
       async (opts: {
         period: string;
@@ -254,9 +255,17 @@ export async function buildCli(): Promise<Command> {
         out?: string;
         json?: boolean;
         invoiceCsv?: string;
+        discloseScope?: boolean;
       }) => {
         loadCachedPricing();
         const config = loadConfig();
+        // A scoped pack states THAT it was filtered, but withholds the literal
+        // project path / account uuid unless asked: the pack is built to be
+        // handed to someone outside this machine, and an absolute path
+        // routinely names an employer, a client, or an unreleased product in a
+        // parent directory. Opt-in matches the pack's own rule that every
+        // section is opt-in and the default is the minimum.
+        setDiscloseScopeValues(opts.discloseScope === true);
         const store = new Store();
         try {
           // `--invoice-csv` overrides `config.reconciliation.invoiceTotal` for
