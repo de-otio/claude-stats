@@ -1067,7 +1067,7 @@ describe("renderDashboard", () => {
 
     // ── Calibration view + activation toggle (webview only) ──
     const emptyMetrics = {
-      n: 0, accuracy: null, observableN: 0,
+      n: 0, hits: 0, accuracy: null, observableN: 0,
       perClass: {
         success: { support: 0, predicted: 0, truePositives: 0, precision: null, recall: null, f1: null },
         failed: { support: 0, predicted: 0, truePositives: 0, precision: null, recall: null, f1: null },

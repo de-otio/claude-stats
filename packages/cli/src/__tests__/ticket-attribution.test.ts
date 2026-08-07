@@ -867,6 +867,143 @@ describe("get_cost_per_ticket (MCP)", () => {
     const data = textOf(result);
     expect(data).toHaveProperty("error");
   });
+
+  // ── Lane K: the confidence tiers travel with their calibration state ──
+
+  it("ships the calibration state beside the confidence tiers it qualifies", async () => {
+    // The tiers in `coverage.byConfidence` are an ASSERTION about reliability.
+    // Shipping them without the one field that has ever checked one — behind a
+    // second tool call the caller may never make — is the uncalibrated-confidence
+    // defect the practice contract names.
+    const data = textOf(await client.callTool({ name: "get_cost_per_ticket", arguments: { period: "all" } }));
+    const cal = data["calibration"] as Record<string, unknown>;
+    expect(cal["subject"]).toBe("attribution");
+    expect(cal["measures"]).toBe("agreement-on-reviewed-subset");
+    // The synthetic corpus has no manual rulings, so there is nothing to
+    // measure and no rate may appear.
+    expect(cal["state"]).toBe("uncalibrated");
+    expect(cal["rate"]).toBeNull();
+    expect(cal["interval"]).toBeNull();
+    expect(cal["minN"]).toBe(30);
+    expect(cal["enablement"]).toBeTruthy();
+  });
+
+  it("keeps the calibration state on the single-ticket drill-down too", async () => {
+    // The drill-down is where a reader asks "why do you claim PROJ-123 cost
+    // this?" — the answer must carry the same qualification the table does, or
+    // one click strips it.
+    const list = textOf(await client.callTool({ name: "get_cost_per_ticket", arguments: { period: "all" } }));
+    const firstKey = (list["tickets"] as Array<{ ticketKey: string }>)[0]!.ticketKey;
+    const data = textOf(
+      await client.callTool({ name: "get_cost_per_ticket", arguments: { period: "all", ticket: firstKey } }),
+    );
+    expect((data["calibration"] as Record<string, unknown>)["measures"]).toBe("agreement-on-reviewed-subset");
+  });
+
+  it("reports the pass's REAL recall misses, not a placeholder zero", async () => {
+    // `unproposed` is the only recall figure on this payload, and nothing
+    // asserted a non-zero value for it: hardcoding it to 0 left every suite
+    // green while the tool told a caller the pass had missed nothing.
+    //
+    // Its own store and its own server, so the shared fixture above is
+    // untouched whatever order these run in.
+    const dir = mkdtempSync(join(tmpdir(), "claude-stats-mcp-unproposed-"));
+    const own = new Store(join(dir, "test.db"));
+    try {
+      seedStore(own, { sessions: 6, seed: 21, ticketCoverage: 0.75, projectKeys: ["PROJ"] });
+      // A key the extractor never proposed on a session it did see: a pure
+      // recall miss, which must be reported BESIDE the rate and never inside it.
+      const anySession = own.getTicketLinkGrades()[0]!.session_id;
+      own.addTicketLink({ sessionId: anySession, ticketKey: "MISS-1", source: "tag", confidence: "high" });
+
+      const server = createMcpServer(own);
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      await server.connect(st);
+      const ownClient = new Client({ name: "test-client", version: "1.0.0" });
+      await ownClient.connect(ct);
+
+      const data = textOf(await ownClient.callTool({ name: "get_cost_per_ticket", arguments: { period: "all" } }));
+      const cal = data["calibration"] as Record<string, number>;
+      expect(cal["unproposed"]).toBeGreaterThan(0);
+      // ...and it stayed out of the precision denominator.
+      expect(cal["n"]).toBe(cal["agreed"]! + cal["disagreed"]!);
+    } finally {
+      own.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("get_calibration (MCP)", () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "claude-stats-mcp-calib-test-"));
+  let store: Store;
+  let client: Client;
+
+  beforeAll(async () => {
+    store = new Store(join(tmpDir, "test.db"));
+    seedStore(store, { sessions: 8, seed: 11, ticketCoverage: 0.75, projectKeys: ["PROJ"] });
+
+    const server = createMcpServer(store);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    client = new Client({ name: "test-client", version: "1.0.0" });
+    await client.connect(clientTransport);
+  });
+
+  afterAll(() => {
+    store.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function textOf(result: unknown): Record<string, unknown> {
+    const content = (result as { content: unknown }).content as Array<{ type: string; text: string }>;
+    return JSON.parse(content[0]!.text) as Record<string, unknown>;
+  }
+
+  it("reports both calibratable subjects, each with its denominator", async () => {
+    const data = textOf(await client.callTool({ name: "get_calibration", arguments: {} }));
+    const subjects = data["subjects"] as Record<string, Record<string, unknown>>;
+    expect(Object.keys(subjects).sort()).toEqual(["attribution", "outcome"]);
+    for (const [name, s] of Object.entries(subjects)) {
+      expect(s["subject"], `${name} names itself`).toBe(name);
+      expect(s["n"], `${name} carries its denominator`).toBeTypeOf("number");
+      expect(s["minN"], `${name} carries its floor`).toBe(30);
+      expect(s["measures"]).toBe("agreement-on-reviewed-subset");
+    }
+  });
+
+  it("states no rate at all on a store nobody has corrected", async () => {
+    const data = textOf(await client.callTool({ name: "get_calibration", arguments: {} }));
+    const subjects = data["subjects"] as Record<string, Record<string, unknown>>;
+    for (const [name, s] of Object.entries(subjects)) {
+      expect(s["state"], `${name} is uncalibrated`).toBe("uncalibrated");
+      expect(s["rate"], `${name} states no rate`).toBeNull();
+      expect(s["interval"], `${name} states no interval`).toBeNull();
+      expect(s["enablement"], `${name} says what would fix it`).toBeTruthy();
+    }
+  });
+
+  it("keeps attribution's recall misses out of its precision denominator", async () => {
+    const data = textOf(await client.callTool({ name: "get_calibration", arguments: {} }));
+    const attribution = (data["subjects"] as Record<string, Record<string, unknown>>)["attribution"]!;
+    expect(attribution).toHaveProperty("unproposed");
+    expect(attribution["n"]).toBe((attribution["agreed"] as number) + (attribution["disagreed"] as number));
+  });
+
+  it("names the classifier as un-calibratable rather than omitting it", async () => {
+    // Silence would read as "the classifier is fine". The honest answer is that
+    // nothing on this machine records disagreement with it, so its confidence
+    // cannot be checked here at all.
+    const data = textOf(await client.callTool({ name: "get_calibration", arguments: {} }));
+    const not = data["notCalibrated"] as Record<string, string>;
+    expect(not["taskClass"]).toBeTruthy();
+    expect(data["subjects"]).not.toHaveProperty("taskClass");
+  });
+
+  it("justifies the minimum sample rather than asserting it", async () => {
+    const data = textOf(await client.callTool({ name: "get_calibration", arguments: {} }));
+    expect(data["minimumSampleRationale"]).toContain("3/n");
+  });
 });
 
 // ─── A1: tool descriptions must never promise a CLI surface that doesn't exist ─

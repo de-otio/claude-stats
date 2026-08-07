@@ -38,6 +38,7 @@ import {
   answerEfficiency,
   answerSetup,
 } from "@claude-stats/core/insight";
+import { outcomeCalibrationFrom } from "../calibration/index.js";
 import type { DashboardData } from "../dashboard/index.js";
 import type { Config } from "../config.js";
 import { renderCard } from "./card.js";
@@ -217,12 +218,32 @@ export function buildInsightAnswers(data: DashboardData, opts: InsightBuildOptio
     anyFallbackRates: data.summary.anyFallbackRates,
   });
 
+  // Calibration for exactly the mechanisms this card quotes, and only when the
+  // card is quoting them: a caveat for a number that isn't on the card reads as
+  // if some other number were the one being qualified.
+  //
+  // `completedTasks` is outcome detection's output and is rendered only when
+  // `costPerTask` exists, so the outcome estimate is gated on the same thing.
+  //
+  // The attribution estimate needs NO matching `coverage` guard, and one is
+  // deliberately not written: `answerBought` returns its honest-unavailable
+  // branch — caveat and all — whenever coverage is absent or zero-valued, so a
+  // guard here could never change what renders. It was written first and a
+  // mutation proved it dead: deleting it left the whole suite green. A line that
+  // cannot fail is the verification theatre this build is trying to stop
+  // shipping, so it is gone rather than pinned by a test that would pass anyway.
+  const calibration = [
+    ...(ins?.attributionCalibration ? [ins.attributionCalibration] : []),
+    ...(cpt && data.calibration ? [outcomeCalibrationFrom(data.calibration)] : []),
+  ];
+
   const bought = answerBought(opts.t, {
     // Successes, not attempts: "what it bought" is work that landed.
     completedTasks: cpt ? cpt.successCount : null,
     coverage,
     topTicket: ins?.topTicket ?? null,
     currency: opts.currency,
+    calibration,
   });
 
   const efficiency = answerEfficiency(opts.t, {

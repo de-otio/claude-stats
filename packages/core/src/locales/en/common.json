@@ -73,7 +73,8 @@
       "sentence": "{{text}}.",
       "clauseJoin": " — ",
       "listJoin": ", ",
-      "dotJoin": " · "
+      "dotJoin": " · ",
+      "caveatJoin": " "
     },
     "devTime": {
       "minutes": "{{value}} dev-minutes",
@@ -99,6 +100,20 @@
       "mixAmbiguous_one": "{{parts}} confidence · {{count}} session ambiguous.",
       "mixAmbiguous_other": "{{parts}} confidence · {{count}} sessions ambiguous.",
       "none": "No spend attributed to ticket keys this period — check that branch names, commit subjects, or prompts contain a key like PROJ-123, and that config.tickets.projectKeys lists your team's prefix (required for a lowercase or mixed-case convention to be picked up)."
+    },
+    "calibration": {
+      "measured": {
+        "attribution": "Automatic attribution was upheld on {{percent}} of the {{n}} links you ruled on (95% CI {{lo}}–{{hi}}) — that is agreement on links you chose to review, not overall accuracy, and it reads low because people review what looks wrong.",
+        "outcome": "Outcome detection matched your label on {{percent}} of the {{n}} tasks you labelled (95% CI {{lo}}–{{hi}}) — that is agreement on tasks you chose to label, not overall accuracy, and it reads low because people label what looks wrong."
+      },
+      "uncalibrated": {
+        "attribution": "Attribution confidence is uncalibrated — {{n}} of the {{minN}} explicit rulings needed before an agreement figure would mean anything.",
+        "outcome": "Outcome detection is uncalibrated — {{n}} of the {{minN}} outcome labels needed before an agreement figure would mean anything."
+      },
+      "enablement": {
+        "attribution": "Confirm or correct an automatic link with `claude-stats ticket <session-id> <key>`, or strike a wrong one with `--negate`; each explicit ruling grows the sample.",
+        "outcome": "Label finished work with `claude-stats task-outcome <item> <success|partial|fail>`; each label grows the sample."
+      }
     },
     "cost": {
       "unavailable": "No usage recorded for this period.",

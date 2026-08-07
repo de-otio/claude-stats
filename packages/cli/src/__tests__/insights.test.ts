@@ -29,6 +29,7 @@ import {
 } from "../server/insights.js";
 import { renderDashboard } from "../server/template.js";
 import { answerCost } from "@claude-stats/core/insight";
+import { calibrate } from "@claude-stats/core/calibration";
 import { NAV_TAB_IDS } from "../server/nav.js";
 import type { DashboardData } from "../dashboard/index.js";
 import { resolveAccountMode, type Config } from "../config.js";
@@ -130,6 +131,7 @@ const goldenData: DashboardData = {
     topTicket: { key: "PROJ-123", cost: 41.2 },
     hourlyRate: 90,
     currency: "USD",
+    attributionCalibration: null,
   },
 };
 
@@ -332,6 +334,104 @@ describe("Insights tab — honest-empty states", () => {
 
 const acct = (uuid: string, subscriptionType: string | null) => ({
   accountUuid: uuid, emailAddress: null, subscriptionType, sessionCount: 1, isCurrent: false,
+});
+
+// ─── Lane K: calibration reaches the card that quotes the figures ────────────
+
+describe("Q2 carries calibration for exactly the figures it states", () => {
+  const withCalibration = (over: Partial<DashboardData>): DashboardData =>
+    ({ ...goldenData, ...over }) as DashboardData;
+
+  const boughtCaveat = (data: DashboardData): string | null =>
+    buildInsightAnswers(data, buildOpts)[1]!.caveat;
+
+  it("attaches the attribution estimate when coverage is stated", () => {
+    const caveat = boughtCaveat(
+      withCalibration({
+        insights: {
+          ...goldenData.insights!,
+          attributionCalibration: calibrate("attribution", { agreed: 2, disagreed: 1 }),
+        },
+        costPerTask: null,
+      }),
+    );
+    expect(caveat).toContain(t("common:insight.calibration.uncalibrated.attribution", { n: 3, minN: 30 }));
+  });
+
+  it("states no calibration on the honest-unavailable card, whatever it is handed", () => {
+    // With no coverage the card is unavailable and carries no caveat at all.
+    // This pins the OBSERVABLE rule; it is deliberately NOT paired with a
+    // `coverage &&` guard in `buildInsightAnswers`, because such a guard cannot
+    // change this outcome — see the comment there.
+    const answer = buildInsightAnswers(
+      withCalibration({
+        insights: {
+          ...goldenData.insights!,
+          ticketCoverage: null,
+          attributionCalibration: calibrate("attribution", { agreed: 40, disagreed: 0 }),
+        },
+        calibration: { n: 40, floor: 0.7, proxyOnly: { n: 40, hits: 40 }, withSignals: { n: 40, hits: 40 } } as unknown as DashboardData["calibration"],
+      }),
+      buildOpts,
+    )[1]!;
+    expect(answer.unavailable?.reason).toBe("not-enabled");
+    expect(answer.caveat).toBeNull();
+    // And the sentence must not smuggle a rate in through the answer text.
+    expect(answer.answer).not.toContain("100%");
+  });
+
+  it("attaches the outcome estimate only when a completed-task count is stated", () => {
+    const report = {
+      n: 40, floor: 0.7,
+      proxyOnly: { n: 40, hits: 27 },
+      withSignals: { n: 40, hits: 27 },
+    } as unknown as DashboardData["calibration"];
+
+    // 27 of 40 = 68%, with the 95% Wilson interval 52%–80%. Asserting the
+    // whole composed sentence rather than a substring: a "68%" that came from
+    // some other computation would still satisfy a substring check.
+    const expected = t("common:insight.calibration.measured.outcome", {
+      percent: "68%", n: 40, lo: "52%", hi: "80%",
+    });
+    const withCount = boughtCaveat(withCalibration({ calibration: report }));
+    expect(withCount).toContain(expected);
+
+    // `costPerTask: null` means no success count is rendered, so outcome
+    // detection qualifies nothing on this card.
+    const withoutCount = boughtCaveat(withCalibration({ calibration: report, costPerTask: null }));
+    expect(withoutCount).not.toContain(expected);
+  });
+
+  it("leaves Q2's caveat unchanged when nothing has been calibrated", () => {
+    // The pre-Lane-K rendering, byte for byte. A caveat that grew an empty
+    // clause would be a visible regression on the default tab.
+    const bare = boughtCaveat(
+      withCalibration({
+        insights: { ...goldenData.insights!, attributionCalibration: null },
+        calibration: null,
+      }),
+    );
+    expect(bare).toBe(t("common:insight.coverage.mixAmbiguous", {
+      parts: [
+        t("common:insight.coverage.tier", { percent: "72%", tier: t("common:insight.confidence.high") }),
+        t("common:insight.coverage.tier", { percent: "21%", tier: t("common:insight.confidence.medium") }),
+        t("common:insight.coverage.tier", { percent: "7%", tier: t("common:insight.confidence.low") }),
+      ].join(t("common:insight.punctuation.dotJoin")),
+      count: 2,
+    }));
+  });
+
+  it("renders the calibration sentence into the actual card, not just the answer object", () => {
+    const data = withCalibration({
+      insights: {
+        ...goldenData.insights!,
+        attributionCalibration: calibrate("attribution", { agreed: 2, disagreed: 1 }),
+      },
+    });
+    const boughtCard = card(renderTab(data), "insight-bought");
+    expect(boughtCard).toContain("30");
+    expect(boughtCard).toContain(t("common:insight.calibration.uncalibrated.attribution", { n: 3, minN: 30 }));
+  });
 });
 
 describe("cost vocabulary — resolving one answer for a dashboard spanning N accounts", () => {

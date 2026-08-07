@@ -74,7 +74,8 @@
       "sentence": "{{text}}.",
       "clauseJoin": " — ",
       "listJoin": ", ",
-      "dotJoin": " · "
+      "dotJoin": " · ",
+      "caveatJoin": " "
     },
     "devTime": {
       "minutes": "{{value}} minutos de desarrollo",
@@ -142,6 +143,20 @@
       "more_one": "{{lead}} (+{{count}} más).",
       "more_many": "{{lead}} (+{{count}} más).",
       "more_other": "{{lead}} (+{{count}} más)."
+    },
+    "calibration": {
+      "measured": {
+        "attribution": "La atribución automática se confirmó en {{percent}} de los {{n}} enlaces que revisaste (IC del 95 % {{lo}}–{{hi}}): es la concordancia en los enlaces que elegiste revisar, no la precisión global, y sale baja porque la gente revisa lo que parece incorrecto.",
+        "outcome": "La detección de resultados coincidió con tu etiqueta en {{percent}} de las {{n}} tareas que etiquetaste (IC del 95 % {{lo}}–{{hi}}): es la concordancia en las tareas que elegiste etiquetar, no la precisión global, y sale baja porque la gente etiqueta lo que parece incorrecto."
+      },
+      "uncalibrated": {
+        "attribution": "La confianza de la atribución no está calibrada: {{n}} de las {{minN}} resoluciones explícitas necesarias para que una cifra de concordancia signifique algo.",
+        "outcome": "La detección de resultados no está calibrada: {{n}} de las {{minN}} etiquetas de resultado necesarias para que una cifra de concordancia signifique algo."
+      },
+      "enablement": {
+        "attribution": "Confirma o corrige un enlace automático con `claude-stats ticket <session-id> <key>`, o anula uno erróneo con `--negate`; cada resolución explícita amplía la muestra.",
+        "outcome": "Etiqueta el trabajo terminado con `claude-stats task-outcome <item> <success|partial|fail>`; cada etiqueta amplía la muestra."
+      }
     }
   },
   "actions": {

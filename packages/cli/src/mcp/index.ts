@@ -562,6 +562,7 @@ export function createMcpServer(store: Store): McpServer {
       const { periodRange } = await import("../reporter/index.js");
       const { getTicketCostReport } = await import("../ticketing/index.js");
       const { formatMoney, formatPercent, confidenceCaveat } = await import("@claude-stats/core/insight");
+      const { buildAttributionCalibration, calibrationJson } = await import("../calibration/index.js");
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const range = periodRange({ period: effectivePeriod, since, until }, tz);
 
@@ -592,6 +593,16 @@ export function createMcpServer(store: Store): McpServer {
           confidenceCaveat: confidenceCaveat(t, report.coverage),
         },
         unknownModelTokens: report.unknownTokens,
+        // The confidence tiers above are an ASSERTION about reliability. This is
+        // the only thing in the payload that has ever checked one, so it ships
+        // in the same object rather than behind a second tool call a caller may
+        // never make. `state: "uncalibrated"` is the normal answer and carries
+        // no rate at all — read it as "these tiers are unverified", not as a
+        // low score.
+        calibration: (() => {
+          const { estimate, review } = buildAttributionCalibration(store);
+          return calibrationJson(t, estimate, { unproposed: review.unproposed });
+        })(),
       };
 
       if (ticket) {
@@ -648,6 +659,71 @@ export function createMcpServer(store: Store): McpServer {
           confidence: t.confidence,
           sources: t.sources,
         })),
+      });
+    },
+  );
+
+  // ── get_calibration ────────────────────────────────────────────────────────
+  server.tool(
+    "get_calibration",
+    "Check whether this tool's own confidence labels have ever been verified. " +
+      "Ticket attribution, task outcomes and hygiene findings all carry confidence " +
+      "tiers; this is the only tool that reports how well the mechanisms behind them " +
+      "have actually agreed with the user's corrections.\n\n" +
+      "READ `measures` BEFORE QUOTING `rate`. The rate is 'agreement-on-reviewed-subset': " +
+      "the share of items the user explicitly ruled on where the mechanism had it right. " +
+      "It is NOT accuracy. Corrections are not a random sample — people review what looks " +
+      "wrong — so the denominator is enriched for mistakes and the rate reads LOW relative " +
+      "to the mechanism's true accuracy. Report it as 'agreed with your corrections X% of " +
+      "the time on n=N reviewed items', never as 'attribution is X% accurate'.\n\n" +
+      "When `state` is 'uncalibrated' there is NO rate — the sample is under `minN` and a " +
+      "percentage from it would be noise. That is the normal state for most stores and is " +
+      "not a fault: say the confidence tiers are unverified, and relay `enablement`, which " +
+      "names what the user would do to build the sample.\n\n" +
+      "`subjects.attribution.unproposed` counts manual links naming a key the automatic " +
+      "pass never proposed — a recall miss, deliberately excluded from `rate`, which is a " +
+      "precision figure. Do not add them together.\n\n" +
+      "The task-class classifier is absent on purpose: nothing on this machine records a " +
+      "human's disagreement with it, so there is no ground truth to calibrate against — " +
+      "see `notCalibrated`.",
+    {},
+    async () => {
+      const { buildAttributionCalibration, outcomeCalibrationFrom, calibrationJson } =
+        await import("../calibration/index.js");
+      const attribution = buildAttributionCalibration(store);
+
+      // The outcome subject is scored from the corrections DB by
+      // `buildCalibrationReport`, which walks daily digests — slow, and it opens
+      // the corrections DB itself. Failure here must degrade to the honest
+      // uncalibrated state rather than failing the whole tool: a caller asking
+      // "has any of this been checked?" is worse served by an error than by
+      // "no, and here is how to start".
+      let outcomeReport = null;
+      try {
+        const { buildCalibrationReport } = await import("../cost-per-task/index.js");
+        outcomeReport = await buildCalibrationReport(store, { period: "month" });
+      } catch {
+        outcomeReport = null;
+      }
+
+      return formatResult({
+        minimumSampleRationale:
+          "Below minN no rate is reported. By the rule of three, n observations with zero " +
+          "disagreements bound the error rate only at about 3/n, so a perfect run of fewer " +
+          "than 30 rulings cannot even rule out a one-in-ten error rate.",
+        subjects: {
+          attribution: calibrationJson(t, attribution.estimate, {
+            unproposed: attribution.review.unproposed,
+          }),
+          outcome: calibrationJson(t, outcomeCalibrationFrom(outcomeReport)),
+        },
+        notCalibrated: {
+          taskClass:
+            "No runtime ground truth exists: no correction records a human's disagreement " +
+            "with a session's task class, so agreement cannot be measured on this machine. " +
+            "The classifier's published agreement figure is measured against a GENERATED " +
+            "corpus at build time and is not a measurement of this store's data.",
+        },
       });
     },
   );

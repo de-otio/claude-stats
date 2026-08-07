@@ -38,11 +38,14 @@ import {
   answerCost,
   answerEfficiency,
   answerSetup,
+  calibrationCaveat,
+  calibrationEnablement,
   confidenceCaveat,
   costCaveat,
   formatDevTime,
   type InsightT,
 } from "@claude-stats/core/insight";
+import { calibrate } from "@claude-stats/core/calibration";
 import { buildPackHeadline } from "@claude-stats/core/pack";
 import type { InsightAnswer, TicketCoverage } from "@claude-stats/core/types/insight";
 import { t } from "../i18n.js";
@@ -268,6 +271,17 @@ function allFragments(tr: InsightT): Array<[string, string | null]> {
       "confidenceCaveat/none",
       confidenceCaveat(tr, coverage({ attributedCost: 0, ratio: 0, byConfidence: { high: 0, medium: 0, low: 0 } })),
     ],
+    // Lane K. Both subjects × both states × both functions — eight results from
+    // eight distinct keys, so a formatter that resolved the wrong one would
+    // still be caught by `calibration.test.ts`'s key-identity assertions, and a
+    // formatter that stated anything in English of its own is caught here.
+    ["calibration/measuredAttribution", calibrationCaveat(tr, calibrate("attribution", { agreed: 27, disagreed: 3 }))],
+    ["calibration/measuredOutcome", calibrationCaveat(tr, calibrate("outcome", { agreed: 27, disagreed: 3 }))],
+    ["calibration/uncalAttribution", calibrationCaveat(tr, calibrate("attribution", { agreed: 2, disagreed: 1 }))],
+    ["calibration/uncalOutcome", calibrationCaveat(tr, calibrate("outcome", { agreed: 2, disagreed: 1 }))],
+    ["calibration/enableAttribution", calibrationEnablement(tr, calibrate("attribution", { agreed: 2, disagreed: 1 }))],
+    ["calibration/enableOutcome", calibrationEnablement(tr, calibrate("outcome", { agreed: 2, disagreed: 1 }))],
+    ["calibration/enableMeasured", calibrationEnablement(tr, calibrate("outcome", { agreed: 30, disagreed: 0 }))],
   ];
 }
 

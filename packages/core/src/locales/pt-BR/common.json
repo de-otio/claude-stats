@@ -74,7 +74,8 @@
       "sentence": "{{text}}.",
       "clauseJoin": " — ",
       "listJoin": ", ",
-      "dotJoin": " · "
+      "dotJoin": " · ",
+      "caveatJoin": " "
     },
     "devTime": {
       "minutes": "{{value}} minutos de desenvolvimento",
@@ -142,6 +143,20 @@
       "more_one": "{{lead}} (+{{count}} outro).",
       "more_many": "{{lead}} (+{{count}} outros).",
       "more_other": "{{lead}} (+{{count}} outros)."
+    },
+    "calibration": {
+      "measured": {
+        "attribution": "A atribuição automática foi confirmada em {{percent}} dos {{n}} vínculos que você avaliou (IC de 95% {{lo}}–{{hi}}) — isso é a concordância nos vínculos que você escolheu revisar, não a precisão geral, e o valor parece baixo porque as pessoas revisam o que parece errado.",
+        "outcome": "A detecção de resultado coincidiu com o seu rótulo em {{percent}} das {{n}} tarefas que você rotulou (IC de 95% {{lo}}–{{hi}}) — isso é a concordância nas tarefas que você escolheu rotular, não a precisão geral, e o valor parece baixo porque as pessoas rotulam o que parece errado."
+      },
+      "uncalibrated": {
+        "attribution": "A confiança da atribuição não está calibrada — {{n}} das {{minN}} avaliações explícitas necessárias para que um índice de concordância signifique algo.",
+        "outcome": "A detecção de resultado não está calibrada — {{n}} dos {{minN}} rótulos de resultado necessários para que um índice de concordância signifique algo."
+      },
+      "enablement": {
+        "attribution": "Confirme ou corrija um vínculo automático com `claude-stats ticket <session-id> <key>`, ou anule um incorreto com `--negate`; cada avaliação explícita amplia a amostra.",
+        "outcome": "Rotule o trabalho concluído com `claude-stats task-outcome <item> <success|partial|fail>`; cada rótulo amplia a amostra."
+      }
     }
   },
   "actions": {
