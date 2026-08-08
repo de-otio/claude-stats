@@ -28,7 +28,9 @@
     "coverage:gate": "vitest run --coverage && node scripts/check-coverage-dirs.mjs"
   },
   "overrides": {
-    "brace-expansion": "^5.0.7",
+    "brace-expansion": "^5.0.9",
+    "@hono/node-server": "^2.0.5",
+    "sharp": "^0.35.3",
     "qs": "^6.15.2",
     "vite": "^6.4.3"
   },
