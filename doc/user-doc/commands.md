@@ -227,6 +227,9 @@ claude-stats export [--format <fmt>] [--project <path>] [--period <period>]
 | `--format <fmt>` | `json` | `json` or `csv` |
 | `--project <path>` | _(all projects)_ | Filter to one project |
 | `--period <period>` | `all` | `day`, `week`, `month`, or `all` |
+| `--since <date>` | — | Explicit lower bound (`YYYY-MM-DD`, inclusive). Must be paired with `--until`; overrides `--period` when both are set |
+| `--until <date>` | — | Explicit upper bound (`YYYY-MM-DD`, inclusive). Must be paired with `--since` |
+| `--timezone <tz>` | System timezone | IANA timezone for period boundaries |
 
 **Examples:**
 
@@ -587,6 +590,56 @@ point of measuring against a real invoice, not a caveat on it.
 |---|---|---|
 | `suppressions` | `[]` | Detector ids (`cache-churn`, `retry-loop`, `abandoned-spend`, `context-bloat`, `re-entry-burn`, `tier-mismatch`) to dismiss as "not waste" for this store. A suppressed detector still runs — its findings are withheld from `get_efficiency_hints`'s output, and it appears in that tool's `suppressedDetectors` list, so a dismissal is visible rather than a silent permanent blind spot. |
 
+### `experimentalSignals`
+
+```json
+{ "experimentalSignals": true }
+```
+
+| Key | Default | Meaning when absent |
+|---|---|---|
+| `experimentalSignals` | `false` | Off, the `cost-per-task` outcome rests on the Tier-0 proxy (git activity and recap confidence) alone. On, additional unvalidated signals are allowed to influence the outcome — and the LLM judge below is *only* consulted when this is also true. Calibrate before flipping it: run `cost-per-task --calibrate` and compare against outcomes you labelled by hand with [`task-outcome`](#task-outcome). |
+
+### `llmJudge`
+
+**This is the one local feature that can send your prompt text off the
+machine.** Read this block before enabling it.
+
+```json
+{
+  "experimentalSignals": true,
+  "llmJudge": {
+    "enabled": true,
+    "endpoint": "http://localhost:11434/v1/chat/completions",
+    "model": "llama3.1",
+    "maxCalls": 25
+  }
+}
+```
+
+An independent model rules on tasks the proxy finds ambiguous. The request it
+sends is a **blinded** summary — the transcript is stripped of model and
+assistant identity so the judge rules on the work rather than on who produced
+it, follow-up turns are capped, and the judge's reply re-enters the report as a
+verdict only, never as text. **Blinded is not redacted: the summary contains
+your own prompt text.** It goes wherever `endpoint` points. A local endpoint
+(Ollama, llama.cpp, LM Studio) keeps it on the machine; a hosted endpoint sends
+it to that provider, outside every guarantee in the
+[privacy documentation](../analysis/05-privacy-security.md). Prefer a model
+from a different family than the one being judged.
+
+| Key | Default | Meaning when absent |
+|---|---|---|
+| `enabled` | `false` | The judge never runs. `cost-per-task --llm-judge` turns it on for one run without editing config |
+| `endpoint` | _(unset)_ | Required. Any URL speaking the OpenAI `/v1/chat/completions` shape. Without it (or `model`) the judge is skipped with a warning on stderr rather than silently ignored |
+| `model` | _(unset)_ | Required. Model name as that endpoint expects it |
+| `apiKey` | _(unset)_ | Sent as a bearer token. Omit for local endpoints that need none |
+| `maxCalls` | `25` | Hard cap on judge calls per report run, so an ambiguous month cannot run up an unbounded bill |
+
+Both `experimentalSignals` and the judge must be on for a verdict to affect
+the metric — `--llm-judge` alone builds the provider but the pipeline ignores
+it while `experimentalSignals` is false.
+
 ---
 
 ## `dashboard`
@@ -600,6 +653,8 @@ claude-stats dashboard [--period <period>] [--project <path>] [--repo <url>]
 | Option | Default | Description |
 |---|---|---|
 | `--period <period>` | `all` | `day`, `week`, `month`, or `all` |
+| `--since <date>` | — | Explicit lower bound (`YYYY-MM-DD`, inclusive). Must be paired with `--until`; overrides `--period` when both are set |
+| `--until <date>` | — | Explicit upper bound (`YYYY-MM-DD`, inclusive). Must be paired with `--since` |
 | `--project <path>` | _(all)_ | Filter to one project |
 | `--repo <url>` | _(all)_ | Filter to one repo |
 
@@ -622,6 +677,8 @@ claude-stats spending [options]
 | Option | Default | Description |
 |---|---|---|
 | `--period <period>` | `day` | `day`, `week`, `month`, or `all` |
+| `--since <date>` | — | Explicit lower bound (`YYYY-MM-DD`, inclusive). Must be paired with `--until`; overrides `--period` when both are set |
+| `--until <date>` | — | Explicit upper bound (`YYYY-MM-DD`, inclusive). Must be paired with `--since` |
 | `--project <path>` | _(all projects)_ | Filter to one project |
 | `--model <name>` | _(all models)_ | Filter to sessions using a specific model (prefix match, e.g. `claude-opus`) |
 | `--top <n>` | `5` | Number of top sessions/tools/anomalies to show |
@@ -669,6 +726,8 @@ claude-stats cost-per-task [options]
 | Option | Default | Description |
 |---|---|---|
 | `--period <period>` | `month` | `day`, `week`, `month`, or `all` |
+| `--since <date>` | — | Explicit lower bound (`YYYY-MM-DD`, inclusive). Must be paired with `--until`; overrides `--period` when both are set |
+| `--until <date>` | — | Explicit upper bound (`YYYY-MM-DD`, inclusive). Must be paired with `--since` |
 | `--project <path>` | _(all projects)_ | Filter to one project |
 | `--account <uuid>` | _(all accounts)_ | Filter to a specific Anthropic account UUID |
 | `--repo <url>` | _(all repos)_ | Filter to a specific git remote URL |
@@ -676,6 +735,8 @@ claude-stats cost-per-task [options]
 | `--by-model` | _(off)_ | Show the per-model breakdown table |
 | `--timezone <tz>` | System timezone | IANA timezone for period boundaries |
 | `--json` | _(off)_ | Output the full report as JSON |
+| `--calibrate` | _(off)_ | Output calibration metrics as JSON — how often the outcome proxy agreed with the outcomes you labelled by hand. Reports `uncalibrated` rather than a number below the minimum sample |
+| `--llm-judge` | _(off)_ | Use a configured LLM to judge task outcomes instead of the git/recap proxy. Requires the [`llmJudge`](#llmjudge) config block; without it the flag is refused rather than silently ignored |
 
 **What it shows:**
 
@@ -817,6 +878,7 @@ claude-stats pack --period <yyyy-mm> [options]
 | `--out <dir>` | Current directory | Directory to write the pack bundle into |
 | `--json` | _(off)_ | Print the written file paths and section list as JSON instead of a sentence |
 | `--invoice-csv <path>` | — | Import an invoice/Cost-Explorer-style CSV total for this run's reconciliation section (overrides `config.reconciliation.invoiceTotal` for this run only — never written back) |
+| `--disclose-scope` | _(off)_ | Print the literal project path / account UUID in the pack instead of a `[withheld:…]` marker. See **Scope** below |
 
 **Redaction:** the pack runs the same stricter redaction the org-sync plane
 uses — prompt text, file paths, and session ids can never appear in it,
@@ -824,6 +886,19 @@ structurally, not by a filter applied after the fact. This is a stricter bar
 than the local dashboard, because this document is designed to leave the
 machine. See the [privacy documentation](../analysis/05-privacy-security.md)
 for what that means in practice.
+
+**Scope is stated, but its value is withheld.** A pack always says whether it
+was filtered — a one-project total and a whole-machine total must never read
+alike — but when `--project` or `--account` was used, the scope line and the
+`projectPath`/`accountUuid` CSV column render a stable marker
+(`[withheld:a1b2c3d4]`) instead of the literal value. An absolute path
+routinely encodes an employer, a client, or an unreleased product name in a
+parent directory, and this is the one artifact built to be handed to someone
+else. The marker is deterministic, so two packs scoped alike still compare and
+a monthly series stays readable. It is **not** a security boundary — an
+eight-hex digest of a guessable path is guessable — it defeats disclosure *by
+accident*, which is the real failure mode. Pass `--disclose-scope` when the
+recipient is entitled to the literal values.
 
 **Sections are opt-in.** The default (`headline,tickets,nonticket`) is the
 smallest complete pack. `hygiene`, `constraint`, and `calibration` are
@@ -1016,7 +1091,8 @@ contributes one session count but per-day token counts.
 **Client configuration** — register via `claude mcp add`:
 
 ```sh
-MCP_JS="$HOME/.vscode/extensions/de-otio.claude-stats-vscode-0.1.1/dist/mcp.js"
+# The extension directory carries its version — resolve it rather than hardcoding one:
+MCP_JS="$(ls -d "$HOME"/.vscode/extensions/de-otio.claude-stats-vscode-*/dist/mcp.js | sort -V | tail -1)"
 claude mcp add -s user claude-stats -- "$(which node)" --experimental-sqlite \
   -e "require('$MCP_JS').startMcpServer().catch(e=>{console.error(e);process.exit(1)})"
 ```
@@ -1062,6 +1138,45 @@ Use this after upgrading `claude-stats` to a version that captures additional da
 
 ---
 
+## `repair`
+
+Repair derived data that normal collection cannot fix retroactively. Unlike
+[`backfill`](#backfill), which re-reads the source files, `repair` recomputes a
+stored field from data already in the database.
+
+```
+claude-stats repair <subcommand> [options]
+```
+
+### `repair project-paths`
+
+Recompute `project_path` (and `repo_url`) for every session from that session's
+own recorded working directory.
+
+```
+claude-stats repair project-paths [--dry-run]
+```
+
+| Option | Description |
+|---|---|
+| `--dry-run` | Preview the changes without writing anything and without creating a backup |
+
+Claude Code encodes the project directory into the name of the folder under
+`~/.claude/projects/`, and that encoding is lossy: a literal hyphen in a
+directory name is indistinguishable from an encoded `/`. Collection now
+prefers the session's own recorded working directory, but `project_path` is
+written once at first insert and never revisited, so sessions collected before
+that fix keep the wrong path — which splits one project's usage across two
+rows in every per-project report.
+
+Sessions whose source file has since been deleted have no ground truth left
+and are reported as `unfixable` rather than guessed at. A real run backs up the
+database first (the path is printed) and applies every change in one
+transaction; `--dry-run` writes nothing and makes no backup. It is idempotent,
+so a second run on repaired data changes nothing.
+
+---
+
 ## `diagnose`
 
 Show quarantine counts and schema health information.
@@ -1091,7 +1206,7 @@ run by default** — without `--yes` it only prints what *would* be deleted and
 exits without changing anything.
 
 ```
-claude-stats purge [--yes] [--include-db] [--backup-cloud]
+claude-stats purge [--yes] [--include-db] [--also-cloud] [--backup-cloud]
 ```
 
 | Option | Description |
@@ -1099,7 +1214,8 @@ claude-stats purge [--yes] [--include-db] [--backup-cloud]
 | _(none)_ | Dry run: preview what would be deleted; deletes nothing |
 | `--yes` | Actually delete claude-stats data (archive/bundle files); also unregisters the MCP server from `~/.claude.json` |
 | `--include-db` | Also delete the SQLite database `~/.claude-stats/stats.db` (otherwise the DB is kept) |
-| `--backup-cloud` | Also describe/target the encrypted cloud backup copy for this device (other devices keep their own copies) |
+| `--also-cloud` | Also remove local cloud-sync configuration and clear auth tokens (the org/team plane) |
+| `--backup-cloud` | Also delete **this device's** copy in your personal backup location (Dropbox/iCloud/Drive/OneDrive/local folder). Other enrolled devices keep their own copies until they run this too |
 
 ```sh
 # Preview only (safe)

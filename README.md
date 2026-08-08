@@ -61,7 +61,8 @@ The VS Code extension bundles a local MCP server and registers it automatically 
 If you need to register it manually (without the extension), run:
 
 ```sh
-MCP_JS="$HOME/.vscode/extensions/de-otio.claude-stats-vscode-0.1.1/dist/mcp.js"
+# The extension directory carries its version — resolve it rather than hardcoding one:
+MCP_JS="$(ls -d "$HOME"/.vscode/extensions/de-otio.claude-stats-vscode-*/dist/mcp.js | sort -V | tail -1)"
 claude mcp add -s user claude-stats -- "$(which node)" --experimental-sqlite \
   -e "require('$MCP_JS').startMcpServer().catch(e=>{console.error(e);process.exit(1)})"
 ```
@@ -142,6 +143,10 @@ claude-stats report --html        # export a standalone HTML dashboard file
 | `spending`     | Detailed cost breakdown by model, session, tool, and MCP server |
 | `cost-per-task`| Cost per successful task — outcome-cost overall and per model   |
 | `task-outcome` | Label a task `success`/`partial`/`fail` to ground the metric    |
+| `pack`         | Write the justification pack (HTML + CSV) for one month         |
+| `constraint-impact` | What a *declared* policy change cost or saved, per task class |
+| `ticket`       | Link, negate, or list manual ticket attributions for a session  |
+| `recap`        | "What did I get done today?" — clustered day summary, plus corrections |
 | `serve`        | Start a local web dashboard (`http://localhost:9120`)           |
 | `status`       | Show database size, session count, and last collection time     |
 | `export`       | Export sessions as JSON or CSV                                  |
@@ -149,11 +154,17 @@ claude-stats report --html        # export a standalone HTML dashboard file
 | `dashboard`    | Output pre-aggregated dashboard JSON to stdout                  |
 | `tag` / `tags` | Tag sessions and list tags                                      |
 | `task-class`   | Classify sessions into task classes and show the distribution   |
+| `account`      | Show and re-attribute the Claude accounts seen on this machine  |
+| `plan-advisor`  | Size Team vs Enterprise seats for a company-wide rollout        |
 | `config`       | View or set cost alert thresholds                               |
 | `backfill`     | Re-parse all session files to populate newly added fields       |
+| `repair`       | Recompute derived data that collection can't fix retroactively  |
 | `diagnose`     | Show quarantine counts and schema health                        |
 | `mcp`          | Start a local MCP server over stdio for AI agent access         |
+| `setup` / `link` / `sync` / `disconnect` | Optional aggregate-only sync to a team backend |
 | `purge`        | Delete local claude-stats data (dry run by default; `--yes` to apply) |
+
+Every command and option: [doc/user-doc/commands.md](doc/user-doc/commands.md).
 
 ## Build
 

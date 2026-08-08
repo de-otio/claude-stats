@@ -19,7 +19,9 @@
 
 All raw data stays on the developer's machine. The tool reads from `~/.claude/` (which is already `drwx------`, owner-only) and writes aggregated stats to a local SQLite database with the same permissions.
 
-**No network access** unless the user explicitly configures server sync.
+**No network access** unless the user explicitly configures it — org/team
+sync, personal-plane backup, or the LLM judge (see "Two-Plane Model" below for
+the complete list of paths out).
 
 ## What the Tool Stores Locally
 
@@ -55,9 +57,11 @@ All raw data stays on the developer's machine. The tool reads from `~/.claude/` 
 Because this corrects a previous inaccuracy in this document, the current
 behavior is spelled out precisely:
 
-- **Where:** the local SQLite DB (`~/.claude-stats/stats.db`) only, in the
+- **Where:** the local SQLite DB (`~/.claude-stats/stats.db`), in the
   `messages.prompt_text` column. It does not appear in the quarantine table
-  path or in any network payload.
+  path, and no *aggregate* payload can carry it. The one feature that sends it
+  over the network is the opt-in LLM judge, described under "Two-Plane
+  Model" below.
 - **Sanitized on write:** every prompt is passed through
   [`sanitizePromptText`](../../packages/core/src/sanitize.ts) before storage —
   known system-injected tag blocks are stripped, remaining `<`/`>` characters
@@ -68,8 +72,9 @@ behavior is spelled out precisely:
 - **Never sent to the org/team plane.** Prompt text is excluded from every
   aggregate sync payload by construction (see "Server Sync Rules" and
   "Two-Plane Model" below) — the org plane's payload shape cannot carry it.
-- **Optionally leaves the machine only via the personal plane** (see below),
-  encrypted by default when the target is a third-party/cloud store.
+- **Leaves the machine only by explicit opt-in:** the personal plane (see
+  below), encrypted by default when the target is a third-party/cloud store,
+  or the LLM judge when configured against a hosted endpoint.
 - **Permissions:** the DB file inherits the same `0600`/owner-only posture as
   the rest of `~/.claude-stats/`.
 
@@ -262,19 +267,33 @@ path in either direction by which the org plane could obtain, store, or
 decrypt personal-plane ciphertext, raw transcripts, or `prompt_text` — the
 aggregate payload type simply has no field shaped to carry any of them.
 
-The two planes describe everything the *tool* transmits. They do not describe
-everything that leaves the machine: the justification pack is a plaintext
-document the tool writes to disk for the user to hand onward themselves, and
-it is governed by neither plane's protections. It gets its own section next.
+The two planes describe the tool's own *aggregate* transmission. They do not
+describe everything that can leave the machine. Two other paths exist, both
+opt-in and both outside either plane's protections:
+
+- **The justification pack** — a plaintext document the tool writes to disk for
+  the user to hand onward themselves. Its own section is next.
+- **The LLM judge** (`config.llmJudge`, `cost-per-task --llm-judge`) — off by
+  default and disabled unless `experimentalSignals` is also on. When enabled it
+  POSTs a blinded task summary to the endpoint the user configures, and that
+  summary **contains the user's own prompt text**. Blinding removes model and
+  assistant identity so the judge rules on the work rather than on who produced
+  it; it is not redaction. A local endpoint (Ollama and similar) keeps the text
+  on the machine, which is the configuration this document assumes; a hosted
+  endpoint sends prompt text to that third party, outside every guarantee made
+  here. The judge's reply re-enters the report as a verdict only, never as
+  text, and `maxCalls` bounds the number of requests per run. The feature is
+  documented in
+  [`doc/user-doc/commands.md`](../user-doc/commands.md#llmjudge).
 
 ## The Justification Pack: A Third Egress Path
 
 The stored-data features (the SQLite DB, the transcript archive) are
-local-only by default, and the two planes above are the only ways the tool
-itself transmits anything: (a) the org/team-sync aggregate payload
-(day-bucketed totals only, no prompt content) and (b) the personal-plane
-encrypted backup (a blind ciphertext blob). **The
-justification pack is a third kind of thing: a plaintext document the
+local-only by default, and the two planes above are how the tool transmits
+aggregates: (a) the org/team-sync payload (day-bucketed totals only, no prompt
+content) and (b) the personal-plane encrypted backup (a blind ciphertext
+blob). **The
+justification pack is a different kind of thing: a plaintext document the
 tool generates specifically so a human can hand it to another human who does
 not run claude-stats** — typically a manager, typically over email, typically
 outside any encryption or sync channel this document has previously

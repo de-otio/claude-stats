@@ -118,30 +118,74 @@ Last collected  : 3/8/2026, 9:15:04 AM
 
 The dashboard presents the same data as the terminal report in graphical form. It is produced either by `claude-stats serve` (live, browser-based) or by `claude-stats report --html` (static file).
 
-### Tabs
+### Navigation
 
-The dashboard's tab bar, in order, and what each shows:
+Navigation has two levels. The top bar lists **views** — question-shaped
+groupings — and each view contains one or more **sections**, which are the
+individual panels. Section ids did not change when the views were introduced,
+so an existing `#spending` link still resolves; it now opens the view that
+contains that section.
 
-| Tab | Shown when | Content |
+| View | Shown when | Sections it contains |
 |---|---|---|
-| **Insights** | Always — this is the default/landing tab | Five business-question cards, an alerts strip, and (if configured) the reconciliation panel. See below |
-| **Overview** | Always | Summary bar, cost-per-successful-task card, chart panels — the token-mechanics view described in the sections below |
-| **Energy** | Energy data present | CO₂/energy estimate for the period |
-| **Spending** | Spending data present | The same breakdown as the `spending` command (by model, top sessions, top tools, MCP servers, anomalies) |
-| **Projects** | Always | Per-project usage breakdown |
-| **Sessions** | Always | Session list/detail |
-| **Plan** | Always | Plan verdict, seat sizing |
-| **Context** | Context-analysis data present | Prompt/context size analysis |
-| **Efficiency** | Model-efficiency data present | Model-choice recommendations |
-| **Classify** | Always | Project-cluster classification (`account classify`) |
-| **Settings** | Always | Config, backup & sync, team sync |
+| **Insights** | Always — the default landing view | Insights |
+| **Cost & Controlling** | Always | Overview, Spending¹ |
+| **Tickets & Value** | Always | Projects, Classify |
+| **Efficiency & Hygiene** | Always | Context¹, Efficiency¹ |
+| **Plan & Policy** | Always | Plan |
+| **Sessions** | Always | Sessions |
+| **Energy** | Energy data present | Energy |
+| **Settings** | Always | Settings |
 
-**Insights is the default tab, deliberately.** The dashboard grew into ten
-tabs, dozens of charts and KPI tiles in which "what did AI cost and was it
-worth it" had no single home — Insights is the answer-first front door, and
-it carries no data-presence condition: an Insights tab that disappeared on a
-fresh install would hide the exact honest-empty states that teach a new user
-what to enable, from the user who most needs them.
+¹ These sections render only when their data block is present (`spending`,
+`contextAnalysis`, `modelEfficiency` respectively). A view whose sections are
+all absent does not appear at all — which is why a payload with no energy
+block shows seven entries rather than eight.
+
+What each section holds: **Insights** — five business-question cards, an
+alerts strip, and (if configured) the reconciliation panel, described below.
+**Overview** — summary bar, cost-per-successful-task card, chart panels; the
+token-mechanics view the rest of this document covers. **Spending** — the same
+breakdown as the `spending` command (by model, top sessions, top tools, MCP
+servers, anomalies). **Projects** — per-project usage. **Classify** —
+project-cluster classification (`account classify`). **Context** —
+prompt/context size analysis. **Efficiency** — model-choice recommendations.
+**Plan** — plan verdict and seat sizing. **Sessions** — session list and
+detail. **Energy** — CO₂/energy estimate. **Settings** — config, backup &
+sync, team sync.
+
+The served page and the VS Code webview both render this from a single
+definition, [`nav.ts`](../../packages/cli/src/server/nav.ts).
+
+**Why views rather than one tab per panel.** The old tab bar mirrored the data
+model — a tab existed because a `DashboardData` block existed — so the cost
+story was spread across four of eleven tabs and the reader had to know which
+one held which fragment. The four question-shaped views (what did it cost /
+what did it buy / was it efficient / is the setup right) group rather than
+delete: every panel still renders, and every one is still reachable by its own
+hash.
+
+**Insights is the default, deliberately.** The dashboard had grown into eleven
+data-shaped panels, dozens of charts and KPI tiles in which "what did AI cost
+and was it worth it" had no single home. Insights is the answer-first front
+door, and it carries no data-presence condition: an Insights view that
+disappeared on a fresh install would hide the exact honest-empty states that
+teach a new user what to enable, from the user who most needs them.
+
+### Local filters
+
+The four question-shaped views (Cost & Controlling, Tickets & Value,
+Efficiency & Hygiene, Plan & Policy) carry a filter bar above their panels:
+**project**, **task class**, and **ticket key**. Insights, Sessions, Energy
+and Settings do not — they are utility surfaces, not questions, and a filter
+row above a screen it does not apply to is worse than no filter row.
+
+Applying a filter reloads the page with `?project=`, `?taskClass=` and
+`?ticket=` query parameters (alongside the existing `?period=`), and the
+server re-queries with them. A filter narrows **both** halves of the query —
+which sessions are in scope *and* which messages within them — so every
+figure on the view stays internally consistent rather than mixing a filtered
+numerator with an unfiltered denominator. **Clear** drops all three.
 
 ### Insights tab
 
@@ -189,7 +233,7 @@ others say about the same number.
 
 ### Summary bar
 
-The Overview tab (not Insights — see [Tabs](#tabs) above) shows the token-mechanics view described in the rest of this section.
+The Overview section (not Insights — see [Navigation](#navigation) above; Overview lives inside the Cost & Controlling view) shows the token-mechanics view described in the rest of this section.
 
 At the top of the page, five stats are always visible:
 
