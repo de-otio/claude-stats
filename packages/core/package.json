@@ -103,7 +103,51 @@
     "./locales/pt-BR/*.json": "./dist/locales/pt-BR/*.json",
     "./locales/pl/*.json": "./dist/locales/pl/*.json",
     "./locales/uk/*.json": "./dist/locales/uk/*.json",
-    "./locales/ru/*.json": "./dist/locales/ru/*.json"
+    "./locales/ru/*.json": "./dist/locales/ru/*.json",
+    "./tickets": {
+      "types": "./dist/tickets.d.ts",
+      "default": "./dist/tickets.js"
+    },
+    "./attribution": {
+      "types": "./dist/attribution.d.ts",
+      "default": "./dist/attribution.js"
+    },
+    "./calibration": {
+      "types": "./dist/calibration.d.ts",
+      "default": "./dist/calibration.js"
+    },
+    "./insight": {
+      "types": "./dist/insight.d.ts",
+      "default": "./dist/insight.js"
+    },
+    "./reconciliation": {
+      "types": "./dist/reconciliation.d.ts",
+      "default": "./dist/reconciliation.js"
+    },
+    "./types/insight": {
+      "types": "./dist/types/insight.d.ts",
+      "default": "./dist/types/insight.js"
+    },
+    "./taskClass": {
+      "types": "./dist/taskClass/index.d.ts",
+      "default": "./dist/taskClass/index.js"
+    },
+    "./hygiene": {
+      "types": "./dist/hygiene/index.d.ts",
+      "default": "./dist/hygiene/index.js"
+    },
+    "./constraintImpact": {
+      "types": "./dist/constraintImpact/index.d.ts",
+      "default": "./dist/constraintImpact/index.js"
+    },
+    "./pack": {
+      "types": "./dist/pack.d.ts",
+      "default": "./dist/pack.js"
+    },
+    "./types/pack": {
+      "types": "./dist/types/pack.d.ts",
+      "default": "./dist/types/pack.js"
+    }
   },
   "scripts": {
     "build": "tsc && node scripts/copy-locales.mjs",

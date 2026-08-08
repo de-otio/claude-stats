@@ -2,6 +2,7 @@
   "pageTitle": "Claude Stats — {{period}} ({{date}})",
   "tabs": {
     "overview": "Overview",
+    "spending": "Spending",
     "projects": "Projects",
     "sessions": "Sessions",
     "plan": "Plan",
@@ -9,7 +10,18 @@
     "efficiency": "Efficiency",
     "energy": "Energy",
     "settings": "Settings",
-    "classify": "Classify"
+    "classify": "Classify",
+    "insights": "Insights"
+  },
+  "views": {
+    "insights": "Insights",
+    "cost-and-controlling": "Cost & Controlling",
+    "tickets-and-value": "Tickets & Value",
+    "efficiency-and-hygiene": "Efficiency & Hygiene",
+    "plan-and-policy": "Plan & Policy",
+    "sessions": "Sessions",
+    "energy": "Energy",
+    "settings": "Settings"
   },
   "classify": {
     "title": "Classify your projects",
@@ -68,6 +80,7 @@
     "tokenBreakdown": "Token Breakdown",
     "cacheUsage": "Cache Usage",
     "cumulativeApiValue": "Cumulative API Value vs Plan Fee",
+    "policyEvents": "Policy events",
     "topProjects": "Top Projects",
     "tokensByProject": "Token Share by Project",
     "energyByProject": "Energy Usage by Project",
@@ -467,5 +480,68 @@
       "cache_hygiene": "Improve cache hygiene to cut repeated tokens",
       "stop_after_repairs": "Stop sessions after repairs complete"
     }
+  },
+  "insights": {
+    "lede": "The five questions this tool exists to answer. Each card links to its evidence.",
+    "cards": {
+      "cost": "What did AI cost?",
+      "bought": "What did it buy?",
+      "efficiency": "Was it efficient?",
+      "setup": "Is the setup right?",
+      "change": "What should change?"
+    },
+    "alerts": {
+      "fallbackRates": "Some usage was priced at first-party rates on a partner platform (Bedrock or Vertex). Every cost figure here is an estimate until partner rates are configured.",
+      "reconciliationDrift": "Bottom-up cost does not reconcile with the configured invoice total — the reconciliation panel below shows the residual and its candidate causes.",
+      "action": "Review"
+    },
+    "verdict": {
+      "goodValue": "Your plan is good value for how much you use it",
+      "underusing": "You are using less than your plan covers",
+      "noPlan": "No plan detected — costs are read as metered usage"
+    }
+  },
+  "ticketCard": {
+    "title": "Ticket attribution",
+    "noSession": "No sessions recorded yet — nothing to link.",
+    "session": "Current session: {{sessionId}}…",
+    "noLinks": "No ticket links for this session.",
+    "negatedBadge": "negated",
+    "negateAction": "Negate",
+    "removeAction": "Remove",
+    "linkAction": "Link",
+    "keyPlaceholder": "PROJ-123"
+  },
+  "filters": {
+    "legend": "Narrow this view",
+    "scopeNote": "Filters re-run the whole report, so they narrow every view — not just this one.",
+    "project": "Project:",
+    "ticket": "Ticket:",
+    "taskClass": "Task class:",
+    "any": "Any",
+    "ticketPlaceholder": "e.g. PROJ-123",
+    "apply": "Apply filters",
+    "clear": "Clear",
+    "active_one": "{{count}} filter active",
+    "active_other": "{{count}} filters active",
+    "modelUnavailable": "Filtering by model is not available yet — it would narrow token totals without narrowing the sessions they belong to."
+  },
+  "taskClasses": {
+    "debug": "Debugging",
+    "greenfield": "New feature",
+    "refactor-multi-file": "Refactor",
+    "config-chore": "Config / chore",
+    "review": "Review",
+    "explore": "Exploration",
+    "unknown": "Unclassified"
+  },
+  "costQuality": {
+    "title": "Cost quality",
+    "frontierLayer": "Where the spend sits against the frontier",
+    "perTaskLayer": "What a successful task cost",
+    "calibrationLayer": "How far to trust the outcome labels",
+    "calibrationReady": "Outcome labels are calibrated — see how",
+    "calibrationNotReady": "Outcome labels are not calibrated yet — see why",
+    "calibrationNoLabels": "Outcome labels are not calibrated — nothing labelled yet"
   }
 }

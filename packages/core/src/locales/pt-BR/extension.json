@@ -60,19 +60,6 @@
         }
       ]
     },
-    "models": {
-      "title": "Modelos",
-      "sections": [
-        {
-          "heading": "Tokens por modelo",
-          "body": "Barra empilhada mostrando o consumo de tokens de entrada e saída por modelo. Ajuda a ver quais modelos você usa mais intensamente."
-        },
-        {
-          "heading": "Razões de parada",
-          "body": "Com que frequência cada razão de parada ocorre. «end_turn» significa que o modelo terminou naturalmente, «tool_use» significa que ele chamou uma ferramenta, «max_tokens» significa que atingiu o limite de saída."
-        }
-      ]
-    },
     "projects": {
       "title": "Projetos",
       "sections": [
@@ -253,6 +240,36 @@
         {
           "heading": "Onde as configurações são armazenadas",
           "body": "Todas as configurações são salvas em ~/.claude-stats/config.json. Você também pode editar este arquivo diretamente."
+        }
+      ]
+    },
+    "classify": {
+      "title": "Classificar",
+      "sections": [
+        {
+          "heading": "Para que serve esta guia",
+          "body": "Atribua cada projeto à assinatura que deve ser cobrada por ele. Os projetos são ordenados por custo, então classificar os primeiros já cobre a maior parte dos seus gastos."
+        },
+        {
+          "heading": "Somente no VS Code",
+          "body": "A classificação de projetos está disponível no painel do VS Code; o dashboard servido pelo navegador não oferece esse recurso."
+        }
+      ]
+    },
+    "insights": {
+      "title": "Insights",
+      "sections": [
+        {
+          "heading": "O que você está vendo",
+          "body": "As cinco perguntas de negócio que esta ferramenta existe para responder: quanto a IA custou, o que isso rendeu, se foi eficiente, se a configuração está certa e o que deve mudar. Uma frase e um número cada, com link para as evidências."
+        },
+        {
+          "heading": "Cartões que dizem não conseguir responder",
+          "body": "Um cartão sem dados informa o que falta e como habilitar, em vez de exibir um widget vazio ou um zero fabricado. Em uma instalação nova a maioria começa assim, e cada um indica o próximo passo."
+        },
+        {
+          "heading": "A faixa de alertas",
+          "body": "Exibida apenas quando algo realmente precisa de atenção, e deliberadamente discreta: um alerta que dispara com ruído ensina você a ignorar a faixa."
         }
       ]
     }

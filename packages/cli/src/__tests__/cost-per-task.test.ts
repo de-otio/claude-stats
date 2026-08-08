@@ -609,6 +609,19 @@ describe('buildCostPerTaskReport (integration)', () => {
     ).resolves.toBeDefined();
     expect(data.costPerTask).toBeNull();
   });
+
+  it('G-5: a `since` without `until` is never silently dropped in favour of the "month" preset', async () => {
+    // `isCustomRange = Boolean(since && until)` used to fall through to
+    // `false` for a lone `since`, silently discarding it and querying the
+    // "month" preset instead of the range the caller actually asked for.
+    // Same input, same fix as `attachCalibration` — must fail honestly
+    // (null) rather than substitute an unrelated window.
+    const data = buildDashboard(store, { period: 'day' });
+    await attachCostPerTask(store, data, { since: '2023-11-01' }, {
+      nowMs: NOW_TS, tz: 'UTC', correctionsClient: null, digestDeps: deps(),
+    });
+    expect(data.costPerTask).toBeNull();
+  });
 });
 
 // ─── Regression (plan A1): per-task cost is not double-counted ───────────────

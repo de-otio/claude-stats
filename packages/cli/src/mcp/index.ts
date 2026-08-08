@@ -21,6 +21,7 @@ import { searchHistory } from "../history/index.js";
 import { sanitizePromptText } from "@claude-stats/core/sanitize";
 import type { ReportOptions } from "../reporter/index.js";
 import { MCP_VERSION } from "./version.js";
+import { t } from "../i18n.js";
 import { readClaudeAccount } from "../account.js";
 import {
   PLAN_MECHANICS_VERIFIED_DATE,
@@ -521,6 +522,365 @@ export function createMcpServer(store: Store): McpServer {
     },
   );
 
+  // ── get_cost_per_ticket ────────────────────────────────────────────────────
+  server.tool(
+    "get_cost_per_ticket",
+    "Get cost attributed to work-item (Jira-style) ticket keys, from locally " +
+      "observed evidence — git branch names, commit subjects, and prompt-text " +
+      "mentions. No Jira API is called; the ticket key is the entire interface.\n\n" +
+      "Every figure carries its CONFIDENCE tier (high/medium/low — see the accuracy " +
+      "ladder in doc/analysis/ticket-attribution/01) and the report's `coverage` " +
+      "field states what fraction of the WINDOW's total spend is attributed at all " +
+      "— never claim 100% attribution without checking it. A session linked to more " +
+      "than one ticket with no message-level evidence to split on is AMBIGUOUS: its " +
+      "cost is counted once in `coverage` but shown under every key it's linked to " +
+      "in `tickets` (never silently split), so per-ticket costs can sum to more than " +
+      "`coverage.attributedCost` when ambiguity exists — read `coverage.ambiguousSessions`.\n\n" +
+      "Pass `ticket` to drill into ONE key's evidence (which sessions, which source, " +
+      "which branch/commit matched) instead of the whole-window table — the CLI " +
+      "equivalent is `claude-stats report --ticket <KEY>`.\n\n" +
+      "This tool itself is READ-ONLY, but a wrong automatic link CAN be corrected: " +
+      "`claude-stats ticket <session> <KEY>` manually links a session to a key " +
+      "(wins over any automatic link), `claude-stats ticket <session> <KEY> --negate` " +
+      "tombstones a wrong automatic link so re-extraction cannot resurrect it, and " +
+      "`claude-stats ticket <session> --list` shows a session's current links with " +
+      "their source and confidence. If a linked key looks wrong, suggest the " +
+      "relevant command rather than telling the user nothing can be done.",
+    {
+      ...dateRangeShape,
+      project: z.string().optional()
+        .describe("Filter to a specific project path"),
+      account: z.string().optional()
+        .describe("Filter to a specific account UUID (full or prefix match)"),
+      ticket: z.string().optional()
+        .describe("Drill into one ticket key (e.g. PROJ-123) and return its linked sessions with evidence"),
+    },
+    async ({ period, since, until, project, account, ticket }) => {
+      const resolved = resolveAccountFilter(store, account);
+      if (!resolved.ok) return formatResult({ error: resolved.error });
+      const effectivePeriod = period ?? "month";
+      const { periodRange } = await import("../reporter/index.js");
+      const { getTicketCostReport } = await import("../ticketing/index.js");
+      const { formatMoney, formatPercent, confidenceCaveat } = await import("@claude-stats/core/insight");
+      const { buildAttributionCalibration, calibrationJson } = await import("../calibration/index.js");
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const range = periodRange({ period: effectivePeriod, since, until }, tz);
+
+      const report = getTicketCostReport(store, {
+        since: range.since > 0 ? range.since : undefined,
+        until: range.until,
+        projectPath: project,
+        accountUuid: resolved.accountUuid,
+      });
+
+      // The empty-period sentence is the SAME fact `answerCost` states on the
+      // dashboard, so it quotes the same key rather than a local literal that
+      // was already free to drift from it.
+      const coverageLine = report.coverage.totalCost > 0
+        ? `${formatMoney(report.coverage.attributedCost)} of ${formatMoney(report.coverage.totalCost)} attributed (${formatPercent(report.coverage.ratio)}).`
+        : t("common:insight.cost.unavailable");
+
+      const base = {
+        window: { since: new Date(range.since).toISOString(), until: new Date(range.until).toISOString() },
+        coverage: {
+          attributedCost: report.coverage.attributedCost,
+          totalCost: report.coverage.totalCost,
+          unattributedCost: Math.max(0, report.coverage.totalCost - report.coverage.attributedCost),
+          ratio: report.coverage.ratio,
+          byConfidence: report.coverage.byConfidence,
+          ambiguousSessions: report.coverage.ambiguousSessions,
+          summary: coverageLine,
+          confidenceCaveat: confidenceCaveat(t, report.coverage),
+        },
+        unknownModelTokens: report.unknownTokens,
+        // The confidence tiers above are an ASSERTION about reliability. This is
+        // the only thing in the payload that has ever checked one, so it ships
+        // in the same object rather than behind a second tool call a caller may
+        // never make. `state: "uncalibrated"` is the normal answer and carries
+        // no rate at all — read it as "these tiers are unverified", not as a
+        // low score.
+        calibration: (() => {
+          const { estimate, review } = buildAttributionCalibration(store);
+          return calibrationJson(t, estimate, { unproposed: review.unproposed });
+        })(),
+      };
+
+      if (ticket) {
+        const row = report.tickets.find((t) => t.ticketKey === ticket.trim().toUpperCase());
+        if (!row) {
+          return formatResult({
+            ...base,
+            ticket: ticket.trim().toUpperCase(),
+            error: "No attributed spend found for this key in the given window — check the key and the period.",
+          });
+        }
+        // Evidence drill-down: which sessions, which source, what matched.
+        const sessions = row.sessionIds.map((sessionId) => {
+          const links = store
+            .getTicketLinksForSession(sessionId)
+            .filter((l) => l.ticket_key === row.ticketKey && l.negated === 0);
+          return {
+            sessionId,
+            links: links.map((l) => ({
+              source: l.source,
+              confidence: l.confidence,
+              granularity: l.granularity,
+              evidence: l.evidence,
+            })),
+          };
+        });
+        return formatResult({
+          ...base,
+          ticket: {
+            ticketKey: row.ticketKey,
+            cost: row.cost,
+            inputTokens: row.inputTokens,
+            outputTokens: row.outputTokens,
+            cacheReadTokens: row.cacheReadTokens,
+            cacheCreationTokens: row.cacheCreationTokens,
+            sessionCount: row.sessionCount,
+            confidence: row.confidence,
+            sources: row.sources,
+            sessions,
+          },
+        });
+      }
+
+      return formatResult({
+        ...base,
+        tickets: report.tickets.map((t) => ({
+          ticketKey: t.ticketKey,
+          cost: t.cost,
+          inputTokens: t.inputTokens,
+          outputTokens: t.outputTokens,
+          cacheReadTokens: t.cacheReadTokens,
+          cacheCreationTokens: t.cacheCreationTokens,
+          sessionCount: t.sessionCount,
+          confidence: t.confidence,
+          sources: t.sources,
+        })),
+      });
+    },
+  );
+
+  // ── get_calibration ────────────────────────────────────────────────────────
+  server.tool(
+    "get_calibration",
+    "Check whether this tool's own confidence labels have ever been verified. " +
+      "Ticket attribution, task outcomes and hygiene findings all carry confidence " +
+      "tiers; this is the only tool that reports how well the mechanisms behind them " +
+      "have actually agreed with the user's corrections.\n\n" +
+      "READ `measures` BEFORE QUOTING `rate`. The rate is 'agreement-on-reviewed-subset': " +
+      "the share of items the user explicitly ruled on where the mechanism had it right. " +
+      "It is NOT accuracy. Corrections are not a random sample — people review what looks " +
+      "wrong — so the denominator is enriched for mistakes and the rate reads LOW relative " +
+      "to the mechanism's true accuracy. Report it as 'agreed with your corrections X% of " +
+      "the time on n=N reviewed items', never as 'attribution is X% accurate'.\n\n" +
+      "When `state` is 'uncalibrated' there is NO rate — the sample is under `minN` and a " +
+      "percentage from it would be noise. That is the normal state for most stores and is " +
+      "not a fault: say the confidence tiers are unverified, and relay `enablement`, which " +
+      "names what the user would do to build the sample.\n\n" +
+      "`subjects.attribution.unproposed` counts manual links naming a key the automatic " +
+      "pass never proposed — a recall miss, deliberately excluded from `rate`, which is a " +
+      "precision figure. Do not add them together.\n\n" +
+      "The task-class classifier is absent on purpose: nothing on this machine records a " +
+      "human's disagreement with it, so there is no ground truth to calibrate against — " +
+      "see `notCalibrated`.",
+    {},
+    async () => {
+      const { buildAttributionCalibration, outcomeCalibrationFrom, calibrationJson } =
+        await import("../calibration/index.js");
+      const attribution = buildAttributionCalibration(store);
+
+      // The outcome subject is scored from the corrections DB by
+      // `buildCalibrationReport`, which walks daily digests — slow, and it opens
+      // the corrections DB itself. Failure here must degrade to the honest
+      // uncalibrated state rather than failing the whole tool: a caller asking
+      // "has any of this been checked?" is worse served by an error than by
+      // "no, and here is how to start".
+      let outcomeReport = null;
+      try {
+        const { buildCalibrationReport } = await import("../cost-per-task/index.js");
+        outcomeReport = await buildCalibrationReport(store, { period: "month" });
+      } catch {
+        outcomeReport = null;
+      }
+
+      return formatResult({
+        // K-1: routed through the SAME translator `subjects.*.caveat`/
+        // `.enablement` resolve through below (calibrationJson → t()), rather
+        // than hardcoded English literals — a payload with two locale-aware
+        // fields and two English-only ones would render mixed-language JSON
+        // for every non-English caller.
+        minimumSampleRationale: t("common:insight.calibration.minimumSampleRationale"),
+        subjects: {
+          attribution: calibrationJson(t, attribution.estimate, {
+            unproposed: attribution.review.unproposed,
+          }),
+          // `"month"` mirrors the `period` the report was built with above, not
+          // a guess. The two literals must agree; they are three lines apart so
+          // that a reader can check it, and `scope` now travels into the JSON
+          // so a calling agent can see that this subject and `attribution`
+          // (whole-store) were not counted over the same span.
+          outcome: calibrationJson(t, outcomeCalibrationFrom(outcomeReport, "month")),
+        },
+        notCalibrated: {
+          taskClass: t("common:insight.calibration.notCalibratedTaskClass"),
+        },
+      });
+    },
+  );
+
+  // ── get_efficiency_hints ───────────────────────────────────────────────────
+  server.tool(
+    "get_efficiency_hints",
+    "Self-audit tool: find your OWN wasted spend in patterns the store already " +
+      "holds — cache churn (context rebuilt instead of read back), retry loops " +
+      "(turns burned retrying the same failing tool call), abandoned spend " +
+      "(costly sessions that end in error with no follow-up), context bloat " +
+      "(huge input per turn for little output), and re-entry burn (cache " +
+      "rebuilt after an idle/throttle gap). This is NOT a scoreboard — nothing " +
+      "here ranks developers, and nothing leaves this machine; it exists so a " +
+      "developer can find and fix their own waste before someone else points " +
+      "it out.\n\n" +
+      "Every finding carries its RULE and THRESHOLD in plain language (judge the " +
+      "claim yourself, don't just trust it), the specific `sessionIds` it fired " +
+      "on (checkable), and one remedy sentence. `estimatedWaste` is a " +
+      "conservative equivalent-API-dollar estimate, never the whole session's " +
+      "cost unless the rule says so. Detectors favor precision over recall — a " +
+      "detector finding nothing is a real, good result, not a sign it's broken. " +
+      "A detector id in `suppressedDetectors` was dismissed via " +
+      "`config.hygiene.suppressions` and still ran, but its findings are " +
+      "withheld here.\n\n" +
+      "`hygieneRatio` is self-audited waste as a share of the window's total " +
+      "cost; `previousHygieneRatio` is the same ratio for the immediately " +
+      "preceding window of equal length (null when the window has no `since`/" +
+      "`until` or the prior window had no spend) — this pair is the trend line " +
+      "a justification pack cites (\"self-audited waste down from 14% to 6%\").",
+    {
+      ...dateRangeShape,
+      project: z.string().optional()
+        .describe("Filter to a specific project path"),
+      account: z.string().optional()
+        .describe("Filter to a specific account UUID (full or prefix match)"),
+    },
+    async ({ period, since, until, project, account }) => {
+      const resolved = resolveAccountFilter(store, account);
+      if (!resolved.ok) return formatResult({ error: resolved.error });
+      const effectivePeriod = period ?? "week";
+      const { periodRange } = await import("../reporter/index.js");
+      const { loadConfig } = await import("../config.js");
+      const { buildHygieneReport } = await import("../hygiene/index.js");
+      const { formatMoney, formatPercent } = await import("@claude-stats/core/insight");
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const range = periodRange({ period: effectivePeriod, since, until }, tz);
+      const config = loadConfig();
+
+      const report = buildHygieneReport(store, {
+        since: range.since > 0 ? range.since : undefined,
+        until: range.until,
+        projectPath: project,
+        accountUuid: resolved.accountUuid,
+        suppressions: config.hygiene?.suppressions,
+        rateOverrides: config.pricing?.rates,
+      });
+
+      // Same fact, same key as `get_cost_per_ticket` and `answerCost` — Lane F1
+      // keyed the other two copies of this sentence and missed this one, which
+      // left the hygiene tool stating in English what its siblings state in the
+      // user's language.
+      const summary = report.totalCost > 0
+        ? `${formatMoney(report.digest.totalEstimatedWaste)} of ${formatMoney(report.totalCost)} self-audited as recoverable waste (${formatPercent(report.hygieneRatio)}).`
+        : t("common:insight.cost.unavailable");
+
+      return formatResult({
+        window: { since: new Date(range.since).toISOString(), until: new Date(range.until).toISOString() },
+        totalCost: report.totalCost,
+        summary,
+        hygieneRatio: report.hygieneRatio,
+        previousHygieneRatio: report.previousHygieneRatio,
+        totalEstimatedWaste: report.digest.totalEstimatedWaste,
+        totalFindings: report.digest.totalFindings,
+        suppressedDetectors: report.digest.suppressedIds,
+        detectors: report.digest.active.map((d) => ({
+          detectorId: d.detectorId,
+          title: d.title,
+          // `computed: false` means this detector could not run for lack of
+          // a required input (see `enablementPath`) — distinct from
+          // `findings: []`, which means it ran and found nothing (I1).
+          computed: d.computed,
+          ...(d.enablementPath !== undefined ? { enablementPath: d.enablementPath } : {}),
+          findings: d.findings.map((f) => ({
+            sessionIds: f.sessionIds,
+            estimatedWaste: f.estimatedWaste,
+            rule: f.rule,
+            threshold: f.threshold,
+            remedy: f.remedy,
+            detail: f.detail,
+          })),
+        })),
+      });
+    },
+  );
+
+  // ── generate_justification_pack ───────────────────────────────────────────
+  server.tool(
+    "generate_justification_pack",
+    "Generate the justification pack: a self-contained HTML document plus a CSV bundle " +
+      "for one calendar month, written to local disk — the artifact a developer hands to " +
+      "a manager who does not run claude-stats. Equivalent to `claude-stats pack --period " +
+      "<YYYY-MM>`. Runs the SAME redaction the org-sync plane uses (never prompt text, file " +
+      "paths, or session ids) — stricter than the local dashboard, because this document " +
+      "leaves the machine.\n\n" +
+      "Sections are opt-in (`sections`, comma-separated): headline, tickets, nonticket, " +
+      "hygiene, constraint, calibration. Default: headline,tickets,nonticket — the smallest " +
+      "complete pack. `hygiene`/`constraint`/`calibration` are accepted but currently render " +
+      "an honest 'not available in this build' block, since those detectors/engines are not " +
+      "shipped yet — never a fabricated number.\n\n" +
+      "Returns the written file paths, not the document content — read the HTML/CSV files " +
+      "directly if you need to inspect what was generated.",
+    {
+      period: z.string().regex(/^\d{4}-\d{2}$/).describe("Calendar month, YYYY-MM"),
+      sections: z.string().optional()
+        .describe("Comma-separated: headline,tickets,nonticket,hygiene,constraint,calibration"),
+      timezone: z.string().optional().describe("IANA timezone for month bucketing (default: local)"),
+      project: z.string().optional().describe("Filter to a specific project path"),
+      account: z.string().optional().describe("Filter to a specific account UUID (full or prefix match)"),
+      outDir: z.string().optional().describe("Directory to write the pack bundle into (default: current directory)"),
+    },
+    async ({ period, sections, timezone, project, account, outDir }) => {
+      const resolved = resolveAccountFilter(store, account);
+      if (!resolved.ok) return formatResult({ error: resolved.error });
+      const { generateJustificationPack, parseSections } = await import("../pack/index.js");
+      const { loadConfig } = await import("../config.js");
+      try {
+        const written = generateJustificationPack(
+          store,
+          loadConfig(),
+          {
+            period,
+            timezone,
+            sections: parseSections(sections),
+            projectPath: project,
+            accountUuid: resolved.accountUuid,
+          },
+          outDir ?? process.cwd(),
+        );
+        return formatResult({
+          dir: written.dir,
+          htmlPath: written.htmlPath,
+          ticketsCsvPath: written.ticketsCsvPath,
+          nonTicketCsvPath: written.nonTicketCsvPath,
+          summaryCsvPath: written.summaryCsvPath,
+          sections: written.model.sections,
+          totalCost: written.model.headline.totalCost,
+        });
+      } catch (err) {
+        return formatResult({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
+
   // ── get_account_info ──────────────────────────────────────────────────────
   server.tool(
     "get_account_info",
@@ -644,6 +1004,111 @@ export function createMcpServer(store: Store): McpServer {
     },
   );
 
+  // ── get_constraint_impact ──────────────────────────────────────────────────
+  server.tool(
+    "get_constraint_impact",
+    "Measure what a DECLARED constraint (a budget cap, a model-tier removal, a quota change — " +
+      "`config.policyEvents`) actually cost or saved, comparing the windows either side of it, PER TASK CLASS " +
+      "(never in aggregate — a workload shift would otherwise masquerade as policy damage).\n\n" +
+      "TWO-SIDED BY CONSTRUCTION: report BOTH what the constraint saved (`totalTokenSavings`) and what it cost " +
+      "in dev-time (`totalDevTimeCost`, priced only when `config.rate.hourly` is set — otherwise " +
+      "`netEffectAvailable` is false and dev-time stays in minutes, never an invented dollar figure). A report " +
+      "that only shows the cost is advocacy, not measurement — lead with whichever side is true, including a " +
+      "favourable or negligible result.\n\n" +
+      "EVIDENCE, NOT PROOF (read `confoundNote`): a policy change is not a controlled experiment — workload, " +
+      "team and codebase all move too. Comparing within task class reduces the confound; it does not eliminate " +
+      "it. Check `classes[].modelsBefore`/`modelsAfter` for a model-VERSION change riding along with the policy " +
+      "before quoting a class's delta to anyone outside the team.\n\n" +
+      "Each class row carries a `verdict`: `insufficient-data` classes are returned, not dropped (a class below " +
+      "`minSessionsPerClass` on either side abstains rather than asserting a delta on noise) — report them as " +
+      "'too little data to compare', not silence. `direction` is `unknown` whenever `netEffectAtAfterVolume` is " +
+      "null; never infer favourable/unfavourable from cost alone.\n\n" +
+      "SCOPE (see `notMeasured`): this does not compute a recap-task-grained 'attempts per successful task' — " +
+      "the outcome model behind it is not calibrated at session grain (see `get_calibration`), and the recap " +
+      "task unit has no identity across a months-long boundary. `avgTurnsBefore/After` and " +
+      "`toolErrorRateBefore/After` are the stated proxy for rework instead, matching the tier-mismatch detector.",
+    {
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+        .describe("Which declared policy event to compare around — must match a `date` in config.policyEvents. Omit to use the most recently declared event."),
+      since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+        .describe("Bound how far back the BEFORE window looks. Omit for the full available history before the boundary."),
+      until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+        .describe("Bound how far forward the AFTER window looks. Omit for the full available history after the boundary."),
+      project: z.string().optional()
+        .describe("Filter to a specific project path"),
+      account: z.string().optional()
+        .describe("Filter to a specific account UUID (full or prefix match)"),
+      minSessionsPerClass: z.number().int().positive().optional()
+        .describe("Sample-size floor per class, per side. A class below this on either side reports verdict 'insufficient-data' rather than a delta computed on noise."),
+    },
+    async ({ date, since, until, project, account, minSessionsPerClass }) => {
+      const resolved = resolveAccountFilter(store, account);
+      if (!resolved.ok) return formatResult({ error: resolved.error });
+
+      const { loadConfig } = await import("../config.js");
+      const { buildConstraintImpactReport } = await import("../constraintImpact/index.js");
+      const config = loadConfig();
+      const events = config.policyEvents ?? [];
+
+      if (events.length === 0) {
+        return formatResult({
+          error:
+            "No policy events declared. This report compares the windows either side of a DECLARED policy " +
+            "boundary and never infers one from the data (constraint-impact/03 §3.1) — nothing to compare yet.",
+          enablementPath:
+            'Add an entry to config.policyEvents, e.g. { "date": "2026-05-01", "kind": "model-removal", ' +
+            '"detail": "opus", "scope": "org" }, then call this tool again.',
+        });
+      }
+
+      // M-4: "most recent" here is `events[events.length - 1]`, which is only
+      // correct because `validatePolicyEvents` (config.ts) always returns its
+      // array sorted chronologically ascending — `config.policyEvents` is
+      // never assigned from anywhere else. If that sort ever moves or a
+      // second source of `policyEvents` bypasses the validator, this silently
+      // starts returning an arbitrary event instead of the latest one.
+      const policyEvent = date ? events.find((e) => e.date === date) : events[events.length - 1];
+      if (!policyEvent) {
+        return formatResult({
+          error: `No declared policy event with date "${date}". Declared dates: ${events.map((e) => e.date).join(", ")}.`,
+        });
+      }
+
+      const toBoundMs = (d: string | undefined): number | undefined =>
+        d ? Date.parse(`${d}T00:00:00.000Z`) : undefined;
+
+      const { report, coverage } = buildConstraintImpactReport(store, policyEvent, {
+        projectPath: project,
+        accountUuid: resolved.accountUuid,
+        since: toBoundMs(since),
+        until: toBoundMs(until),
+        minSessionsPerClass,
+        rateOverrides: config.pricing?.rates,
+        hourlyRate: config.rate?.hourly ?? null,
+        currency: config.rate?.currency ?? "USD",
+      });
+
+      return formatResult({
+        declaredPolicyEvents: events,
+        policyEvent,
+        boundary: new Date(report.boundaryMs).toISOString(),
+        coverage,
+        confoundNote: report.confoundNote,
+        notMeasured: report.notMeasured,
+        minSessionsPerClass: report.minSessionsPerClass,
+        hourlyRate: report.hourlyRate,
+        currency: report.currency,
+        netEffectAvailable: report.netEffectAvailable,
+        classesCompared: report.classesCompared,
+        classesInsufficientData: report.classesInsufficientData,
+        totalTokenSavings: report.totalTokenSavings,
+        totalDevTimeCost: report.totalDevTimeCost,
+        totalNetEffect: report.totalNetEffect,
+        classes: report.classes,
+      });
+    },
+  );
+
   return server;
 }
 
@@ -655,6 +1120,7 @@ export async function startMcpServer(): Promise<void> {
   const { Store } = await import("../store/index.js");
   const { collect } = await import("../aggregator/index.js");
   const { initPricingCache } = await import("../pricing-cache.js");
+  const { loadConfig, ticketProjectKeys } = await import("../config.js");
 
   // Load the fetched pricing cache before serving any tool calls — otherwise
   // this long-lived process runs its whole lifetime on DEFAULT_PRICING alone
@@ -662,7 +1128,7 @@ export async function startMcpServer(): Promise<void> {
   await initPricingCache();
 
   const store = new Store();
-  await collect(store);
+  await collect(store, { ticketAllowlist: ticketProjectKeys(loadConfig()) });
 
   const server = createMcpServer(store);
   const transport = new StdioServerTransport();

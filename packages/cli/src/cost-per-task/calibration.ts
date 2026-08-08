@@ -45,6 +45,13 @@ export interface ClassMetrics {
 
 export interface CalibrationMetrics {
   readonly n: number;                 // labelled pairs scored
+  /**
+   * Exact matches, as a COUNT. Carried alongside `accuracy` because the outcome
+   * calibration gate (`cli/src/calibration/`) needs agreed/disagreed counts, and
+   * recovering them as `round(accuracy * n)` reintroduces a float round-trip
+   * into the denominator of an honesty figure.
+   */
+  readonly hits: number;
   readonly accuracy: number | null;   // exact-match rate over all pairs
   readonly observableN: number;       // pairs whose ACTUAL ∈ {success, failed}
   readonly perClass: Readonly<Record<TaskOutcome, ClassMetrics>>;
@@ -92,12 +99,17 @@ export function classMetricsFor(
   return { support, predicted, truePositives, precision, recall, f1 };
 }
 
+/** Pairs whose prediction equals the label. */
+export function exactMatches(pairs: readonly LabelledPair[]): number {
+  let hits = 0;
+  for (const p of pairs) if (p.predicted === p.actual) hits += 1;
+  return hits;
+}
+
 /** Exact-match accuracy over all pairs; null when there are none. */
 export function accuracy(pairs: readonly LabelledPair[]): number | null {
   if (pairs.length === 0) return null;
-  let hits = 0;
-  for (const p of pairs) if (p.predicted === p.actual) hits += 1;
-  return hits / pairs.length;
+  return exactMatches(pairs) / pairs.length;
 }
 
 /**
@@ -136,6 +148,7 @@ export function calibrationMetrics(
   const failedPrecision = perClass.failed.precision;
   return {
     n: pairs.length,
+    hits: exactMatches(pairs),
     accuracy: accuracy(pairs),
     observableN,
     perClass,

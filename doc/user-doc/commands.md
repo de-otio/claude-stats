@@ -54,6 +54,8 @@ claude-stats report [options]
 | `--repo <url>` | _(all repos)_ | Filter to sessions whose git remote origin matches this URL |
 | `--account <uuid>` | _(all accounts)_ | Filter to sessions associated with a specific Anthropic account UUID |
 | `--period <period>` | `all` | `day`, `week`, `month`, or `all` |
+| `--since <date>` | — | Explicit lower bound (`YYYY-MM-DD`), instead of a named period |
+| `--until <date>` | — | Explicit upper bound (`YYYY-MM-DD`), instead of a named period |
 | `--timezone <tz>` | System timezone | IANA timezone name used for day/week/month boundaries (e.g. `America/New_York`) |
 | `--source <entrypoint>` | _(all)_ | Filter by entrypoint: `claude` (CLI) or `claude-vscode` |
 | `--include-ci` | _(excluded)_ | Include sessions that appear to be from CI or automation |
@@ -61,6 +63,7 @@ claude-stats report [options]
 | `--trend` | _(aggregate)_ | Show usage broken down by time period (day/week/month) |
 | `--session <id>` | — | Show the full message-by-message detail for one session (prefix match) |
 | `--tag <tag>` | _(all)_ | Filter to sessions with a specific tag |
+| `--ticket <key>` | — | Show cost and evidence attributed to one work-item ticket key (e.g. `PROJ-123`), from the same locally-observed evidence `get_cost_per_ticket` reads. See [`ticket`](#ticket) to correct a wrong automatic link |
 | `--html [outfile]` | — | Write a self-contained HTML dashboard to a file instead of printing to stdout |
 
 **Periods** are calculated from the start of the current day/week/month in the specified timezone to now.
@@ -224,6 +227,9 @@ claude-stats export [--format <fmt>] [--project <path>] [--period <period>]
 | `--format <fmt>` | `json` | `json` or `csv` |
 | `--project <path>` | _(all projects)_ | Filter to one project |
 | `--period <period>` | `all` | `day`, `week`, `month`, or `all` |
+| `--since <date>` | — | Explicit lower bound (`YYYY-MM-DD`, inclusive). Must be paired with `--until`; overrides `--period` when both are set |
+| `--until <date>` | — | Explicit upper bound (`YYYY-MM-DD`, inclusive). Must be paired with `--since` |
+| `--timezone <tz>` | System timezone | IANA timezone for period boundaries |
 
 **Examples:**
 
@@ -372,6 +378,97 @@ No options.
 
 ---
 
+## `ticket`
+
+Manually link (or unlink) a session to a work-item ticket key, or list a
+session's current links. This is how you correct the automatic ticket
+attribution described under [`report --ticket`](#report) and the
+`get_cost_per_ticket` MCP tool — a manual link always wins over an automatic
+one, and `--negate` tombstones a wrong automatic link so a future
+re-extraction pass cannot resurrect it.
+
+```
+claude-stats ticket <session-id> [key] [--negate] [--remove] [--list]
+```
+
+| Option | Description |
+|---|---|
+| `--list` | Show the session's current ticket links (source, confidence, active/negated) — the default when no key is given |
+| `--negate` | Tombstone an automatic link for `<key>` so extraction cannot resurrect it (requires `key`) |
+| `--remove` | Remove a manual link for `<key>` (requires `key`) |
+| _(key given, no flag)_ | Add a manual, high-confidence link to `<key>` |
+
+`<session-id>` can be a prefix (first 6+ characters), same as `tag`. `<key>`
+is a work-item key like `PROJ-123`.
+
+**Examples:**
+
+```sh
+# Show a session's current ticket links
+claude-stats ticket abc123 --list
+
+# Manually link a session to a ticket
+claude-stats ticket abc123 PROJ-123
+
+# Tombstone a wrong automatic link
+claude-stats ticket abc123 PROJ-999 --negate
+
+# Remove a manual link
+claude-stats ticket abc123 PROJ-123 --remove
+```
+
+Ticket extraction itself needs no manual step — it runs automatically from
+git branch names, commit subjects, and prompt-text mentions during
+`collect`/`report`/`recap`, gated by the `tickets.projectKeys` allowlist. See
+[Configuration](#configuration) below for what that allowlist changes and
+what it costs to leave unset.
+
+---
+
+## `task-class`
+
+Classify sessions into task classes and print the resulting distribution.
+Backs `constraint-impact`'s per-class comparison and the non-ticket breakdown
+in `pack`.
+
+The fine taxonomy: `debug`, `refactor-multi-file`, `greenfield`, `review`,
+`config-chore`, `explore`, `unknown` (the classifier abstained). A reduced
+coarse taxonomy (`build`, `diagnose`, `support`, `unknown`) is used wherever
+the fine classification misses its agreement threshold.
+
+```
+claude-stats task-class [--limit <n>]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--limit <n>` | _(all pending)_ | Classify at most `n` sessions this pass |
+
+The classifier is versioned: a session already classified at the current
+version is skipped, and a rule change reclassifies exactly the affected
+sessions on the next run — no manual purge needed. Output shows how many
+sessions were classified this pass, how many were already current, how many
+remain, the classifier version, and a fine/coarse breakdown with each class's
+confidence-tier mix (high/medium/low) so a count is never shown without its
+reliability.
+
+The classifier's own published agreement figure (see
+`get_calibration`) is measured against a generated corpus at build time — it
+is **not** a measurement of your data, because nothing on your machine
+records a human disagreeing with a session's task class yet.
+
+**Examples:**
+
+```sh
+# Classify everything pending
+claude-stats task-class
+
+# Classify at most 200 sessions this pass
+claude-stats task-class --limit 200
+```
+
+---
+
 ## `config`
 
 View or update tool configuration (cost alert thresholds).
@@ -399,6 +496,152 @@ claude-stats config unset cost.day
 
 ---
 
+## Configuration
+
+`claude-stats config` only manages `costThresholds` (the `cost.*` keys
+above). The blocks below are **not** settable through `config set` — edit
+`~/.claude-stats/config.json` directly (create it if it doesn't exist; it's a
+plain JSON object) and re-run the relevant command. Every key is optional;
+its absence has a defined, honest meaning — usually "this feature reports
+what it can and states what it can't," never a silent full-precision claim
+with a stale or invented default underneath.
+
+An invalid or malformed value in any of these blocks is dropped on read
+rather than crashing the tool, so a typo degrades a feature to its
+absent-config behaviour instead of breaking every command.
+
+### `tickets`
+
+```json
+{ "tickets": { "projectKeys": ["PROJ", "OPS"] } }
+```
+
+| Key | Default | Meaning when absent |
+|---|---|---|
+| `projectKeys` | _(unset)_ | Without an allowlist, ticket extraction (git branch, commit subject, prompt mentions) still runs, but every attribution is capped at **medium confidence** — the scanner cannot otherwise tell a real ticket key from an unrelated identifier of the same shape. With an allowlist, precision is essentially perfect and `high` confidence becomes reachable. |
+
+Each entry is a project-key prefix: an uppercase letter followed by 1–9
+uppercase letters/digits (2–10 characters total), e.g. `PROJ` matches
+`PROJ-123`.
+
+### `policyEvents`
+
+```json
+{
+  "policyEvents": [
+    { "date": "2026-05-01", "kind": "model-removal", "detail": "opus", "scope": "org" }
+  ]
+}
+```
+
+| Key | Default | Meaning when absent |
+|---|---|---|
+| `policyEvents` | `[]` | **Required** for `constraint-impact` and `get_constraint_impact` — both refuse to run and explain why when this is empty. A boundary is never inferred from the data, only from what you declare here, so the report cannot pick the split that maximises apparent damage. |
+
+Each entry: `date` (`YYYY-MM-DD`), `kind` (`model-removal` \| `budget-cap` \|
+`quota-change` \| `other`), optional `detail` (free text, **local-only** —
+see the [privacy documentation](../analysis/05-privacy-security.md)), and
+optional `scope` (`org` \| `team` \| `self`).
+
+### `rate`
+
+```json
+{ "rate": { "hourly": 85, "currency": "USD" } }
+```
+
+| Key | Default | Meaning when absent |
+|---|---|---|
+| `hourly` | _(unset)_ | Without an hourly rate, `constraint-impact`'s dev-time cost and the pack's salary-denominator framing stay in **minutes/hours** — never an invented dollar figure. Setting it enables the dollar comparison (`netEffectAvailable: true`). |
+| `currency` | `USD` | ISO 4217 code. Never auto-converted against other currencies in the same report. |
+
+### `pricing`
+
+```json
+{ "pricing": { "mode": "metered", "rates": { "bedrock": { "claude-opus-4-6": { "inputPerMillion": 15, "outputPerMillion": 75, "cacheReadPerMillion": 1.5, "cacheWritePerMillion": 18.75 } } } } }
+```
+
+| Key | Default | Meaning when absent |
+|---|---|---|
+| `mode` | Inferred per-account | `plan` speaks in equivalent-API-value against a flat monthly fee; `metered` speaks in actual metered dollars and supports reconciliation. Unset, the vocabulary is inferred from each account's detected subscription/billing evidence (or `mixed` when in-scope accounts disagree) — see the dashboard's Insights tab caveat when that happens. |
+| `rates` | Built-in first-party table | Without partner (Bedrock/Vertex) rate overrides, partner-account usage prices at first-party rates and every such figure is flagged as an estimate. |
+
+### `reconciliation`
+
+```json
+{ "reconciliation": { "invoiceTotal": 1240.50, "tolerancePercent": 5, "scopeNote": "AWS account 111122223333, Bedrock only, calendar month" } }
+```
+
+| Key | Default | Meaning when absent |
+|---|---|---|
+| `invoiceTotal` | _(unset)_ | Without it, no reconciliation panel or pack reconciliation section renders — there is nothing top-down to compare against. This figure is always **imported** (by hand, or per-run via `pack --invoice-csv`); the tool never fetches it. |
+| `tolerancePercent` | `5` | Percent difference below which a reconciliation reads as "reconciles" rather than flagging drift. |
+| `scopeNote` | _(unset)_ | **Strongly recommended whenever `invoiceTotal` is set.** States what the invoice figure actually covers (an AWS account id, an org, a date range). Left unset, the report states the scope as unconfirmed rather than assuming the local store and the invoice cover the same thing — a reconciliation run against mismatched scopes can otherwise "prove" the estimates are wrong when the real problem is that the two sides are counting different things. |
+
+Reconciliation can conclude the local estimates are **wrong** — that is the
+point of measuring against a real invoice, not a caveat on it.
+
+### `hygiene`
+
+```json
+{ "hygiene": { "suppressions": ["cache-churn"] } }
+```
+
+| Key | Default | Meaning when absent |
+|---|---|---|
+| `suppressions` | `[]` | Detector ids (`cache-churn`, `retry-loop`, `abandoned-spend`, `context-bloat`, `re-entry-burn`, `tier-mismatch`) to dismiss as "not waste" for this store. A suppressed detector still runs — its findings are withheld from `get_efficiency_hints`'s output, and it appears in that tool's `suppressedDetectors` list, so a dismissal is visible rather than a silent permanent blind spot. |
+
+### `experimentalSignals`
+
+```json
+{ "experimentalSignals": true }
+```
+
+| Key | Default | Meaning when absent |
+|---|---|---|
+| `experimentalSignals` | `false` | Off, the `cost-per-task` outcome rests on the Tier-0 proxy (git activity and recap confidence) alone. On, additional unvalidated signals are allowed to influence the outcome — and the LLM judge below is *only* consulted when this is also true. Calibrate before flipping it: run `cost-per-task --calibrate` and compare against outcomes you labelled by hand with [`task-outcome`](#task-outcome). |
+
+### `llmJudge`
+
+**This is the one local feature that can send your prompt text off the
+machine.** Read this block before enabling it.
+
+```json
+{
+  "experimentalSignals": true,
+  "llmJudge": {
+    "enabled": true,
+    "endpoint": "http://localhost:11434/v1/chat/completions",
+    "model": "llama3.1",
+    "maxCalls": 25
+  }
+}
+```
+
+An independent model rules on tasks the proxy finds ambiguous. The request it
+sends is a **blinded** summary — the transcript is stripped of model and
+assistant identity so the judge rules on the work rather than on who produced
+it, follow-up turns are capped, and the judge's reply re-enters the report as a
+verdict only, never as text. **Blinded is not redacted: the summary contains
+your own prompt text.** It goes wherever `endpoint` points. A local endpoint
+(Ollama, llama.cpp, LM Studio) keeps it on the machine; a hosted endpoint sends
+it to that provider, outside every guarantee in the
+[privacy documentation](../analysis/05-privacy-security.md). Prefer a model
+from a different family than the one being judged.
+
+| Key | Default | Meaning when absent |
+|---|---|---|
+| `enabled` | `false` | The judge never runs. `cost-per-task --llm-judge` turns it on for one run without editing config |
+| `endpoint` | _(unset)_ | Required. Any URL speaking the OpenAI `/v1/chat/completions` shape. Without it (or `model`) the judge is skipped with a warning on stderr rather than silently ignored |
+| `model` | _(unset)_ | Required. Model name as that endpoint expects it |
+| `apiKey` | _(unset)_ | Sent as a bearer token. Omit for local endpoints that need none |
+| `maxCalls` | `25` | Hard cap on judge calls per report run, so an ambiguous month cannot run up an unbounded bill |
+
+Both `experimentalSignals` and the judge must be on for a verdict to affect
+the metric — `--llm-judge` alone builds the provider but the pipeline ignores
+it while `experimentalSignals` is false.
+
+---
+
 ## `dashboard`
 
 Output pre-aggregated dashboard JSON to stdout.
@@ -410,6 +653,8 @@ claude-stats dashboard [--period <period>] [--project <path>] [--repo <url>]
 | Option | Default | Description |
 |---|---|---|
 | `--period <period>` | `all` | `day`, `week`, `month`, or `all` |
+| `--since <date>` | — | Explicit lower bound (`YYYY-MM-DD`, inclusive). Must be paired with `--until`; overrides `--period` when both are set |
+| `--until <date>` | — | Explicit upper bound (`YYYY-MM-DD`, inclusive). Must be paired with `--since` |
 | `--project <path>` | _(all)_ | Filter to one project |
 | `--repo <url>` | _(all)_ | Filter to one repo |
 
@@ -432,6 +677,8 @@ claude-stats spending [options]
 | Option | Default | Description |
 |---|---|---|
 | `--period <period>` | `day` | `day`, `week`, `month`, or `all` |
+| `--since <date>` | — | Explicit lower bound (`YYYY-MM-DD`, inclusive). Must be paired with `--until`; overrides `--period` when both are set |
+| `--until <date>` | — | Explicit upper bound (`YYYY-MM-DD`, inclusive). Must be paired with `--since` |
 | `--project <path>` | _(all projects)_ | Filter to one project |
 | `--model <name>` | _(all models)_ | Filter to sessions using a specific model (prefix match, e.g. `claude-opus`) |
 | `--top <n>` | `5` | Number of top sessions/tools/anomalies to show |
@@ -479,6 +726,8 @@ claude-stats cost-per-task [options]
 | Option | Default | Description |
 |---|---|---|
 | `--period <period>` | `month` | `day`, `week`, `month`, or `all` |
+| `--since <date>` | — | Explicit lower bound (`YYYY-MM-DD`, inclusive). Must be paired with `--until`; overrides `--period` when both are set |
+| `--until <date>` | — | Explicit upper bound (`YYYY-MM-DD`, inclusive). Must be paired with `--since` |
 | `--project <path>` | _(all projects)_ | Filter to one project |
 | `--account <uuid>` | _(all accounts)_ | Filter to a specific Anthropic account UUID |
 | `--repo <url>` | _(all repos)_ | Filter to a specific git remote URL |
@@ -486,6 +735,8 @@ claude-stats cost-per-task [options]
 | `--by-model` | _(off)_ | Show the per-model breakdown table |
 | `--timezone <tz>` | System timezone | IANA timezone for period boundaries |
 | `--json` | _(off)_ | Output the full report as JSON |
+| `--calibrate` | _(off)_ | Output calibration metrics as JSON — how often the outcome proxy agreed with the outcomes you labelled by hand. Reports `uncalibrated` rather than a number below the minimum sample |
+| `--llm-judge` | _(off)_ | Use a configured LLM to judge task outcomes instead of the git/recap proxy. Requires the [`llmJudge`](#llmjudge) config block; without it the flag is refused rather than silently ignored |
 
 **What it shows:**
 
@@ -538,6 +789,250 @@ claude-stats task-outcome a1b2c3 --clear
 
 ---
 
+## `constraint-impact`
+
+Measure what a **declared** constraint — a budget cap, a model-tier removal, a
+quota change — actually cost or saved, by comparing the windows either side of
+it, **per task class** (never in aggregate, so a workload shift can't
+masquerade as policy damage).
+
+```
+claude-stats constraint-impact [options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--date <yyyy-mm-dd>` | Most recently declared event | Which entry in `config.policyEvents` to compare around — must match a declared `date` |
+| `--since <date>` | _(full available history)_ | How far back the BEFORE window looks |
+| `--until <date>` | _(full available history)_ | How far forward the AFTER window looks |
+| `--project <path>` | _(all)_ | Filter to one project |
+| `--account <uuid>` | _(all)_ | Filter to one account |
+| `--min-sessions <n>` | `8` | Per-class, per-side sample-size floor. A class below this on either side reports `insufficient-data` instead of a delta computed on noise |
+| `--csv <path>` | — | Also write the report as CSV |
+
+**Requires at least one declared policy event.** This command refuses to run
+and explains why if `config.policyEvents` is empty — boundaries are never
+inferred from the data, only from what you declared. See
+[Configuration](#configuration) for `policyEvents`' shape.
+
+**What it reports, and what it doesn't:**
+
+- **Two-sided by construction.** Both `totalTokenSavings` (what the
+  constraint saved) and `totalDevTimeCost` (what it cost in developer time)
+  are reported — `totalDevTimeCost` is only priced in dollars when
+  `config.rate.hourly` is set; otherwise it stays in minutes/hours and
+  `netEffectAvailable` is `false`. A report is expected to lead with whichever
+  side is true, including a favourable or negligible result.
+- **Evidence, not proof.** A policy change is not a controlled experiment —
+  workload, team, and codebase all move too. Comparing within task class
+  reduces the confound; it does not eliminate it. The output's
+  `confoundNote` states this, and `classes[].modelsBefore`/`modelsAfter` let
+  you check whether a model-*version* change rode along with the policy
+  before quoting a class's delta to anyone outside the team.
+- **Insufficient-data classes are reported, not dropped.** A class below the
+  sample floor is returned with `verdict: "insufficient-data"` — read that as
+  "too little data to compare," not silence.
+- **Out of scope:** this does not compute a recap-task-grained "attempts per
+  successful task" — the outcome model behind that is not calibrated at
+  session grain (see `get_calibration`), and the recap task unit has no
+  stable identity across a months-long boundary. `avgTurnsBefore/After` and
+  `toolErrorRateBefore/After` are the stated proxy for rework instead.
+
+**Examples:**
+
+```sh
+# Compare around the most recently declared policy event
+claude-stats constraint-impact
+
+# Compare around a specific declared date, with a higher sample floor
+claude-stats constraint-impact --date 2026-05-01 --min-sessions 10
+
+# Bound the before-window and export CSV
+claude-stats constraint-impact --since 2026-03-01 --csv impact.csv
+```
+
+Output is JSON only (piped to `jq` if you want a subset) — this is a
+structured diagnostic, not localized prose, the same precedent as
+`cost-per-task --calibrate`.
+
+---
+
+## `pack`
+
+Generate the **justification pack**: a self-contained HTML document plus a
+CSV bundle for one calendar month, written to local disk — the artifact you
+hand to a manager or finance contact who does not run claude-stats.
+Equivalent to the `generate_justification_pack` MCP tool.
+
+```
+claude-stats pack --period <yyyy-mm> [options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--period <yyyy-mm>` | _(required)_ | Calendar month to report on |
+| `--timezone <tz>` | System timezone | IANA timezone for month bucketing |
+| `--sections <list>` | `headline,tickets,nonticket` | Comma-separated: `headline`, `tickets`, `nonticket`, `hygiene`, `constraint`, `calibration` |
+| `--project <path>` | _(all)_ | Filter to one project |
+| `--account <uuid>` | _(all)_ | Filter to one account |
+| `--out <dir>` | Current directory | Directory to write the pack bundle into |
+| `--json` | _(off)_ | Print the written file paths and section list as JSON instead of a sentence |
+| `--invoice-csv <path>` | — | Import an invoice/Cost-Explorer-style CSV total for this run's reconciliation section (overrides `config.reconciliation.invoiceTotal` for this run only — never written back) |
+| `--disclose-scope` | _(off)_ | Print the literal project path / account UUID in the pack instead of a `[withheld:…]` marker. See **Scope** below |
+
+**Redaction:** the pack runs the same stricter redaction the org-sync plane
+uses — prompt text, file paths, and session ids can never appear in it,
+structurally, not by a filter applied after the fact. This is a stricter bar
+than the local dashboard, because this document is designed to leave the
+machine. See the [privacy documentation](../analysis/05-privacy-security.md)
+for what that means in practice.
+
+**Scope is stated, but its value is withheld.** A pack always says whether it
+was filtered — a one-project total and a whole-machine total must never read
+alike — but when `--project` or `--account` was used, the scope line and the
+`projectPath`/`accountUuid` CSV column render a stable marker
+(`[withheld:a1b2c3d4]`) instead of the literal value. An absolute path
+routinely encodes an employer, a client, or an unreleased product name in a
+parent directory, and this is the one artifact built to be handed to someone
+else. The marker is deterministic, so two packs scoped alike still compare and
+a monthly series stays readable. It is **not** a security boundary — an
+eight-hex digest of a guessable path is guessable — it defeats disclosure *by
+accident*, which is the real failure mode. Pass `--disclose-scope` when the
+recipient is entitled to the literal values.
+
+**Sections are opt-in.** The default (`headline,tickets,nonticket`) is the
+smallest complete pack. `hygiene`, `constraint`, and `calibration` are
+accepted but currently render an honest "not available in this build" block
+in the output — those detectors/engines exist and are reachable through their
+own commands (`constraint-impact`, `get_efficiency_hints`, `get_calibration`)
+but are not yet wired into the pack renderer. Requesting them never fabricates
+a number in their place.
+
+**Determinism:** generating the pack twice from the same inputs under a
+frozen clock produces byte-identical output — every collection is sorted
+before rendering and nothing reads the wall clock except the injected
+generation timestamp.
+
+**Examples:**
+
+```sh
+# Generate the default pack for July 2026
+claude-stats pack --period 2026-07
+
+# All sections, written to a specific directory
+claude-stats pack --period 2026-07 --sections headline,tickets,nonticket,hygiene,constraint,calibration --out ~/Desktop
+
+# Reconcile against an imported invoice total for this run
+claude-stats pack --period 2026-07 --invoice-csv ~/Downloads/july-invoice.csv
+
+# Machine-readable output (paths + section list)
+claude-stats pack --period 2026-07 --json
+```
+
+---
+
+## `recap`
+
+"What did I get done today?" — a clustered, evidence-linked digest of a day's
+sessions, grouped into items with a first prompt, a session count, and
+(when configured) a linked ticket key.
+
+```
+claude-stats recap [options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--date <date>` | Today | `YYYY-MM-DD` |
+| `--tz <tz>` | System timezone | IANA timezone |
+| `--all` | _(shown by default)_ | Include low-confidence items — shown by default in this version, so this flag is currently a no-op reserved for a future default-hiding change |
+| `--json` | _(off)_ | Machine-readable JSON output |
+| `--embeddings <mode>` | `auto` | `on`, `off`, or `auto` — local sentence-embedding clustering. `auto` uses the bundled on-device model if cached, otherwise falls back to lexical clustering; `off` always uses lexical clustering. All inference happens on-device — nothing here calls a network endpoint |
+
+**Examples:**
+
+```sh
+# Today's recap
+claude-stats recap
+
+# Yesterday, JSON output
+claude-stats recap --date 2026-08-06 --json
+
+# Force lexical clustering (skip the embedding model)
+claude-stats recap --embeddings off
+```
+
+### `recap precompute`
+
+Pre-build the daily-recap cache for prior days. Useful before a cold-cache
+`cost-per-task --period all` run, or on a schedule.
+
+```
+claude-stats recap precompute [--lookback-days <n>] [--date <yyyy-mm-dd>] [--install-cron]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--lookback-days <n>` | `7` | Days to pre-build |
+| `--date <yyyy-mm-dd>` | — | Build a single date only |
+| `--install-cron` | — | Print a crontab/launchd/Task-Scheduler snippet and exit — **does not modify your crontab**; copy the printed line in yourself |
+
+### `recap correct`
+
+Manage user corrections to clustered recap items — the mechanism that lets
+you fix what the clustering got wrong, permanently, without it reverting on
+the next recap. Every subcommand below resolves `<item>` the same way: an id
+prefix from the digest, or a substring of the item's first prompt. An
+ambiguous selector lists its candidates and exits non-zero rather than
+guessing.
+
+```
+claude-stats recap correct <subcommand> [args]
+```
+
+| Subcommand | Description |
+|---|---|
+| `list` | List all stored corrections, with their numeric id |
+| `remove <correctionId>` | Remove a correction by the id shown in `list` |
+| `hide <item>` | Hide a digest item from future recaps |
+| `rename <item> <label>` | Give a digest item a custom label |
+| `ticket <item> <key>` | Assign a work-item key to a digest item, and link every session it covers — the recap-level equivalent of running `ticket <session> <key>` on each session in the item |
+| `merge <itemA> <itemB>` | Merge two digest items into one for all future recaps |
+| `split <item> <segmentId>` | Split a named segment out of a digest item into its own item |
+
+**Examples:**
+
+```sh
+# See what corrections are stored
+claude-stats recap correct list
+
+# Hide a noisy item
+claude-stats recap correct hide a1b2c3
+
+# Rename an item
+claude-stats recap correct rename a1b2c3 "Auth refactor"
+
+# Assign a ticket key — links every session the item covers
+claude-stats recap correct ticket a1b2c3 PROJ-123
+
+# Merge two items that were really one piece of work
+claude-stats recap correct merge a1b2c3 d4e5f6
+
+# Split a mis-clustered segment out on its own
+claude-stats recap correct split a1b2c3 seg-2
+
+# Undo a correction
+claude-stats recap correct remove 7
+```
+
+`recap correct ticket` writes through to `ticket_links` immediately (not just
+the recap-corrections store), so the assignment is visible to
+`get_cost_per_ticket`, `report --ticket`, and the justification pack right
+away — it is the fastest way to bulk-assign a ticket key to everything a
+day's recap grouped under one item.
+
+---
+
 ## `mcp`
 
 Start a local MCP server over stdio for AI agent access to your usage stats.
@@ -548,7 +1043,9 @@ claude-stats mcp
 
 No options. The server is intended to be launched by a Claude Code client (not run manually in a terminal). It reads the local database and exposes read-only tools — no network access or authentication required.
 
-**Available tools:**
+**Available tools** — 16 total, all read-only. Enumerated from
+[`packages/cli/src/mcp/index.ts`](../../packages/cli/src/mcp/index.ts); the
+exhaustive tool-count assertion in `mcp.test.ts` is what keeps this true.
 
 | Tool | Description |
 |---|---|
@@ -560,13 +1057,23 @@ No options. The server is intended to be launched by a Claude Code client (not r
 | `search_history` | Search prompt history by keyword |
 | `summarize_day` | Clustered digest of what you accomplished on a given day |
 | `get_cost_per_task` | Cost per successful task — outcome-cost overall and per model (read-only) |
+| `get_cost_per_ticket` | Cost attributed to work-item ticket keys from local evidence (git branch, commits, prompt mentions), with a coverage denominator and per-figure confidence tier. Pass `ticket` to drill into one key's evidence |
+| `get_calibration` | Whether ticket-attribution and task-outcome confidence tiers have been checked against your corrections — an agreement rate on the reviewed subset (never "accuracy"), `state: "uncalibrated"` below the minimum sample |
+| `get_efficiency_hints` | Self-audit: your own wasted spend across six local patterns (cache churn, retry loops, abandoned spend, context bloat, re-entry burn, tier mismatch). Every finding names its rule, threshold, and the specific sessions it fired on |
+| `generate_justification_pack` | Write the justification pack (HTML + CSV) for one month to local disk. Equivalent to `claude-stats pack --period <YYYY-MM>` |
+| `get_constraint_impact` | What a *declared* policy boundary (`config.policyEvents`) measurably cost or saved, per task class, on both sides |
+| `get_account_info` | Current login's seat/billing/org fields, plus every account this machine has observed. Never returns a raw email — only `emailPresent`/`emailHash` |
+| `get_plan_mechanics_reference` | Offline reference snapshot of Team/Enterprise seat ranges and pricing, with a staleness warning |
+| `size_seats` | Seat-sizing scenario table from headcount + technical fraction — pure arithmetic, never picks a plan |
 
-**Per-account filtering:** `get_stats`, `list_sessions`, `list_projects`, and
-`get_cost_per_task` all accept an optional `account` param — a full account
-UUID or an unambiguous prefix (e.g. `<uuid-prefix>`). An empty string, a
-prefix matching no account, or a prefix matching more than one account
-returns an error rather than silently falling back to all accounts.
-`list_sessions` rows also include an `accountUuid` field.
+**Per-account filtering:** `get_stats`, `list_sessions`, `list_projects`,
+`get_cost_per_task`, `get_cost_per_ticket`, `get_efficiency_hints`,
+`get_constraint_impact`, and `generate_justification_pack` all accept an
+optional `account` param — a full account UUID or an unambiguous prefix
+(e.g. `<uuid-prefix>`). An empty string, a prefix matching no account, or a
+prefix matching more than one account returns an error rather than silently
+falling back to all accounts. `list_sessions` rows also include an
+`accountUuid` field.
 
 **Per-account token breakdown:** `get_stats`'s `planUtilization.byAccount[]`
 entries carry `inputTokens`, `outputTokens`, `cacheReadTokens`, and
@@ -584,7 +1091,8 @@ contributes one session count but per-day token counts.
 **Client configuration** — register via `claude mcp add`:
 
 ```sh
-MCP_JS="$HOME/.vscode/extensions/de-otio.claude-stats-vscode-0.1.1/dist/mcp.js"
+# The extension directory carries its version — resolve it rather than hardcoding one:
+MCP_JS="$(ls -d "$HOME"/.vscode/extensions/de-otio.claude-stats-vscode-*/dist/mcp.js | sort -V | tail -1)"
 claude mcp add -s user claude-stats -- "$(which node)" --experimental-sqlite \
   -e "require('$MCP_JS').startMcpServer().catch(e=>{console.error(e);process.exit(1)})"
 ```
@@ -600,6 +1108,10 @@ The VS Code extension auto-registers this in `~/.claude.json` on first activatio
 - "Which projects am I spending the most on?"
 - "What's my cost per successful task, by model?"
 - "How many tokens did my work account use this month?" (pass `account: "<uuid-prefix>"`)
+- "How much did PROJ-123 cost me this month?"
+- "Where am I wasting money in my own usage?"
+- "Has this tool's confidence in ticket attribution ever been checked?"
+- "Generate a justification pack for last month"
 
 ---
 
@@ -623,6 +1135,45 @@ Backfill complete. 44 files re-processed, 1876 messages updated.
 ```
 
 Use this after upgrading `claude-stats` to a version that captures additional data from existing session files.
+
+---
+
+## `repair`
+
+Repair derived data that normal collection cannot fix retroactively. Unlike
+[`backfill`](#backfill), which re-reads the source files, `repair` recomputes a
+stored field from data already in the database.
+
+```
+claude-stats repair <subcommand> [options]
+```
+
+### `repair project-paths`
+
+Recompute `project_path` (and `repo_url`) for every session from that session's
+own recorded working directory.
+
+```
+claude-stats repair project-paths [--dry-run]
+```
+
+| Option | Description |
+|---|---|
+| `--dry-run` | Preview the changes without writing anything and without creating a backup |
+
+Claude Code encodes the project directory into the name of the folder under
+`~/.claude/projects/`, and that encoding is lossy: a literal hyphen in a
+directory name is indistinguishable from an encoded `/`. Collection now
+prefers the session's own recorded working directory, but `project_path` is
+written once at first insert and never revisited, so sessions collected before
+that fix keep the wrong path — which splits one project's usage across two
+rows in every per-project report.
+
+Sessions whose source file has since been deleted have no ground truth left
+and are reported as `unfixable` rather than guessed at. A real run backs up the
+database first (the path is printed) and applies every change in one
+transaction; `--dry-run` writes nothing and makes no backup. It is idempotent,
+so a second run on repaired data changes nothing.
 
 ---
 
@@ -655,7 +1206,7 @@ run by default** — without `--yes` it only prints what *would* be deleted and
 exits without changing anything.
 
 ```
-claude-stats purge [--yes] [--include-db] [--backup-cloud]
+claude-stats purge [--yes] [--include-db] [--also-cloud] [--backup-cloud]
 ```
 
 | Option | Description |
@@ -663,7 +1214,8 @@ claude-stats purge [--yes] [--include-db] [--backup-cloud]
 | _(none)_ | Dry run: preview what would be deleted; deletes nothing |
 | `--yes` | Actually delete claude-stats data (archive/bundle files); also unregisters the MCP server from `~/.claude.json` |
 | `--include-db` | Also delete the SQLite database `~/.claude-stats/stats.db` (otherwise the DB is kept) |
-| `--backup-cloud` | Also describe/target the encrypted cloud backup copy for this device (other devices keep their own copies) |
+| `--also-cloud` | Also remove local cloud-sync configuration and clear auth tokens (the org/team plane) |
+| `--backup-cloud` | Also delete **this device's** copy in your personal backup location (Dropbox/iCloud/Drive/OneDrive/local folder). Other enrolled devices keep their own copies until they run this too |
 
 ```sh
 # Preview only (safe)

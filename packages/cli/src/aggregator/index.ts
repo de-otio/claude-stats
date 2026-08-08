@@ -19,9 +19,20 @@ import { assignAccounts } from "../attribution/assign.js";
 import type { ExternalAccountInfo } from "../attribution/assign.js";
 import { collectLiveSessionPins } from "../attribution/anchors.js";
 import { resolveOwner } from "../attribution/ownership.js";
+import { runTicketExtraction } from "../ticketing/index.js";
+import { createCommitSubjectsCache } from "../recap/git.js";
 
 export interface CollectOptions {
   verbose?: boolean;
+  /**
+   * `config.tickets.projectKeys` (ticket-attribution/01 §1.1). Threaded
+   * through explicitly, like the `now` clock below, rather than `collect`
+   * calling `loadConfig()` itself — keeps this function's behavior fully
+   * determined by its arguments, which is what makes it testable without a
+   * config file on disk. Callers: `loadConfig().tickets?.projectKeys` (or
+   * `ticketProjectKeys(loadConfig())` from `../config.js`).
+   */
+  ticketAllowlist?: readonly string[];
 }
 
 export interface CollectResult {
@@ -93,6 +104,11 @@ export async function collect(
   const entriesByVersion = new Map<string, RawSessionEntry[]>();
   // Cache repo URLs per project path to avoid re-reading .git/config for each session file
   const repoUrlCache = new Map<string, string | null>();
+  // A3: memoize the ticket-extraction commit-subject `git log` lookups across
+  // this whole run — see `CommitSubjectsCache`'s doc comment in recap/git.ts.
+  // Without this, `backfill` (which re-collects every session) spawns one
+  // blocking `git log` subprocess PER SESSION FILE with no reuse.
+  const ticketCommitCache = createCommitSubjectsCache();
 
   // Accumulate the set of message_hourly hour buckets touched by this collect, so
   // we can incrementally recompute only those partitions (DELETE+INSERT) instead
@@ -220,6 +236,10 @@ export async function collect(
         }
       }
 
+      if (parsed.apiErrorEvents.length > 0) {
+        store.upsertApiErrorEvents(parsed.apiErrorEvents);
+      }
+
       if (parsed.errors.length > 0) {
         store.addToQuarantine(parsed.errors);
       }
@@ -236,6 +256,19 @@ export async function collect(
       // transaction as the upserts, so a crash can't leave the two disagreeing.
       if (parsed.session) {
         store.recomputeSessionAggregates([parsed.session.sessionId]);
+
+        // Ticket extraction (ticket-attribution/02 §2.4) — runs per upserted
+        // session, after aggregates so `first/last_timestamp` and `git_branch`
+        // reflect the full session rather than just this parse's slice. Reads
+        // back the fresh row rather than reusing `parsed.session`, which for
+        // the incremental (append) path only carries THIS run's delta.
+        const freshSession = store.findSession(parsed.session.sessionId);
+        if (freshSession) {
+          runTicketExtraction(store, freshSession, {
+            allowlist: opts.ticketAllowlist,
+            commitCache: ticketCommitCache,
+          });
+        }
       }
 
       store.upsertCheckpoint({

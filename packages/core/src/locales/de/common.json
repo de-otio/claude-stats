@@ -68,6 +68,142 @@
     "promptsPerHr": "Prompts/Std",
     "outputPerPrompt": "Ausgabe/Prompt"
   },
+  "insight": {
+    "punctuation": {
+      "sentence": "{{text}}.",
+      "clauseJoin": " — ",
+      "listJoin": ", ",
+      "dotJoin": " · ",
+      "caveatJoin": " "
+    },
+    "devTime": {
+      "minutes": "{{value}} Entwicklerminuten",
+      "hours": "{{value}} Entwicklerstunden",
+      "days": "{{value}} Entwicklertage"
+    },
+    "confidence": {
+      "high": "hoch",
+      "medium": "mittel",
+      "low": "niedrig"
+    },
+    "caveat": {
+      "plan": "Entspricht den API-Kosten — nicht das, was Ihr Abo berechnet.",
+      "mixed": "Gemischte Abrechnung über die einbezogenen Konten — ein Teil dieser Zahl ist API-Gegenwert zu einer Abo-Gebühr, ein Teil ist tatsächlich abgerechnetes Geld. Wählen Sie ein einzelnes Konto oder setzen Sie pricing.mode, um eine eindeutige Bedeutung zu erhalten.",
+      "metered": "Tatsächlich abgerechnete Kosten.",
+      "reconciled": "Stimmt zu {{ratio}} mit der Rechnung überein.",
+      "fallbackRates": "Ein Teil der Nutzung wurde zu Erstanbieter-Preisen berechnet — konfigurieren Sie Partner-Preise für exakte Zahlen.",
+      "reconciledAndFallback": "Stimmt zu {{ratio}} mit der Rechnung überein; ein Teil der Nutzung wurde zu Erstanbieter-Preisen berechnet — konfigurieren Sie Partner-Preise für exakte Zahlen.",
+      "notReconciled": "Stimmt nicht mit der Rechnung überein – Bottom-up ergibt {{ratio}} der importierten Gesamtsumme.",
+      "notReconciledAndFallback": "Stimmt nicht mit der Rechnung überein – Bottom-up ergibt {{ratio}} der importierten Gesamtsumme; ein Teil der Nutzung wird zudem zu First-Party-Tarifen berechnet – konfigurieren Sie Partner-Tarife für exakte Werte."
+    },
+    "coverage": {
+      "tier": "{{percent}} {{tier}}",
+      "mix": "{{parts}} Konfidenz.",
+      "mixAmbiguous_one": "{{parts}} Konfidenz · {{count}} Sitzung mehrdeutig.",
+      "mixAmbiguous_other": "{{parts}} Konfidenz · {{count}} Sitzungen mehrdeutig.",
+      "none": "In diesem Zeitraum wurden keine Ausgaben Ticket-Schlüsseln zugeordnet — prüfen Sie, ob Branch-Namen, Commit-Betreffs oder Prompts einen Schlüssel wie PROJ-123 enthalten und ob config.tickets.projectKeys das Präfix Ihres Teams auflistet (erforderlich, damit eine klein- oder gemischtgeschriebene Konvention erkannt wird)."
+    },
+    "cost": {
+      "unavailable": "Für diesen Zeitraum wurde keine Nutzung erfasst.",
+      "enablement": "Führen Sie eine Claude-Code-Sitzung aus und aktualisieren Sie dann — die Erfassung läuft automatisch.",
+      "thisPeriod": "{{money}} in diesem Zeitraum",
+      "devTime": "≈ {{devTime}} zu Ihrem konfigurierten Satz",
+      "planMultiplier": "{{multiplier}}× Ihres Abos von {{fee}}/Monat"
+    },
+    "bought": {
+      "unavailable": "Bisher wurden keine Ausgaben Arbeitsvorgängen zugeordnet.",
+      "enablement": "Hinterlegen Sie Ihre Projekt-Schlüssel unter Einstellungen → Tickets, um Ausgaben automatisch zuzuordnen.",
+      "completed_one": "{{count}} Aufgabe abgeschlossen",
+      "completed_other": "{{count}} Aufgaben abgeschlossen",
+      "attributed": "{{percent}} der Ausgaben Arbeitsvorgängen zugeordnet",
+      "topTicket": "größter Posten: {{key}} ({{cost}})"
+    },
+    "efficiency": {
+      "unavailable": "Zu wenig abgeschlossene Arbeit, um die Effizienz zu messen.",
+      "enablement": "Für die Effizienz sind einige abgeschlossene Aufgaben im Zeitraum nötig — schauen Sie nach weiterer Nutzung erneut vorbei.",
+      "recoverable": "{{money}} rückgewinnbar ({{percent}} der Ausgaben)",
+      "hygiene": "selbst ermittelter Verschnitt {{percent}}",
+      "hygieneDown": "selbst ermittelter Verschnitt {{percent}}, gesunken von {{previous}}",
+      "hygieneUp": "selbst ermittelter Verschnitt {{percent}}, gestiegen von {{previous}}"
+    },
+    "setup": {
+      "unavailable": "Zu wenig Daten, um die Passung Ihres Abos zu beurteilen.",
+      "enablement": "Für eine aussagekräftige Abo-Bewertung sind einige Wochen Nutzung nötig.",
+      "policyImpact_one": "Seit der Richtlinienänderung am {{date}} sind die Kosten pro erfolgreicher Aufgabe in {{count}} Aufgabenklasse um {{percent}} gestiegen.",
+      "policyImpact_other": "Seit der Richtlinienänderung am {{date}} sind die Kosten pro erfolgreicher Aufgabe in {{count}} Aufgabenklassen um {{percent}} gestiegen.",
+      "policyCaveat": "Ein Hinweis, kein Beweis — verglichen innerhalb der Aufgabenklassen über die Grenze hinweg.",
+      "verdictWithSaving": "{{verdict}} — ein Wechsel zu {{plan}} würde etwa {{saving}}/Monat sparen.",
+      "savingCaveat": "Geschätzt aus Ihrer eigenen Nutzung, angewandt auf die Abo-Grenzen."
+    },
+    "change": {
+      "nothing": "Derzeit erfordert nichts Ihre Aufmerksamkeit.",
+      "withImpact": "{{title}} — {{impact}}",
+      "more_one": "{{lead}} (+{{count}} weiterer).",
+      "more_other": "{{lead}} (+{{count}} weitere)."
+    },
+    "calibration": {
+      "measured": {
+        "attribution": "Die automatische Zuordnung wurde bei {{percent}} der {{n}} von Ihnen beurteilten Verknüpfungen bestätigt (95 %-KI {{lo}}–{{hi}}) — das ist die Übereinstimmung bei Verknüpfungen, die Sie zur Prüfung ausgewählt haben, nicht die Gesamtgenauigkeit, und sie fällt niedrig aus, weil man das prüft, was falsch aussieht.",
+        "outcome": "Die Ergebniserkennung stimmte bei {{percent}} der {{n}} von Ihnen gekennzeichneten Aufgaben mit Ihrer Kennzeichnung überein (95 %-KI {{lo}}–{{hi}}) — das ist die Übereinstimmung bei Aufgaben, die Sie zum Kennzeichnen ausgewählt haben, nicht die Gesamtgenauigkeit, und sie fällt niedrig aus, weil man das kennzeichnet, was falsch aussieht."
+      },
+      "uncalibrated": {
+        "attribution": "Die Zuordnungskonfidenz ist unkalibriert — {{n}} von {{minN}} ausdrücklichen Beurteilungen, die nötig sind, damit ein Übereinstimmungswert aussagekräftig wäre.",
+        "outcome": "Die Ergebniserkennung ist unkalibriert — {{n}} von {{minN}} Ergebniskennzeichnungen, die nötig sind, damit ein Übereinstimmungswert aussagekräftig wäre."
+      },
+      "enablement": {
+        "attribution": "Bestätigen oder korrigieren Sie eine automatische Verknüpfung mit `claude-stats ticket <session-id> <key>` oder heben Sie eine falsche mit `--negate` auf; jede ausdrückliche Beurteilung vergrößert die Stichprobe.",
+        "outcome": "Kennzeichnen Sie abgeschlossene Arbeit mit `claude-stats task-outcome <item> <success|partial|fail>`; jede Kennzeichnung vergrößert die Stichprobe."
+      },
+      "scope": {
+        "wholeStore": "Über alle erfassten Daten gezählt, nicht nur über den angezeigten Zeitraum.",
+        "day": "Nur über den letzten Tag gezählt, nicht über den angezeigten Zeitraum.",
+        "week": "Nur über die letzte Woche gezählt, nicht über den angezeigten Zeitraum.",
+        "month": "Nur über den aktuellen Kalendermonat bis heute gezählt, nicht über den angezeigten Zeitraum.",
+        "customRange": "Über den ausgewählten Zeitraum gezählt."
+      },
+      "minimumSampleRationale": "Unter minN wird keine Rate ausgewiesen. Nach der Dreier-Regel grenzen n Beobachtungen ohne jede Abweichung die Fehlerquote nur auf etwa 3/n ein — ein fehlerfreier Durchlauf von weniger als 30 Bewertungen kann also nicht einmal eine Fehlerquote von eins zu zehn ausschließen.",
+      "notCalibratedTaskClass": "Es gibt keine Grundwahrheit zur Laufzeit: Keine Korrektur erfasst, dass ein Mensch der Aufgabenklasse einer Sitzung widersprochen hat, daher kann die Übereinstimmung auf diesem Rechner nicht gemessen werden. Die veröffentlichte Übereinstimmungszahl des Klassifikators wird zur Build-Zeit an einem GENERIERTEN Korpus gemessen und ist keine Messung der Daten dieses Speichers."
+    },
+    "apiThrottle": {
+      "rejection": {
+        "summary_one": "Claudes API hat Sie in diesem Zeitraum {{count}} Mal per Rate-Limit abgewiesen.",
+        "summary_other": "Claudes API hat Sie in diesem Zeitraum {{count}} Mal per Rate-Limit abgewiesen.",
+        "caveatMetered": "Claude Code protokolliert nicht, wie lange eine Rate-Limit-Abweisung gedauert hat, sondern nur, dass sie aufgetreten ist – betrachten Sie dies als Untergrenze, nicht als Zeitkosten. Prüfen Sie die API- bzw. Bedrock-Rate-Limit-Stufe Ihres Kontos.",
+        "caveatPlan": "Claude Code protokolliert nicht, wie lange eine Rate-Limit-Abweisung gedauert hat, sondern nur, dass sie aufgetreten ist – betrachten Sie dies als Untergrenze, nicht als Zeitkosten. Dies ist ein Limit auf Anfrageebene, unabhängig vom 5-Stunden-Nutzungsfenster Ihres Plans."
+      },
+      "overload": {
+        "summary_one": "Claudes API war in diesem Zeitraum {{count}} Mal überlastet, mit {{time}} gemessener Wartezeit durch Wiederholungsversuche.",
+        "summary_other": "Claudes API war in diesem Zeitraum {{count}} Mal überlastet, mit {{time}} gemessener Wartezeit durch Wiederholungsversuche.",
+        "caveat": "Dies spiegelt die Infrastrukturverfügbarkeit von Anthropic selbst wider, nicht das Rate-Limit Ihres Kontos oder eine Organisationsrichtlinie – es betrifft jedes Konto und stellt keine Kosten durch Beschränkungen dar."
+      }
+    },
+    "reconciliation": {
+      "title": "Abgleich mit Ihrer Rechnung",
+      "verdict": {
+        "within": "Stimmt mit der Rechnung überein: Die lokale Schätzung beträgt {{ratio}} der importierten Gesamtsumme und liegt innerhalb Ihres Toleranzbereichs.",
+        "outside": "Stimmt nicht mit der Rechnung überein: Die lokale Schätzung beträgt {{ratio}} der importierten Gesamtsumme und liegt außerhalb Ihres Toleranzbereichs."
+      },
+      "label": {
+        "bottomUp": "Lokale Schätzung",
+        "invoiceTotal": "Importierte Rechnungssumme",
+        "residual": "Restdifferenz",
+        "tolerance": "Toleranzbereich"
+      },
+      "residualInvoiceHigher": "{{money}} ({{percent}}) mehr auf der Rechnung, als die lokale Schätzung erklärt",
+      "residualLocalHigher": "{{money}} ({{percent}}) mehr in der lokalen Schätzung, als die Rechnung berechnet",
+      "residualExact": "Exakte Übereinstimmung — keine Differenz zwischen Rechnung und lokaler Schätzung.",
+      "toleranceBand": "±{{percent}} %",
+      "causesLabel": "Mögliche Ursachen für die Abweichung",
+      "cause": {
+        "unpricedUsage": "Nicht bepreiste Nutzung – für einige Token lag kein Tarif zur Preisberechnung vor.",
+        "fallbackRates": "Ersatztarife – Nutzung über Partnerplattformen zu Erstanbieter-Tarifen berechnet.",
+        "scopeMismatch": "Abweichender Geltungsbereich – die Rechnung deckt möglicherweise nicht dieselben Konten oder Zeiträume ab wie diese Ansicht; es wurde kein Geltungsbereich angegeben.",
+        "unexplained": "Ungeklärt – keine der bekannten Ursachen erklärt diese Abweichung."
+      },
+      "scopeStated": "Rechnung umfasst: {{note}}",
+      "scopeUnstated": "Es wurde nie angegeben, was die Rechnung umfasst – legen Sie reconciliation.scopeNote fest, damit eine Abweichung aus- oder eingeschlossen werden kann."
+    }
+  },
   "actions": {
     "connect": "Verbinden",
     "disconnect": "Trennen",

@@ -133,6 +133,11 @@
     "reportTag": "タグでセッションをフィルタリング",
     "reportSession": "単一セッションの詳細を表示",
     "reportHtml": "自己完結型の HTML レポートをファイルに書き出し",
+    "pack": "説明資料パックを生成: 1 か月分の自己完結型 HTML ドキュメントと CSV バンドルを、claude-stats を使わない読み手向けに作成",
+    "packPeriod": "対象とする暦月、YYYY-MM（必須）",
+    "packSections": "含めるセクション（カンマ区切り）: headline,tickets,nonticket,hygiene,constraint,calibration（デフォルト: headline,tickets,nonticket）",
+    "packOut": "パックの書き出し先ディレクトリ（デフォルト: カレントディレクトリ）",
+    "packJson": "サマリー行の代わりに、書き出したファイルパスを JSON で出力",
     "status": "データベースサイズ、行数、最終収集時刻を表示",
     "export": "CSV または JSON にデータをエクスポート",
     "exportFormat": "出力形式: csv または json（デフォルト: json）",
@@ -174,7 +179,22 @@
     "costPerTaskByModel": "主要モデル別にメトリクスを分解する",
     "costPerTaskCalibrate": "キャリブレーション指標（プロキシ/シグナルとラベルの一致度）を JSON で出力する",
     "costPerTaskLlmJudge": "曖昧なタスクに対してオプションの LLM ジャッジを実行する（llmJudge 設定が必要; 匿名化したタスク要約をエンドポイントに送信）",
-    "costPerTaskLlmJudgeUnconfigured": "--llm-judge が指定されましたが llmJudge.endpoint/model が未設定のため、ジャッジをスキップします。"
+    "costPerTaskLlmJudgeUnconfigured": "--llm-judge が指定されましたが llmJudge.endpoint/model が未設定のため、ジャッジをスキップします。",
+    "reportTicket": "1 つのチケットキー (例: PROJ-123) に紐付くコスト/トークン/セッションと、期間のカバレッジを表示します",
+    "taskClass": "セッションをタスククラスに分類して分布を表示します",
+    "taskClassLimit": "この実行で分類するセッション数の上限（再開可能）",
+    "ticket": "セッションの手動チケット関連付けをリンク・無効化・一覧表示します",
+    "ticketSessionArg": "セッション ID (または先頭部分)",
+    "ticketKeyArg": "チケットキー (例: PROJ-123)。他のフラグなしで省略した場合は現在のリンクを一覧表示します",
+    "ticketNegate": "このキーをセッションでトゥームストーン化します (抽出が一致し続けても抑制されます)",
+    "ticketRemove": "このキーの手動リンクを削除します (無効化のトゥームストーンには影響しません)",
+    "ticketList": "変更を適用する前にセッションのチケットリンクを一覧表示します",
+    "packInvoiceCsv": "突き合わせに使用する Cost Explorer の CSV エクスポート (または同等のファイル) へのパス — この実行に限り config.reconciliation.invoiceTotal を上書きします",
+    "constraintImpact": "宣言されたポリシー変更 (予算上限、モデル階層の削除) がタスククラスごとにどれだけのコストまたは節約になったか — JSON 出力、jq へパイプしてください",
+    "constraintImpactDate": "比較の基準とする宣言済みポリシーイベント (config.policyEvents の日付と一致させる必要があります)。デフォルト: 最新のもの",
+    "constraintImpactCsv": "クラス別テーブルをこの CSV パスにも書き出します",
+    "constraintImpactMinSessions": "クラスごと・片側ごとの最小セッション数のしきい値 (デフォルト: 8)",
+    "packDiscloseScope": "パックのスコープ行と CSV 列に、実際のプロジェクトパス/アカウント UUID をそのまま含めます。既定では出力されません — ローカルパスには取引先名や未公開製品名が含まれる場合があり、パックはこのマシンの外に持ち出されることを想定しているためです。"
   },
   "collection": {
     "collecting": "収集中...",
@@ -231,6 +251,7 @@
     "resultsFound_one": "{{count}} 件の結果が見つかりました。",
     "resultsFound_other": "{{count}} 件の結果が見つかりました。",
     "wroteFile": "{{file}} を書き出しました",
+    "wrotePack": "説明資料パックを {{dir}} に書き出しました（report.html、tickets.csv、nonticket.csv、summary.csv）",
     "planValueUsed": "プラン: {{planFee}}/月 → この期間にプラン価値の {{percent}}% を使用",
     "trendColumnDay": "日",
     "trendColumnWeek": "週",
@@ -273,7 +294,18 @@
     "costPerTaskByModel": "モデル別",
     "costPerTaskSuccessShort": "成功",
     "costPerTaskInsufficient": "n/a (<{{min}} 観測)",
-    "costPerTaskObsShort": "観測"
+    "costPerTaskObsShort": "観測",
+    "ticketTitle": "チケット {{key}} — {{period}}",
+    "ticketNotFound": "この期間に {{key}} へ紐付いた使用量は見つかりませんでした。キーと日付範囲を確認してください。",
+    "ticketTokensLabel": "トークン",
+    "ticketSourcesLabel": "ソース",
+    "ticketCoverageTitle": "期間のカバレッジ",
+    "ticketCoverageLine": "{{total}} 中 {{attributed}} が紐付け済み ({{ratio}})",
+    "ticketCoverageNone": "この期間に記録された使用量はありません。",
+    "ticketAmbiguousNote": "{{count}} 件のセッションが曖昧です (複数のチケットに紐付いています)。",
+    "confidenceHigh": "信頼度: 高",
+    "confidenceMedium": "信頼度: 中",
+    "confidenceLow": "信頼度: 低"
   },
   "status": {
     "databaseSize": "データベースサイズ",
@@ -322,7 +354,9 @@
   "errors": {
     "cannotCombineHtml": "--html は --trend や --detail と組み合わせられません",
     "cannotCombineTrendDetail": "--trend と --detail は組み合わせられません",
-    "invalidDateRange": "無効な日付範囲です: {{message}}"
+    "invalidDateRange": "無効な日付範囲です: {{message}}",
+    "invalidPackPeriod": "無効なパック期間です: {{message}}",
+    "invalidInvoiceCsv": "--invoice-csv {{path}} を読み取れませんでした: {{message}}"
   },
   "repair": {
     "description": "通常の収集では遡って修正できない派生データを修復します。",
@@ -428,5 +462,26 @@
     "deviceRemoved": "Device '{{name}}' removed.",
     "newDeviceDetected": "New device detected in sync group: {{name}} ({{id}}). Review in settings.",
     "mergeConflict": "Merge conflict resolved using latest timestamp."
+  },
+  "taskClass": {
+    "passSummary": "{{classified}} 件のセッションを分類しました。{{alreadyCurrent}} 件は最新、残り {{remaining}} 件です（分類器 v{{version}}）。",
+    "noSessions": "分類済みのセッションがありません — 先に 'collect' を実行してください。",
+    "fineHeader": "タスククラス別:",
+    "coarseHeader": "大分類別:",
+    "abstainHeader": "分類を見送り:",
+    "coverage": "カバレッジ: {{classified}} 件のセッションが分類済み、{{unclassified}} 件は未分類です。",
+    "mixedVersions": "⚠  複数の分類器バージョン（{{versions}}）で分類されたセッションがあります。期間をまたいでクラスを比較する前に 'task-class' を再実行してください。",
+    "confidenceMix": "信頼度: 高 {{high}}、中 {{medium}}、低 {{low}}",
+    "caveat": "注意: 一致率は生成されたコーパスに対して測定されたものであり、実際の session に付与された人手ラベルではなく、ジェネレーターの意図を基準としています。詳細クラスはこの注意事項の下でのみレポート品質とみなせます。クラスごとの数値を引用する際は、必ずこの注意事項と上記の信頼度の内訳を併記するか、粗いクラスを使用してください。"
+  },
+  "ticket": {
+    "sessionNoLinks": "セッション {{sessionId}}: チケットリンクなし",
+    "sessionLinks": "セッション {{sessionId}}:",
+    "keyRequired": "--negate/--remove にはチケットキーを指定してください。",
+    "activeLabel": "有効",
+    "negatedLabel": "無効化済み",
+    "linked": "{{key}} をセッション {{sessionId}} にリンクしました",
+    "negated": "セッション {{sessionId}} の {{key}} を無効化しました (トゥームストーン化。自動抽出では復活しません)",
+    "removed": "セッション {{sessionId}} から手動リンク {{key}} を削除しました"
   }
 }

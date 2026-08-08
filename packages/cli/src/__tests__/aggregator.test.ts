@@ -104,6 +104,70 @@ describe("collect", () => {
     expect(sessions[0]!.input_tokens).toBe(100);
   });
 
+  it("persists parsed api_error_events through collect(), not just through the store API", async () => {
+    // The parser→store wiring for schema V22 had no coverage: deleting the
+    // `store.upsertApiErrorEvents(parsed.apiErrorEvents)` call in the
+    // aggregator left the whole suite green, so the entire throttle pipeline
+    // could be dead on arrival without a single test noticing.
+    const projDir = path.join(projectsDir, "-proj-throttle");
+    fs.mkdirSync(projDir);
+    const retryLadder = JSON.stringify({
+      type: "system",
+      subtype: "api_error",
+      source: "request_retry",
+      sessionId: "sess-agg-1",
+      version: "2.1.70",
+      timestamp: 1_699_999_500_000,
+      uuid: "sys-throttle-1",
+      error: { message: "529 Overloaded", status: 529, isNetworkDown: false },
+      retryInMs: 2_282,
+      retryAttempt: 1,
+      maxRetries: 10,
+    });
+    const terminal = JSON.stringify({
+      type: "assistant",
+      sessionId: "sess-agg-1",
+      version: "2.1.70",
+      timestamp: 1_700_000_500_000,
+      uuid: "term-throttle-1",
+      error: "rate_limit",
+      isApiErrorMessage: true,
+      apiErrorStatus: 429,
+      message: {
+        id: "msg_rl",
+        model: "claude-opus-4-6",
+        role: "assistant",
+        stop_reason: "stop_sequence",
+        content: [],
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+    });
+    fs.writeFileSync(
+      path.join(projDir, "sess-agg-1.jsonl"),
+      [makeUserLine(), retryLadder, makeSessionLine(), terminal].join("\n") + "\n",
+    );
+
+    await collect(store);
+
+    const events = store.getApiErrorEvents();
+    expect(events).toHaveLength(2);
+    const ladder = events.find((e) => e.uuid === "sys-throttle-1")!;
+    expect(ladder.terminal).toBe(false);
+    expect(ladder.kind).toBe("server_error");
+    expect(ladder.retryInMs).toBe(2_282);
+    // A null timestamp here would silently drop the row from every
+    // period-scoped read; assert the real value, not just presence.
+    expect(ladder.timestamp).toBe(1_699_999_500_000);
+    const term = events.find((e) => e.uuid === "term-throttle-1")!;
+    expect(term.terminal).toBe(true);
+    expect(term.kind).toBe("rate_limit");
+    expect(term.retryInMs).toBeNull();
+    expect(term.timestamp).toBe(1_700_000_500_000);
+
+    // And the period filter actually reaches them (timestamps are real).
+    expect(store.getApiErrorEvents({ since: 1_700_000_000_000 })).toHaveLength(1);
+  });
+
   it("resolves project_path and repo_url from the session's own cwd, not the lossy decoded directory name", async () => {
     // Real project directory with a hyphenated leaf name and a .git/config —
     // decodeProjectPath would corrupt any encoded name derived from a path

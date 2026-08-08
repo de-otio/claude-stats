@@ -1,0 +1,545 @@
+/**
+ * Phase-0 foundations: config validation (F2), answer formatters (F6), and the
+ * synthetic corpus (F7).
+ *
+ * The formatter tests matter more than they look. Every insight surface — the
+ * dashboard cards, the exported pack, the CLI header — renders these sentences,
+ * so a drift here is a drift between the screen a developer showed their
+ * manager and the document they handed over. The determinism test is the one
+ * that keeps that honest.
+ */
+import { describe, it, expect } from "vitest";
+import fc from "fast-check";
+import {
+  mergeConfig,
+  validateTicketsConfig,
+  validatePolicyEvents,
+  validateRateConfig,
+  validatePricingConfig,
+  validateReconciliationConfig,
+  validateHygieneConfig,
+  resolveAccountMode,
+  reconciliationTolerance,
+  isAllowedTicketKey,
+  ticketProjectKeys,
+  type Config,
+} from "../config.js";
+import {
+  answerCost,
+  answerBought,
+  answerEfficiency,
+  answerSetup,
+  answerChange,
+  formatMoney,
+  formatMoneyCsv,
+  formatPercent,
+  formatDevTime,
+  trendOf,
+  confidenceCaveat,
+  calibrationScopeNote,
+} from "@claude-stats/core/insight";
+import type { TicketCoverage } from "@claude-stats/core/types/insight";
+// The real `en` translator (setup.ts runs initCliI18n("en")). Deliberately not
+// a stub: these assertions then also prove every `common:insight.*` key the
+// formatters reach for actually exists, which a stub would hide.
+import { t } from "../i18n.js";
+import { parseTicketKey, isTicketKey, matchesProjectAllowlist } from "@claude-stats/core/tickets";
+import { buildCorpus, seedStore, FIXED_NOW, seededRandom } from "./fixtures/synthetic.js";
+import { estimateCost } from "@claude-stats/core/pricing";
+import { Store } from "../store/index.js";
+import { datesForPeriod } from "../cost-per-task/index.js";
+import os from "node:os";
+import path from "node:path";
+import fs from "node:fs";
+
+// ─── F3 / tickets: key validation ────────────────────────────────────────────
+
+describe("ticket key validation", () => {
+  it.each(["PROJ-123", "AB-1", "A1B2C3-9999999", "CORE-1"])("accepts %s", (k) => {
+    expect(isTicketKey(k)).toBe(true);
+  });
+
+  it.each([
+    "proj-123", // lowercase — parse normalises, but the raw form is not valid
+    "A-1", // single-char prefix matches far too much prose
+    "PROJ123", // no separator
+    "PROJ-", // no number
+    "PROJ-12345678", // 8 digits, over the bound
+    "VERYLONGPREFIX-1", // 14-char prefix, over the bound
+    "",
+  ])("rejects %s", (k) => {
+    expect(isTicketKey(k)).toBe(false);
+  });
+
+  it("normalises case so one ticket never becomes two rows", () => {
+    expect(parseTicketKey("proj-42")).toBe("PROJ-42");
+    expect(parseTicketKey("  Proj-42  ")).toBe("PROJ-42");
+  });
+
+  it("treats an absent allowlist as 'no filter configured'", () => {
+    const key = parseTicketKey("ANY-1")!;
+    expect(matchesProjectAllowlist(key)).toBe(true);
+    expect(matchesProjectAllowlist(key, [])).toBe(true);
+    expect(matchesProjectAllowlist(key, ["PROJ"])).toBe(false);
+    expect(matchesProjectAllowlist(key, ["ANY"])).toBe(true);
+  });
+});
+
+// ─── F2: config validation ───────────────────────────────────────────────────
+
+describe("insight config validation", () => {
+  it("keeps only well-formed project keys and upper-cases them", () => {
+    const out = validateTicketsConfig({ projectKeys: ["proj", "CORE", "x", "PROJ", 42, "TOOLONGPREFIXX"] });
+    expect(out.projectKeys).toEqual(["PROJ", "CORE"]);
+  });
+
+  it("drops policy events with an unusable date or kind, and sorts the rest", () => {
+    const out = validatePolicyEvents([
+      { date: "2026-05-01", kind: "model-removal", detail: "opus" },
+      { date: "not-a-date", kind: "model-removal" },
+      { date: "2026-02-01", kind: "budget-cap" },
+      { date: "2026-06-01", kind: "nonsense" },
+      { date: "2026-13-45", kind: "budget-cap" }, // shape ok, not a real date
+      "garbage",
+    ]);
+    expect(out.map((e) => e.date)).toEqual(["2026-02-01", "2026-05-01"]);
+    expect(out[1]!.detail).toBe("opus");
+  });
+
+  it("M-4: sorts ascending so `events[events.length - 1]` is 'most recent' — the coupling both the CLI and MCP 'compare around the latest event' path rely on without re-sorting", () => {
+    // `cli/index.ts`'s `constraint-impact` command and `mcp/index.ts`'s
+    // `get_constraint_impact` tool both resolve an undated request as
+    // `events[events.length - 1]` on `config.policyEvents` directly — no
+    // sort at the use site. That's only correct because EVERY array
+    // reaching them was produced by this validator. Feed events wildly out
+    // of declaration order, as a human hand-editing config.json would, and
+    // confirm the truly latest-dated event lands last regardless.
+    const out = validatePolicyEvents([
+      { date: "2026-03-01", kind: "budget-cap" },
+      { date: "2026-08-01", kind: "model-removal", detail: "the actual most recent" },
+      { date: "2026-01-01", kind: "quota-change" },
+    ]);
+    expect(out[out.length - 1]!.date).toBe("2026-08-01");
+    expect(out[out.length - 1]!.detail).toBe("the actual most recent");
+  });
+
+  it("G-1: the 'month' calibration scope sentence doesn't overclaim a rolling window it never queried", () => {
+    // `datesForPeriod`'s 'month' branch enumerates only CURRENT-CALENDAR-MONTH
+    // days up to today, not a rolling last-30-days window. On the 2nd of the
+    // month that's 2 days, not 30 — proven directly here rather than trusted
+    // from `cost-per-task.test.ts` alone, since this test is what ties the
+    // SENTENCE to that fact. A sentence claiming "the last month" (a fixed
+    // rolling span) would be true on day 30 and false on day 2; assert
+    // against the extreme day to make that failure mode concrete.
+    const secondOfMonth = Date.UTC(2026, 4, 2, 12, 0, 0); // 2026-05-02 noon UTC
+    const days = datesForPeriod({ period: "month" }, "UTC", secondOfMonth, null);
+    expect(days).toEqual(["2026-05-01", "2026-05-02"]);
+
+    const sentence = calibrationScopeNote(t, "month");
+    expect(sentence).toBe(t("common:insight.calibration.scope.month"));
+    // Must not claim a fixed backward-looking span ("the last month") that
+    // would be false on a day like this one.
+    expect(sentence.toLowerCase()).not.toContain("last month");
+    // Must say what actually happened: the current month, only as far as it
+    // has elapsed.
+    expect(sentence.toLowerCase()).toMatch(/current calendar month|so far/);
+  });
+
+  it("rejects a non-positive or absurd hourly rate", () => {
+    expect(validateRateConfig({ hourly: 95, currency: "EUR" })).toEqual({ hourly: 95, currency: "EUR" });
+    expect(validateRateConfig({ hourly: 0 }).hourly).toBeUndefined();
+    expect(validateRateConfig({ hourly: -5 }).hourly).toBeUndefined();
+    expect(validateRateConfig({ hourly: 1e9 }).hourly).toBeUndefined();
+    expect(validateRateConfig({ currency: "euro" }).currency).toBeUndefined();
+  });
+
+  it("keeps only complete partner rate rows", () => {
+    const out = validatePricingConfig({
+      mode: "metered",
+      rates: {
+        bedrock: {
+          "claude-opus-5": { inputPerMillion: 6, outputPerMillion: 30, cacheReadPerMillion: 0.6, cacheWritePerMillion: 7.5 },
+          "claude-bad": { inputPerMillion: 6 }, // incomplete — dropped
+        },
+        nonsense: { x: {} },
+      },
+    });
+    expect(out.mode).toBe("metered");
+    expect(Object.keys(out.rates?.bedrock ?? {})).toEqual(["claude-opus-5"]);
+    expect(out.rates).not.toHaveProperty("nonsense");
+  });
+
+  it("clamps reconciliation tolerance and defaults it to 5%", () => {
+    expect(validateReconciliationConfig({ tolerancePercent: 500 }).tolerancePercent).toBe(100);
+    expect(validateReconciliationConfig({ tolerancePercent: -1 }).tolerancePercent).toBe(0);
+    expect(reconciliationTolerance({})).toBeCloseTo(0.05);
+    expect(reconciliationTolerance({ reconciliation: { tolerancePercent: 2 } })).toBeCloseTo(0.02);
+  });
+
+  it("trims and bounds reconciliation.scopeNote, dropping blank/whitespace-only values", () => {
+    expect(validateReconciliationConfig({ scopeNote: "  AWS account 111122223333  " }).scopeNote).toBe(
+      "AWS account 111122223333",
+    );
+    expect(validateReconciliationConfig({ scopeNote: "   " }).scopeNote).toBeUndefined();
+    expect(validateReconciliationConfig({ scopeNote: "" }).scopeNote).toBeUndefined();
+    expect(validateReconciliationConfig({}).scopeNote).toBeUndefined();
+    const long = "x".repeat(1000);
+    expect(validateReconciliationConfig({ scopeNote: long }).scopeNote!.length).toBe(500);
+  });
+
+  it("de-duplicates and bounds hygiene suppressions", () => {
+    const out = validateHygieneConfig({ suppressions: ["a", "a", "b", 1, ""] });
+    expect(out.suppressions).toEqual(["a", "b"]);
+  });
+
+  it("merges insight blocks without wiping siblings", () => {
+    const current: Config = {
+      tickets: { projectKeys: ["PROJ"] },
+      rate: { hourly: 90, currency: "EUR" },
+      pricing: { mode: "plan" },
+    };
+    const merged = mergeConfig(current, { rate: { hourly: 100 } });
+    expect(merged.rate).toEqual({ hourly: 100, currency: "EUR" });
+    expect(merged.tickets?.projectKeys).toEqual(["PROJ"]);
+    expect(merged.pricing?.mode).toBe("plan");
+  });
+
+  it("replaces the policy timeline wholesale rather than merging arrays", () => {
+    const current: Config = { policyEvents: [{ date: "2026-01-01", kind: "budget-cap" }] };
+    const merged = mergeConfig(current, { policyEvents: [{ date: "2026-05-01", kind: "model-removal" }] });
+    expect(merged.policyEvents).toHaveLength(1);
+    expect(merged.policyEvents![0]!.date).toBe("2026-05-01");
+  });
+
+  it("never lets an unknown top-level key into config", () => {
+    const merged = mergeConfig({}, { evil: true, tickets: { projectKeys: ["PROJ"] } });
+    expect(merged).not.toHaveProperty("evil");
+    expect(merged.tickets?.projectKeys).toEqual(["PROJ"]);
+  });
+
+  it("infers the cost vocabulary from the subscription when unset", () => {
+    expect(resolveAccountMode({}, "max_20x")).toBe("plan");
+    expect(resolveAccountMode({}, null)).toBe("metered");
+    expect(resolveAccountMode({ pricing: { mode: "metered" } }, "max_20x")).toBe("metered");
+  });
+
+  it("gates ticket keys on the configured allowlist", () => {
+    const cfg: Config = { tickets: { projectKeys: ["PROJ"] } };
+    expect(isAllowedTicketKey(cfg, "PROJ-1")).toBe(true);
+    expect(isAllowedTicketKey(cfg, "proj-1")).toBe(true);
+    expect(isAllowedTicketKey(cfg, "CORE-1")).toBe(false);
+    expect(isAllowedTicketKey(cfg, "garbage")).toBe(false);
+    expect(isAllowedTicketKey({}, "ANY-1")).toBe(true);
+    expect(ticketProjectKeys({})).toBeUndefined();
+  });
+});
+
+// ─── F6: answer formatters ───────────────────────────────────────────────────
+
+const coverage = (over: Partial<TicketCoverage> = {}): TicketCoverage => ({
+  attributedCost: 100,
+  totalCost: 125,
+  ratio: 0.8,
+  byConfidence: { high: 70, medium: 20, low: 10 },
+  ambiguousSessions: 0,
+  ...over,
+});
+
+describe("answer formatters", () => {
+  it("formats money, percent and dev-time deterministically", () => {
+    expect(formatMoney(41.5)).toBe("$41.50");
+    expect(formatMoney(4150)).toBe("$4,150");
+    expect(formatMoney(1234.56, "EUR")).toBe("€1,235");
+    expect(formatPercent(0.834)).toBe("83%");
+    expect(formatPercent(null)).toBe("—");
+    expect(formatDevTime(t, 45, 90)).toBe("30 dev-minutes");
+    expect(formatDevTime(t, 360, 90)).toBe("4.0 dev-hours");
+    expect(formatDevTime(t, 1440, 90)).toBe("2.0 dev-days");
+    expect(formatDevTime(t, 100, 0)).toBe("—");
+  });
+
+  it("keeps two decimals in `precise` mode regardless of magnitude (I-1: the pack's own precision, same implementation)", () => {
+    expect(formatMoney(1234.567, "USD", { precise: true })).toBe("$1,234.57");
+    expect(formatMoney(18450.2, "USD", { precise: true })).toBe("$18,450.20");
+    // Without `precise`, the same amount takes the glanceable (whole-dollar
+    // once >=100) form — proves the two callers genuinely diverge in OUTPUT
+    // while sharing the same function, not that the option is a no-op.
+    expect(formatMoney(1234.567, "USD")).toBe("$1,235");
+  });
+
+  it("formatPercent takes an optional decimals count, defaulting to 0", () => {
+    expect(formatPercent(0.5922)).toBe("59%");
+    expect(formatPercent(0.5922, 1)).toBe("59.2%");
+    expect(formatPercent(null, 1)).toBe("—");
+  });
+
+  it("never renders real, priced spend as an exact zero (I-6)", () => {
+    expect(formatMoney(0.003)).toBe("<$0.01");
+    expect(formatMoney(0.003, "USD", { precise: true })).toBe("<$0.01");
+    expect(formatMoney(0)).toBe("$0.00"); // an ACTUAL zero still renders as zero
+    expect(formatMoney(0.01)).toBe("$0.01"); // a full cent is never marked as sub-cent
+  });
+
+  it("formatMoneyCsv stays numeric-parseable but never collapses a real cost to 0.00 (I-6)", () => {
+    // Real generated output once emitted "unclassified,2026-01,0.00,1" for a
+    // session with genuine priced tokens — this is the case that produced it.
+    const csvCell = formatMoneyCsv(0.003);
+    expect(Number(csvCell)).toBeGreaterThan(0);
+    expect(csvCell).not.toBe("0.00");
+    expect(formatMoneyCsv(0)).toBe("0.00");
+    expect(formatMoneyCsv(12.5)).toBe("12.50");
+  });
+
+  it("reports trend only when a comparison is possible", () => {
+    expect(trendOf(110, 100)).toBe("up");
+    expect(trendOf(90, 100)).toBe("down");
+    expect(trendOf(100, 100)).toBe("flat");
+    expect(trendOf(100, null)).toBe("unknown");
+    expect(trendOf(100, 0)).toBe("unknown");
+  });
+
+  it("carries the plan-vs-metered vocabulary into Q1's caveat", () => {
+    const plan = answerCost(t, { mode: "plan", cost: 540, previousCost: 500, planFee: 100, planMultiplier: 5.4 });
+    expect(plan.answer).toContain("5.4× your $100/mo plan");
+    expect(plan.caveat).toContain("not what your plan charges");
+
+    const metered = answerCost(t, {
+      mode: "metered",
+      cost: 312,
+      previousCost: 280,
+      reconciledRatio: 0.987,
+      reconciledWithinTolerance: true,
+    });
+    expect(metered.answer).toContain("$312");
+    expect(metered.caveat).toContain("econciles with the invoice at 99%");
+    expect(metered.caveat).not.toContain("not what your plan charges");
+
+    // Without a verdict, the reconciled wording is withheld rather than
+    // guessed — `reconciledWithinTolerance` is REQUIRED to say "reconciles"
+    // vs "does not reconcile" (I1).
+    const noVerdict = answerCost(t, { mode: "metered", cost: 312, previousCost: 280, reconciledRatio: 0.5 });
+    expect(noVerdict.caveat).not.toContain("Reconciles");
+    expect(noVerdict.caveat).not.toContain("Does not reconcile");
+
+    const outOfTolerance = answerCost(t, {
+      mode: "metered",
+      cost: 312,
+      previousCost: 280,
+      reconciledRatio: 0.5,
+      reconciledWithinTolerance: false,
+    });
+    expect(outOfTolerance.caveat).toContain("Does not reconcile with the invoice");
+  });
+
+  it("warns when partner usage was priced at fallback rates", () => {
+    const a = answerCost(t, { mode: "metered", cost: 100, previousCost: null, anyFallbackRates: true });
+    expect(a.caveat).toContain("first-party rates");
+  });
+
+  it("adds the salary denominator only when a rate is configured", () => {
+    const withRate = answerCost(t, { mode: "metered", cost: 720, previousCost: null, hourlyRate: 90 });
+    expect(withRate.answer).toContain("dev-days");
+    const without = answerCost(t, { mode: "metered", cost: 720, previousCost: null });
+    expect(without.answer).not.toContain("dev-");
+  });
+
+  it("states an enablement path instead of rendering an empty card", () => {
+    const noCost = answerCost(t, { mode: "metered", cost: 0, previousCost: null });
+    expect(noCost.value).toBeNull();
+    expect(noCost.unavailable?.reason).toBe("no-data");
+    expect(noCost.unavailable?.enablement.length).toBeGreaterThan(0);
+
+    const noTickets = answerBought(t, { completedTasks: 3, coverage: null, topTicket: null });
+    expect(noTickets.unavailable?.reason).toBe("not-enabled");
+    expect(noTickets.unavailable?.enablement).toContain("project keys");
+  });
+
+  it("never reports coverage without its confidence mix", () => {
+    const a = answerBought(t, {
+      completedTasks: 41,
+      coverage: coverage(),
+      topTicket: { key: "PROJ-123", cost: 41 },
+    });
+    expect(a.answer).toContain("80% of spend attributed");
+    expect(a.answer).toContain("PROJ-123");
+    expect(a.caveat).toContain("70% high");
+    expect(a.caveat).toContain("20% medium");
+  });
+
+  it("surfaces ambiguity in the caveat rather than hiding it", () => {
+    const c = confidenceCaveat(t, coverage({ ambiguousSessions: 2 }));
+    expect(c).toContain("2 sessions ambiguous");
+  });
+
+  // A2/I1: 0% ticket coverage must never render as a bare, unexplained zero —
+  // it's the exact "confidently-wrong-looking-absent" case I1 exists to catch
+  // (e.g. a team on a lowercase branch convention with no allowlist configured).
+  it("gives a diagnostic hint instead of a bare null when there IS spend but NONE of it is attributed", () => {
+    const c = confidenceCaveat(t, coverage({ attributedCost: 0, totalCost: 200, ratio: 0, byConfidence: { high: 0, medium: 0, low: 0 } }));
+    expect(c).not.toBeNull();
+    expect(c).toContain("config.tickets.projectKeys");
+  });
+
+  it("stays null when there is no spend at all (nothing to enable)", () => {
+    const c = confidenceCaveat(t, coverage({ attributedCost: 0, totalCost: 0, ratio: null, byConfidence: { high: 0, medium: 0, low: 0 } }));
+    expect(c).toBeNull();
+  });
+
+  it("frames a measured policy impact as evidence, not proof", () => {
+    const a = answerSetup(t, {
+      planVerdict: null,
+      recommendedPlan: null,
+      projectedSaving: null,
+      policyImpact: { date: "2026-05-01", classes: 3, costPerTaskDelta: 0.28 },
+    });
+    expect(a.answer).toContain("28%");
+    expect(a.answer).toContain("3 task classes");
+    expect(a.caveat).toContain("Evidence, not proof");
+  });
+
+  it("falls back to plan fit when no policy event is configured", () => {
+    const a = answerSetup(t, {
+      planVerdict: "Your usage fits Max 5x with headroom",
+      recommendedPlan: "Max 5x",
+      projectedSaving: 80,
+    });
+    expect(a.answer).toContain("save about $80");
+  });
+
+  it("says nothing needs attention rather than inventing a recommendation", () => {
+    const a = answerChange(t, { recommendations: [], doingWell: "Cache hit rate is healthy." });
+    expect(a.answer).toBe("Cache hit rate is healthy.");
+    expect(a.value).toBeNull();
+  });
+
+  it("leads with the top recommendation and counts the rest", () => {
+    const a = answerChange(t, {
+      recommendations: [
+        { title: "Downshift model tier on config chores", impact: "~$40/mo" },
+        { title: "Trim context on long sessions" },
+      ],
+    });
+    expect(a.answer).toContain("Downshift model tier");
+    expect(a.answer).toContain("~$40/mo");
+    expect(a.answer).toContain("+1 more");
+  });
+
+  // Regression: "+N more" was derived from a `slice(0, 3)`, so it capped at
+  // "+2 more" while `value` kept reporting the full count — two contradicting
+  // numbers on one card. Every existing case had ≤3 recommendations, where the
+  // two counts coincide, so nothing noticed.
+  it("counts every recommendation beyond the lead, not just those in a top-N slice", () => {
+    const a = answerChange(t, {
+      recommendations: Array.from({ length: 7 }, (_, i) => ({ title: `Recommendation ${i}` })),
+    });
+    expect(a.value).toBe("7");
+    expect(a.answer).toBe("Recommendation 0 (+6 more).");
+  });
+
+  it("names no companions at all when there is exactly one recommendation", () => {
+    const a = answerChange(t, { recommendations: [{ title: "Only one thing" }] });
+    expect(a.value).toBe("1");
+    expect(a.answer).toBe("Only one thing.");
+    expect(a.answer).not.toContain("more");
+  });
+
+  it("handles a missing efficiency frontier honestly", () => {
+    const a = answerEfficiency(t, { recoverableWaste: null, cost: 100 });
+    expect(a.unavailable?.reason).toBe("no-data");
+  });
+
+  it("is deterministic — identical inputs always render identical output", () => {
+    fc.assert(
+      fc.property(
+        fc.double({ min: 0.01, max: 1e6, noNaN: true }),
+        fc.constantFrom("plan" as const, "metered" as const),
+        (cost, mode) => {
+          const once = JSON.stringify(answerCost(t, { mode, cost, previousCost: null }));
+          const twice = JSON.stringify(answerCost(t, { mode, cost, previousCost: null }));
+          expect(once).toBe(twice);
+        },
+      ),
+    );
+  });
+});
+
+// ─── F7: the synthetic corpus ────────────────────────────────────────────────
+
+describe("synthetic corpus", () => {
+  it("is reproducible from its seed", () => {
+    const a = buildCorpus({ seed: 7 });
+    const b = buildCorpus({ seed: 7 });
+    expect(JSON.stringify(a.sessions)).toBe(JSON.stringify(b.sessions));
+    expect(a.links).toEqual(b.links);
+  });
+
+  it("differs between seeds (so tests aren't accidentally testing one shape)", () => {
+    const a = buildCorpus({ seed: 1 });
+    const b = buildCorpus({ seed: 2 });
+    expect(JSON.stringify(a.links)).not.toBe(JSON.stringify(b.links));
+  });
+
+  it("leaves some sessions unattributed so coverage is never trivially 100%", () => {
+    const c = buildCorpus({ seed: 42, sessions: 20 });
+    expect(c.unattributed.length).toBeGreaterThan(0);
+    expect(c.links.length).toBeGreaterThan(0);
+    expect(c.links.length + c.unattributed.length).toBe(20);
+  });
+
+  it("covers subagents, throttles and mixed model families", () => {
+    const c = buildCorpus({ seed: 42, sessions: 20 });
+    expect(c.sessions.some((s) => s.isSubagent)).toBe(true);
+    expect(c.sessions.some((s) => s.throttleEvents > 0)).toBe(true);
+    const models = new Set(c.sessions.flatMap((s) => s.models));
+    expect(models.size).toBeGreaterThan(2);
+  });
+
+  it("contains no real-world identifiers", () => {
+    const c = buildCorpus({ seed: 42 });
+    const blob = JSON.stringify(c);
+    expect(blob).not.toMatch(/\/Users\//);
+    expect(blob).not.toMatch(/@[a-z0-9.-]+\.(com|org|net|de)/i);
+  });
+
+  it("uses a frozen origin, never the wall clock", () => {
+    const c = buildCorpus({ seed: 42 });
+    expect(c.sessions[0]!.firstTimestamp).toBeLessThan(FIXED_NOW);
+    const rand = seededRandom(1);
+    expect(rand()).toBe(seededRandom(1)());
+  });
+
+  it("round-trips through a real store, priced across all model families", () => {
+    const dbPath = path.join(os.tmpdir(), `cs-corpus-${process.pid}-${Math.random().toString(36).slice(2)}.db`);
+    const store = new Store(dbPath);
+    try {
+      const corpus = seedStore(store, { seed: 42, sessions: 12 });
+
+      // Every seeded link is retrievable, and the key index agrees with it.
+      const keyed = store.getTicketKeys();
+      const expectedKeys = new Set(corpus.links.map((l) => l.ticketKey));
+      expect(new Set(keyed.map((k) => k.ticket_key))).toEqual(expectedKeys);
+
+      // The corpus prices to a real, non-zero figure — the regression guard for
+      // the Bedrock/Vertex ids that used to cost nothing at all.
+      const totals = store.getMessageTotals({ includeCI: true, includeDeleted: true });
+      const priced = totals.map((t) =>
+        estimateCost(t.model, t.input_tokens, t.output_tokens, t.cache_read_tokens, t.cache_creation_tokens),
+      );
+      expect(priced.length).toBeGreaterThan(0);
+      expect(priced.every((p) => p.known)).toBe(true);
+      expect(priced.reduce((s, p) => s + p.cost, 0)).toBeGreaterThan(0);
+
+      // Attributed spend is a strict subset of total spend — a corpus that
+      // couldn't express a coverage gap couldn't test the honesty rules.
+      const attributedSessions = new Set(corpus.links.map((l) => l.sessionId));
+      expect(attributedSessions.size).toBeLessThan(corpus.sessions.length);
+    } finally {
+      store.close();
+      try {
+        fs.unlinkSync(dbPath);
+      } catch {
+        /* best effort */
+      }
+    }
+  });
+});

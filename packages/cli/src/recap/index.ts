@@ -753,12 +753,7 @@ export async function buildDailyDigest(
             getGitActivity,
             resolveEmail,
           );
-          if (cluster.label !== undefined) {
-            (item as { label?: string | null }).label = cluster.label;
-          }
-          if (cluster.hidden === true) {
-            (item as { hidden?: boolean }).hidden = true;
-          }
+          applyClusterCorrections(item, cluster);
           patchedItems.push(item);
         }
 
@@ -860,12 +855,7 @@ export async function buildDailyDigest(
       resolveEmail,
     );
     // Propagate correction metadata from cluster to digest item (v3.09)
-    if (cluster.label !== undefined) {
-      (item as { label?: string | null }).label = cluster.label;
-    }
-    if (cluster.hidden === true) {
-      (item as { hidden?: boolean }).hidden = true;
-    }
+    applyClusterCorrections(item, cluster);
     items.push(item);
   }
 
@@ -928,6 +918,33 @@ export async function buildDailyDigest(
 }
 
 // ─── Item construction ────────────────────────────────────────────────────────
+
+/**
+ * Propagate correction metadata (v3.09) from a cluster onto the digest item
+ * built from it — `label` ('rename'), `hidden` ('hide'), `ticketKey`
+ * ('ticket', Lane L). Mutates `item` in place, matching `buildDigestItem`'s
+ * caller-owned-object convention.
+ *
+ * SHARED between the full-rebuild path (Step 7) and the incremental patcher's
+ * rebuild-touched-clusters path (Step 4g) — those two call sites are
+ * otherwise structurally identical block-for-block, which is exactly the
+ * shape that lets a change land in one and not the other unnoticed (L-5): a
+ * user whose digest comes from the patcher (the common case — full rebuilds
+ * are the exception) would silently lose whichever field's propagation was
+ * dropped from only that copy. One function, called from both, makes that
+ * divergence structurally impossible rather than merely tested-for.
+ */
+function applyClusterCorrections(item: DailyDigestItem, cluster: SegmentCluster): void {
+  if (cluster.label !== undefined) {
+    (item as { label?: string | null }).label = cluster.label;
+  }
+  if (cluster.hidden === true) {
+    (item as { hidden?: boolean }).hidden = true;
+  }
+  if (cluster.ticketKey !== undefined) {
+    (item as { ticketKey?: string | null }).ticketKey = cluster.ticketKey;
+  }
+}
 
 function buildDigestItem(
   cluster: SegmentCluster,

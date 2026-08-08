@@ -6,6 +6,28 @@
 import type { DashboardData } from "../dashboard/index.js";
 import { PRICING, PRICING_VERIFIED_DATE } from "@claude-stats/core/pricing";
 import { formatEnergy, formatCO2, REGIONS } from "@claude-stats/core/energy";
+import {
+  visibleNavViews,
+  viewForSection,
+  DEFAULT_NAV_VIEW,
+  DOMAIN_VIEW_IDS,
+  NAV_VIEWS,
+  type NavTabId,
+} from "./nav.js";
+import { COARSE_OF } from "@claude-stats/core/taskClass";
+import { renderCard, CARD_TOKENS_CSS, CARD_CSS } from "./card.js";
+import {
+  buildInsightAnswers,
+  buildAlerts,
+  renderInsightsTab,
+  EVIDENCE_TAB,
+  INSIGHTS_CSS,
+} from "./insights.js";
+import { renderCostQualityCard, COST_QUALITY_CSS } from "./costQualityCard.js";
+import { renderTicketAttributionCard, TICKET_CARD_CSS } from "./ticketCard.js";
+import { escapeHtml } from "./utils.js";
+import type { PolicyEvent } from "@claude-stats/core/types/insight";
+import { RECONCILIATION_CSS } from "./reconciliationPanel.js";
 
 export { DashboardData };
 
@@ -14,6 +36,30 @@ export type TranslateFn = (key: string, options?: Record<string, unknown>) => st
 
 /** Default passthrough translator — returns the key as-is (fallback for non-i18n callers). */
 const defaultT: TranslateFn = (key: string) => key;
+
+/**
+ * Passive timeline annotation under the daily chart — the visible half of
+ * constraint-impact/02 §2.2 point 3 ("annotate the timeline with everything
+ * else that changed"). The comparison itself lives behind `constraint-impact`
+ * / `get_constraint_impact`; this is only a marker list, never a verdict.
+ * `kind` renders as the raw config enum value (like a task-class name
+ * elsewhere on this dashboard) rather than through `t()` — it is a value the
+ * USER wrote into their own config, not product-authored prose.
+ */
+function policyEventsHtml(events: readonly PolicyEvent[] | undefined, t: TranslateFn): string {
+  if (!events || events.length === 0) return "";
+  const rows = events
+    .map((e) => {
+      const detail = e.detail ? ` — ${escapeHtml(e.detail)}` : "";
+      return `<li>${escapeHtml(e.date)}: ${escapeHtml(e.kind)}${detail}</li>`;
+    })
+    .join("");
+  return `
+        <div style="margin-top:0.5rem;font-size:0.72rem;color:#b0b0b0;">
+          <span style="text-transform:uppercase;letter-spacing:0.05em;color:#888;">${escapeHtml(t("dashboard:charts.policyEvents"))}</span>
+          <ul style="margin:0.2rem 0 0 1rem;padding:0;">${rows}</ul>
+        </div>`;
+}
 
 /**
  * Renders a complete self-contained HTML dashboard page.
@@ -31,7 +77,6 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     .replace(/</g, "\\u003c")
     .replace(/-->/g, "--\\u003e");
 
-  const formattedCost = `$${data.summary.estimatedCost.toFixed(2)}`;
   const cacheEff = `${data.summary.cacheEfficiency.toFixed(1)}%`;
   const planFee = data.summary.planFee;
   const showPlan = planFee > 0;
@@ -90,8 +135,12 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   // The webview bridge reads data-cpt-index into __DASHBOARD__.costPerTask.tasks.
   const cptBtn = (i: number, val: string, glyph: string, active: boolean) =>
     `<button data-cpt-index="${i}" data-cpt-value="${val}" title="${t("dashboard:costPerTask.mark." + val)}" style="cursor:pointer;background:${active ? "#2b5238" : "#0f1830"};color:#cfd8ea;border:1px solid #2a3552;border-radius:3px;padding:0.05rem 0.35rem;font-size:0.7rem;line-height:1.1;">${glyph}</button>`;
+  // Layer BODY, not a card: the wrapper `.cpt-card` chrome each of these three
+  // used to carry now lives once, on the consolidated card in
+  // `costQualityCard.ts`. The content below is otherwise unchanged — the
+  // consolidation moves boxes, never figures.
   const costPerTaskHtml = (cpt && cpt.tasksTotal > 0) ? `
-    <div class="cpt-card" style="margin-bottom:1rem;background:#16213e;border:1px solid #2a3552;border-radius:6px;padding:0.75rem 1rem;">
+    <div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5rem;">
         <span style="font-size:0.75rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;">${t("dashboard:costPerTask.title")}</span>
         <span style="font-size:0.65rem;color:#666;">${t(`dashboard:costPerTask.period.${cpt.period}`)}</span>
@@ -160,7 +209,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   const signalsOn = data.experimentalSignalsEnabled;
   const floorPct = cal ? fmtPct0(cal.floor) : "";
   const calibrationHtml = cal ? `
-    <div class="cpt-card" style="margin-bottom:1rem;background:#16213e;border:1px solid #2a3552;border-radius:6px;padding:0.75rem 1rem;">
+    <div>
       <div style="font-size:0.75rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">${t("dashboard:calibration.title")}</div>
       ${cal.n === 0 ? `
       <div style="font-size:0.78rem;color:#b0b0b0;line-height:1.5;">${t("dashboard:calibration.noLabels")}</div>` : `
@@ -195,7 +244,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   const leverKindText = (kind: string): string =>
     t(`dashboard:costEfficiency.leverKind.${kind}`);
   const costEfficiencyHtml = (eff && cpt && cpt.tasksTotal > 0) ? `
-    <div class="cpt-card" style="margin-bottom:1rem;background:#16213e;border:1px solid #2a3552;border-radius:6px;padding:0.75rem 1rem;">
+    <div>
       <div style="font-size:0.75rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">${t("dashboard:costEfficiency.title")}</div>
       ${eff.realisedCost <= 0 ? `
       <div style="font-size:0.78rem;color:#b0b0b0;">${t("dashboard:costEfficiency.insufficient")}</div>` : `
@@ -382,6 +431,165 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       </div>${acctSection}`;
   }
 
+  // ── The consolidated cost-quality card (03 §3.3 item 1) ──
+  // Three cards become one, three layers deep: frontier leads, cost-per-task
+  // nests inside it, calibration collapses to a caveat with a details popover.
+  // The layer HTML is exactly what the three cards rendered before; only the
+  // chrome around them changed.
+  //
+  // The caveat sentence states the READINESS VERDICT and no figure — see
+  // `CalibrationLayer` for why. It reads the same field the expanded view's
+  // readiness line does (`withSignals.meetsFailedFloor`), so summary and body
+  // cannot disagree.
+  const costQualityHtml = renderCostQualityCard(
+    {
+      frontier: costEfficiencyHtml,
+      perTask: costPerTaskHtml,
+      calibration: cal
+        ? {
+            body: calibrationHtml,
+            summary: escapeHtml(
+              cal.n === 0
+                ? t("dashboard:costQuality.calibrationNoLabels")
+                : cal.withSignals.meetsFailedFloor
+                  ? t("dashboard:costQuality.calibrationReady")
+                  : t("dashboard:costQuality.calibrationNotReady"),
+            ),
+          }
+        : null,
+    },
+    t,
+  );
+
+  // ── Domain views: section panels and the local-filter bar ──
+  //
+  // A section panel keeps the id and class it had when it WAS a tab
+  // (`tab-<id>`, `.tab-panel`) and gains `data-view`, naming the domain view
+  // that shows it (doc/analysis/gui-redesign/02 §2.4). That choice is what makes
+  // the regrouping a re-layering rather than a rewrite: the panels stay put in
+  // this file and in the DOM, every deep link and every consumer of the string
+  // `tab-settings` keeps working, and which sections a view groups is declared
+  // once, in nav.ts, for both hosts.
+  //
+  // Sections of a MULTI-section view get a heading, reusing the label the
+  // section had as a tab — a view that stacked two panels with nothing between
+  // them would read as one very long screen.
+  const sectionOpen = (id: NavTabId): string => {
+    const view = viewForSection(id);
+    const isDefaultView = view === DEFAULT_NAV_VIEW;
+    const grouped = (NAV_VIEWS.find((v) => v.id === view)?.sections.length ?? 1) > 1;
+    const heading = grouped
+      ? `<h2 class="cs-section-heading" id="section-${id}">${escapeHtml(t(`dashboard:tabs.${id}`))}</h2>`
+      : "";
+    return `<div class="tab-panel${isDefaultView ? " active" : ""}" id="tab-${id}" data-view="${view ?? ""}">${heading}`;
+  };
+
+  // The drill-down the guru never had: one global period/account bar and no
+  // per-project filtering at all (01 §1.5). These narrow `buildDashboard` itself
+  // — `projectPath`, `ticket` and `taskClass` all narrow BOTH halves of the
+  // store filter under the symmetry contract — so the same narrowing is
+  // available to MCP and the CLI by construction (02 §2.5).
+  //
+  // `scopeNote` is not decoration. A filter bar shown on a view invites the
+  // reading "this narrows this view"; the query layer is global, so it narrows
+  // every view. Saying so is cheaper than a per-view query layer and honest
+  // either way.
+  //
+  // No MODEL control. The IA asks for one, and the store has no symmetric model
+  // predicate: `m.model = ?` narrows MESSAGES while the session half would have
+  // to narrow to sessions that merely TOUCHED the model, so token totals and
+  // the session-scoped aggregates beside them would describe different work —
+  // the exact asymmetry the filter-symmetry contract exists to prevent. The
+  // control is omitted and its absence stated rather than shipped wrong.
+  const applied = data.appliedFilters ?? { projectPath: null, ticket: null, taskClass: null };
+  const activeFilterCount =
+    (applied.projectPath ? 1 : 0) + (applied.ticket ? 1 : 0) + (applied.taskClass ? 1 : 0);
+  const filterViews = DOMAIN_VIEW_IDS.join(" ");
+  // Sourced from `byProject`, which is itself narrowed by the active filters.
+  // Consequence, stated rather than hidden: with a project filter on, the list
+  // offers that project and "Any" — switching to a different project is Clear
+  // then pick, two clicks instead of one. Fixing it properly means an
+  // unfiltered project list on the payload (the shape `availableAccounts`
+  // already has, and for the same reason); that is a `buildDashboard` change,
+  // not a renderer one, so it is left for the lane that adds the field rather
+  // than approximated here with a list that might not match the store.
+  const projectOptions = data.byProject
+    .map(
+      (p) =>
+        `<option value="${escapeHtml(p.projectPath)}"${applied.projectPath === p.projectPath ? " selected" : ""}>${escapeHtml(projShort(p.projectPath))}</option>`,
+    )
+    .join("");
+  const taskClassOptions = Object.keys(COARSE_OF)
+    .map(
+      (c) =>
+        `<option value="${escapeHtml(c)}"${applied.taskClass === c ? " selected" : ""}>${escapeHtml(t(`dashboard:taskClasses.${c}`))}</option>`,
+    )
+    .join("");
+  // Hidden in the server-rendered markup whenever the default view is not a
+  // domain view. Without it the bar flashes on the Insights screen for the
+  // moment before the nav script runs, and stays there permanently for a reader
+  // with scripts disabled — a filter row above a screen it does not apply to.
+  const filterBarHidden = (DOMAIN_VIEW_IDS as readonly string[]).includes(DEFAULT_NAV_VIEW)
+    ? ""
+    : ` style="display:none"`;
+  const filterBarHtml = `
+  <div class="cs-filters" id="cs-filters" data-filter-views="${filterViews}"${filterBarHidden}>
+    <span class="cs-filters-legend">${escapeHtml(t("dashboard:filters.legend"))}</span>
+    <label for="filter-project">${escapeHtml(t("dashboard:filters.project"))}</label>
+    <select id="filter-project">
+      <option value=""${applied.projectPath ? "" : " selected"}>${escapeHtml(t("dashboard:filters.any"))}</option>
+      ${projectOptions}
+    </select>
+    <label for="filter-taskclass">${escapeHtml(t("dashboard:filters.taskClass"))}</label>
+    <select id="filter-taskclass">
+      <option value=""${applied.taskClass ? "" : " selected"}>${escapeHtml(t("dashboard:filters.any"))}</option>
+      ${taskClassOptions}
+    </select>
+    <label for="filter-ticket">${escapeHtml(t("dashboard:filters.ticket"))}</label>
+    <input type="text" id="filter-ticket" placeholder="${escapeHtml(t("dashboard:filters.ticketPlaceholder"))}" value="${applied.ticket ? escapeHtml(applied.ticket) : ""}" />
+    <button id="filter-apply" type="button">${escapeHtml(t("dashboard:filters.apply"))}</button>
+    <button id="filter-clear" type="button">${escapeHtml(t("dashboard:filters.clear"))}</button>
+    ${activeFilterCount > 0 ? `<span class="cs-filters-active">${escapeHtml(t("dashboard:filters.active", { count: activeFilterCount }))}</span>` : ""}
+    <span class="cs-filters-note">${escapeHtml(t("dashboard:filters.scopeNote"))}</span>
+  </div>`;
+
+  // ── Insights tab (the default) ──
+  // The cost vocabulary comes from `attachInsights`'s resolver, which reduces
+  // the accounts in scope to one vocabulary or to the explicit `mixed` verdict.
+  // The `planFee > 0` proxy survives only as the fallback for callers that
+  // never attached — the same answer that surface gave before, unchanged.
+  const costVocabulary = data.insights?.vocabulary.vocabulary ?? (showPlan ? "plan" : "metered");
+  const planVerdictSentence = data.planUtilization
+    ? data.planUtilization.currentPlanVerdict === "good-value"
+      ? t("dashboard:insights.verdict.goodValue")
+      : data.planUtilization.currentPlanVerdict === "underusing"
+        ? t("dashboard:insights.verdict.underusing")
+        : t("dashboard:insights.verdict.noPlan")
+    : null;
+  const insightAnswers = buildInsightAnswers(data, {
+    t,
+    vocabulary: costVocabulary,
+    hourlyRate: data.insights?.hourlyRate ?? null,
+    currency: data.insights?.currency ?? "USD",
+    verdictSentence: planVerdictSentence,
+  });
+  const insightsHtml = renderInsightsTab(insightAnswers, buildAlerts(data, t), t, {
+    reconciliation: data.insights?.reconciliation ?? null,
+    // The SAME currency the answers above were formatted with, read from the
+    // same field — a panel formatting the residual in a different currency to
+    // the headline it explains would be the drift the shared formatters exist
+    // to stop.
+    currency: data.insights?.currency ?? "USD",
+  });
+  const ticketCardHtml = renderTicketAttributionCard(data.currentSessionTicket, t);
+  // The Overview cost card and the Insights Q1 card are the SAME answer object,
+  // rendered twice. Phase 1 of the migration is additive — nothing moves yet —
+  // so both surfaces exist for one release, and the only way two renderings of
+  // one figure cannot disagree is for there to be one figure. `insightAnswers`
+  // is built above; index 0 is the cost answer by `buildInsightAnswers`'
+  // documented order, asserted in insights.test.ts.
+  const costAnswer = insightAnswers[0]!;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -439,6 +647,41 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
 
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
+
+    /* ── Domain views ─────────────────────────────────────── */
+    /* A view can show more than one section; the heading is what tells the
+       reader where one ends and the next begins. Rendered only for grouped
+       sections, so a single-section view keeps today's look exactly. */
+    .cs-section-heading {
+      font-size: 0.7rem; color: #6f7a99; text-transform: uppercase;
+      letter-spacing: 0.08em; font-weight: 600;
+      margin: 0 0 0.6rem; padding-bottom: 0.3rem;
+      border-bottom: 1px solid #1e2a47;
+    }
+    .tab-panel + .tab-panel.active .cs-section-heading { margin-top: 1.5rem; }
+    .cs-filters {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem;
+      margin: -0.75rem 0 1.25rem; padding: 0.5rem 0.75rem;
+      background: #16213e; border: 1px solid #0f3460; border-radius: 6px;
+      font-size: 0.72rem; color: #b0b0b0;
+    }
+    .cs-filters-legend {
+      color: #a0c4ff; text-transform: uppercase; letter-spacing: 0.05em;
+      font-size: 0.65rem; margin-right: 0.3rem;
+    }
+    .cs-filters select, .cs-filters input[type="text"] {
+      background: #0f1830; color: #e8e8e8; border: 1px solid #2a3552;
+      border-radius: 3px; padding: 0.2rem 0.35rem; font-family: inherit;
+      font-size: 0.72rem; max-width: 14rem;
+    }
+    .cs-filters button {
+      background: #0f3460; color: #cfd8ea; border: 1px solid #2a3552;
+      border-radius: 3px; padding: 0.2rem 0.7rem; font-family: inherit;
+      font-size: 0.72rem; cursor: pointer;
+    }
+    .cs-filters button:hover { background: #174a86; }
+    .cs-filters-active { color: #8ec07c; }
+    .cs-filters-note { flex-basis: 100%; color: #666; font-size: 0.62rem; }
 
     /* ── Shared layout ────────────────────────────────────── */
     .summary-bar {
@@ -501,6 +744,12 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     .footer {
       margin-top: 1.5rem; font-size: 0.7rem; color: #555; text-align: center;
     }
+${CARD_TOKENS_CSS}
+${CARD_CSS}
+${INSIGHTS_CSS}
+${RECONCILIATION_CSS}
+${COST_QUALITY_CSS}
+${TICKET_CARD_CSS}
   </style>
 </head>
 <body>
@@ -532,20 +781,23 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   </div>
 
   <div class="tab-bar">
-    <button class="tab-btn active" data-tab="overview">${t("dashboard:tabs.overview")}</button>
-    ${data.energy ? `<button class="tab-btn" data-tab="energy">${t("dashboard:tabs.energy")}</button>` : ""}
-    ${data.spending ? `<button class="tab-btn" data-tab="spending">Spending</button>` : ""}
-    <button class="tab-btn" data-tab="projects">${t("dashboard:tabs.projects")}</button>
-    <button class="tab-btn" data-tab="sessions">${t("dashboard:tabs.sessions")}</button>
-    <button class="tab-btn" data-tab="plan">${t("dashboard:tabs.plan")}</button>
-    ${data.contextAnalysis ? `<button class="tab-btn" data-tab="context">${t("dashboard:tabs.context")}</button>` : ""}
-    ${data.modelEfficiency ? `<button class="tab-btn" data-tab="efficiency">${t("dashboard:tabs.efficiency")}</button>` : ""}
-    <button class="tab-btn" data-tab="classify">${t("dashboard:tabs.classify")}</button>
-    <button class="tab-btn" data-tab="settings">${t("dashboard:tabs.settings")}</button>
+    ${visibleNavViews(data)
+      // Escaped, unlike the tab labels this replaced: two of the four domain
+      // views are named with an ampersand ("Cost & Controlling"), and a bare `&`
+      // in markup is invalid HTML that a strict parser may mangle.
+      .map((entry, i) => `<button class="tab-btn${i === 0 ? " active" : ""}" data-tab="${entry.view.id}">${escapeHtml(t(entry.view.labelKey))}</button>`)
+      .join("\n    ")}
+  </div>
+  ${filterBarHtml}
+
+  <!-- ═══════════════ TAB: Insights (default) ═══════════════ -->
+  ${sectionOpen("insights")}
+    ${insightsHtml}
+    ${ticketCardHtml}
   </div>
 
   <!-- ═══════════════ TAB: Overview ═══════════════ -->
-  <div class="tab-panel active" id="tab-overview">
+  ${sectionOpen("overview")}
     ${recsHtml}
     <div class="summary-bar">
       <div class="summary-card" style="grid-column: 1 / -1; text-align: left; padding: 0.5rem 0.75rem;">
@@ -557,6 +809,13 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         <span style="font-size:0.75rem; color:#e0a458;">${t("dashboard:summary.emptyPeriodHint")}</span>
       </div>
       ` : ""}
+      <div style="grid-column: 1 / -1;">
+        ${renderCard(costAnswer, {
+          id: "card-cost",
+          title: t("dashboard:summary.estCost"),
+          evidenceHref: costAnswer.evidenceLink ? `#${EVIDENCE_TAB[costAnswer.evidenceLink]}` : undefined,
+        })}
+      </div>
       <div class="summary-card">
         <div class="label">${t("dashboard:summary.sessions")}</div>
         <div class="value">${data.summary.sessions}</div>
@@ -586,10 +845,6 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       <div class="summary-card">
         <div class="label">${t("dashboard:summary.cacheEfficiency")}</div>
         <div class="value">${cacheEff}</div>
-      </div>
-      <div class="summary-card">
-        <div class="label">${t("dashboard:summary.estCost")}</div>
-        <div class="value">${formattedCost}</div>
       </div>
       ${(cpt && cpt.tasksTotal > 0 && cpt.costPerSuccessfulTask !== null) ? `
       <div class="summary-card">
@@ -633,6 +888,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       <div class="chart-card">
         <h2 id="chart-daily-title">${data.period === "day" ? t("dashboard:charts.hourlyTokenUsage") : t("dashboard:charts.dailyTokenUsage")}</h2>
         <canvas id="chart-daily"></canvas>
+        ${policyEventsHtml(data.policyEvents, t)}
       </div>
       <div class="chart-card">
         <h2>${t("dashboard:charts.tokenBreakdown")}</h2>
@@ -650,7 +906,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   </div>
 
   <!-- ═══════════════ TAB: Projects ═══════════════ -->
-  <div class="tab-panel" id="tab-projects">
+  ${sectionOpen("projects")}
     <div class="charts-grid">
       ${feeByProjectHtml}
       <div class="chart-card">
@@ -678,7 +934,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   </div>
 
   <!-- ═══════════════ TAB: Sessions ═══════════════ -->
-  <div class="tab-panel" id="tab-sessions">
+  ${sectionOpen("sessions")}
     <div class="charts-grid">
       ${data.byWindow.length > 0 ? `
       <div class="chart-card" style="grid-column: 1 / -1;">
@@ -700,7 +956,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   </div>
 
   <!-- ═══════════════ TAB: Plan ═══════════════ -->
-  <div class="tab-panel" id="tab-plan">
+  ${sectionOpen("plan")}
     ${data.planUtilization ? (() => {
       const pu = data.planUtilization!;
       const hasPlanBudget = pu.weeklyPlanBudget > 0;
@@ -837,7 +1093,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
 
   <!-- ═══════════════ TAB: Context ═══════════════ -->
   ${data.contextAnalysis ? `
-  <div class="tab-panel" id="tab-context">
+  ${sectionOpen("context")}
     <div class="summary-bar" style="margin-bottom:1rem;">
       <div class="summary-card">
         <div class="label">${t("dashboard:context.avgPromptsPerSession")}</div>
@@ -920,7 +1176,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
 
   <!-- ═══════════════ TAB: Efficiency ═══════════════ -->
   ${data.modelEfficiency ? `
-  <div class="tab-panel" id="tab-efficiency">
+  ${sectionOpen("efficiency")}
     <div class="summary-bar" style="margin-bottom:1rem;">
       <div class="summary-card" style="border-color:#b07aa1;">
         <div class="label">${t("dashboard:efficiency.potentialSavings")}</div>
@@ -959,7 +1215,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
 
   <!-- ═══════════════ TAB: Spending ═══════════════ -->
   ${data.spending ? `
-  <div class="tab-panel" id="tab-spending">
+  ${sectionOpen("spending")}
     <div class="summary-bar" style="margin-bottom:1rem;">
       <div class="summary-card" style="border-color:#e15759;">
         <div class="label">Cache Hit Rate</div>
@@ -977,11 +1233,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       </div>` : ""}
     </div>
 
-    ${costPerTaskHtml}
-
-    ${costEfficiencyHtml}
-
-    ${calibrationHtml}
+    ${costQualityHtml}
 
     <div class="charts-grid">
       <div class="chart-card">
@@ -1079,7 +1331,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
 
   <!-- ═══════════════ TAB: Energy ═══════════════ -->
   ${data.energy ? `
-  <div class="tab-panel" id="tab-energy">
+  ${sectionOpen("energy")}
     <div class="summary-bar">
       <div class="summary-card">
         <div class="label">${t("dashboard:energy.totalEnergy")}</div>
@@ -1316,7 +1568,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
   ` : ""}
 
   <!-- ═══════════════ TAB: Settings ═══════════════ -->
-  <div class="tab-panel" id="tab-classify">
+  ${sectionOpen("classify")}
     <div class="summary-bar" style="margin-bottom:1rem;">
       <div class="summary-card" style="grid-column: 1 / -1; text-align: left; padding: 1rem;">
         <h2 style="margin:0 0 0.35rem 0; font-size:1rem; color:#a0c4ff;">${t("dashboard:classify.title")}</h2>
@@ -1336,7 +1588,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
     </div>
   </div>
 
-  <div class="tab-panel" id="tab-settings">
+  ${sectionOpen("settings")}
     <div class="summary-bar" style="margin-bottom:1rem;">
       <div class="summary-card" style="grid-column: 1 / -1; text-align: left; padding: 1rem;">
         <h2 style="margin:0 0 0.75rem 0; font-size:1rem; color:#a0c4ff;">${t("dashboard:settings.configuration")}</h2>
@@ -1497,26 +1749,122 @@ CO₂_grams = total_kWh × grid_intensity</div>
         window.location.href = refreshSecs > 0 ? setUrlParam('refresh', null) : setUrlParam('refresh', String(configuredAutoRefreshSecs));
       };
 
-      // ── Tab navigation ────────────────────────────────────────────────────
+      // ── View navigation ───────────────────────────────────────────────────
+      // The nav bar holds VIEWS; each view shows the section panels whose
+      // data-view names it. Both maps are interpolated from server/nav.ts, the
+      // single navigation definition, so the client cannot hold a third opinion
+      // about which section belongs where.
+      var VIEW_SECTIONS = ${JSON.stringify(
+        Object.fromEntries(NAV_VIEWS.map((v) => [v.id, v.sections])),
+      )};
+      var SECTION_VIEW = ${JSON.stringify(
+        Object.fromEntries(NAV_VIEWS.flatMap((v) => v.sections.map((s) => [s, v.id]))),
+      )};
       var initialized = {};
       var tabBtns = document.querySelectorAll('.tab-btn');
       var tabPanels = document.querySelectorAll('.tab-panel');
+      var validViewIds = Array.from(tabBtns).map(function (b) { return b.getAttribute('data-tab'); });
+      var filterBar = document.getElementById('cs-filters');
+      var filterViews = filterBar ? (filterBar.getAttribute('data-filter-views') || '').split(' ') : [];
 
       var pricingPanel = document.getElementById('pricing-panel');
-      function switchTab(tabId) {
-        tabBtns.forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tab') === tabId); });
-        tabPanels.forEach(function (p) { p.classList.toggle('active', p.id === 'tab-' + tabId); });
-        if (pricingPanel) pricingPanel.classList.toggle('visible', tabId === 'overview');
-        window.location.hash = tabId;
-        if (!initialized[tabId]) {
-          initialized[tabId] = true;
-          initTab(tabId);
+      function switchTab(viewId) {
+        var sections = VIEW_SECTIONS[viewId] || [];
+        tabBtns.forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tab') === viewId); });
+        tabPanels.forEach(function (p) { p.classList.toggle('active', p.getAttribute('data-view') === viewId); });
+        // The pricing reference belongs beside the token/cost tables it prices,
+        // which are the Overview section — now inside Cost & Controlling.
+        if (pricingPanel) pricingPanel.classList.toggle('visible', sections.indexOf('overview') !== -1);
+        // Local filters are offered on the domain views only (nav.ts's
+        // DOMAIN_VIEW_IDS): the utility surfaces are not questions about the
+        // work, so a filter row there would be furniture.
+        if (filterBar) filterBar.style.display = filterViews.indexOf(viewId) === -1 ? 'none' : '';
+        window.location.hash = viewId;
+        // Charts initialise per SECTION, not per view: a view showing two
+        // sections has to build both, and keying the guard on the section is
+        // what stops a section being built twice if it ever appears twice.
+        for (var i = 0; i < sections.length; i++) {
+          var sid = sections[i];
+          if (!initialized[sid]) {
+            initialized[sid] = true;
+            initTab(sid);
+          }
         }
       }
 
       tabBtns.forEach(function (btn) {
         btn.addEventListener('click', function () { switchTab(this.getAttribute('data-tab')); });
       });
+
+      // Evidence links ("see evidence →" on an Insights card, and the alert
+      // strip's action link) are plain anchors to '#<tab>'. The browser sets
+      // location.hash but nothing else listens, so without this the link would
+      // change the URL and leave the page on the same view — the "two-click
+      // evidence" promise silently broken. switchTab() itself writes the hash,
+      // so the guard stops the resulting hashchange from re-entering.
+      //
+      // A hash may name a VIEW or a SECTION. Section hashes are what every
+      // pre-regrouping link and every EVIDENCE_TAB destination still says
+      // ('#spending'), so they resolve through SECTION_VIEW to the view that
+      // shows them and then scroll to the section — dropping them would break
+      // exactly the deep links the regrouping promised to keep.
+      function resolveHashTarget(target) {
+        if (validViewIds.indexOf(target) !== -1) return { view: target, section: null };
+        var owner = SECTION_VIEW[target];
+        if (owner && validViewIds.indexOf(owner) !== -1) return { view: owner, section: target };
+        return null;
+      }
+
+      window.addEventListener('hashchange', function () {
+        var target = (window.location.hash || '').replace('#', '');
+        var resolved = target ? resolveHashTarget(target) : null;
+        if (!resolved) return;
+        var current = document.querySelector('.tab-btn.active');
+        var alreadyThere = current && current.getAttribute('data-tab') === resolved.view;
+        if (!alreadyThere) switchTab(resolved.view);
+        if (resolved.section) {
+          var panel = document.getElementById('tab-' + resolved.section);
+          if (panel && panel.scrollIntoView) panel.scrollIntoView({ block: 'start' });
+        }
+      });
+
+      // ── Local filters ─────────────────────────────────────────────────────
+      // Reads the three controls and navigates with the corresponding query
+      // params, which parseOpts turns back into ReportOptions fields and
+      // buildDashboard applies to BOTH halves of the store filter. Filtering
+      // is therefore a real re-query, not a client-side hide: a hidden row would
+      // leave every total describing work the reader can no longer see.
+      //
+      // In the VS Code webview these handlers are replaced: the bridge strips
+      // inline handlers and re-binds #filter-apply / #filter-clear to
+      // postMessage, because a webview has no URL to navigate.
+      window.applyFilters = function () {
+        var proj = document.getElementById('filter-project');
+        var cls = document.getElementById('filter-taskclass');
+        var tkt = document.getElementById('filter-ticket');
+        var url = new URL(window.location.href);
+        var set = function (name, value) {
+          if (value) url.searchParams.set(name, value);
+          else url.searchParams.delete(name);
+        };
+        set('project', proj ? proj.value : '');
+        set('taskClass', cls ? cls.value : '');
+        set('ticket', tkt ? tkt.value.trim() : '');
+        window.location.href = url.toString();
+      };
+      window.clearFilters = function () {
+        var url = new URL(window.location.href);
+        url.searchParams.delete('project');
+        url.searchParams.delete('taskClass');
+        url.searchParams.delete('ticket');
+        window.location.href = url.toString();
+      };
+      (function () {
+        var applyBtn = document.getElementById('filter-apply');
+        if (applyBtn) applyBtn.addEventListener('click', function () { window.applyFilters(); });
+        var clearBtn = document.getElementById('filter-clear');
+        if (clearBtn) clearBtn.addEventListener('click', function () { window.clearFilters(); });
+      }());
 
       // ── Chart defaults ───────────────────────────────────────────────────
       Chart.defaults.color = '#aaa';
@@ -3330,11 +3678,20 @@ CO₂_grams = total_kWh × grid_intensity</div>
         body.appendChild(msgEl);
       }
 
-      // ── Initialize first tab + restore from hash ──────────────────────────
-      var startTab = window.__ACTIVE_TAB__ || (window.location.hash || '').replace('#', '') || 'overview';
-      var validTabs = Array.from(tabBtns).map(function (b) { return b.getAttribute('data-tab'); });
-      if (validTabs.indexOf(startTab) === -1) startTab = 'overview';
-      switchTab(startTab);
+      // ── Initialize first view + restore from hash ─────────────────────────
+      // The default is the first view in the single nav definition
+      // (server/nav.ts DEFAULT_NAV_VIEW), interpolated rather than hardcoded so
+      // the served page, the webview and the sidebar cannot disagree about
+      // which screen is the front door.
+      //
+      // A remembered/hash value may name a section rather than a view (a
+      // bookmarked '#spending', or a webview whose remembered tab predates the
+      // regrouping), so it goes through the same resolver the hashchange
+      // handler uses instead of being rejected as unknown.
+      var defaultView = '${jsStr(DEFAULT_NAV_VIEW)}';
+      var startRaw = window.__ACTIVE_TAB__ || (window.location.hash || '').replace('#', '') || defaultView;
+      var startResolved = resolveHashTarget(startRaw) || { view: defaultView, section: null };
+      switchTab(startResolved.view);
     }());
   </script>
 </body>

@@ -5,12 +5,17 @@
 import { Command } from "commander";
 import { collect } from "../aggregator/index.js";
 import { Store, validateTag } from "../store/index.js";
-import { printSummary, printStatus, printSearchResults, printSessionList, printSessionDetail, printTrend, printSpendingReport, periodRange } from "../reporter/index.js";
+import { printSummary, printStatus, printSearchResults, printSessionList, printSessionDetail, printTrend, printSpendingReport, printTicketReport, periodRange } from "../reporter/index.js";
 import { searchHistory } from "../history/index.js";
-import { loadConfig, saveConfig, createJudgeProviderFromConfig } from "../config.js";
+import { loadConfig, saveConfig, createJudgeProviderFromConfig, ticketProjectKeys } from "../config.js";
+import { generateJustificationPack, parseSections } from "../pack/index.js";
+import { setDiscloseScopeValues } from "@claude-stats/core/pack";
+import { parseCostExplorerCsv, formatCsvImportError } from "@claude-stats/core/reconciliation";
+import type { CalibrationScope } from "@claude-stats/core/calibration";
 import { checkThresholds } from "../alerts.js";
 import { formatCost } from "@claude-stats/core/pricing";
 import { buildDashboard } from "../dashboard/index.js";
+import { runTaskClassPass } from "../task-class/index.js";
 import { renderDashboard } from "../server/template.js";
 import { writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
@@ -45,6 +50,7 @@ import {
   type PersistedSyncConfig,
 } from "../sync/index.js";
 import { paths } from "@claude-stats/core/paths";
+import { requireTicketKey } from "@claude-stats/core/tickets";
 
 export async function buildCli(): Promise<Command> {
   // Pre-parse --locale from argv before commander processes it
@@ -72,7 +78,7 @@ export async function buildCli(): Promise<Command> {
       const store = new Store();
       try {
         console.log(t("cli:collection.collecting"));
-        const result = await collect(store, { verbose: opts.verbose });
+        const result = await collect(store, { verbose: opts.verbose, ticketAllowlist: ticketProjectKeys(loadConfig()) });
         const msg = result.accountsMatched > 0
           ? t("cli:collection.doneWithAccounts", {
               filesProcessed: result.filesProcessed,
@@ -137,6 +143,7 @@ export async function buildCli(): Promise<Command> {
     .option("--detail", t("cli:commands.reportDetail"))
     .option("--trend", t("cli:commands.reportTrend"))
     .option("--tag <tag>", t("cli:commands.reportTag"))
+    .option("--ticket <key>", t("cli:commands.reportTicket"))
     .option("--session <id>", t("cli:commands.reportSession"))
     .option("--html [outfile]", t("cli:commands.reportHtml"))
     .action(
@@ -154,6 +161,7 @@ export async function buildCli(): Promise<Command> {
         trend?: boolean;
         session?: string;
         tag?: string;
+        ticket?: string;
         html?: string | boolean;
       }) => {
         loadCachedPricing();
@@ -174,6 +182,7 @@ export async function buildCli(): Promise<Command> {
             accountUuid: opts.account,
             entrypoint: opts.source,
             tag: opts.tag,
+            ticket: opts.ticket,
             period: opts.period as "day" | "week" | "month" | "all" | undefined,
             since: opts.since,
             until: opts.until,
@@ -182,8 +191,9 @@ export async function buildCli(): Promise<Command> {
           };
           if (opts.html) {
             const data = buildDashboard(store, reportOpts);
-            const { attachCostPerTask } = await import("../dashboard/index.js");
+            const { attachCostPerTask, attachInsights } = await import("../dashboard/index.js");
             await attachCostPerTask(store, data, reportOpts);
+            attachInsights(store, data, reportOpts, loadConfig());
             // Pass the CLI translator so the exported HTML is localized; without
             // it every label (not just this card) renders as a raw i18n key.
             const html = renderDashboard(data, t);
@@ -195,7 +205,9 @@ export async function buildCli(): Promise<Command> {
             console.log(t("cli:report.wroteFile", { file: outfile }));
             return;
           }
-          if (opts.session) {
+          if (opts.ticket) {
+            printTicketReport(store, reportOpts);
+          } else if (opts.session) {
             printSessionDetail(store, opts.session, reportOpts);
           } else if (opts.trend) {
             // Default to "month" when --trend used without explicit --period
@@ -220,6 +232,236 @@ export async function buildCli(): Promise<Command> {
         }
       }
     );
+
+  program
+    .command("pack")
+    .description(t("cli:commands.pack"))
+    .requiredOption("--period <yyyy-mm>", t("cli:commands.packPeriod"))
+    .option("--timezone <tz>", t("cli:commands.reportTimezone"))
+    .option("--sections <list>", t("cli:commands.packSections"))
+    .option("--project <path>", t("cli:commands.reportProject"))
+    .option("--account <uuid>", t("cli:commands.reportAccount"))
+    .option("--out <dir>", t("cli:commands.packOut"))
+    .option("--json", t("cli:commands.packJson"))
+    .option("--invoice-csv <path>", t("cli:commands.packInvoiceCsv"))
+    .option("--disclose-scope", t("cli:commands.packDiscloseScope"))
+    .action(
+      async (opts: {
+        period: string;
+        timezone?: string;
+        sections?: string;
+        project?: string;
+        account?: string;
+        out?: string;
+        json?: boolean;
+        invoiceCsv?: string;
+        discloseScope?: boolean;
+      }) => {
+        loadCachedPricing();
+        const config = loadConfig();
+        // A scoped pack states THAT it was filtered, but withholds the literal
+        // project path / account uuid unless asked: the pack is built to be
+        // handed to someone outside this machine, and an absolute path
+        // routinely names an employer, a client, or an unreleased product in a
+        // parent directory. Opt-in matches the pack's own rule that every
+        // section is opt-in and the default is the minimum.
+        setDiscloseScopeValues(opts.discloseScope === true);
+        const store = new Store();
+        try {
+          // `--invoice-csv` overrides `config.reconciliation.invoiceTotal` for
+          // THIS run only — it never writes back to config (04 §4.3 rule 1:
+          // "the top-down figure is imported, never fetched"). A malformed
+          // export fails loudly here, before any pack is written, rather than
+          // producing a pack with a silently wrong reconciled figure.
+          let invoiceTotalOverride: number | null | undefined;
+          if (opts.invoiceCsv) {
+            let csvText: string;
+            try {
+              csvText = fs.readFileSync(opts.invoiceCsv, "utf-8");
+            } catch (err) {
+              console.error(
+                t("cli:errors.invalidInvoiceCsv", {
+                  path: opts.invoiceCsv,
+                  message: err instanceof Error ? err.message : String(err),
+                }),
+              );
+              process.exitCode = 1;
+              return;
+            }
+            const parsed = parseCostExplorerCsv(csvText);
+            if (!parsed.ok) {
+              console.error(
+                t("cli:errors.invalidInvoiceCsv", { path: opts.invoiceCsv, message: formatCsvImportError(parsed.error) }),
+              );
+              process.exitCode = 1;
+              return;
+            }
+            invoiceTotalOverride = parsed.value.total;
+          }
+
+          const written = generateJustificationPack(
+            store,
+            config,
+            {
+              period: opts.period,
+              timezone: opts.timezone,
+              sections: parseSections(opts.sections),
+              projectPath: opts.project,
+              accountUuid: opts.account,
+              invoiceTotalOverride,
+            },
+            opts.out ?? process.cwd()
+          );
+          if (opts.json) {
+            console.log(
+              JSON.stringify(
+                {
+                  dir: written.dir,
+                  htmlPath: written.htmlPath,
+                  ticketsCsvPath: written.ticketsCsvPath,
+                  nonTicketCsvPath: written.nonTicketCsvPath,
+                  summaryCsvPath: written.summaryCsvPath,
+                  sections: written.model.sections,
+                },
+                null,
+                2
+              )
+            );
+          } else {
+            console.log(t("cli:report.wrotePack", { dir: written.dir }));
+          }
+        } catch (err) {
+          if (err instanceof RangeError) {
+            console.error(t("cli:errors.invalidPackPeriod", { message: err.message }));
+            process.exitCode = 1;
+            return;
+          }
+          throw err;
+        } finally {
+          store.close();
+        }
+      }
+    );
+
+  program
+    .command("constraint-impact")
+    .description(t("cli:commands.constraintImpact"))
+    .option("--date <yyyy-mm-dd>", t("cli:commands.constraintImpactDate"))
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
+    .option("--project <path>", t("cli:commands.reportProject"))
+    .option("--account <uuid>", t("cli:commands.reportAccount"))
+    .option("--min-sessions <n>", t("cli:commands.constraintImpactMinSessions"))
+    .option("--csv <path>", t("cli:commands.constraintImpactCsv"))
+    .action(async (opts: {
+      date?: string;
+      since?: string;
+      until?: string;
+      project?: string;
+      account?: string;
+      minSessions?: string;
+      csv?: string;
+    }) => {
+      loadCachedPricing();
+      const config = loadConfig();
+      const events = config.policyEvents ?? [];
+      if (events.length === 0) {
+        console.error(
+          "No policy events declared. This report compares the windows either side of a DECLARED " +
+            "policy boundary and never infers one from the data (constraint-impact/03 §3.1) — add an " +
+            'entry to config.policyEvents, e.g. { "date": "2026-05-01", "kind": "model-removal", ' +
+            '"detail": "opus" }.',
+        );
+        process.exitCode = 1;
+        return;
+      }
+      // M-4: "most recent" here is `events[events.length - 1]`, which is only
+      // correct because `validatePolicyEvents` (config.ts) always returns its
+      // array sorted chronologically ascending — `config.policyEvents` is
+      // never assigned from anywhere else. If that sort ever moves or a
+      // second source of `policyEvents` bypasses the validator, this silently
+      // starts returning an arbitrary event instead of the latest one.
+      const policyEvent = opts.date ? events.find((e) => e.date === opts.date) : events[events.length - 1];
+      if (!policyEvent) {
+        console.error(
+          `No declared policy event with date "${opts.date}". Declared dates: ${events.map((e) => e.date).join(", ")}.`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+
+      // A non-numeric --min-sessions must not reach the engine: `Number("abc")`
+      // is NaN, and every `n < NaN` is false, so the sample-size gate would
+      // silently stop gating while the report still claimed to have been
+      // gated. Refuse rather than quietly substituting the default — the user
+      // asked for a specific floor and is entitled to know they did not get it.
+      let minSessionsPerClass: number | undefined;
+      if (opts.minSessions !== undefined) {
+        const parsed = Number(opts.minSessions);
+        if (!Number.isFinite(parsed) || parsed < 1) {
+          console.error(
+            `--min-sessions must be a whole number of sessions >= 1 (got "${opts.minSessions}").`,
+          );
+          process.exitCode = 1;
+          return;
+        }
+        minSessionsPerClass = Math.floor(parsed);
+      }
+
+      const { buildConstraintImpactReport } = await import("../constraintImpact/index.js");
+      const { renderConstraintImpactCsv } = await import("@claude-stats/core/constraintImpact");
+      const toBoundMs = (d: string | undefined): number | undefined =>
+        d ? Date.parse(`${d}T00:00:00.000Z`) : undefined;
+
+      const store = new Store();
+      await collect(store, { ticketAllowlist: ticketProjectKeys(config) });
+      try {
+        const { report, coverage } = buildConstraintImpactReport(store, policyEvent, {
+          projectPath: opts.project,
+          accountUuid: opts.account,
+          since: toBoundMs(opts.since),
+          until: toBoundMs(opts.until),
+          minSessionsPerClass,
+          rateOverrides: config.pricing?.rates,
+          hourlyRate: config.rate?.hourly ?? null,
+          currency: config.rate?.currency ?? "USD",
+        });
+
+        if (opts.csv) {
+          fs.writeFileSync(opts.csv, renderConstraintImpactCsv(report), "utf-8");
+        }
+
+        // JSON-only, same precedent as `cost-per-task --calibrate`: this is a
+        // structured diagnostic with no localized prose to translate — pipe to jq.
+        process.stdout.write(
+          JSON.stringify(
+            {
+              declaredPolicyEvents: events,
+              policyEvent,
+              boundary: new Date(report.boundaryMs).toISOString(),
+              coverage,
+              confoundNote: report.confoundNote,
+              notMeasured: report.notMeasured,
+              minSessionsPerClass: report.minSessionsPerClass,
+              hourlyRate: report.hourlyRate,
+              currency: report.currency,
+              netEffectAvailable: report.netEffectAvailable,
+              classesCompared: report.classesCompared,
+              classesInsufficientData: report.classesInsufficientData,
+              totalTokenSavings: report.totalTokenSavings,
+              totalDevTimeCost: report.totalDevTimeCost,
+              totalNetEffect: report.totalNetEffect,
+              classes: report.classes,
+              ...(opts.csv ? { csvPath: opts.csv } : {}),
+            },
+            null,
+            2,
+          ) + "\n",
+        );
+      } finally {
+        store.close();
+      }
+    });
 
   program
     .command("spending")
@@ -317,7 +559,7 @@ export async function buildCli(): Promise<Command> {
         process.stderr.write(t("cli:commands.costPerTaskLlmJudgeUnconfigured") + "\n");
       }
       const store = new Store();
-      await collect(store);
+      await collect(store, { ticketAllowlist: ticketProjectKeys(config) });
       try {
         let embeddingProvider = null;
         try {
@@ -341,8 +583,47 @@ export async function buildCli(): Promise<Command> {
         if (opts.calibrate) {
           // Diagnostic: agreement of the proxy/combiner with the user's labels.
           // JSON-only so there is no localized prose to translate; pipe to jq.
+          //
+          // `outcome` is K's vocabulary (`calibration/index.ts`): gated on the
+          // n=30 floor, `rate` (not "accuracy"), and K's caveat sentence — the
+          // same shape `get_calibration`'s MCP tool returns. `diagnostics` keeps
+          // the richer proxy-vs-combiner comparison the Phase-A signals gate
+          // needs (per-class precision/recall, Brier, `meetsFailedFloor`), with
+          // its own `accuracy` field renamed at this boundary — see
+          // `renameAccuracyField`'s doc: that field is the SAME self-selected-
+          // sample number K's module exists to stop being read as accuracy.
           const calibration = await buildCalibrationReport(store, common);
-          process.stdout.write(JSON.stringify(calibration, null, 2) + "\n");
+          const { outcomeCalibrationFrom, calibrationJson, renameAccuracyField } =
+            await import("../calibration/index.js");
+          // Scope derived from the flags this invocation actually used, the
+          // same way `attachCalibration` derives it for the dashboard. Passing
+          // a fixed "month" here would restore the undisclosed-window defect
+          // the scope parameter was added to close — the figure would be
+          // labelled with a period the query did not use.
+          // `--period all` has no CalibrationScope of its own; it means the
+          // whole store, which is exactly what "whole-store" denotes.
+          const calibrationScope: CalibrationScope =
+            opts.since && opts.until
+              ? "custom-range"
+              : common.period === "all"
+                ? "whole-store"
+                : (common.period ?? "month");
+          const estimate = outcomeCalibrationFrom(calibration, calibrationScope);
+          process.stdout.write(
+            JSON.stringify(
+              {
+                outcome: calibrationJson(t, estimate),
+                diagnostics: {
+                  n: calibration.n,
+                  floor: calibration.floor,
+                  proxyOnly: renameAccuracyField(calibration.proxyOnly),
+                  withSignals: renameAccuracyField(calibration.withSignals),
+                },
+              },
+              null,
+              2,
+            ) + "\n",
+          );
           return;
         }
         const report = await buildCostPerTaskReport(store, {
@@ -383,7 +664,7 @@ export async function buildCli(): Promise<Command> {
         }
       }
       const store = new Store();
-      await collect(store);
+      await collect(store, { ticketAllowlist: ticketProjectKeys(loadConfig()) });
       try {
         const digest = await buildDailyDigest(store, {});
         const item = await resolveItem(digest, itemSelector);
@@ -687,6 +968,163 @@ export async function buildCli(): Promise<Command> {
     });
 
   program
+    .command("ticket")
+    .description(t("cli:commands.ticket"))
+    .argument("<session-id>", t("cli:commands.ticketSessionArg"))
+    .argument("[key]", t("cli:commands.ticketKeyArg"))
+    .option("--negate", t("cli:commands.ticketNegate"))
+    .option("--remove", t("cli:commands.ticketRemove"))
+    .option("--list", t("cli:commands.ticketList"))
+    .action((sessionId: string, key: string | undefined, opts: { negate?: boolean; remove?: boolean; list?: boolean }) => {
+      const store = new Store();
+      try {
+        const session = store.findSession(sessionId);
+        if (!session) {
+          console.error(t("cli:tag.noSessionMatch", { sessionId }));
+          process.exitCode = 1;
+          return;
+        }
+        const shortId = session.session_id.slice(0, 6);
+
+        // --negate/--remove name an ACTION on a specific key; without a key
+        // there is nothing to act on. Falling through to the list branch
+        // below would silently drop the flag and exit 0 as if `--list` had
+        // been requested — a mistyped invocation reading as success.
+        if ((opts.negate || opts.remove) && !key) {
+          console.error(t("cli:ticket.keyRequired"));
+          process.exitCode = 1;
+          return;
+        }
+
+        if (opts.list || !key) {
+          const links = store.getTicketLinksForSession(session.session_id);
+          if (links.length === 0) {
+            console.log(t("cli:ticket.sessionNoLinks", { sessionId: shortId }));
+          } else {
+            console.log(t("cli:ticket.sessionLinks", { sessionId: shortId }));
+            for (const link of links) {
+              const status = link.negated ? t("cli:ticket.negatedLabel") : t("cli:ticket.activeLabel");
+              console.log(
+                `  ${link.ticket_key}  ${link.source}/${link.confidence}  ${status}`,
+              );
+            }
+          }
+          if (!key) return;
+        }
+
+        let normalizedKey: string;
+        try {
+          normalizedKey = requireTicketKey(key);
+        } catch (err) {
+          console.error((err as Error).message);
+          process.exitCode = 1;
+          return;
+        }
+
+        if (opts.negate) {
+          store.negateTicketLink(session.session_id, normalizedKey);
+          console.log(t("cli:ticket.negated", { key: normalizedKey, sessionId: shortId }));
+        } else if (opts.remove) {
+          store.removeTicketLink(session.session_id, normalizedKey, "tag");
+          console.log(t("cli:ticket.removed", { key: normalizedKey, sessionId: shortId }));
+        } else {
+          store.addTicketLink({
+            sessionId: session.session_id,
+            ticketKey: normalizedKey,
+            source: "tag",
+            confidence: "high",
+          });
+          console.log(t("cli:ticket.linked", { key: normalizedKey, sessionId: shortId }));
+        }
+      } finally {
+        store.close();
+      }
+    });
+
+  program
+    .command("task-class")
+    .description(t("cli:commands.taskClass"))
+    .option("--limit <n>", t("cli:commands.taskClassLimit"))
+    .action((opts: { limit?: string }) => {
+      const store = new Store();
+      try {
+        const limit = opts.limit ? Number.parseInt(opts.limit, 10) : undefined;
+        const run = runTaskClassPass(store, {
+          ...(limit !== undefined && Number.isFinite(limit) ? { limit } : {}),
+        });
+        console.log(
+          t("cli:taskClass.passSummary", {
+            classified: run.classified,
+            alreadyCurrent: run.alreadyCurrent,
+            remaining: run.remaining,
+            version: run.version,
+          }),
+        );
+
+        const counts = store.getTaskClassCounts();
+        const total = counts.fine.reduce((sum, r) => sum + r.n, 0);
+        if (total === 0) {
+          console.log(t("cli:taskClass.noSessions"));
+          return;
+        }
+
+        // The confidence tier travels WITH the count, never on a separate line
+        // a reader can skip: spec §5.7 gives every classification a tier and a
+        // per-class figure quoted without one implies a certainty it lacks.
+        const tiers = new Map<string, { high: number; medium: number; low: number }>();
+        for (const row of counts.byConfidence) {
+          const slot = tiers.get(row.task_class) ?? { high: 0, medium: 0, low: 0 };
+          if (row.confidence === "high") slot.high += row.n;
+          else if (row.confidence === "medium") slot.medium += row.n;
+          else slot.low += row.n;
+          tiers.set(row.task_class, slot);
+        }
+
+        console.log(`\n${t("cli:taskClass.fineHeader")}`);
+        for (const row of counts.fine) {
+          const mix = tiers.get(row.task_class) ?? { high: 0, medium: 0, low: 0 };
+          console.log(
+            `  ${row.task_class.padEnd(22)} ${String(row.n).padStart(6)}   ${t("cli:taskClass.confidenceMix", mix)}`,
+          );
+        }
+        console.log(`\n${t("cli:taskClass.coarseHeader")}`);
+        for (const row of counts.coarse) {
+          console.log(`  ${row.coarse_class.padEnd(22)} ${String(row.n).padStart(6)}`);
+        }
+        if (counts.abstain.length > 0) {
+          console.log(`\n${t("cli:taskClass.abstainHeader")}`);
+          for (const row of counts.abstain) {
+            console.log(`  ${row.abstain_reason.padEnd(22)} ${String(row.n).padStart(6)}`);
+          }
+        }
+        // The coverage denominator is not optional output: a per-class table
+        // without it implies a completeness it does not have.
+        console.log(
+          `\n${t("cli:taskClass.coverage", { classified: total, unclassified: counts.unclassified })}`,
+        );
+
+        // Spec §5.10: the fine grain is report-grade UNDER A STATED CAVEAT, and
+        // any surface quoting a per-class figure carries the caveat with it.
+        // This is that surface, so it prints it — unconditionally, not behind a
+        // verbosity flag.
+        console.log(`\n${t("cli:taskClass.caveat")}`);
+
+        // A store classified by two rule sets cannot anchor a before/after
+        // comparison — say so rather than letting the mixture pass silently.
+        const versions = store.getTaskClassVersions();
+        if (versions.length > 1) {
+          console.warn(
+            t("cli:taskClass.mixedVersions", {
+              versions: versions.map((v) => `v${v.classifier_version} (${v.n})`).join(", "),
+            }),
+          );
+        }
+      } finally {
+        store.close();
+      }
+    });
+
+  program
     .command("backfill")
     .description(t("cli:commands.backfill"))
     .option("-v, --verbose", t("cli:commands.backfillVerbose"))
@@ -695,7 +1133,7 @@ export async function buildCli(): Promise<Command> {
       try {
         const count = store.resetCheckpoints();
         console.log(t("cli:backfill.resetCheckpoints", { count }));
-        const result = await collect(store, { verbose: opts.verbose });
+        const result = await collect(store, { verbose: opts.verbose, ticketAllowlist: ticketProjectKeys(loadConfig()) });
         console.log(
           t("cli:backfill.complete", {
             filesProcessed: result.filesProcessed,
@@ -729,8 +1167,9 @@ export async function buildCli(): Promise<Command> {
           repoUrl: opts.repo,
         };
         const data = buildDashboard(store, dashOpts);
-        const { attachCostPerTask } = await import("../dashboard/index.js");
+        const { attachCostPerTask, attachInsights } = await import("../dashboard/index.js");
         await attachCostPerTask(store, data, dashOpts);
+        attachInsights(store, data, dashOpts, loadConfig());
         console.log(JSON.stringify(data, null, 2));
       } catch (err) {
         if (err instanceof RangeError) {
@@ -808,7 +1247,7 @@ export async function buildCli(): Promise<Command> {
       const { createEmbeddingProvider } = await import("../recap/embeddings.js");
       const { printDailyRecap } = await import("../reporter/index.js");
       const store = new Store();
-      await collect(store);
+      await collect(store, { ticketAllowlist: ticketProjectKeys(loadConfig()) });
 
       // Parse and validate --embeddings flag
       const rawMode = opts.embeddings ?? 'auto';
@@ -1079,6 +1518,55 @@ export async function buildCli(): Promise<Command> {
         } finally {
           client.close();
         }
+      } finally {
+        store.close();
+      }
+    });
+
+  correctCmd
+    .command("ticket <item> <key>")
+    .description("Assign a work-item key to a digest item, and link every session it covers")
+    .action(async (itemSelector: string, keyArg: string) => {
+      const { Store: StoreCT } = await import("../store/index.js");
+      const { collect: collectCT } = await import("../aggregator/index.js");
+      const { buildDailyDigest } = await import("../recap/index.js");
+      const { openCorrections, computeSignature } = await import(
+        "../recap/corrections.js"
+      );
+      const store = new StoreCT();
+      await collectCT(store);
+      try {
+        const digest = await buildDailyDigest(store, {});
+        const item = await resolveItem(digest, itemSelector);
+        if (!item) {
+          process.stderr.write(`No item matching "${itemSelector}" in today's digest.\n`);
+          process.exit(1);
+        }
+        let key: string;
+        try {
+          key = requireTicketKey(keyArg);
+        } catch (err) {
+          process.stderr.write(`${(err as Error).message}\n`);
+          process.exitCode = 1;
+          return;
+        }
+        const sig = computeSignature(item);
+        const client = openCorrections();
+        try {
+          client.add(sig, { kind: "ticket", key });
+        } catch (err) {
+          process.stderr.write(`${(err as Error).message}\n`);
+          process.exitCode = 1;
+          return;
+        } finally {
+          client.close();
+        }
+        // The correction above labels the digest item; this is what makes the
+        // assignment reach cost aggregation, which reads `ticket_links`, not
+        // the recap corrections DB.
+        const { applyTicketCorrectionWriteThrough } = await import("../ticketing/index.js");
+        applyTicketCorrectionWriteThrough(store, item.sessionIds, key);
+        console.log(`Correction added: ticket "${key}" assigned to "${item.id}" (${item.sessionIds.length} session(s) linked).`);
       } finally {
         store.close();
       }

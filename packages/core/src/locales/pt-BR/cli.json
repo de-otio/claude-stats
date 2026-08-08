@@ -133,6 +133,11 @@
     "reportTag": "Filtra sessões por tag",
     "reportSession": "Exibe a visão detalhada de uma única sessão",
     "reportHtml": "Escreve um relatório HTML autocontido em um arquivo",
+    "pack": "Gera o pacote de justificativa: um documento HTML autocontido mais um conjunto de arquivos CSV para um mês do calendário, para um leitor que não usa o claude-stats",
+    "packPeriod": "Mês do calendário a relatar, AAAA-MM (obrigatório)",
+    "packSections": "Seções a incluir, separadas por vírgula: headline,tickets,nonticket,hygiene,constraint,calibration (padrão: headline,tickets,nonticket)",
+    "packOut": "Diretório onde gravar o pacote (padrão: diretório atual)",
+    "packJson": "Imprime os caminhos dos arquivos gravados como JSON em vez de uma linha de resumo",
     "status": "Exibe o tamanho do banco, contagem de linhas e a última coleta",
     "export": "Exporta dados para CSV ou JSON",
     "exportFormat": "Formato de saída: csv ou json (padrão: json)",
@@ -174,7 +179,22 @@
     "costPerTaskByModel": "Detalhar a métrica por modelo dominante",
     "costPerTaskCalibrate": "Exibir métricas de calibração (concordância proxy/sinal com seus rótulos) como JSON",
     "costPerTaskLlmJudge": "Executar o juiz LLM opcional em tarefas ambíguas (requer configuração llmJudge; envia um resumo anonimizado da tarefa ao seu endpoint)",
-    "costPerTaskLlmJudgeUnconfigured": "--llm-judge solicitado, mas llmJudge.endpoint/model não estão configurados; ignorando o juiz."
+    "costPerTaskLlmJudgeUnconfigured": "--llm-judge solicitado, mas llmJudge.endpoint/model não estão configurados; ignorando o juiz.",
+    "reportTicket": "Mostra custo/tokens/sessões atribuídos a uma chave de ticket (ex.: PROJ-123), além da cobertura do período",
+    "taskClass": "Classificar sessions em classes de tarefa e mostrar a distribuição",
+    "taskClassLimit": "Classificar no máximo esta quantidade de sessions nesta execução (retomável)",
+    "ticket": "Vincula, nega ou lista atribuições manuais de ticket para uma sessão",
+    "ticketSessionArg": "ID da sessão (ou prefixo)",
+    "ticketKeyArg": "Chave do ticket (ex.: PROJ-123). Omitida sem outra flag: lista os vínculos atuais",
+    "ticketNegate": "Marca esta chave como tombstone na sessão (suprime mesmo que a extração continue correspondendo)",
+    "ticketRemove": "Remove um vínculo manual desta chave (não afeta o tombstone de negação)",
+    "ticketList": "Lista os vínculos de ticket da sessão antes de aplicar qualquer alteração",
+    "packInvoiceCsv": "Caminho para uma exportação CSV do Cost Explorer (ou equivalente) a ser usada na reconciliação — substitui config.reconciliation.invoiceTotal apenas nesta execução",
+    "constraintImpact": "O que uma mudança de política declarada (limite de orçamento, remoção de um nível de modelo) custou ou economizou, por classe de tarefa — saída JSON; encaminhe para o jq",
+    "constraintImpactDate": "Qual evento de política declarado usar como ponto de comparação (deve corresponder a uma data em config.policyEvents). Padrão: o mais recente",
+    "constraintImpactCsv": "Também grava a tabela por classe neste caminho CSV",
+    "constraintImpactMinSessions": "Limite mínimo de sessões por classe e lado (padrão: 8)",
+    "packDiscloseScope": "Incluir o caminho literal do projeto / UUID da conta na linha de escopo do pacote e nas colunas do CSV. Omitido por padrão — um caminho local pode revelar o nome de um cliente ou de um produto não lançado, e o pacote foi feito para sair desta máquina."
   },
   "collection": {
     "collecting": "Coletando...",
@@ -229,8 +249,10 @@
     "thinkingDetail": "{{blocks}} blocos ({{percent}}% das sessões)",
     "maxTokensWarning": "⚠  {{count}} respostas foram truncadas (max_tokens)",
     "resultsFound_one": "{{count}} resultado encontrado.",
+    "resultsFound_many": "{{count}} resultados encontrados.",
     "resultsFound_other": "{{count}} resultados encontrados.",
     "wroteFile": "Escrito {{file}}",
+    "wrotePack": "Pacote de justificativa gravado em {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
     "planValueUsed": "Plano: {{planFee}}/mês → {{percent}}% do valor do plano usado neste período",
     "trendColumnDay": "Dia",
     "trendColumnWeek": "Semana",
@@ -243,6 +265,7 @@
     "tableTotals": "Totais",
     "unknownTime": "desconhecido",
     "sessionSummary_one": "{{count}} sessão",
+    "sessionSummary_many": "{{count}} sessões",
     "sessionSummary_other": "{{count}} sessões",
     "spendingTitle": "Gasto em tokens — {{period}} ({{date}})",
     "spendingTotalCost": "Custo total (equivalente de API)",
@@ -273,7 +296,18 @@
     "costPerTaskByModel": "Por modelo",
     "costPerTaskSuccessShort": "sucesso",
     "costPerTaskInsufficient": "n/a (<{{min}} obs.)",
-    "costPerTaskObsShort": "obs."
+    "costPerTaskObsShort": "obs.",
+    "ticketTitle": "Ticket {{key}} — {{period}}",
+    "ticketNotFound": "Nenhum gasto atribuído a {{key}} neste período — verifique a chave e o intervalo de datas.",
+    "ticketTokensLabel": "Tokens",
+    "ticketSourcesLabel": "Fontes",
+    "ticketCoverageTitle": "Cobertura do período",
+    "ticketCoverageLine": "{{attributed}} de {{total}} atribuídos ({{ratio}})",
+    "ticketCoverageNone": "Nenhum uso registrado neste período.",
+    "ticketAmbiguousNote": "{{count}} sessão(ões) ambígua(s) (vinculada(s) a mais de um ticket).",
+    "confidenceHigh": "confiança alta",
+    "confidenceMedium": "confiança média",
+    "confidenceLow": "confiança baixa"
   },
   "status": {
     "databaseSize": "Tamanho do banco",
@@ -304,6 +338,7 @@
     "removed": "Tag(s) removida(s): {{tags}} da sessão {{sessionId}}",
     "noTagsFound": "Nenhuma tag encontrada.",
     "tagCount_one": "sessão",
+    "tagCount_many": "sessões",
     "tagCount_other": "sessões"
   },
   "backfill": {
@@ -322,7 +357,9 @@
   "errors": {
     "cannotCombineHtml": "Não é possível combinar --html com --trend ou --detail",
     "cannotCombineTrendDetail": "Não é possível combinar --trend e --detail",
-    "invalidDateRange": "Intervalo de datas inválido: {{message}}"
+    "invalidDateRange": "Intervalo de datas inválido: {{message}}",
+    "invalidPackPeriod": "Período de pacote inválido: {{message}}",
+    "invalidInvoiceCsv": "Não foi possível ler --invoice-csv {{path}}: {{message}}"
   },
   "repair": {
     "description": "Repara dados derivados que a coleta normal não consegue corrigir retroativamente.",
@@ -428,5 +465,26 @@
     "deviceRemoved": "Device '{{name}}' removed.",
     "newDeviceDetected": "New device detected in sync group: {{name}} ({{id}}). Review in settings.",
     "mergeConflict": "Merge conflict resolved using latest timestamp."
+  },
+  "taskClass": {
+    "passSummary": "{{classified}} session(s) classificada(s); {{alreadyCurrent}} já atualizada(s), {{remaining}} restante(s) (classificador v{{version}}).",
+    "noSessions": "Nenhuma session classificada ainda — execute 'collect' primeiro.",
+    "fineHeader": "Por classe de tarefa:",
+    "coarseHeader": "Por classe geral:",
+    "abstainHeader": "Classificação recusada:",
+    "coverage": "Cobertura: {{classified}} session(s) classificada(s), {{unclassified}} ainda não classificada(s).",
+    "mixedVersions": "⚠  As sessions foram classificadas por mais de uma versão do classificador ({{versions}}). Execute 'task-class' novamente antes de comparar classes ao longo de um período.",
+    "confidenceMix": "confiança: {{high}} alta, {{medium}} média, {{low}} baixa",
+    "caveat": "Ressalva: a concordância foi medida em relação a um corpus gerado — a intenção do gerador, não rótulos humanos em sessions reais. As classes granulares só têm qualidade de relatório sob essa ressalva; cite qualquer valor por classe sempre junto com ela e com a distribuição de confiança acima, ou use as classes amplas."
+  },
+  "ticket": {
+    "sessionNoLinks": "Sessão {{sessionId}}: nenhum vínculo de ticket",
+    "sessionLinks": "Sessão {{sessionId}}:",
+    "keyRequired": "Informe uma chave de ticket com --negate/--remove.",
+    "activeLabel": "ativo",
+    "negatedLabel": "negado",
+    "linked": "{{key}} vinculado à sessão {{sessionId}}",
+    "negated": "{{key}} negado para a sessão {{sessionId}} (marcado como tombstone; a extração automática não o restaurará)",
+    "removed": "Vínculo manual {{key}} removido da sessão {{sessionId}}"
   }
 }

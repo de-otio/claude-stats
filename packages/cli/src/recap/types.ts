@@ -103,6 +103,13 @@ export interface DailyDigestItem {
    * skip it by default unless --all is passed.
    */
   hidden?: boolean;
+  /**
+   * Work-item key assigned via a 'ticket' correction (Lane L). Display-only on
+   * this object — the correction handler that assigns it also writes the real
+   * `ticket_links` row(s) for `sessionIds`, which is what cost aggregation
+   * actually reads. Null/undefined = no manual assignment.
+   */
+  ticketKey?: string | null;
 }
 
 export interface DailyDigest {

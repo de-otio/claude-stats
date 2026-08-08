@@ -32,6 +32,7 @@ import { precomputeDigests } from '../../recap/precompute.js';
 import { openCorrections } from '../../recap/corrections.js';
 import { renderItem, pickTemplate } from '../../recap/templates.js';
 import { printDailyRecap } from '../../reporter/index.js';
+import { applyTicketCorrectionWriteThrough } from '../../ticketing/index.js';
 
 // ─── Deterministic date anchor ────────────────────────────────────────────────
 //
@@ -3058,6 +3059,219 @@ describe('SR-6 smoke — SQL injection payload stored verbatim and table still q
     } finally {
       corrections.close();
       // corrDbPath is inside a tmpDir tracked by afterAll — no manual cleanup needed
+    }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// v3 Scenario 40: `recap correct ticket` flows through to the item, and the
+// underlying session gains a real ticket_links row (Lane L)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('v3 Scenario 40 — recap correct ticket flows through to the item and to ticket_links', () => {
+  it('a ticket correction stores on the item, and the CLI write-through links the session', async () => {
+    const corrDbPath = mkCorrDbPath('ticket');
+    const corrections = openCorrections({ dbPath: corrDbPath });
+
+    try {
+      const { store, dbPath } = mkTmpDb();
+      const dir = mkTmpDir();
+
+      const sid = nextSid();
+      store.upsertSession(makeSession({
+        sessionId: sid,
+        projectPath: dir,
+        firstTimestamp: min(30),
+        lastTimestamp: min(60),
+      }));
+      store.upsertMessages([
+        makeMessage({
+          sessionId: sid,
+          timestamp: min(30),
+          promptText: 'Work that belongs to a ticket the extractor missed',
+          tools: ['Read', 'Edit'],
+        }),
+      ]);
+
+      const { segmentSession: segSess40 } = await import('../../recap/segment.js');
+      const msgs40 = store.getSessionMessages(sid);
+      const segs40: SegmentWithProject[] = segSess40(msgs40).map((s) => ({
+        ...s, sessionId: sid, projectPath: dir,
+      }));
+      const clusters40 = await clusterSegments(segs40);
+      expect(clusters40.length).toBeGreaterThanOrEqual(1);
+      const sig40 = computeClusterSignature(clusters40[0]!);
+
+      corrections.add(sig40, { kind: 'ticket', key: 'PROJ-88' });
+
+      // buildDailyDigest labels the item — the visible half of the correction.
+      const digestAfter = await buildDailyDigest(
+        store,
+        { date: TEST_DATE, tz: 'UTC' },
+        noGitDeps({ correctionsClient: corrections }),
+      );
+      const taggedItem = digestAfter.items.find((i) => i.ticketKey === 'PROJ-88');
+      expect(taggedItem).toBeDefined();
+      expect(taggedItem?.sessionIds).toContain(sid);
+
+      // The CLI handler's write-through (not exercised by buildDailyDigest
+      // itself — the digest label and the ticket_links row are deliberately
+      // separate writes, see corrections.ts's 'ticket' variant doc comment)
+      // is what makes cost aggregation see the assignment. Call the SAME
+      // production function `correctCmd.command("ticket <item> <key>")` calls
+      // (`ticketing/index.ts`'s `applyTicketCorrectionWriteThrough`) rather
+      // than re-implementing the loop here — a re-implementation would still
+      // pass if the CLI handler's own call to it were deleted.
+      applyTicketCorrectionWriteThrough(store, taggedItem!.sessionIds, 'PROJ-88');
+      const links = store.getTicketLinksForSession(sid);
+      expect(links).toContainEqual(
+        expect.objectContaining({ ticket_key: 'PROJ-88', source: 'tag', confidence: 'high', negated: 0 }),
+      );
+
+      store.close();
+      try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+    } finally {
+      corrections.close();
+    }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// L-5: `ticketKey` survives the INCREMENTAL PATCHER, not just a full rebuild.
+//
+// Scenario 40 above only exercises the full-rebuild path (Step 7 of
+// buildDailyDigest) — a first build with no prior cache entry. The patcher's
+// own "touched cluster" rebuild (Step 4g) used to carry a byte-identical BUT
+// SEPARATE copy of the label/hidden/ticketKey propagation block; the two could
+// drift, and a user whose digest comes from the patcher (the common case —
+// full rebuilds happen once per day, patches happen on every subsequent
+// change) would silently lose the ticket label with the suite still green.
+// This forces a real patch: build once, then mutate the SAME project's
+// session so its cluster is "touched" and must be rebuilt via the patch path.
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('L-5 — ticketKey survives the incremental digest patcher, not just a full rebuild', () => {
+  it('a ticket correction on a cluster still labels the item after a patched (not full) rebuild', async () => {
+    const corrDbPath = mkCorrDbPath('ticket-patch');
+    const corrections = openCorrections({ dbPath: corrDbPath });
+
+    try {
+      const { store, dbPath } = mkTmpDb();
+      const dir = mkTmpDir();
+      // A second, wholly unrelated project. Its presence keeps the touched
+      // ratio at 1-of-2 clusters (50%) when session `sid` alone changes
+      // below — under `HEAVY_PATCH_RATIO` (60%), so the patcher actually
+      // takes the incremental PATCH branch instead of falling back to a full
+      // rebuild (which would happen at 1-of-1 = 100% touched and would defeat
+      // the point of this test: proving the patch path's own propagation).
+      const dirUnrelated = mkTmpDir();
+      const sidUnrelated = nextSid();
+      store.upsertSession(makeSession({
+        sessionId: sidUnrelated,
+        projectPath: dirUnrelated,
+        firstTimestamp: min(70),
+        lastTimestamp: min(80),
+      }));
+      store.upsertMessages([
+        makeMessage({
+          sessionId: sidUnrelated,
+          timestamp: min(70),
+          promptText: 'Completely unrelated work in a different project',
+          tools: ['Read'],
+        }),
+      ]);
+
+      const sid = nextSid();
+      store.upsertSession(makeSession({
+        sessionId: sid,
+        projectPath: dir,
+        firstTimestamp: min(10),
+        lastTimestamp: min(30),
+      }));
+      store.upsertMessages([
+        makeMessage({
+          sessionId: sid,
+          timestamp: min(10),
+          promptText: 'Work that will later be tagged with a ticket key',
+          tools: ['Read', 'Edit'],
+        }),
+      ]);
+
+      const { segmentSession: segSessPatch } = await import('../../recap/segment.js');
+      const msgsPatch = store.getSessionMessages(sid);
+      const segsPatch: SegmentWithProject[] = segSessPatch(msgsPatch).map((s) => ({
+        ...s, sessionId: sid, projectPath: dir,
+      }));
+      const clustersPatch = await clusterSegments(segsPatch);
+      expect(clustersPatch.length).toBeGreaterThanOrEqual(1);
+      const sigPatch = computeClusterSignature(clustersPatch[0]!);
+      corrections.add(sigPatch, { kind: 'ticket', key: 'PROJ-91' });
+
+      // Map-backed patch-capable cache, same shape as Scenario 32.
+      type CacheEntry = { digest: DailyDigest; inputs: import('../../recap/cache.js').SnapshotHashInputs };
+      const cache = new Map<string, CacheEntry>();
+      const patchCache: BuildDailyDigestDeps['cache'] = {
+        read: (h: string) => cache.get(h)?.digest ?? null,
+        write: (h: string, d: DailyDigest, inputs?: import('../../recap/cache.js').SnapshotHashInputs) => {
+          cache.set(h, { digest: d, inputs: inputs ?? {
+            date: d.date, tz: d.tz,
+            sortedProjectPaths: [],
+            maxMessageUuid: null,
+            perProjectLastCommit: {},
+          }});
+        },
+        readWithInputs: (h: string) => cache.get(h) ?? null,
+        readMostRecentForDate: (date: string, tz: string) => {
+          let best: CacheEntry | null = null;
+          for (const entry of cache.values()) {
+            if (entry.digest.date === date && entry.digest.tz === tz) best = entry;
+          }
+          return best;
+        },
+      } as unknown as BuildDailyDigestDeps['cache'];
+
+      // Initial full build — establishes the cache entry the patcher diffs against.
+      const digest1 = await buildDailyDigest(
+        store,
+        { date: TEST_DATE, tz: 'UTC', patchCache: false },
+        noGitDeps({ cache: patchCache, correctionsClient: corrections }),
+      );
+      const item1 = digest1.items.find((i) => i.sessionIds.includes(sid));
+      expect(item1?.ticketKey).toBe('PROJ-91');
+
+      // Add a new message to the SAME session, marking its cluster "touched" —
+      // this forces the patch path's rebuild-touched-clusters branch, not the
+      // untouched-item passthrough.
+      store.upsertMessages([
+        makeMessage({
+          uuid: `zzz-ticket-patch-${Date.now()}`,
+          sessionId: sid,
+          timestamp: min(35),
+          promptText: 'Follow-up work on the same ticketed item',
+          tools: ['Edit'],
+        }),
+      ]);
+
+      const digest2 = await buildDailyDigest(
+        store,
+        { date: TEST_DATE, tz: 'UTC', patchCache: true },
+        noGitDeps({
+          cache: patchCache,
+          correctionsClient: corrections,
+          getCacheMtimeMs: () => noGitDeps().now!() - 1000,
+        }),
+      );
+
+      const item2 = digest2.items.find((i) => i.sessionIds.includes(sid));
+      expect(item2).toBeDefined();
+      // The whole point: the touched-cluster rebuild in the PATCH path must
+      // re-attach the ticket label just like the full-rebuild path does.
+      expect(item2?.ticketKey).toBe('PROJ-91');
+
+      store.close();
+      try { fs.unlinkSync(dbPath); } catch { /* ok */ }
+    } finally {
+      corrections.close();
     }
   });
 });

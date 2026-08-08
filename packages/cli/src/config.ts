@@ -6,7 +6,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import type { PlanType, PlanConfig } from "@claude-stats/core/types";
-import { lookupPlanFee } from "@claude-stats/core/pricing";
+import type { AccountMode, PolicyEvent } from "@claude-stats/core/types/insight";
+import { lookupPlanFee, type RateOverrides } from "@claude-stats/core/pricing";
+import { parseTicketKey } from "@claude-stats/core/tickets";
 import { createHttpJudgeProvider } from "./cost-per-task/judge-http.js";
 import type { JudgeProvider } from "./cost-per-task/judge.js";
 import { clampRetentionDays } from "./archive/retention.js";
@@ -93,6 +95,84 @@ export interface Config {
      */
     onboardingDismissedAt?: number;
   };
+  /**
+   * Ticket attribution (doc/analysis/ticket-attribution/).
+   *
+   * `projectKeys` is the noise filter that makes extraction trustworthy: with an
+   * allowlist configured, precision is essentially perfect; without one,
+   * extraction still runs but every attribution is capped at medium confidence,
+   * because the scanner cannot tell a real key from an unrelated identifier of
+   * the same shape.
+   */
+  tickets?: {
+    projectKeys?: string[];
+  };
+  /**
+   * Declared policy boundaries for constraint-impact reporting
+   * (doc/analysis/constraint-impact/03 §3.1).
+   *
+   * DECLARED, never inferred. Letting the tool detect its own boundaries would
+   * let it choose the split that maximises apparent damage — the report has to
+   * be structurally incapable of that to be worth showing to the person who
+   * made the decision.
+   */
+  policyEvents?: PolicyEvent[];
+  /**
+   * Developer hourly rate, for the salary denominator. Absent, reports state
+   * dev-time in minutes/hours and stop — never a dollar figure from an invented
+   * rate (constraint-impact/01 §1.3).
+   */
+  rate?: {
+    hourly?: number;
+    /** ISO 4217. Default "USD". Never auto-converted. */
+    currency?: string;
+  };
+  /**
+   * Cost basis. `mode` selects the vocabulary — `plan` speaks in
+   * equivalent-API-value against a flat fee, `metered` speaks in actual money
+   * and supports reconciliation. Mixing the two in one report discredits the
+   * tool with whichever reader sees the wrong one.
+   *
+   * `rates` supplies partner (Bedrock/Vertex) rates, which are priced
+   * separately from first-party and vary by region. Without them a partner
+   * account prices at first-party rates and every figure is flagged as an
+   * estimate.
+   */
+  pricing?: {
+    mode?: AccountMode;
+    rates?: RateOverrides;
+  };
+  /**
+   * Invoice reconciliation (ticket-attribution/04 §4.3). The top-down figure is
+   * imported, never fetched — the store makes no network calls.
+   */
+  reconciliation?: {
+    /** Invoice total for the period, in the account's currency. A CLI
+     *  `--invoice-csv` import overrides this per-run; it is not written back
+     *  here. */
+    invoiceTotal?: number;
+    /** Percent difference below which the report says "reconciles". Default 5. */
+    tolerancePercent?: number;
+    /**
+     * What the invoice figure above actually covers — an AWS account id, an
+     * org, a date range, a tag/profile mapping. REQUIRED to say so honestly:
+     * the local store's scope (this machine, possibly one project or
+     * account) need not equal the invoice's scope, and a reconciliation run
+     * against mismatched scopes "proves" the estimates are off when the real
+     * problem is that the two sides count different things
+     * (ticket-attribution/04 §4.3). Left unset, the report states the scope
+     * as unconfirmed rather than assuming a match — never rendered as if the
+     * two sides were known to agree.
+     */
+    scopeNote?: string;
+  };
+  /**
+   * Efficiency-hygiene detectors. `suppressions` holds detector ids the user
+   * dismissed ("not waste"), so a card that was wrong once stays gone.
+   */
+  hygiene?: {
+    suppressions?: string[];
+  };
 }
 
 /** Auto-refresh can't be set faster than once a minute. */
@@ -135,6 +215,12 @@ const ALLOWED_CONFIG_KEYS: ReadonlyArray<keyof Config> = [
   "autoRefreshSeconds",
   "archive",
   "backup",
+  "tickets",
+  "policyEvents",
+  "rate",
+  "pricing",
+  "reconciliation",
+  "hygiene",
 ];
 
 /** Archive/backup bounds — defensive caps so a bad/hostile write can't corrupt. */
@@ -212,6 +298,190 @@ export function validateBackupConfig(input: unknown): BackupConfigPatch {
     out.onboardingDismissedAt = r.onboardingDismissedAt;
   }
   return out;
+}
+
+// ─── Insight-suite config validation ────────────────────────────────────────
+//
+// Same posture as the blocks above: drop invalid leaves rather than throw (the
+// write path is unattended and must not crash on one bad entry), and bound
+// every collection so a hostile write can't DoS a report.
+
+const MAX_PROJECT_KEYS = 100;
+const PROJECT_KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/;
+const MAX_POLICY_EVENTS = 100;
+const POLICY_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const POLICY_KINDS: ReadonlySet<string> = new Set(["model-removal", "budget-cap", "quota-change", "other"]);
+const POLICY_SCOPES: ReadonlySet<string> = new Set(["org", "team", "self"]);
+const MAX_POLICY_DETAIL_LEN = 200;
+const MAX_HOURLY_RATE = 10_000;
+const MAX_SUPPRESSIONS = 200;
+const MAX_SUPPRESSION_LEN = 64;
+const MAX_INVOICE_TOTAL = 10_000_000;
+const MAX_SCOPE_NOTE_LEN = 500;
+const DEFAULT_RECONCILE_TOLERANCE = 5;
+
+/** Validate `tickets`. Project keys are upper-cased and shape-checked. */
+export function validateTicketsConfig(input: unknown): NonNullable<Config["tickets"]> {
+  const out: NonNullable<Config["tickets"]> = {};
+  if (!input || typeof input !== "object") return out;
+  const r = input as Record<string, unknown>;
+  if (Array.isArray(r.projectKeys)) {
+    const keys: string[] = [];
+    for (const raw of r.projectKeys) {
+      if (keys.length >= MAX_PROJECT_KEYS) break;
+      if (typeof raw !== "string") continue;
+      const k = raw.trim().toUpperCase();
+      if (PROJECT_KEY_RE.test(k) && !keys.includes(k)) keys.push(k);
+    }
+    out.projectKeys = keys;
+  }
+  return out;
+}
+
+/**
+ * Validate `policyEvents`. An event with an unparseable date or unknown kind is
+ * dropped — a malformed boundary would silently split a before/after report at
+ * the wrong place, which is worse than having no boundary at all.
+ */
+export function validatePolicyEvents(input: unknown): PolicyEvent[] {
+  if (!Array.isArray(input)) return [];
+  const out: PolicyEvent[] = [];
+  for (const raw of input) {
+    if (out.length >= MAX_POLICY_EVENTS) break;
+    if (!raw || typeof raw !== "object") continue;
+    const r = raw as Record<string, unknown>;
+    if (typeof r.date !== "string" || !POLICY_DATE_RE.test(r.date)) continue;
+    if (Number.isNaN(Date.parse(r.date))) continue;
+    if (typeof r.kind !== "string" || !POLICY_KINDS.has(r.kind)) continue;
+    const ev: PolicyEvent = { date: r.date, kind: r.kind as PolicyEvent["kind"] };
+    if (typeof r.detail === "string" && r.detail.length > 0) {
+      ev.detail = r.detail.slice(0, MAX_POLICY_DETAIL_LEN);
+    }
+    if (typeof r.scope === "string" && POLICY_SCOPES.has(r.scope)) {
+      ev.scope = r.scope as PolicyEvent["scope"];
+    }
+    out.push(ev);
+  }
+  // Chronological, so a report can walk boundaries in order without re-sorting.
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Validate the hourly-rate block that powers the salary denominator. */
+export function validateRateConfig(input: unknown): NonNullable<Config["rate"]> {
+  const out: NonNullable<Config["rate"]> = {};
+  if (!input || typeof input !== "object") return out;
+  const r = input as Record<string, unknown>;
+  if (typeof r.hourly === "number" && Number.isFinite(r.hourly) && r.hourly > 0 && r.hourly <= MAX_HOURLY_RATE) {
+    out.hourly = r.hourly;
+  }
+  if (typeof r.currency === "string" && ACCOUNT_FEE_CURRENCY_RE.test(r.currency)) {
+    out.currency = r.currency;
+  }
+  return out;
+}
+
+/** Validate `pricing` (cost-basis mode + partner rate overrides). */
+export function validatePricingConfig(input: unknown): NonNullable<Config["pricing"]> {
+  const out: NonNullable<Config["pricing"]> = {};
+  if (!input || typeof input !== "object") return out;
+  const r = input as Record<string, unknown>;
+  if (r.mode === "plan" || r.mode === "metered") out.mode = r.mode as AccountMode;
+  if (r.rates && typeof r.rates === "object") {
+    const rates: RateOverrides = {};
+    for (const src of ["first_party", "bedrock", "vertex"] as const) {
+      const table = (r.rates as Record<string, unknown>)[src];
+      if (!table || typeof table !== "object") continue;
+      const clean: Record<string, { inputPerMillion: number; outputPerMillion: number; cacheReadPerMillion: number; cacheWritePerMillion: number }> = {};
+      for (const [model, p] of Object.entries(table as Record<string, unknown>)) {
+        if (!p || typeof p !== "object") continue;
+        const pp = p as Record<string, unknown>;
+        const nums = ["inputPerMillion", "outputPerMillion", "cacheReadPerMillion", "cacheWritePerMillion"] as const;
+        if (!nums.every((n) => typeof pp[n] === "number" && Number.isFinite(pp[n]) && (pp[n] as number) >= 0)) continue;
+        clean[model] = {
+          inputPerMillion: pp.inputPerMillion as number,
+          outputPerMillion: pp.outputPerMillion as number,
+          cacheReadPerMillion: pp.cacheReadPerMillion as number,
+          cacheWritePerMillion: pp.cacheWritePerMillion as number,
+        };
+      }
+      if (Object.keys(clean).length > 0) rates[src] = clean;
+    }
+    if (Object.keys(rates).length > 0) out.rates = rates;
+  }
+  return out;
+}
+
+/** Validate `reconciliation`. Tolerance is clamped to a sane 0–100%. */
+export function validateReconciliationConfig(input: unknown): NonNullable<Config["reconciliation"]> {
+  const out: NonNullable<Config["reconciliation"]> = {};
+  if (!input || typeof input !== "object") return out;
+  const r = input as Record<string, unknown>;
+  if (
+    typeof r.invoiceTotal === "number" &&
+    Number.isFinite(r.invoiceTotal) &&
+    r.invoiceTotal >= 0 &&
+    r.invoiceTotal <= MAX_INVOICE_TOTAL
+  ) {
+    out.invoiceTotal = r.invoiceTotal;
+  }
+  if (typeof r.tolerancePercent === "number" && Number.isFinite(r.tolerancePercent)) {
+    out.tolerancePercent = Math.min(100, Math.max(0, r.tolerancePercent));
+  }
+  if (typeof r.scopeNote === "string" && r.scopeNote.trim().length > 0) {
+    out.scopeNote = r.scopeNote.trim().slice(0, MAX_SCOPE_NOTE_LEN);
+  }
+  return out;
+}
+
+/** Validate `hygiene`. Suppression ids are opaque, bounded strings. */
+export function validateHygieneConfig(input: unknown): NonNullable<Config["hygiene"]> {
+  const out: NonNullable<Config["hygiene"]> = {};
+  if (!input || typeof input !== "object") return out;
+  const r = input as Record<string, unknown>;
+  if (Array.isArray(r.suppressions)) {
+    const ids: string[] = [];
+    for (const raw of r.suppressions) {
+      if (ids.length >= MAX_SUPPRESSIONS) break;
+      if (typeof raw !== "string" || raw.length === 0) continue;
+      const id = raw.slice(0, MAX_SUPPRESSION_LEN);
+      if (!ids.includes(id)) ids.push(id);
+    }
+    out.suppressions = ids;
+  }
+  return out;
+}
+
+/** Configured project-key allowlist, or undefined when none is set. */
+export function ticketProjectKeys(config: Config): string[] | undefined {
+  const keys = config.tickets?.projectKeys;
+  return keys && keys.length > 0 ? keys : undefined;
+}
+
+/**
+ * The cost vocabulary for this account. Explicit config wins; otherwise a
+ * subscription type implies `plan` and its absence implies `metered` — an
+ * account with no detected subscription is most likely API/Bedrock usage, which
+ * is exactly the audience for whom these are real dollars.
+ */
+export function resolveAccountMode(config: Config, subscriptionType?: string | null): AccountMode {
+  if (config.pricing?.mode) return config.pricing.mode;
+  return subscriptionType ? "plan" : "metered";
+}
+
+/** Reconciliation tolerance as a fraction (0.05 = 5%). */
+export function reconciliationTolerance(config: Config): number {
+  const pct = config.reconciliation?.tolerancePercent ?? DEFAULT_RECONCILE_TOLERANCE;
+  return pct / 100;
+}
+
+/** True when `key` passes the configured project allowlist (or none is set). */
+export function isAllowedTicketKey(config: Config, key: string): boolean {
+  const parsed = parseTicketKey(key);
+  if (!parsed) return false;
+  const allow = ticketProjectKeys(config);
+  if (!allow) return true;
+  const prefix = parsed.slice(0, parsed.lastIndexOf("-"));
+  return allow.includes(prefix);
 }
 
 /** Account-fee bounds — defensive caps so a bad/hostile write can't corrupt or DoS. */
@@ -303,6 +573,25 @@ export function mergeConfig(current: Config, incoming: unknown): Config {
       if (patch.recoveryKeyConfirmed !== undefined) next.recoveryKeyConfirmed = patch.recoveryKeyConfirmed;
       if (patch.onboardingDismissedAt !== undefined) next.onboardingDismissedAt = patch.onboardingDismissedAt;
       merged.backup = next;
+    } else if (key === "tickets") {
+      merged.tickets = { ...current.tickets, ...validateTicketsConfig(inc.tickets) };
+    } else if (key === "policyEvents") {
+      // Replaced wholesale, not merged: policy events are an ordered timeline,
+      // and a shallow merge of two arrays has no meaningful semantics. A caller
+      // that wants to add one sends the full list.
+      merged.policyEvents = validatePolicyEvents(inc.policyEvents);
+    } else if (key === "rate") {
+      merged.rate = { ...current.rate, ...validateRateConfig(inc.rate) };
+    } else if (key === "pricing") {
+      const patch = validatePricingConfig(inc.pricing);
+      const next: NonNullable<Config["pricing"]> = { ...current.pricing };
+      if (patch.mode !== undefined) next.mode = patch.mode;
+      if (patch.rates !== undefined) next.rates = { ...current.pricing?.rates, ...patch.rates };
+      merged.pricing = next;
+    } else if (key === "reconciliation") {
+      merged.reconciliation = { ...current.reconciliation, ...validateReconciliationConfig(inc.reconciliation) };
+    } else if (key === "hygiene") {
+      merged.hygiene = { ...current.hygiene, ...validateHygieneConfig(inc.hygiene) };
     }
   }
   return merged;

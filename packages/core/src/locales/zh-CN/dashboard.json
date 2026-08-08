@@ -9,7 +9,9 @@
     "efficiency": "效率",
     "energy": "能耗",
     "settings": "设置",
-    "classify": "分类"
+    "classify": "分类",
+    "spending": "支出",
+    "insights": "洞察"
   },
   "toolbar": {
     "period": "时间段:",
@@ -49,6 +51,7 @@
     "tokenBreakdown": "Token 构成",
     "cacheUsage": "缓存使用情况",
     "cumulativeApiValue": "累计 API 价值 vs 套餐费用",
+    "policyEvents": "策略事件",
     "topProjects": "热门项目",
     "tokensByProject": "按项目分布的 Token 占比",
     "energyByProject": "按项目分布的能耗",
@@ -467,5 +470,78 @@
     "splitHint": "拆分会将每个 session 的费用归到实际运行它的账户。适用于跨订阅共享的项目（例如当单个套餐的额度不够用时）。",
     "apply": "应用",
     "applying": "应用中…"
+  },
+  "insights": {
+    "lede": "本工具旨在回答的五个问题。每张卡片都可跳转到对应证据。",
+    "cards": {
+      "cost": "AI 花了多少钱？",
+      "bought": "换来了什么？",
+      "efficiency": "是否高效？",
+      "setup": "配置是否合适？",
+      "change": "应该改变什么？"
+    },
+    "alerts": {
+      "fallbackRates": "部分用量在合作伙伴平台（Bedrock 或 Vertex）上按第一方费率计价。在配置合作伙伴费率之前，此处所有金额均为估算值。",
+      "action": "查看",
+      "reconciliationDrift": "自下而上统计的成本与配置的发票总额无法对账 — 下方的核对面板显示差额及其可能原因。"
+    },
+    "verdict": {
+      "goodValue": "按你的用量，当前套餐物有所值",
+      "underusing": "你的用量低于套餐所覆盖的额度",
+      "noPlan": "未检测到套餐 — 费用按用量计费方式计算"
+    }
+  },
+  "ticketCard": {
+    "title": "工单归属",
+    "noSession": "尚未记录任何 session — 无可关联内容。",
+    "session": "当前 session：{{sessionId}}…",
+    "noLinks": "此 session 暂无工单关联。",
+    "negatedBadge": "已屏蔽",
+    "negateAction": "屏蔽",
+    "removeAction": "移除",
+    "linkAction": "关联",
+    "keyPlaceholder": "PROJ-123"
+  },
+  "views": {
+    "insights": "洞察",
+    "cost-and-controlling": "成本与管控",
+    "tickets-and-value": "工单与价值",
+    "efficiency-and-hygiene": "效率与健康度",
+    "plan-and-policy": "套餐与策略",
+    "sessions": "会话",
+    "energy": "能耗",
+    "settings": "设置"
+  },
+  "filters": {
+    "legend": "缩小此视图范围",
+    "scopeNote": "筛选器会重新运行整个报告，因此会缩小所有视图的范围，而不只是当前视图。",
+    "project": "项目：",
+    "ticket": "工单：",
+    "taskClass": "任务类别：",
+    "any": "任意",
+    "ticketPlaceholder": "例如 PROJ-123",
+    "apply": "应用筛选器",
+    "clear": "清除",
+    "active_one": "已启用 {{count}} 个筛选条件",
+    "active_other": "已启用 {{count}} 个筛选条件",
+    "modelUnavailable": "暂不支持按模型筛选 — 这只会缩小 token 总量，却无法同时缩小其所属 session 的范围。"
+  },
+  "taskClasses": {
+    "debug": "调试",
+    "greenfield": "新功能",
+    "refactor-multi-file": "重构",
+    "config-chore": "配置 / 杂务",
+    "review": "评审",
+    "explore": "探索",
+    "unknown": "未分类"
+  },
+  "costQuality": {
+    "title": "成本质量",
+    "frontierLayer": "支出相对效率前沿的位置",
+    "perTaskLayer": "一次成功任务的成本",
+    "calibrationLayer": "结果标签的可信程度",
+    "calibrationReady": "结果标签已校准 — 查看方式",
+    "calibrationNotReady": "结果标签尚未校准 — 查看原因",
+    "calibrationNoLabels": "结果标签未校准 — 尚无已标注数据"
   }
 }

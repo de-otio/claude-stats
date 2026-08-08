@@ -10,6 +10,10 @@ import type { UsageWindow } from "@claude-stats/core/types";
 import { classifyUsageIntensity } from "@claude-stats/core/planMechanics";
 import { readClaudeAccount } from "../account.js";
 import { resolveAccountFee, type Config } from "../config.js";
+import { getTicketCostReport } from "../ticketing/index.js";
+import { resolveDashboardCostVocabulary, type VocabularyResolution } from "../server/insights.js";
+import type { Reconciliation, TicketCoverage, PolicyEvent } from "@claude-stats/core/types/insight";
+import { computeReconciliation } from "@claude-stats/core/reconciliation";
 import { buildFeeAttribution, type FeeAttribution } from "./fee-attribution.js";
 import {
   scoreComplexity,
@@ -21,6 +25,8 @@ import {
 import { attributeToolCosts, groupByMcpServer, detectAnomalies, aggregateMcpServerUsage } from "../spending.js";
 import type { CostPerTaskReport, CostPerTaskOptions } from "../cost-per-task/index.js";
 import type { CalibrationReport } from "../cost-per-task/calibration.js";
+import type { CalibrationEstimate, CalibrationScope } from "@claude-stats/core/calibration";
+import { buildAttributionCalibration } from "../calibration/index.js";
 import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor, modelClass } from "@claude-stats/core/energy";
 import type { ModelClass } from "@claude-stats/core/energy";
 import { decodeHtmlEntities } from "@claude-stats/core/sanitize";
@@ -77,6 +83,15 @@ export interface DashboardSummary {
   cacheCreationTokens: number;
   cacheEfficiency: number;
   estimatedCost: number;
+  /**
+   * True when any priced message in this period rested on
+   * `rateBasis: "first_party_fallback"` — a partner platform (Bedrock,
+   * Vertex) billed with no configured partner rate, so `estimatedCost`
+   * reused first-party per-token prices as a stand-in. The cost card's
+   * caveat must say so (insight.ts `costCaveat`); a metered figure that
+   * silently omits this reads as "actual metered cost" when it may not be.
+   */
+  anyFallbackRates: boolean;
   totalDurationMs: number;
   // Plan ROI
   planFee: number;
@@ -118,6 +133,26 @@ export interface DashboardData {
    * populates it.
    */
   untilIso?: string;
+  /**
+   * The narrowing filters this payload was actually built with — the drill-down
+   * dimensions beyond period/account (doc/analysis/gui-redesign/02 §2.5).
+   *
+   * Carried on the payload rather than re-derived by each surface for two
+   * reasons. The GUI needs it to render its filter controls in the state the
+   * data is really in (a select that shows "Any" beside a filtered total is a
+   * lie about what the reader is looking at). And every consumer of a filtered
+   * payload — MCP, the CLI, an exported pack — can then state its own scope
+   * without having to be handed the options separately, which is the honesty
+   * obligation on any narrowed figure.
+   *
+   * Optional so `DashboardData` fixtures that predate it keep compiling;
+   * `buildDashboard` always populates it, with `null` per absent dimension.
+   */
+  appliedFilters?: {
+    projectPath: string | null;
+    ticket: string | null;
+    taskClass: string | null;
+  };
   summary: DashboardSummary;
   byDay: Array<{
     date: string;             // YYYY-MM-DD
@@ -266,6 +301,16 @@ export interface DashboardData {
    * toggle). Sync signals only (no per-refresh LLM-judge calls).
    */
   calibration: CalibrationReport | null;
+  /**
+   * The window `calibration` above was actually gathered over — set by the same
+   * call that sets `calibration`, and null whenever that is null.
+   *
+   * Separate from `period` because the two genuinely differ: `attachCalibration`
+   * caps an `all` period at a month for performance, so a dashboard headed "all
+   * time" carries an outcome figure counted over one month. Anything quoting the
+   * figure must be able to say which, and the report itself does not carry it.
+   */
+  calibrationScope: CalibrationScope | null;
   /** Whether the experimental accuracy signals are currently enabled (config). */
   experimentalSignalsEnabled: boolean;
   recommendations: Recommendation[];
@@ -281,6 +326,106 @@ export interface DashboardData {
   }>;
   /** The accountUuid currently being filtered to, or null for "all accounts combined". */
   selectedAccountUuid: string | null;
+  /**
+   * Inputs the Insights tab needs that no other block carries — ticket
+   * attribution for the period and the user's hourly rate. Null until
+   * {@link attachInsights} runs; the tab then renders each affected card's
+   * honest-unavailable state rather than omitting it, so a caller that skips
+   * the attach still gets a correct (if emptier) page rather than a broken one.
+   *
+   * Optional rather than `DashboardInsights | null`, matching {@link
+   * DashboardData.untilIso}'s precedent: the many pre-existing `DashboardData`
+   * literals in tests and fixtures across the repo keep compiling, and every
+   * consumer must read it as `data.insights?.…` anyway because "not attached"
+   * and "attached but empty" are both real states.
+   */
+  insights?: DashboardInsights | null;
+  /**
+   * The most recently active session's ticket attribution — what the
+   * link/negate card (Lane L) renders and corrects. Undefined until {@link
+   * attachTicketAttribution} runs (matching {@link insights}'s precedent, so
+   * pre-existing `DashboardData` literals keep compiling); null when the
+   * store holds no sessions at all. "Current session" means the same
+   * most-recently-active session {@link Store.getMostRecentSessionId}
+   * defines — not the window this dashboard happens to be filtered to, since
+   * the card corrects attribution regardless of which period is on screen.
+   */
+  currentSessionTicket?: CurrentSessionTicket | null;
+  /**
+   * Declared policy boundaries (`config.policyEvents`), for annotating the
+   * `byDay` timeline (constraint-impact/02 §2.2 point 3: "annotate the
+   * timeline with everything else that changed"). Undefined until {@link
+   * attachInsights} runs (matching {@link insights}'s precedent); an empty
+   * array once it has, when the config declares none — never a reason to
+   * hide a chart, just nothing to mark on it. The full analysis lives behind
+   * `get_constraint_impact`/`constraint-impact`; this is the passive
+   * annotation, not the comparison.
+   */
+  policyEvents?: readonly PolicyEvent[];
+}
+
+/** One row of {@link DashboardData.currentSessionTicket}'s `links` list. */
+export interface CurrentSessionTicketLink {
+  ticketKey: string;
+  source: string;
+  confidence: string;
+  granularity: string;
+  negated: boolean;
+}
+
+export interface CurrentSessionTicket {
+  sessionId: string;
+  links: readonly CurrentSessionTicketLink[];
+}
+
+/**
+ * The Insights tab's extra inputs. Deliberately narrow: everything else the
+ * five cards need is already on `DashboardData`, and duplicating a figure here
+ * would create a second place for it to be wrong.
+ */
+export interface DashboardInsights {
+  /**
+   * The cost vocabulary for this dashboard as a whole, and which rule decided
+   * it. Resolved once here so every surface speaks the same one; `mixed` is a
+   * real verdict, not a failure, and the cost card renders it as such.
+   */
+  vocabulary: VocabularyResolution;
+  /**
+   * Ticket-attribution coverage for exactly this dashboard's window and
+   * filters, or null when the store holds no active ticket links at all (which
+   * is the state before Lane A's extraction is configured). Null and
+   * zero-coverage are different answers and the card says so differently.
+   */
+  ticketCoverage: TicketCoverage | null;
+  /** Costliest attributed ticket in the window, or null. */
+  topTicket: { key: string; cost: number } | null;
+  /** `config.rate.hourly` — absent means the dev-time clause is omitted, never estimated. */
+  hourlyRate: number | null;
+  /** `config.rate.currency`, defaulting to USD. Never auto-converted. */
+  currency: string;
+  /**
+   * How well the automatic attribution pass has agreed with the user's explicit
+   * rulings, gated at the minimum sample (Lane K).
+   *
+   * Whole-store, unlike `ticketCoverage` — calibration is a property of the
+   * mechanism, not of this window, and a per-window cut of an already-scarce
+   * sample would read "uncalibrated" forever regardless of how much the user
+   * had reviewed. Null only when the gather itself failed.
+   */
+  attributionCalibration: CalibrationEstimate | null;
+  /**
+   * Bottom-up cost reconciled against `config.reconciliation.invoiceTotal`
+   * for exactly this dashboard's window and filters — the SAME
+   * `getTicketCostReport` call this block already makes for
+   * `ticketCoverage`, so the bottom-up figure reconciliation compares can
+   * never disagree with the one the coverage denominator uses. Null when no
+   * invoice figure is configured, when the account mode isn't `metered`
+   * (plan-mode cost is equivalent-API-value, not money — comparing it to an
+   * invoice is a category error, not a residual), or when the window has no
+   * local spend at all (the honest-empty state, not a manufactured
+   * residual).
+   */
+  reconciliation: Reconciliation | null;
 }
 
 export interface Recommendation {
@@ -493,11 +638,20 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   // headline (getMessageTotals, which counts every in-window message regardless
   // of session flags). Explicit caller values still win — server ?includeCI=,
   // CLI --include-ci; only callers that OMIT them inherit the new default.
+  // `ticket` and `taskClass` are the GUI's local-filter dimensions
+  // (gui-redesign/02 §2.5). Both are passed HERE and to `msgFilter` below, never
+  // to one alone: each narrows the SESSION set through the same predicate on
+  // both halves (`ticketPredicate` / `taskClassPredicate` in store/index.ts), and
+  // narrowing one half only is what produces "12 sessions" beside a cost
+  // covering forty. The store has supported both since V21; nothing consumed
+  // them from the dashboard until the domain views needed them.
   const rows = store.getSessions({
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
     accountUuid: opts.accountUuid,
     entrypoint: opts.entrypoint,
+    ticket: opts.ticket,
+    taskClass: opts.taskClass,
     activeSince: since > 0 ? since : undefined,
     until: isCustomRange ? until : undefined,
     includeCI: opts.includeCI ?? true,
@@ -514,6 +668,8 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     repoUrl: opts.repoUrl,
     accountUuid: opts.accountUuid,
     entrypoint: opts.entrypoint,
+    ticket: opts.ticket,
+    taskClass: opts.taskClass,
     since: since > 0 ? since : undefined,
     until: isCustomRange ? until : undefined,
     includeCI: opts.includeCI ?? true,
@@ -656,6 +812,11 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   let totalOutput = 0;
   let totalCacheRead = 0;
   let totalCacheCreate = 0;
+  // Set when any priced message this period rested on a fallback rate (see
+  // DashboardSummary.anyFallbackRates) — surfaced so the cost card's caveat
+  // can say the figure is an estimate rather than asserting "actual metered
+  // cost" over a partner platform's separately-priced usage.
+  let anyFallbackRates = false;
   const byModel: DashboardData["byModel"] = [];
   for (const mt of messageTotals) {
     const result = estimateCost(
@@ -665,6 +826,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       mt.cache_read_tokens,
       mt.cache_creation_tokens,
     );
+    if (result.rateBasis === "first_party_fallback") anyFallbackRates = true;
     totalCost += result.cost;
     totalInput += mt.input_tokens;
     totalOutput += mt.output_tokens;
@@ -1276,6 +1438,15 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     // #until-date-input value) — subtract 1ms so it reports the inclusive
     // last calendar day, matching what a user actually requested.
     untilIso: ymdInTz(until - 1, tz),
+    // Echoed from the options the payload was built with, not from the store:
+    // this states the SCOPE of every figure below it, so it has to be the
+    // narrowing that was actually applied. `?? null` per dimension keeps the
+    // shape total — an absent dimension is "not filtered", never missing.
+    appliedFilters: {
+      projectPath: opts.projectPath ?? null,
+      ticket: opts.ticket ?? null,
+      taskClass: opts.taskClass ?? null,
+    },
     summary: {
       sessions: rows.length,
       prompts: totalPrompts,
@@ -1285,6 +1456,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       cacheCreationTokens: totalCacheCreate,
       cacheEfficiency,
       estimatedCost: Math.round(totalCost * 100) / 100,
+      anyFallbackRates,
       totalDurationMs,
       planFee,
       planMultiplier,
@@ -1322,6 +1494,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     energy,
     costPerTask: null,
     calibration: null,
+    calibrationScope: null,
     experimentalSignalsEnabled: false,
     recommendations,
     availableAccounts: (() => {
@@ -1352,7 +1525,152 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       }));
     })(),
     selectedAccountUuid: opts.accountUuid ?? null,
+    insights: null,
   };
+}
+
+/**
+ * Populate `data.insights` — the Insights tab's extra inputs.
+ *
+ * Synchronous (unlike {@link attachCostPerTask}): the ticket report is two
+ * indexed store reads plus a pure aggregation, cheap enough to run on every
+ * refresh. Separate from `buildDashboard` for a different reason — it needs
+ * the user's `Config`, which the lightweight callers (status bar, MCP
+ * `get_stats`) neither have nor want.
+ *
+ * Never throws. A store predating schema V19, or any other failure, leaves
+ * `insights` null and the affected cards render their honest-unavailable
+ * branch — the correct output for "not enabled yet", not a broken page.
+ */
+export function attachInsights(
+  store: Store,
+  data: DashboardData,
+  opts: ReportOptions,
+  config: Config,
+): DashboardData {
+  const tz = opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const currency = config.rate?.currency ?? "USD";
+  const hourlyRate = config.rate?.hourly ?? null;
+  const vocabulary = resolveDashboardCostVocabulary(data, config);
+
+  let ticketCoverage: TicketCoverage | null = null;
+  let topTicket: { key: string; cost: number } | null = null;
+  let reconciliation: Reconciliation | null = null;
+  try {
+    const { since, until } = periodRange(opts, tz);
+    const isCustomRange = Boolean(opts.since && opts.until);
+    // The SAME window and filters `buildDashboard` used above — a coverage
+    // denominator computed over a different window would silently disagree
+    // with the headline cost it is a fraction of.
+    const report = getTicketCostReport(store, {
+      since: since > 0 ? since : undefined,
+      until: isCustomRange ? until : undefined,
+      projectPath: opts.projectPath,
+      repoUrl: opts.repoUrl,
+      accountUuid: opts.accountUuid,
+      includeCI: opts.includeCI ?? true,
+      includeDeleted: opts.includeDeleted ?? true,
+    });
+    ticketCoverage = report.coverage;
+    const top = report.tickets[0];
+    topTicket = top ? { key: top.ticketKey, cost: top.cost } : null;
+
+    // `report.totalCost` is the SAME bottom-up figure `ticketCoverage`'s
+    // denominator is derived from, over the SAME window — so the number
+    // reconciliation compares against the invoice is never a different total
+    // than the one the rest of the tab renders. Metered only: a plan
+    // account's cost is equivalent-API-value, not money.
+    if (vocabulary.vocabulary === "metered") {
+      reconciliation = computeReconciliation({
+        bottomUp: report.totalCost,
+        invoiceTotal: config.reconciliation?.invoiceTotal ?? null,
+        tolerance: config.reconciliation?.tolerancePercent != null ? config.reconciliation.tolerancePercent / 100 : undefined,
+        unknownTokens: report.unknownTokens,
+        anyFallbackRates: report.anyFallbackRates,
+        scopeNote: config.reconciliation?.scopeNote ?? null,
+      });
+    }
+  } catch {
+    ticketCoverage = null;
+    topTicket = null;
+    reconciliation = null;
+  }
+
+  // Gathered in its OWN try: a pre-V19 store or a failed ticket report must not
+  // also blank the calibration state, and vice versa. Sharing one catch would
+  // make either failure look like the other's honest-empty answer.
+  let attributionCalibration: CalibrationEstimate | null = null;
+  try {
+    attributionCalibration = buildAttributionCalibration(store).estimate;
+  } catch {
+    attributionCalibration = null;
+  }
+
+  data.insights = {
+    vocabulary,
+    ticketCoverage,
+    topTicket,
+    hourlyRate,
+    currency,
+    attributionCalibration,
+    reconciliation,
+  };
+  // Passive timeline annotation, not a comparison — `constraint-impact`/
+  // `get_constraint_impact` is where the before/after analysis lives. Every
+  // declared event, unfiltered by the displayed window: the list is small
+  // (`MAX_POLICY_EVENTS`-bounded) and a chart outside the window has nothing
+  // to mark, so filtering here would only add a second place the window
+  // logic could disagree with `byDay`'s own.
+  data.policyEvents = config.policyEvents ?? [];
+  return data;
+}
+
+/**
+ * Populate `data.currentSessionTicket` — the link/negate card's input.
+ * Synchronous and cheap: one indexed lookup for the most recent session id,
+ * one indexed lookup for its links. Never throws — any failure (empty store,
+ * pre-V19 schema) leaves the field null, which the card renders as its
+ * honest empty state rather than omitting itself.
+ */
+export function attachTicketAttribution(store: Store, data: DashboardData): DashboardData {
+  try {
+    const sessionId = store.getMostRecentSessionId();
+    if (!sessionId) {
+      data.currentSessionTicket = null;
+      return data;
+    }
+    const links = store.getTicketLinksForSession(sessionId).map((l) => ({
+      ticketKey: l.ticket_key,
+      source: l.source,
+      confidence: l.confidence,
+      granularity: l.granularity,
+      negated: l.negated !== 0,
+    }));
+    data.currentSessionTicket = { sessionId, links };
+  } catch {
+    data.currentSessionTicket = null;
+  }
+  return data;
+}
+
+/**
+ * G-5: `periodRange` throws "since and until must be provided together" when
+ * exactly one is set — but `attachCostPerTask` and `attachCalibration` below
+ * read `opts.since`/`opts.until` directly (to opt a genuine custom range OUT
+ * of their "all"→"month" perf cap) without going through `periodRange` at
+ * all, so that invariant never applied to them. A `since` supplied without a
+ * `until` silently fell through `isCustomRange = false`: the caller's `since`
+ * was DROPPED, the query fell back to the "month" preset, and the stamped
+ * scope described the window that was actually queried, not the one the
+ * caller asked for. Mirrors `periodRange`'s validation so the same malformed
+ * input fails the same way everywhere: both callers are already wrapped in a
+ * try/catch that leaves the affected field an honest `null` rather than a
+ * silently-substituted report.
+ */
+function assertPairedRange(opts: Pick<ReportOptions, "since" | "until">): void {
+  if (Boolean(opts.since) !== Boolean(opts.until)) {
+    throw new RangeError("since and until must be provided together");
+  }
 }
 
 /**
@@ -1392,6 +1710,7 @@ export async function attachCostPerTask(
     // An explicit custom since/until range is NOT capped this way — the user
     // already bounded it with two real dates, unlike the implicit/unbounded
     // "all" default, so no new hard cap is introduced for custom ranges.
+    assertPairedRange(opts);
     const isCustomRange = Boolean(opts.since && opts.until);
     const dashPeriod = opts.period ?? "all";
     const period = isCustomRange
@@ -1438,11 +1757,24 @@ export async function attachCalibration(
     const { buildCalibrationReport } = await import("../cost-per-task/index.js");
     // See attachCostPerTask's comment: same "all"→"month" perf cap, same
     // custom-range opt-out of that cap.
+    assertPairedRange(opts);
     const isCustomRange = Boolean(opts.since && opts.until);
     const dashPeriod = opts.period ?? "all";
-    const period = isCustomRange
+    // Typed as the three windows this actually produces rather than as
+    // `CostPerTaskOptions["period"]`, whose union still contains `"all"`. The
+    // fold below removes `"all"`, and saying so in the type is what lets the
+    // scope be derived from this local instead of re-deriving (and possibly
+    // re-deciding) the same fold a second time.
+    const period: "day" | "week" | "month" | undefined = isCustomRange
       ? undefined
-      : (dashPeriod === "all" ? "month" : dashPeriod) as CostPerTaskOptions["period"];
+      : dashPeriod === "all"
+        ? "month"
+        : dashPeriod;
+    // Derived from the SAME two locals the query below is built from, so the
+    // stated scope and the queried window cannot drift. A custom range left
+    // `period` undefined — which is exactly the case the "all time" heading
+    // would otherwise hide.
+    const scope: CalibrationScope = isCustomRange ? "custom-range" : (period ?? "month");
     data.calibration = await buildCalibrationReport(store, {
       period,
       since: isCustomRange ? opts.since : undefined,
@@ -1456,8 +1788,12 @@ export async function attachCalibration(
       digestDeps: extra?.digestDeps,
       correctionsClient: extra?.correctionsClient,
     });
+    // Set only after the await resolves, so a throw leaves BOTH fields null
+    // rather than a scope describing a report that was never built.
+    data.calibrationScope = scope;
   } catch {
     data.calibration = null;
+    data.calibrationScope = null;
   }
   return data;
 }

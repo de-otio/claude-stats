@@ -133,6 +133,11 @@
     "reportTag": "Фільтрує сесії за тегом",
     "reportSession": "Показує детальний вигляд однієї сесії",
     "reportHtml": "Записує самодостатній HTML-звіт у файл",
+    "pack": "Сформувати пакет обґрунтування: самодостатній HTML-документ і набір CSV-файлів за один календарний місяць для читача, який не використовує claude-stats",
+    "packPeriod": "Календарний місяць для звіту, РРРР-ММ (обов'язково)",
+    "packSections": "Розділи для включення через кому: headline,tickets,nonticket,hygiene,constraint,calibration (типово: headline,tickets,nonticket)",
+    "packOut": "Каталог для запису пакета (типово: поточний каталог)",
+    "packJson": "Вивести шляхи записаних файлів у форматі JSON замість підсумкового рядка",
     "status": "Показує розмір БД, кількість рядків та час останнього збирання",
     "export": "Експортує дані в CSV або JSON",
     "exportFormat": "Формат виводу: csv або json (за замовчуванням: json)",
@@ -174,7 +179,22 @@
     "costPerTaskByModel": "Розбити метрику за домінуючою моделлю",
     "costPerTaskCalibrate": "Вивести метрики калібрування (узгодженість проксі/сигналів з вашими мітками) у форматі JSON",
     "costPerTaskLlmJudge": "Запустити опціонального LLM-суддю для неоднозначних завдань (потребує налаштування llmJudge; надсилає знеособлену зведену інформацію про завдання на ваш ендпоінт)",
-    "costPerTaskLlmJudgeUnconfigured": "Запитано --llm-judge, але llmJudge.endpoint/model не задані; суддю пропущено."
+    "costPerTaskLlmJudgeUnconfigured": "Запитано --llm-judge, але llmJudge.endpoint/model не задані; суддю пропущено.",
+    "reportTicket": "Показати вартість/токени/сесії, віднесені до одного ключа тікета (напр. PROJ-123), а також покриття за період",
+    "taskClass": "Класифікувати сесії за класами задач і показати розподіл",
+    "taskClassLimit": "Класифікувати не більше ніж стільки сесій за цей запуск (з можливістю продовження)",
+    "ticket": "Прив’язати, скасувати або показати ручні прив’язки тікетів для сесії",
+    "ticketSessionArg": "ID сесії (або префікс)",
+    "ticketKeyArg": "Ключ тікета (напр. PROJ-123). Без інших прапорців: показує поточні прив’язки",
+    "ticketNegate": "Позначити цей ключ як tombstone для сесії (приховує його, навіть якщо автоматичне визначення й далі знаходить збіг)",
+    "ticketRemove": "Видалити ручну прив’язку для цього ключа (не впливає на tombstone скасування)",
+    "ticketList": "Показати прив’язки тікетів для сесії перед застосуванням будь-яких змін",
+    "packInvoiceCsv": "Шлях до експорту CSV із Cost Explorer (або еквівалентного) для звірки — перевизначає config.reconciliation.invoiceTotal лише для цього запуску",
+    "constraintImpact": "У що обійшлася або що заощадила заявлена зміна політики (ліміт бюджету, вилучення рівня моделі) в розрізі класів задач — вивід JSON; передайте до jq",
+    "constraintImpactDate": "Яку заявлену подію політики використати як точку порівняння (має збігатися з датою в config.policyEvents). За замовчуванням: найновіша",
+    "constraintImpactCsv": "Також записати таблицю за класами за цим шляхом CSV",
+    "constraintImpactMinSessions": "Мінімальний поріг сесій на клас і сторону (за замовчуванням: 8)",
+    "packDiscloseScope": "Додавати буквальний шлях до проєкту / UUID облікового запису в рядок області дії пакета та стовпці CSV. За замовчуванням не додається — локальний шлях може містити назву клієнта або неанонсованого продукту, а пакет призначений для передавання за межі цього комп'ютера."
   },
   "collection": {
     "collecting": "Збирання...",
@@ -229,8 +249,11 @@
     "thinkingDetail": "{{blocks}} блоків ({{percent}}% сесій)",
     "maxTokensWarning": "⚠  {{count}} відповідей було обрізано (max_tokens)",
     "resultsFound_one": "Знайдено {{count}} результат.",
+    "resultsFound_few": "Знайдено {{count}} результати.",
+    "resultsFound_many": "Знайдено {{count}} результатів.",
     "resultsFound_other": "Знайдено {{count}} результатів.",
     "wroteFile": "Записано {{file}}",
+    "wrotePack": "Пакет обґрунтування записано до {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
     "planValueUsed": "План: {{planFee}}/міс → {{percent}}% вартості плану використано в цьому періоді",
     "trendColumnDay": "День",
     "trendColumnWeek": "Тиждень",
@@ -243,6 +266,8 @@
     "tableTotals": "Підсумки",
     "unknownTime": "невідомо",
     "sessionSummary_one": "{{count}} сесія",
+    "sessionSummary_few": "{{count}} сесії",
+    "sessionSummary_many": "{{count}} сесій",
     "sessionSummary_other": "{{count}} сесій",
     "spendingTitle": "Витрати токенів — {{period}} ({{date}})",
     "spendingTotalCost": "Загальна вартість (еквівалент API)",
@@ -273,7 +298,18 @@
     "costPerTaskByModel": "За моделлю",
     "costPerTaskSuccessShort": "успіх",
     "costPerTaskInsufficient": "n/a (<{{min}} спост.)",
-    "costPerTaskObsShort": "спост."
+    "costPerTaskObsShort": "спост.",
+    "ticketTitle": "Тікет {{key}} — {{period}}",
+    "ticketNotFound": "Не знайдено витрат, віднесених до {{key}} за цей період — перевірте ключ і діапазон дат.",
+    "ticketTokensLabel": "Токени",
+    "ticketSourcesLabel": "Джерела",
+    "ticketCoverageTitle": "Покриття періоду",
+    "ticketCoverageLine": "{{attributed}} з {{total}} віднесено ({{ratio}})",
+    "ticketCoverageNone": "За цей період використання не зафіксовано.",
+    "ticketAmbiguousNote": "Неоднозначних сесій: {{count}} (пов'язані з кількома тікетами).",
+    "confidenceHigh": "висока достовірність",
+    "confidenceMedium": "середня достовірність",
+    "confidenceLow": "низька достовірність"
   },
   "status": {
     "databaseSize": "Розмір бази даних",
@@ -304,6 +340,8 @@
     "removed": "Видалено тег(и): {{tags}} із сесії {{sessionId}}",
     "noTagsFound": "Тегів не знайдено.",
     "tagCount_one": "сесія",
+    "tagCount_few": "сесії",
+    "tagCount_many": "сесій",
     "tagCount_other": "сесій"
   },
   "backfill": {
@@ -322,7 +360,9 @@
   "errors": {
     "cannotCombineHtml": "Не можна поєднувати --html з --trend або --detail",
     "cannotCombineTrendDetail": "Не можна поєднувати --trend і --detail",
-    "invalidDateRange": "Недійсний діапазон дат: {{message}}"
+    "invalidDateRange": "Недійсний діапазон дат: {{message}}",
+    "invalidPackPeriod": "Недійсний період пакета: {{message}}",
+    "invalidInvoiceCsv": "Не вдалося прочитати --invoice-csv {{path}}: {{message}}"
   },
   "repair": {
     "description": "Відновлення похідних даних, які звичайне збирання не може виправити заднім числом.",
@@ -428,5 +468,26 @@
     "deviceRemoved": "Device '{{name}}' removed.",
     "newDeviceDetected": "New device detected in sync group: {{name}} ({{id}}). Review in settings.",
     "mergeConflict": "Merge conflict resolved using latest timestamp."
+  },
+  "taskClass": {
+    "passSummary": "Класифіковано сесій: {{classified}}; {{alreadyCurrent}} вже актуальні, {{remaining}} залишилося (класифікатор v{{version}}).",
+    "noSessions": "Ще немає класифікованих сесій — спочатку виконайте 'collect'.",
+    "fineHeader": "За класом задачі:",
+    "coarseHeader": "За узагальненим класом:",
+    "abstainHeader": "Відмова від класифікації:",
+    "coverage": "Покриття: класифіковано сесій — {{classified}}, ще не класифіковано — {{unclassified}}.",
+    "mixedVersions": "⚠  Сесії класифіковано різними версіями класифікатора ({{versions}}). Повторно виконайте 'task-class' перед порівнянням класів за період.",
+    "confidenceMix": "впевненість: {{high}} висока, {{medium}} середня, {{low}} низька",
+    "caveat": "Застереження: узгодженість вимірювалася на згенерованому корпусі — за наміром генератора, а не за людськими мітками на реальних сесіях. Деталізовані класи придатні для звітів лише з цим застереженням; наводьте будь-який показник за класом разом із ним і з наведеним вище розподілом впевненості або використовуйте узагальнені класи."
+  },
+  "ticket": {
+    "sessionNoLinks": "Сесія {{sessionId}}: немає прив’язок тікетів",
+    "sessionLinks": "Сесія {{sessionId}}:",
+    "keyRequired": "Вкажіть ключ тікета разом із --negate/--remove.",
+    "activeLabel": "активний",
+    "negatedLabel": "скасований",
+    "linked": "Прив’язано {{key}} до сесії {{sessionId}}",
+    "negated": "Скасовано {{key}} для сесії {{sessionId}} (tombstone; автоматичне визначення не відновить його)",
+    "removed": "Видалено ручну прив’язку {{key}} із сесії {{sessionId}}"
   }
 }

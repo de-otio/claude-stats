@@ -131,8 +131,15 @@
     "reportDetail": "Show per-session listing instead of aggregate",
     "reportTrend": "Show usage broken down by time period instead of aggregate",
     "reportTag": "Filter sessions by tag",
+    "reportTicket": "Show cost/tokens/sessions attributed to one ticket key (e.g. PROJ-123), plus the period's coverage",
     "reportSession": "Show detailed view of a single session",
     "reportHtml": "Write a self-contained HTML report to a file",
+    "pack": "Generate the justification pack: a self-contained HTML document plus a CSV bundle for one calendar month, for a reader who does not run claude-stats",
+    "packPeriod": "Calendar month to report on, YYYY-MM (required)",
+    "packSections": "Comma-separated sections to include: headline,tickets,nonticket,hygiene,constraint,calibration (default: headline,tickets,nonticket)",
+    "packOut": "Directory to write the pack bundle into (default: current directory)",
+    "packJson": "Print the written file paths as JSON instead of a summary line",
+    "packInvoiceCsv": "Path to a Cost Explorer CSV export (or equivalent) to reconcile against — overrides config.reconciliation.invoiceTotal for this run only",
     "status": "Show database size, row counts, and last collection time",
     "export": "Export data to CSV or JSON",
     "exportFormat": "Output format: csv or json (default: json)",
@@ -153,6 +160,8 @@
     "tagRemove": "Remove the specified tags instead of adding",
     "tagList": "List tags for the session",
     "tags": "List all tags with session counts",
+    "taskClass": "Classify sessions into task classes and show the distribution",
+    "taskClassLimit": "Classify at most this many sessions in this run (resumable)",
     "backfill": "Re-parse all session files to backfill new fields (e.g. prompt_text)",
     "backfillVerbose": "Show per-file progress",
     "dashboard": "Output dashboard-ready JSON to stdout",
@@ -174,7 +183,18 @@
     "costPerTaskByModel": "Break the metric down by dominant model",
     "costPerTaskCalibrate": "Output calibration metrics (proxy/signal agreement vs your labels) as JSON",
     "costPerTaskLlmJudge": "Run the opt-in LLM judge on ambiguous tasks (needs llmJudge config; sends a blinded task summary to your endpoint)",
-    "costPerTaskLlmJudgeUnconfigured": "--llm-judge requested but llmJudge.endpoint/model are not set; skipping the judge."
+    "costPerTaskLlmJudgeUnconfigured": "--llm-judge requested but llmJudge.endpoint/model are not set; skipping the judge.",
+    "ticket": "Link, negate, or list manual ticket attributions for a session",
+    "ticketSessionArg": "Session ID (or prefix)",
+    "ticketKeyArg": "Ticket key (e.g. PROJ-123). Omitted with no other flag: lists current links",
+    "ticketNegate": "Tombstone this key for the session (suppresses it even if extraction keeps matching)",
+    "ticketRemove": "Remove a manual link for this key (does not affect the negation tombstone)",
+    "ticketList": "List ticket links for the session before applying any change",
+    "constraintImpact": "What a declared policy change (budget cap, model-tier removal) cost or saved, per task class — JSON output; pipe to jq",
+    "constraintImpactDate": "Which declared policy event to compare around (must match a config.policyEvents date). Default: the most recent",
+    "constraintImpactCsv": "Also write the per-class table to this CSV path",
+    "constraintImpactMinSessions": "Sample-size floor per class, per side (default: 8)",
+    "packDiscloseScope": "Include the literal project path / account UUID in the pack's scope line and CSV columns. Withheld by default — a local path can name a client or an unreleased product, and the pack is meant to leave this machine."
   },
   "collection": {
     "collecting": "Collecting...",
@@ -231,6 +251,7 @@
     "resultsFound_one": "{{count}} result found.",
     "resultsFound_other": "{{count}} results found.",
     "wroteFile": "Wrote {{file}}",
+    "wrotePack": "Wrote justification pack to {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
     "planValueUsed": "Plan: {{planFee}}/mo → {{percent}}% of plan value used this period",
     "trendColumnDay": "Day",
     "trendColumnWeek": "Week",
@@ -273,7 +294,18 @@
     "costPerTaskByModel": "By model",
     "costPerTaskSuccessShort": "success",
     "costPerTaskInsufficient": "n/a (<{{min}} obs)",
-    "costPerTaskObsShort": "obs"
+    "costPerTaskObsShort": "obs",
+    "ticketTitle": "Ticket {{key}} — {{period}}",
+    "ticketNotFound": "No attributed spend found for {{key}} in this period — check the key and the date range.",
+    "ticketTokensLabel": "Tokens",
+    "ticketSourcesLabel": "Sources",
+    "ticketCoverageTitle": "Period coverage",
+    "ticketCoverageLine": "{{attributed}} of {{total}} attributed ({{ratio}})",
+    "ticketCoverageNone": "No usage recorded for this period.",
+    "ticketAmbiguousNote": "{{count}} session(s) ambiguous (linked to more than one ticket).",
+    "confidenceHigh": "high confidence",
+    "confidenceMedium": "medium confidence",
+    "confidenceLow": "low confidence"
   },
   "status": {
     "databaseSize": "Database size",
@@ -306,6 +338,17 @@
     "tagCount_one": "session",
     "tagCount_other": "sessions"
   },
+  "taskClass": {
+    "passSummary": "Classified {{classified}} session(s); {{alreadyCurrent}} already current, {{remaining}} remaining (classifier v{{version}}).",
+    "noSessions": "No sessions classified yet — run 'collect' first.",
+    "fineHeader": "By task class:",
+    "coarseHeader": "By coarse class:",
+    "abstainHeader": "Declined to classify:",
+    "coverage": "Coverage: {{classified}} session(s) classified, {{unclassified}} not yet classified.",
+    "confidenceMix": "confidence: {{high}} high, {{medium}} medium, {{low}} low",
+    "caveat": "Caveat: agreement was measured against a generated corpus — the generator's intent, not human labels on real sessions. The fine-grained classes are report-grade only under that caveat; quote any per-class figure together with it and with the confidence mix above, or use the coarse classes.",
+    "mixedVersions": "⚠  Sessions were classified by more than one classifier version ({{versions}}). Re-run 'task-class' before comparing classes across a period."
+  },
   "backfill": {
     "resetCheckpoints": "Reset {{count}} file checkpoints. Running full re-collection...",
     "complete": "Backfill complete. {{filesProcessed}} files re-processed, {{messagesUpserted}} messages updated.",
@@ -333,7 +376,9 @@
   "errors": {
     "cannotCombineHtml": "Cannot combine --html with --trend or --detail",
     "cannotCombineTrendDetail": "Cannot combine --trend and --detail",
-    "invalidDateRange": "Invalid date range: {{message}}"
+    "invalidDateRange": "Invalid date range: {{message}}",
+    "invalidPackPeriod": "Invalid pack period: {{message}}",
+    "invalidInvoiceCsv": "Could not read --invoice-csv {{path}}: {{message}}"
   },
   "archive": {
     "description": "Manage transcript archives.",
@@ -428,5 +473,15 @@
     "deleteNote": "Note: Other devices still have copies of synced data. Uninstall or purge on those devices separately if needed.",
     "muted": "Also unregistered from Claude Code MCP server. Restart Claude Code for changes to take effect.",
     "notSynced": "Your data is not synced. No cloud data to delete."
+  },
+  "ticket": {
+    "sessionNoLinks": "Session {{sessionId}}: no ticket links",
+    "sessionLinks": "Session {{sessionId}}:",
+    "keyRequired": "Provide a ticket key with --negate/--remove.",
+    "activeLabel": "active",
+    "negatedLabel": "negated",
+    "linked": "Linked {{key}} to session {{sessionId}}",
+    "negated": "Negated {{key}} for session {{sessionId}} (tombstoned; automatic extraction will not resurrect it)",
+    "removed": "Removed manual link {{key}} from session {{sessionId}}"
   }
 }

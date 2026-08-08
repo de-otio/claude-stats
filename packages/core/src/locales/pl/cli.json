@@ -133,6 +133,11 @@
     "reportTag": "Filtruje sesje według tagu",
     "reportSession": "Pokazuje szczegółowy widok pojedynczej sesji",
     "reportHtml": "Zapisuje samowystarczalny raport HTML do pliku",
+    "pack": "Generuje pakiet uzasadniający: samodzielny dokument HTML oraz zestaw plików CSV za jeden miesiąc kalendarzowy, dla czytelnika, który nie korzysta z claude-stats",
+    "packPeriod": "Miesiąc kalendarzowy do raportu, RRRR-MM (wymagane)",
+    "packSections": "Sekcje do uwzględnienia, oddzielone przecinkami: headline,tickets,nonticket,hygiene,constraint,calibration (domyślnie: headline,tickets,nonticket)",
+    "packOut": "Katalog, do którego zapisać pakiet (domyślnie: bieżący katalog)",
+    "packJson": "Wypisuje zapisane ścieżki plików jako JSON zamiast linii podsumowania",
     "status": "Pokazuje rozmiar bazy danych, liczbę wierszy i czas ostatniego zbierania",
     "export": "Eksportuje dane do CSV lub JSON",
     "exportFormat": "Format wyjścia: csv lub json (domyślnie: json)",
@@ -174,7 +179,22 @@
     "costPerTaskByModel": "Rozbij metrykę według dominującego modelu",
     "costPerTaskCalibrate": "Wypisz metryki kalibracji (zgodność proxy/sygnału z Twoimi etykietami) jako JSON",
     "costPerTaskLlmJudge": "Uruchom opcjonalnego sędziego LLM dla niejednoznacznych zadań (wymaga konfiguracji llmJudge; wysyła zanonimizowane podsumowanie zadania do Twojego endpointu)",
-    "costPerTaskLlmJudgeUnconfigured": "Zażądano --llm-judge, ale llmJudge.endpoint/model nie są ustawione; pomijanie sędziego."
+    "costPerTaskLlmJudgeUnconfigured": "Zażądano --llm-judge, ale llmJudge.endpoint/model nie są ustawione; pomijanie sędziego.",
+    "reportTicket": "Pokaż koszt/tokeny/sesje przypisane do jednego klucza zgłoszenia (np. PROJ-123) oraz pokrycie okresu",
+    "taskClass": "Klasyfikuj sesje według klas zadań i pokaż rozkład",
+    "taskClassLimit": "Klasyfikuj maksymalnie tyle sesji w tym uruchomieniu (z możliwością wznowienia)",
+    "ticket": "Powiąż, zaneguj lub wyświetl ręczne przypisania zgłoszeń dla sesji",
+    "ticketSessionArg": "Identyfikator sesji (lub prefiks)",
+    "ticketKeyArg": "Klucz zgłoszenia (np. PROJ-123). Pominięty bez innych flag: wyświetla bieżące powiązania",
+    "ticketNegate": "Oznacz ten klucz jako usunięty dla sesji (ukrywa go, nawet jeśli ekstrakcja nadal go dopasowuje)",
+    "ticketRemove": "Usuń ręczne powiązanie dla tego klucza (nie wpływa na znacznik negacji)",
+    "ticketList": "Wyświetl powiązania zgłoszeń dla sesji przed zastosowaniem jakiejkolwiek zmiany",
+    "packInvoiceCsv": "Ścieżka do eksportu CSV z Cost Explorer (lub odpowiednika) do uzgodnienia — zastępuje config.reconciliation.invoiceTotal tylko dla tego uruchomienia",
+    "constraintImpact": "Co zadeklarowana zmiana polityki (limit budżetu, usunięcie poziomu modelu) kosztowała lub zaoszczędziła, w podziale na klasę zadań — wyjście JSON; przekieruj do jq",
+    "constraintImpactDate": "Które zadeklarowane zdarzenie polityki ma być punktem porównania (musi odpowiadać dacie w config.policyEvents). Domyślnie: najnowsze",
+    "constraintImpactCsv": "Zapisz też tabelę klas pod tą ścieżką CSV",
+    "constraintImpactMinSessions": "Minimalna liczba sesji na klasę i stronę (domyślnie: 8)",
+    "packDiscloseScope": "Dołącz dosłowną ścieżkę projektu / UUID konta w wierszu zakresu pakietu i w kolumnach CSV. Domyślnie pomijane — lokalna ścieżka może zdradzać nazwę klienta lub niewydanego produktu, a pakiet z założenia opuszcza ten komputer."
   },
   "collection": {
     "collecting": "Zbieranie...",
@@ -229,8 +249,11 @@
     "thinkingDetail": "{{blocks}} bloków ({{percent}}% sesji)",
     "maxTokensWarning": "⚠  {{count}} odpowiedzi zostało obciętych (max_tokens)",
     "resultsFound_one": "Znaleziono {{count}} wynik.",
+    "resultsFound_few": "Znaleziono {{count}} wyniki.",
+    "resultsFound_many": "Znaleziono {{count}} wyników.",
     "resultsFound_other": "Znaleziono {{count}} wyników.",
     "wroteFile": "Zapisano {{file}}",
+    "wrotePack": "Zapisano pakiet uzasadniający do {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
     "planValueUsed": "Plan: {{planFee}}/mies → {{percent}}% wartości planu wykorzystano w tym okresie",
     "trendColumnDay": "Dzień",
     "trendColumnWeek": "Tydzień",
@@ -243,6 +266,8 @@
     "tableTotals": "Sumy",
     "unknownTime": "nieznany",
     "sessionSummary_one": "{{count}} sesja",
+    "sessionSummary_few": "{{count}} sesje",
+    "sessionSummary_many": "{{count}} sesji",
     "sessionSummary_other": "{{count}} sesji",
     "spendingTitle": "Wydatki tokenów — {{period}} ({{date}})",
     "spendingTotalCost": "Całkowity koszt (ekwiwalent API)",
@@ -273,7 +298,18 @@
     "costPerTaskByModel": "Według modelu",
     "costPerTaskSuccessShort": "sukces",
     "costPerTaskInsufficient": "n/a (<{{min}} obs.)",
-    "costPerTaskObsShort": "obs."
+    "costPerTaskObsShort": "obs.",
+    "ticketTitle": "Zgłoszenie {{key}} — {{period}}",
+    "ticketNotFound": "Nie znaleziono przypisanych kosztów dla {{key}} w tym okresie — sprawdź klucz i zakres dat.",
+    "ticketTokensLabel": "Tokeny",
+    "ticketSourcesLabel": "Źródła",
+    "ticketCoverageTitle": "Pokrycie okresu",
+    "ticketCoverageLine": "Przypisano {{attributed}} z {{total}} ({{ratio}})",
+    "ticketCoverageNone": "Brak zarejestrowanego użycia w tym okresie.",
+    "ticketAmbiguousNote": "Niejednoznaczne sesje: {{count}} (powiązane z więcej niż jednym zgłoszeniem).",
+    "confidenceHigh": "wysoka pewność",
+    "confidenceMedium": "średnia pewność",
+    "confidenceLow": "niska pewność"
   },
   "status": {
     "databaseSize": "Rozmiar bazy danych",
@@ -304,6 +340,8 @@
     "removed": "Usunięto tag(i): {{tags}} z sesji {{sessionId}}",
     "noTagsFound": "Nie znaleziono tagów.",
     "tagCount_one": "sesja",
+    "tagCount_few": "sesje",
+    "tagCount_many": "sesji",
     "tagCount_other": "sesji"
   },
   "backfill": {
@@ -322,7 +360,9 @@
   "errors": {
     "cannotCombineHtml": "Nie można łączyć --html z --trend ani --detail",
     "cannotCombineTrendDetail": "Nie można łączyć --trend i --detail",
-    "invalidDateRange": "Nieprawidłowy zakres dat: {{message}}"
+    "invalidDateRange": "Nieprawidłowy zakres dat: {{message}}",
+    "invalidPackPeriod": "Nieprawidłowy okres pakietu: {{message}}",
+    "invalidInvoiceCsv": "Nie można odczytać --invoice-csv {{path}}: {{message}}"
   },
   "repair": {
     "description": "Napraw dane pochodne, których normalne zbieranie nie potrafi poprawić z mocą wsteczną.",
@@ -428,5 +468,26 @@
     "deviceRemoved": "Device '{{name}}' removed.",
     "newDeviceDetected": "New device detected in sync group: {{name}} ({{id}}). Review in settings.",
     "mergeConflict": "Merge conflict resolved using latest timestamp."
+  },
+  "taskClass": {
+    "passSummary": "Sklasyfikowano {{classified}} sesji; {{alreadyCurrent}} już aktualnych, {{remaining}} pozostało (klasyfikator v{{version}}).",
+    "noSessions": "Nie sklasyfikowano jeszcze żadnej sesji — najpierw uruchom 'collect'.",
+    "fineHeader": "Według klasy zadania:",
+    "coarseHeader": "Według klasy ogólnej:",
+    "abstainHeader": "Odmowa klasyfikacji:",
+    "coverage": "Pokrycie: {{classified}} sesji sklasyfikowanych, {{unclassified}} jeszcze niesklasyfikowanych.",
+    "mixedVersions": "⚠  Sesje zostały sklasyfikowane przez więcej niż jedną wersję klasyfikatora ({{versions}}). Uruchom ponownie 'task-class' przed porównywaniem klas w danym okresie.",
+    "confidenceMix": "pewność: {{high}} wysoka, {{medium}} średnia, {{low}} niska",
+    "caveat": "Zastrzeżenie: zgodność mierzono względem wygenerowanego korpusu — wobec intencji generatora, a nie ludzkich etykiet z rzeczywistych sesji. Szczegółowe klasy nadają się do raportowania wyłącznie z tym zastrzeżeniem; każdą wartość dla pojedynczej klasy podawaj razem z nim oraz z powyższym rozkładem pewności albo używaj klas zgrubnych."
+  },
+  "ticket": {
+    "sessionNoLinks": "Sesja {{sessionId}}: brak powiązanych zgłoszeń",
+    "sessionLinks": "Sesja {{sessionId}}:",
+    "keyRequired": "Podaj klucz zgłoszenia razem z opcją --negate/--remove.",
+    "activeLabel": "aktywne",
+    "negatedLabel": "zanegowane",
+    "linked": "Powiązano {{key}} z sesją {{sessionId}}",
+    "negated": "Zanegowano {{key}} dla sesji {{sessionId}} (oznaczono jako usunięte; automatyczna ekstrakcja go nie przywróci)",
+    "removed": "Usunięto ręczne powiązanie {{key}} z sesji {{sessionId}}"
   }
 }

@@ -51,6 +51,17 @@ Most tools accept an optional `account` filter (UUID, full or prefix-matched) to
 | `search_history` | Search prompt history by keyword |
 | `get_cost_per_task` | Cost per successful task — outcome-cost overall and per model (read-only) |
 | `summarize_day` | Structured daily-recap digest with semantic clustering — "what did I get done today?" |
+| `get_cost_per_ticket` | Cost attributed to work-item ticket keys (e.g. `PROJ-123`) from local evidence — branch names, commit subjects, prompt mentions — with a coverage denominator and confidence tier. No tracker API is called |
+| `get_calibration` | Whether those confidence tiers have ever been checked against your own corrections — an agreement rate, never "accuracy" |
+| `get_efficiency_hints` | Self-audit of your own wasted spend across six local patterns; nothing here ranks developers or leaves the machine |
+| `get_constraint_impact` | What a *declared* policy change (budget cap, model-tier removal) measurably cost or saved, per task class |
+| `generate_justification_pack` | Write a self-contained HTML + CSV bundle for one month to local disk — the artifact you hand to someone who doesn't run claude-stats |
+| `get_account_info` | Current login's seat tier, billing type, and the accounts known on this machine |
+| `get_plan_mechanics_reference` | Dated snapshot of Team/Enterprise seat ranges and pricing, with a staleness warning |
+| `size_seats` | Seat-sizing scenario table from headcount + technical fraction (never picks a plan) |
+
+All 16 tools are described in
+[doc/user-doc/commands.md](../doc/user-doc/commands.md#mcp).
 
 ## Settings
 

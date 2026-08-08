@@ -72,7 +72,7 @@ Top tools: Read:412  Edit:198  Bash:87  Glob:62  Grep:55
 claude-stats serve --open
 ```
 
-This starts a local web server on `http://localhost:9120` and opens it in your browser. The dashboard shows token trends, model splits, project breakdowns, and cache efficiency as interactive charts. Press `Ctrl+C` to stop the server.
+This starts a local web server on `http://localhost:9120` and opens it in your browser. It lands on **Insights**, which answers what AI cost and whether it was worth it; the token trends, model splits, project breakdowns and cache efficiency live one click down, grouped into four question-shaped views. See [Navigation](output-guide.md#navigation) for the map. Press `Ctrl+C` to stop the server.
 
 Alternatively, export a self-contained HTML file you can open any time:
 

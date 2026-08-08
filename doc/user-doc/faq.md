@@ -14,7 +14,13 @@ If you use VS Code, install the extension for an in-editor dashboard panel and s
 
 Not by default. Out of the box everything stays on your machine — `claude-stats` reads `~/.claude/projects/`, writes to `~/.claude-stats/`, and makes no network requests.
 
-There is one **opt-in** exception: if you explicitly turn on [backup and sync](backup-and-sync.md), an **end-to-end-encrypted** copy of your stats is written to a cloud folder *you* choose (e.g. your existing Dropbox/iCloud folder). It is encrypted on your device first — your cloud provider stores opaque bytes it cannot read — and it is never sent to any claude-stats server. You control whether this is on.
+There are three **opt-in** exceptions, all off until you turn them on:
+
+- **[Backup and sync](backup-and-sync.md)** writes an **end-to-end-encrypted** copy of your stats to a cloud folder *you* choose (e.g. your existing Dropbox/iCloud folder). It is encrypted on your device first — your cloud provider stores opaque bytes it cannot read — and it is never sent to any claude-stats server.
+- **[Team sync](team-sync.md)** sends day-bucketed aggregate counts to a backend you configure. It is structurally incapable of carrying prompt text — see the next answer.
+- **The [LLM judge](commands.md#llmjudge)** (`config.llmJudge`) is the one feature that can send your **prompt text** off the machine: it POSTs a blinded task summary to whatever endpoint you configure, so that a model can rule on ambiguous task outcomes. Point it at a local endpoint (Ollama and similar) and the text stays on the machine; point it at a hosted API and it goes to that provider. It is off by default and additionally requires `experimentalSignals`.
+
+There is also one thing you can *generate* and send yourself: `claude-stats pack` writes a plaintext HTML/CSV bundle to disk for handing to a manager. The tool never transmits it — but it is designed to leave, so it runs a stricter redaction than the dashboard does.
 
 ### What happens if I lose my recovery key?
 

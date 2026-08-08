@@ -9,7 +9,9 @@
     "efficiency": "Eficiencia",
     "energy": "Energía",
     "settings": "Configuración",
-    "classify": "Clasificar"
+    "classify": "Clasificar",
+    "spending": "Gasto",
+    "insights": "Perspectivas"
   },
   "toolbar": {
     "period": "Periodo:",
@@ -49,6 +51,7 @@
     "tokenBreakdown": "Desglose de tokens",
     "cacheUsage": "Uso de caché",
     "cumulativeApiValue": "Valor API acumulado vs cuota del plan",
+    "policyEvents": "Eventos de política",
     "topProjects": "Proyectos principales",
     "tokensByProject": "Cuota de tokens por proyecto",
     "energyByProject": "Consumo de energía por proyecto",
@@ -467,5 +470,79 @@
     "splitHint": "Dividir mantiene el coste de cada sesión con la cuenta que realmente la ejecutó. Úsalo para proyectos compartidos entre suscripciones (p. ej., cuando el límite de un plan no es suficiente).",
     "apply": "Aplicar",
     "applying": "Aplicando..."
+  },
+  "insights": {
+    "lede": "Las cinco preguntas para las que existe esta herramienta. Cada tarjeta enlaza con sus pruebas.",
+    "cards": {
+      "cost": "¿Cuánto costó la IA?",
+      "bought": "¿Qué se obtuvo?",
+      "efficiency": "¿Fue eficiente?",
+      "setup": "¿Es correcta la configuración?",
+      "change": "¿Qué debería cambiar?"
+    },
+    "alerts": {
+      "fallbackRates": "Parte del uso se tarificó con tarifas de primera parte en una plataforma asociada (Bedrock o Vertex). Todas las cifras de coste aquí son estimaciones hasta que se configuren las tarifas del socio.",
+      "action": "Revisar",
+      "reconciliationDrift": "El coste ascendente no cuadra con el total de factura configurado — el panel de conciliación de abajo muestra el residuo y sus posibles causas."
+    },
+    "verdict": {
+      "goodValue": "Tu plan tiene buena relación calidad-precio para lo que lo usas",
+      "underusing": "Estás usando menos de lo que cubre tu plan",
+      "noPlan": "No se detectó ningún plan — los costes se leen como uso medido"
+    }
+  },
+  "ticketCard": {
+    "title": "Atribución de tickets",
+    "noSession": "Aún no hay sesiones registradas: nada que vincular.",
+    "session": "Sesión actual: {{sessionId}}…",
+    "noLinks": "No hay tickets vinculados a esta sesión.",
+    "negatedBadge": "anulado",
+    "negateAction": "Anular",
+    "removeAction": "Quitar",
+    "linkAction": "Vincular",
+    "keyPlaceholder": "PROJ-123"
+  },
+  "views": {
+    "insights": "Perspectivas",
+    "cost-and-controlling": "Costes y control",
+    "tickets-and-value": "Tickets y valor",
+    "efficiency-and-hygiene": "Eficiencia e higiene",
+    "plan-and-policy": "Plan y directivas",
+    "sessions": "Sesiones",
+    "energy": "Energía",
+    "settings": "Configuración"
+  },
+  "filters": {
+    "legend": "Acotar esta vista",
+    "scopeNote": "Los filtros vuelven a ejecutar todo el informe, por lo que acotan todas las vistas, no solo esta.",
+    "project": "Proyecto:",
+    "ticket": "Ticket:",
+    "taskClass": "Tipo de tarea:",
+    "any": "Cualquiera",
+    "ticketPlaceholder": "p. ej. PROJ-123",
+    "apply": "Aplicar filtros",
+    "clear": "Borrar",
+    "active_one": "{{count}} filtro activo",
+    "active_other": "{{count}} filtros activos",
+    "modelUnavailable": "Filtrar por modelo aún no está disponible: acotaría los totales de tokens sin acotar las sesiones a las que pertenecen.",
+    "active_many": "{{count}} filtros activos"
+  },
+  "taskClasses": {
+    "debug": "Depuración",
+    "greenfield": "Nueva funcionalidad",
+    "refactor-multi-file": "Refactorización",
+    "config-chore": "Configuración / mantenimiento",
+    "review": "Revisión",
+    "explore": "Exploración",
+    "unknown": "Sin clasificar"
+  },
+  "costQuality": {
+    "title": "Calidad del coste",
+    "frontierLayer": "Dónde se sitúa el gasto respecto a la frontera",
+    "perTaskLayer": "Cuánto costó una tarea con éxito",
+    "calibrationLayer": "Hasta qué punto fiarse de las etiquetas de resultado",
+    "calibrationReady": "Las etiquetas de resultado están calibradas: ver cómo",
+    "calibrationNotReady": "Las etiquetas de resultado aún no están calibradas: ver por qué",
+    "calibrationNoLabels": "Las etiquetas de resultado no están calibradas: nada etiquetado aún"
   }
 }

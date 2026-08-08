@@ -133,6 +133,11 @@
     "reportTag": "Sitzungen nach Tag filtern",
     "reportSession": "Detailansicht einer einzelnen Sitzung anzeigen",
     "reportHtml": "Eigenständigen HTML-Bericht in eine Datei schreiben",
+    "pack": "Das Rechtfertigungspaket erzeugen: ein eigenständiges HTML-Dokument plus ein CSV-Bündel für einen Kalendermonat, für Leser ohne claude-stats",
+    "packPeriod": "Kalendermonat für den Bericht, JJJJ-MM (erforderlich)",
+    "packSections": "Kommagetrennte Abschnitte: headline,tickets,nonticket,hygiene,constraint,calibration (Standard: headline,tickets,nonticket)",
+    "packOut": "Verzeichnis, in das das Paket-Bündel geschrieben wird (Standard: aktuelles Verzeichnis)",
+    "packJson": "Geschriebene Dateipfade als JSON statt einer Zusammenfassungszeile ausgeben",
     "status": "Datenbankgröße, Zeilenanzahl und letzte Erfassungszeit anzeigen",
     "export": "Daten als CSV oder JSON exportieren",
     "exportFormat": "Ausgabeformat: csv oder json (Standard: json)",
@@ -174,7 +179,22 @@
     "costPerTaskByModel": "Die Metrik nach dominantem Modell aufschlüsseln",
     "costPerTaskCalibrate": "Kalibrierungsmetriken (Übereinstimmung von Proxy/Signal mit deinen Labels) als JSON ausgeben",
     "costPerTaskLlmJudge": "Den optionalen LLM-Richter für mehrdeutige Aufgaben ausführen (benötigt llmJudge-Konfiguration; sendet eine anonymisierte Aufgabenzusammenfassung an deinen Endpunkt)",
-    "costPerTaskLlmJudgeUnconfigured": "--llm-judge angefordert, aber llmJudge.endpoint/model sind nicht gesetzt; Richter wird übersprungen."
+    "costPerTaskLlmJudgeUnconfigured": "--llm-judge angefordert, aber llmJudge.endpoint/model sind nicht gesetzt; Richter wird übersprungen.",
+    "reportTicket": "Kosten/Tokens/Sessions anzeigen, die einem Ticket-Key (z. B. PROJ-123) zugeordnet sind, samt Abdeckung des Zeitraums",
+    "taskClass": "Sessions in Aufgabenklassen klassifizieren und die Verteilung anzeigen",
+    "taskClassLimit": "Höchstens so viele Sessions in diesem Durchlauf klassifizieren (fortsetzbar)",
+    "ticket": "Manuelle Ticket-Zuordnungen für eine Session verknüpfen, negieren oder auflisten",
+    "ticketSessionArg": "Session-ID (oder Präfix)",
+    "ticketKeyArg": "Ticket-Schlüssel (z. B. PROJ-123). Ohne weitere Flags: listet aktuelle Verknüpfungen auf",
+    "ticketNegate": "Diesen Schlüssel für die Session als Tombstone markieren (unterdrückt ihn, auch wenn die Extraktion weiterhin passt)",
+    "ticketRemove": "Eine manuelle Verknüpfung für diesen Schlüssel entfernen (betrifft den Negations-Tombstone nicht)",
+    "ticketList": "Ticket-Verknüpfungen der Session auflisten, bevor Änderungen angewendet werden",
+    "packInvoiceCsv": "Pfad zu einem Cost Explorer-CSV-Export (oder gleichwertig) für den Abgleich – überschreibt config.reconciliation.invoiceTotal nur für diesen Durchlauf",
+    "constraintImpact": "Was eine deklarierte Richtlinienänderung (Budgetgrenze, Entfernung einer Modellstufe) pro Aufgabenklasse gekostet oder eingespart hat – JSON-Ausgabe; an jq weiterleiten",
+    "constraintImpactDate": "Welches deklarierte Policy-Ereignis als Vergleichspunkt dient (muss einem Datum in config.policyEvents entsprechen). Standard: das jüngste",
+    "constraintImpactCsv": "Die Klassen-Tabelle zusätzlich in diesen CSV-Pfad schreiben",
+    "constraintImpactMinSessions": "Mindestanzahl Sessions pro Klasse und Seite (Standard: 8)",
+    "packDiscloseScope": "Den literalen Projektpfad / die Account-UUID in die Scope-Zeile des Packs und in die CSV-Spalten aufnehmen. Standardmäßig zurückgehalten – ein lokaler Pfad kann einen Kunden oder ein unveröffentlichtes Produkt verraten, und das Pack ist dafür gedacht, diesen Computer zu verlassen."
   },
   "collection": {
     "collecting": "Erfassung läuft...",
@@ -231,6 +251,7 @@
     "resultsFound_one": "{{count}} Ergebnis gefunden.",
     "resultsFound_other": "{{count}} Ergebnisse gefunden.",
     "wroteFile": "{{file}} geschrieben",
+    "wrotePack": "Rechtfertigungspaket geschrieben nach {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
     "planValueUsed": "Plan: {{planFee}}/Monat → {{percent}}% des Planwerts in diesem Zeitraum genutzt",
     "trendColumnDay": "Tag",
     "trendColumnWeek": "Woche",
@@ -273,7 +294,18 @@
     "costPerTaskByModel": "Nach Modell",
     "costPerTaskSuccessShort": "Erfolg",
     "costPerTaskInsufficient": "n/a (<{{min}} Beob.)",
-    "costPerTaskObsShort": "Beob."
+    "costPerTaskObsShort": "Beob.",
+    "ticketTitle": "Ticket {{key}} — {{period}}",
+    "ticketNotFound": "Keine zugeordneten Kosten für {{key}} in diesem Zeitraum gefunden — prüfen Sie den Key und den Datumsbereich.",
+    "ticketTokensLabel": "Tokens",
+    "ticketSourcesLabel": "Quellen",
+    "ticketCoverageTitle": "Abdeckung des Zeitraums",
+    "ticketCoverageLine": "{{attributed}} von {{total}} zugeordnet ({{ratio}})",
+    "ticketCoverageNone": "Für diesen Zeitraum wurde keine Nutzung erfasst.",
+    "ticketAmbiguousNote": "{{count}} Session(s) mehrdeutig (mit mehr als einem Ticket verknüpft).",
+    "confidenceHigh": "hohe Konfidenz",
+    "confidenceMedium": "mittlere Konfidenz",
+    "confidenceLow": "niedrige Konfidenz"
   },
   "status": {
     "databaseSize": "Datenbankgröße",
@@ -322,7 +354,9 @@
   "errors": {
     "cannotCombineHtml": "--html kann nicht mit --trend oder --detail kombiniert werden",
     "cannotCombineTrendDetail": "--trend und --detail können nicht kombiniert werden",
-    "invalidDateRange": "Ungültiger Zeitraum: {{message}}"
+    "invalidDateRange": "Ungültiger Zeitraum: {{message}}",
+    "invalidPackPeriod": "Ungültiger Paketzeitraum: {{message}}",
+    "invalidInvoiceCsv": "--invoice-csv {{path}} konnte nicht gelesen werden: {{message}}"
   },
   "repair": {
     "description": "Repariert abgeleitete Daten, die die normale Erfassung nicht rückwirkend beheben kann.",
@@ -428,5 +462,26 @@
     "deviceRemoved": "Device '{{name}}' removed.",
     "newDeviceDetected": "New device detected in sync group: {{name}} ({{id}}). Review in settings.",
     "mergeConflict": "Merge conflict resolved using latest timestamp."
+  },
+  "taskClass": {
+    "passSummary": "{{classified}} Session(s) klassifiziert; {{alreadyCurrent}} bereits aktuell, {{remaining}} verbleibend (Klassifizierer v{{version}}).",
+    "noSessions": "Noch keine Sessions klassifiziert – zuerst 'collect' ausführen.",
+    "fineHeader": "Nach Aufgabenklasse:",
+    "coarseHeader": "Nach Grobklasse:",
+    "abstainHeader": "Klassifizierung abgelehnt:",
+    "coverage": "Abdeckung: {{classified}} Session(s) klassifiziert, {{unclassified}} noch nicht klassifiziert.",
+    "mixedVersions": "⚠  Sessions wurden mit mehr als einer Klassifizierer-Version ({{versions}}) klassifiziert. Führen Sie 'task-class' erneut aus, bevor Sie Klassen über einen Zeitraum hinweg vergleichen.",
+    "confidenceMix": "Konfidenz: {{high}} hoch, {{medium}} mittel, {{low}} niedrig",
+    "caveat": "Vorbehalt: Die Übereinstimmung wurde anhand eines generierten Korpus gemessen — gegen die Absicht des Generators, nicht gegen menschliche Labels aus echten Sessions. Die feingranularen Klassen sind nur unter diesem Vorbehalt berichtsfähig; nennen Sie jede klassenspezifische Zahl stets zusammen mit ihm und mit der obigen Konfidenzverteilung, oder verwenden Sie die groben Klassen."
+  },
+  "ticket": {
+    "sessionNoLinks": "Session {{sessionId}}: keine Ticket-Verknüpfungen",
+    "sessionLinks": "Session {{sessionId}}:",
+    "keyRequired": "Geben Sie mit --negate/--remove einen Ticket-Schlüssel an.",
+    "activeLabel": "aktiv",
+    "negatedLabel": "negiert",
+    "linked": "{{key}} mit Session {{sessionId}} verknüpft",
+    "negated": "{{key}} für Session {{sessionId}} negiert (Tombstone gesetzt; automatische Extraktion stellt ihn nicht wieder her)",
+    "removed": "Manuelle Verknüpfung {{key}} aus Session {{sessionId}} entfernt"
   }
 }

@@ -133,6 +133,11 @@
     "reportTag": "按标签筛选会话",
     "reportSession": "显示单个会话的详情视图",
     "reportHtml": "将自包含的 HTML 报告写入文件",
+    "pack": "生成说明材料包：为一个日历月生成自包含的 HTML 文档及 CSV 数据包，供不使用 claude-stats 的读者查看",
+    "packPeriod": "要生成报告的日历月，YYYY-MM（必填）",
+    "packSections": "要包含的部分，以逗号分隔：headline,tickets,nonticket,hygiene,constraint,calibration（默认：headline,tickets,nonticket）",
+    "packOut": "写入材料包的目录（默认：当前目录）",
+    "packJson": "以 JSON 形式输出已写入的文件路径，而非摘要行",
     "status": "显示数据库大小、行数及上次收集时间",
     "export": "将数据导出为 CSV 或 JSON",
     "exportFormat": "输出格式: csv 或 json（默认: json）",
@@ -174,7 +179,22 @@
     "costPerTaskByModel": "按主要模型细分该指标",
     "costPerTaskCalibrate": "以 JSON 输出校准指标（代理/信号与你的标签的一致性）",
     "costPerTaskLlmJudge": "对模糊任务运行可选的 LLM 评判（需要 llmJudge 配置；会将匿名化的任务摘要发送到你的端点）",
-    "costPerTaskLlmJudgeUnconfigured": "请求了 --llm-judge，但未配置 llmJudge.endpoint/model；跳过评判。"
+    "costPerTaskLlmJudgeUnconfigured": "请求了 --llm-judge，但未配置 llmJudge.endpoint/model；跳过评判。",
+    "reportTicket": "显示归属于某个工单编号（例如 PROJ-123）的费用/token/session，以及该时段的覆盖情况",
+    "taskClass": "将 session 分类为任务类别并显示分布",
+    "taskClassLimit": "本次运行最多分类的 session 数（可恢复）",
+    "ticket": "链接、屏蔽或列出会话的手动工单关联",
+    "ticketSessionArg": "会话 ID（或前缀）",
+    "ticketKeyArg": "工单标识（例如 PROJ-123）。省略且未指定其他标志时：列出当前链接",
+    "ticketNegate": "为该会话屏蔽此标识（即使提取仍能匹配也会将其抑制）",
+    "ticketRemove": "移除此标识的手动链接（不影响屏蔽标记）",
+    "ticketList": "在应用任何更改前列出该会话的工单链接",
+    "packInvoiceCsv": "用于对账的 Cost Explorer CSV 导出文件（或同类文件）的路径 — 仅对本次运行覆盖 config.reconciliation.invoiceTotal",
+    "constraintImpact": "按任务类别列出一项已声明的策略变更（预算上限、移除某个模型档位）造成的成本或节省 — JSON 输出；可管道传给 jq",
+    "constraintImpactDate": "以哪个已声明的策略事件作为比较基准（必须匹配 config.policyEvents 中的某个日期）。默认：最近的一个",
+    "constraintImpactCsv": "同时将按类别的表格写入此 CSV 路径",
+    "constraintImpactMinSessions": "每个类别每一侧的最小会话数阈值（默认：8）",
+    "packDiscloseScope": "在数据包的范围行和 CSV 列中包含完整的项目路径 / 账户 UUID。默认不包含——本地路径可能暴露客户名称或未发布的产品，而数据包本就是要离开本机的。"
   },
   "collection": {
     "collecting": "收集中...",
@@ -231,6 +251,7 @@
     "resultsFound_one": "找到 {{count}} 条结果。",
     "resultsFound_other": "找到 {{count}} 条结果。",
     "wroteFile": "已写入 {{file}}",
+    "wrotePack": "说明材料包已写入 {{dir}}（report.html、tickets.csv、nonticket.csv、summary.csv）",
     "planValueUsed": "套餐: {{planFee}}/月 → 本期已使用套餐价值的 {{percent}}%",
     "trendColumnDay": "日",
     "trendColumnWeek": "周",
@@ -273,7 +294,18 @@
     "costPerTaskByModel": "按模型",
     "costPerTaskSuccessShort": "成功",
     "costPerTaskInsufficient": "n/a（<{{min}} 次观测）",
-    "costPerTaskObsShort": "观测"
+    "costPerTaskObsShort": "观测",
+    "ticketTitle": "工单 {{key}} — {{period}}",
+    "ticketNotFound": "在此时段内未找到归属于 {{key}} 的用量 — 请检查工单编号和日期范围。",
+    "ticketTokensLabel": "Token",
+    "ticketSourcesLabel": "来源",
+    "ticketCoverageTitle": "时段覆盖情况",
+    "ticketCoverageLine": "{{total}} 中已归属 {{attributed}}（{{ratio}}）",
+    "ticketCoverageNone": "此时段未记录任何用量。",
+    "ticketAmbiguousNote": "{{count}} 个 session 存在歧义（关联到多个工单）。",
+    "confidenceHigh": "高置信度",
+    "confidenceMedium": "中置信度",
+    "confidenceLow": "低置信度"
   },
   "status": {
     "databaseSize": "数据库大小",
@@ -322,7 +354,9 @@
   "errors": {
     "cannotCombineHtml": "--html 不能与 --trend 或 --detail 组合使用",
     "cannotCombineTrendDetail": "--trend 和 --detail 不能组合使用",
-    "invalidDateRange": "无效的日期范围：{{message}}"
+    "invalidDateRange": "无效的日期范围：{{message}}",
+    "invalidPackPeriod": "无效的材料包时间段：{{message}}",
+    "invalidInvoiceCsv": "无法读取 --invoice-csv {{path}}：{{message}}"
   },
   "repair": {
     "description": "修复常规采集无法追溯修正的派生数据。",
@@ -428,5 +462,26 @@
     "deviceRemoved": "Device '{{name}}' removed.",
     "newDeviceDetected": "New device detected in sync group: {{name}} ({{id}}). Review in settings.",
     "mergeConflict": "Merge conflict resolved using latest timestamp."
+  },
+  "taskClass": {
+    "passSummary": "已分类 {{classified}} 个 session；{{alreadyCurrent}} 个已是最新，{{remaining}} 个待处理（分类器 v{{version}}）。",
+    "noSessions": "尚未分类任何 session — 请先运行 'collect'。",
+    "fineHeader": "按任务类别：",
+    "coarseHeader": "按粗粒度类别：",
+    "abstainHeader": "未进行分类：",
+    "coverage": "覆盖率：已分类 {{classified}} 个 session，{{unclassified}} 个尚未分类。",
+    "mixedVersions": "⚠  这些 session 由多个分类器版本（{{versions}}）分类。跨时间段比较类别前，请重新运行 'task-class'。",
+    "confidenceMix": "置信度：{{high}} 高，{{medium}} 中，{{low}} 低",
+    "caveat": "注意：一致性是针对生成的语料库测得的 — 依据的是生成器的意图，而非真实 session 上的人工标注。细粒度类别仅在此前提下可用于报告；引用任何单个类别的数据时，请连同本说明及上述置信度分布一并给出，或改用粗粒度类别。"
+  },
+  "ticket": {
+    "sessionNoLinks": "会话 {{sessionId}}：无工单链接",
+    "sessionLinks": "会话 {{sessionId}}：",
+    "keyRequired": "使用 --negate/--remove 时请提供工单键。",
+    "activeLabel": "生效中",
+    "negatedLabel": "已屏蔽",
+    "linked": "已将 {{key}} 链接到会话 {{sessionId}}",
+    "negated": "已为会话 {{sessionId}} 屏蔽 {{key}}（已添加屏蔽标记；自动提取不会将其恢复）",
+    "removed": "已从会话 {{sessionId}} 移除手动链接 {{key}}"
   }
 }

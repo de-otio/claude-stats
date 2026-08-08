@@ -15,8 +15,17 @@ import { createRequire } from "node:module";
 await initCliI18n("en");
 
 const _req = createRequire(import.meta.url);
-const enExt = _req("@claude-stats/core/locales/en/extension.json") as Record<string, unknown>;
-const enDash = _req("@claude-stats/core/locales/en/dashboard.json") as Record<string, unknown>;
+// Load from SOURCE, not the bare `@claude-stats/core/locales/...` specifier.
+// That specifier resolves through the package's `exports` map to
+// `packages/core/dist/locales/...` — the built output — via `createRequire`'s
+// plain Node module resolution, which (unlike an `import`) is never
+// intercepted by vitest.config.ts's `@claude-stats/core/*` source aliases.
+// Every cli test uses this setup file, so a stale dist silently tests the
+// last build instead of the tree under test (e.g. a tab id source no longer
+// has, or one it just added) — a relative path here always reads the
+// current source tree, matching template.test.ts's own locale loads.
+const enExt = _req("../../../core/src/locales/en/extension.json") as Record<string, unknown>;
+const enDash = _req("../../../core/src/locales/en/dashboard.json") as Record<string, unknown>;
 const extInstance = await initI18n({
   lng: "en",
   ns: ["extension", "dashboard"],

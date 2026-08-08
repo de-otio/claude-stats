@@ -5,17 +5,23 @@
 | Data | Sensitivity | Reason |
 |------|-------------|--------|
 | Prompt content | **High** | Contains code, instructions, business logic |
+| Ticket-link evidence | **High** | A verbatim fragment of prompt text, branch, or commit subject — inherits prompt sensitivity |
 | File paths, project names | **Medium** | Reveals project structure and naming |
 | Git branch names | **Medium** | May reveal feature names, ticket IDs |
+| Ticket keys (`PROJ-123`) | **Medium** | A project prefix can encode a client or an unreleased codename |
 | Token counts | **Low** | Aggregate metrics, no content |
 | Model names, timestamps | **Low** | Operational metadata |
 | Tool names and counts | **Low** | Usage patterns, no content |
+| Task classification labels | **Low** | Closed enum, cannot carry free text |
+| API error and retry events | **Low** | Error kind, status, timing — no content |
 
 ## Local-Only Principle
 
 All raw data stays on the developer's machine. The tool reads from `~/.claude/` (which is already `drwx------`, owner-only) and writes aggregated stats to a local SQLite database with the same permissions.
 
-**No network access** unless the user explicitly configures server sync.
+**No network access** unless the user explicitly configures it — org/team
+sync, personal-plane backup, or the LLM judge (see "Two-Plane Model" below for
+the complete list of paths out).
 
 ## What the Tool Stores Locally
 
@@ -27,6 +33,15 @@ All raw data stays on the developer's machine. The tool reads from `~/.claude/` 
   Prompt *counts* and *lengths* are also stored, but text itself is no longer
   excluded — this corrects an earlier version of this document.
 - Project identifiers (paths)
+- **Ticket links** — work-item keys extracted from prompt text, branch names,
+  and commit subjects, with a fragment of the matching text as evidence (see
+  "Derived Ticket Links" below)
+- **Per-message git branch** (`messages.git_branch`), in addition to the
+  per-session branch already stored
+- **A task classification label per session** (`session_task_class`) — a
+  closed-enum label plus the rule and classifier version that produced it
+- **API error and retry events** (`api_error_events`) — error kind, HTTP
+  status, and retry timing per session
 
 ## What the Tool Does NOT Store
 
@@ -42,9 +57,11 @@ All raw data stays on the developer's machine. The tool reads from `~/.claude/` 
 Because this corrects a previous inaccuracy in this document, the current
 behavior is spelled out precisely:
 
-- **Where:** the local SQLite DB (`~/.claude-stats/stats.db`) only, in the
+- **Where:** the local SQLite DB (`~/.claude-stats/stats.db`), in the
   `messages.prompt_text` column. It does not appear in the quarantine table
-  path or in any network payload.
+  path, and no *aggregate* payload can carry it. The one feature that sends it
+  over the network is the opt-in LLM judge, described under "Two-Plane
+  Model" below.
 - **Sanitized on write:** every prompt is passed through
   [`sanitizePromptText`](../../packages/core/src/sanitize.ts) before storage —
   known system-injected tag blocks are stripped, remaining `<`/`>` characters
@@ -55,10 +72,35 @@ behavior is spelled out precisely:
 - **Never sent to the org/team plane.** Prompt text is excluded from every
   aggregate sync payload by construction (see "Server Sync Rules" and
   "Two-Plane Model" below) — the org plane's payload shape cannot carry it.
-- **Optionally leaves the machine only via the personal plane** (see below),
-  encrypted by default when the target is a third-party/cloud store.
+- **Leaves the machine only by explicit opt-in:** the personal plane (see
+  below), encrypted by default when the target is a third-party/cloud store,
+  or the LLM judge when configured against a hosted endpoint.
 - **Permissions:** the DB file inherits the same `0600`/owner-only posture as
   the rest of `~/.claude-stats/`.
+
+## Derived Ticket Links
+
+Ticket attribution reads `messages.prompt_text` (plus git branch names and
+commit subjects) looking for work-item key patterns (`PROJ-123`-shaped
+strings) and writes a **derived, structured fact** — "this session touched
+this ticket" — into the `ticket_links` table. This is a materially different
+practice from "prompt text is stored", and is called out separately because
+of it:
+
+- **Derived data outlives its source in practice.** Other features
+  (cost-per-ticket reporting, the justification pack, the dashboard) read
+  `ticket_links` directly and never go back through `prompt_text`, so the
+  privacy posture of the derived table has to stand on its own.
+- **`ticket_links.evidence` inherits prompt sensitivity, not a lower one.**
+  It can hold a fragment of the matched prompt text, branch name, or commit
+  subject, and it is **not** passed through `sanitizePromptText` — the
+  escaping boundary described above does not apply to it.
+- **A ticket key is itself disclosive.** A Jira project prefix routinely
+  encodes a client, a team, or an unreleased product codename.
+- **Never synced to the org plane** — the aggregate payload has no field for
+  it, by the same structural guarantee described below.
+- **`evidence` never leaves via the justification pack**; ticket *keys* do,
+  deliberately (see "The Justification Pack" below).
 
 ## Quarantine Table
 
@@ -84,6 +126,7 @@ following leave the machine:
 **Never synced to the org plane:**
 - Prompt content or response content (including the locally-stored
   `prompt_text` described above)
+- Ticket links, and in particular `ticket_links.evidence`
 - File paths or code
 - Raw session JSONL data
 - The transcript archive (see below), in whole or in part
@@ -106,11 +149,21 @@ path by which the org plane receives, stores, or decrypts that data.
   - Management sees organization-level aggregates
   - No role sees individual prompt content — it is collected locally (see
     above) but is never part of what reaches the org plane
+- The justification pack has no access control of its own: it is a file the
+  user generates and hands to someone directly. Its protection is what it
+  omits, not who can open it (see "The Justification Pack" below)
 
 ## Retention
 
 - Local aggregated data: follows `~/.claude/` lifecycle (data exists as long as session files do)
 - Local prompt text: follows the same lifecycle as the rest of the `messages` row it belongs to
+- Ticket links (including `evidence`), per-message branch names, task
+  classifications, and API error events: same lifecycle as the session rows
+  they hang off; removed by `claude-stats purge --all` along with the rest of
+  the DB
+- Generated justification packs: **not** managed by claude-stats. They are
+  ordinary files the user chose to write, and deleting the DB does not delete
+  a pack already sent
 - Transcript archive (if enabled): bounded retention keyed on real session activity, not file mtime — see below
 - Server-side data: configurable retention (suggested default: 90 days for detailed, 1 year for monthly rollups)
 - Export before deletion for compliance needs
@@ -124,6 +177,9 @@ Every data-sharing feature defaults to off:
 - Team identification: requires explicit configuration
 - Transcript archive: off by default, requires explicit informed-consent opt-in (see below)
 - Personal-plane backup/sync: off by default, requires explicit setup
+- Justification pack: nothing is generated unless the user runs the command,
+  every section is requested explicitly, and the scope value is withheld
+  unless `--disclose-scope` is passed
 
 ## The Transcript Archive (Opt-In)
 
@@ -210,3 +266,95 @@ that already-reduced, structurally-narrower payload is sent. There is no code
 path in either direction by which the org plane could obtain, store, or
 decrypt personal-plane ciphertext, raw transcripts, or `prompt_text` — the
 aggregate payload type simply has no field shaped to carry any of them.
+
+The two planes describe the tool's own *aggregate* transmission. They do not
+describe everything that can leave the machine. Two other paths exist, both
+opt-in and both outside either plane's protections:
+
+- **The justification pack** — a plaintext document the tool writes to disk for
+  the user to hand onward themselves. Its own section is next.
+- **The LLM judge** (`config.llmJudge`, `cost-per-task --llm-judge`) — off by
+  default and disabled unless `experimentalSignals` is also on. When enabled it
+  POSTs a blinded task summary to the endpoint the user configures, and that
+  summary **contains the user's own prompt text**. Blinding removes model and
+  assistant identity so the judge rules on the work rather than on who produced
+  it; it is not redaction. A local endpoint (Ollama and similar) keeps the text
+  on the machine, which is the configuration this document assumes; a hosted
+  endpoint sends prompt text to that third party, outside every guarantee made
+  here. The judge's reply re-enters the report as a verdict only, never as
+  text, and `maxCalls` bounds the number of requests per run. The feature is
+  documented in
+  [`doc/user-doc/commands.md`](../user-doc/commands.md#llmjudge).
+
+## The Justification Pack: A Third Egress Path
+
+The stored-data features (the SQLite DB, the transcript archive) are
+local-only by default, and the two planes above are how the tool transmits
+aggregates: (a) the org/team-sync payload (day-bucketed totals only, no prompt
+content) and (b) the personal-plane encrypted backup (a blind ciphertext
+blob). **The
+justification pack is a different kind of thing: a plaintext document the
+tool generates specifically so a human can hand it to another human who does
+not run claude-stats** — typically a manager, typically over email, typically
+outside any encryption or sync channel this document has previously
+described. The tool itself does not transmit the pack over a network; it
+writes an HTML file and a CSV bundle to local disk (`claude-stats pack` /
+`generate_justification_pack`), and the user is the one who moves it from
+there. That the *distribution* step is manual does not change the privacy
+analysis — the document is built to leave, and does.
+
+**Redaction: what does NOT appear in the pack.** The pack runs the same
+redaction the org-sync plane uses, enforced at compile time (a TypeScript
+type-level check fails the build if a pack row type ever grows one of these
+fields) — never prompt text, file contents, transcript bytes, session ids,
+or per-session evidence text (`ticket_links.evidence`). A policy event's
+`detail` field (marked local-only in the source, e.g. `"opus"` or
+`"usd:1500/mo"`) is also structurally excluded from the pack even when the
+`constraint` section is requested.
+
+**What DOES appear in the pack, and is worth stating plainly:**
+
+- **Ticket keys** (e.g. `PROJ-123`) themselves — the whole point of the
+  `tickets` section — along with their cost, token counts, session count, and
+  confidence tier. A ticket key that itself encodes something sensitive (an
+  unreleased product codename used as a Jira project prefix, for instance)
+  leaves the machine in this document.
+- **The FACT that a pack was scoped, but not the scope's literal value.** The
+  pack always states its own scope as a line of text ("no filter" is treated as
+  a fact the reader needs, not an omission). When `--project` or `--account`
+  was used, that line — and the `projectPath`/`accountUuid` column on every CSV
+  row — renders a stable marker (`[withheld:a1b2c3d4]`) rather than the value.
+  This was **not** the pack's original behavior: the raw absolute path was
+  embedded in the scope line and in every row of two CSVs, and was found and
+  fixed during review before the feature shipped. A
+  local path like `/Users/alice/repos/<client>/<codename>` is Medium
+  sensitivity per the classification table at the top of this document, and
+  this is the one artifact built to leave the machine, so shipping it by
+  default inverted the pack's own rule that every section is opt-in and the
+  default is the minimum. The marker is deterministic (two packs scoped alike
+  compare; a series stays readable) and non-reversible, though it is **not** a
+  security boundary — an eight-hex digest of a guessable path is guessable. It
+  defeats disclosure *by accident*, which is the actual failure mode: a path
+  pasted into a document nobody reread before sending. `--disclose-scope` opts
+  back into the literal values for the case where the recipient is entitled to
+  them.
+- **Cost figures, coverage ratios, confidence-tier mixes, and (in `mode:
+  "plan"`) the configured monthly plan fee** — all of this is the intended
+  content of the document.
+
+**Sections not yet wired.** `hygiene`, `constraint`, and `calibration` can be
+requested but currently render an honest "not available in this build" block
+— those engines exist and are reachable through their own commands, but the
+pack renderer does not yet pull from them. No number is fabricated in their
+place; nothing from those subsystems currently leaves via the pack at all.
+
+**How this plane differs from the other two.** The org plane is protected by
+the *shape* of its payload, and the personal plane by encryption. The pack has
+neither: it is plaintext, it has no recipient model, and once sent it is
+outside the tool's reach — retention, access control, and deletion all stop
+at the moment the user attaches it to an email. Its only protection is what it
+refuses to contain, which is why the forbidden-field check is enforced at
+compile time rather than as a runtime filter, and why the scope value is
+withheld by default. When adding a section or a column to the pack, the
+question to ask is not "is this sensitive?" but "is a manager entitled to see
+this about a named developer, forever, with no way to take it back?"

@@ -6,7 +6,14 @@ import { initI18n } from "@claude-stats/core/i18n";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const enDashboard = require("@claude-stats/core/locales/en/dashboard.json") as Record<string, unknown>;
+// Deliberately NOT `require("@claude-stats/core/locales/en/dashboard.json")`:
+// that's a raw Node `require`, unaffected by Vite/vitest aliasing, and Node's
+// own package resolution from inside a git worktree (no local node_modules)
+// walks up to the PARENT repo's node_modules/@claude-stats/core — a
+// different checkout's dist — so a locale key added in this worktree would
+// silently read as missing. A relative path into this worktree's own source
+// is the only resolution that can't drift from the file under test.
+const enDashboard = require("../../../core/src/locales/en/dashboard.json") as Record<string, unknown>;
 
 const i18nInstance = await initI18n({
   lng: "en",
@@ -28,6 +35,7 @@ const mockData: DashboardData = {
     cacheCreationTokens: 50000,
     cacheEfficiency: 28.6,
     estimatedCost: 3.75,
+    anyFallbackRates: false,
     totalDurationMs: 7200000,
     planFee: 0,
     planMultiplier: 0,
@@ -116,6 +124,7 @@ const mockData: DashboardData = {
   energy: null,
   costPerTask: null,
   calibration: null,
+  calibrationScope: null,
   experimentalSignalsEnabled: false,
   recommendations: [],
   availableAccounts: [],
@@ -155,6 +164,63 @@ describe("renderDashboard", () => {
     expect(html).toContain('id="chart-project"');
     expect(html).toContain('id="chart-entrypoint"');
     expect(html).toContain('id="chart-cache"');
+  });
+
+  it("renders declared policy events as a timeline annotation under the daily chart", () => {
+    const withEvents: DashboardData = {
+      ...mockData,
+      policyEvents: [{ date: "2026-05-01", kind: "model-removal", detail: "opus", scope: "org" }],
+    };
+    const html = renderDashboard(withEvents, t);
+    expect(html).toContain("2026-05-01");
+    expect(html).toContain("model-removal");
+    expect(html).toContain("opus");
+    expect(html).toContain(t("dashboard:charts.policyEvents"));
+    // Placement, not just presence: a substring assertion over the whole
+    // document passes just as happily with the annotation parked under some
+    // other chart. Pin it between the daily canvas and the next card's title.
+    const canvasAt = html.indexOf('id="chart-daily"');
+    const annotationAt = html.indexOf(t("dashboard:charts.policyEvents"));
+    const nextCardAt = html.indexOf(t("dashboard:charts.tokenBreakdown"));
+    expect(canvasAt).toBeGreaterThan(-1);
+    expect(nextCardAt).toBeGreaterThan(-1);
+    expect(annotationAt).toBeGreaterThan(canvasAt);
+    expect(annotationAt).toBeLessThan(nextCardAt);
+  });
+
+  it("M-3: escapes HTML metacharacters in a policy event's date/kind/detail", () => {
+    // `detail` is free-form local text (LOCAL-ONLY per PolicyEvent's own
+    // doc-comment) rendered straight into the timeline annotation — the
+    // string a user typed into their own config becomes markup verbatim if
+    // `escapeHtml` is ever dropped from this path. Prove the injected markup
+    // survives ONLY in escaped form and never appears as live tags.
+    const withMarkup: DashboardData = {
+      ...mockData,
+      policyEvents: [
+        {
+          date: '2026-05-01"><img src=x onerror=alert(1)>',
+          kind: "other",
+          detail: "<script>alert('xss')</script> & \"quoted\" & 'single'",
+          scope: "org",
+        },
+      ],
+    };
+    const html = renderDashboard(withMarkup, t);
+    // The raw payloads must never appear unescaped.
+    expect(html).not.toContain("<script>alert('xss')</script>");
+    expect(html).not.toContain('"><img src=x onerror=alert(1)>');
+    // Their escaped forms must be present instead.
+    expect(html).toContain("&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;");
+    expect(html).toContain("&quot;&gt;&lt;img src=x onerror=alert(1)&gt;");
+    expect(html).toContain("&amp;");
+    expect(html).toContain("&quot;quoted&quot;");
+  });
+
+  it("renders nothing extra when no policy events are declared or attached", () => {
+    const noEvents = renderDashboard({ ...mockData, policyEvents: [] }, t);
+    const undeclared = renderDashboard({ ...mockData, policyEvents: undefined }, t);
+    expect(noEvents).not.toContain(t("dashboard:charts.policyEvents"));
+    expect(undeclared).not.toContain(t("dashboard:charts.policyEvents"));
   });
 
   it("handles empty byDay array without crashing", () => {
@@ -346,10 +412,13 @@ describe("renderDashboard", () => {
     expect(pricingIdx).toBeLessThan(footerIdx);
   });
 
-  it("includes Plan tab button", () => {
+  it("includes the Plan & Policy nav button, which is where the Plan section now lives", () => {
     const html = renderDashboard(mockData, t);
-    expect(html).toContain('data-tab="plan"');
-    expect(html).toContain(">Plan<");
+    // Since the domain-view regrouping the nav bar holds views, so the button
+    // is the view's; the section keeps its own panel and heading.
+    expect(html).toContain('data-tab="plan-and-policy"');
+    expect(html).toContain(">Plan &amp; Policy<");
+    expect(html).toContain('id="tab-plan" data-view="plan-and-policy"');
   });
 
   it("renders Plan tab with no-data message when planUtilization is null", () => {
@@ -738,7 +807,10 @@ describe("renderDashboard", () => {
       },
     };
     const html = renderDashboard(withEff, t);
-    expect(html).toContain('data-tab="efficiency"');
+    // Efficiency is a SECTION of the Efficiency & Hygiene view now, so what the
+    // nav bar carries is the view; the panel and its figures are unchanged.
+    expect(html).toContain('data-tab="efficiency-and-hygiene"');
+    expect(html).toContain('id="tab-efficiency" data-view="efficiency-and-hygiene"');
     expect(html).toContain("Potential Savings");
   });
 
@@ -1059,7 +1131,7 @@ describe("renderDashboard", () => {
 
     // ── Calibration view + activation toggle (webview only) ──
     const emptyMetrics = {
-      n: 0, accuracy: null, observableN: 0,
+      n: 0, hits: 0, accuracy: null, observableN: 0,
       perClass: {
         success: { support: 0, predicted: 0, truePositives: 0, precision: null, recall: null, f1: null },
         failed: { support: 0, predicted: 0, truePositives: 0, precision: null, recall: null, f1: null },
@@ -1117,10 +1189,12 @@ describe("renderDashboard", () => {
       }
     });
 
-    it("renders the Classify tab button and panel", () => {
+    it("renders the Classify panel inside Tickets & Value, with its init wired", () => {
       const html = renderDashboard(mockData, t);
-      expect(html).toContain('data-tab="classify"');
-      expect(html).toContain('id="tab-classify"');
+      // 02 §2.4: Classify stops being a permanent tab and lives where its
+      // output matters. The panel, and everything in it, is unchanged.
+      expect(html).toContain('data-tab="tickets-and-value"');
+      expect(html).toContain('id="tab-classify" data-view="tickets-and-value"');
       expect(html).toContain('id="classify-list"');
       expect(html).toContain('id="classify-apply"');
       // initClassify must be wired into the tab dispatch.
@@ -1138,6 +1212,173 @@ describe("renderDashboard", () => {
       // Host bridge present for both hosts (fetch + postMessage).
       expect(html).toContain("/api/backup/");
       expect(html).toContain("backupAction");
+    });
+  });
+
+  // ─── G0/G3: nav definition drives the nav bar ──────────────────────────────
+  // The bar holds the four domain views plus Insights and the utility surfaces
+  // since the regrouping; the eleven section panels are unchanged and still
+  // render. Section-level structure is asserted in domain-views.test.ts.
+  describe("nav bar — driven by the single nav definition", () => {
+    it("renders exactly the views NAV_VIEWS says are visible for this data, in order", () => {
+      const html = renderDashboard(mockData, t);
+      // mockData has no energy/spending/contextAnalysis/modelEfficiency.
+      // Cost & Controlling survives on its unconditional Overview section even
+      // though Spending is missing — that is the "mental map does not move"
+      // property the old conditional tabs never had. Energy and Efficiency &
+      // Hygiene drop out because EVERY section they hold is data-gated; a view
+      // whose whole content is absent is the one honest case for dropping it.
+      const order = [
+        "insights",
+        "cost-and-controlling",
+        "tickets-and-value",
+        "plan-and-policy",
+        "sessions",
+        "settings",
+      ];
+      let cursor = -1;
+      for (const id of order) {
+        const idx = html.indexOf(`data-tab="${id}"`);
+        expect(idx, `no nav button for "${id}"`).toBeGreaterThan(cursor);
+        cursor = idx;
+      }
+      expect(html).not.toContain('data-tab="energy"');
+      expect(html).not.toContain('data-tab="efficiency-and-hygiene"');
+      // Cost & Controlling is present on Overview alone.
+      expect(html).toContain('id="tab-overview" data-view="cost-and-controlling"');
+      expect(html).not.toContain('id="tab-spending"');
+      // The data-shaped ids are sections now, never nav buttons.
+      expect(html).not.toContain('data-tab="overview"');
+      expect(html).not.toContain('data-tab="spending"');
+      expect(html).not.toContain('data-tab="context"');
+      expect(html).not.toContain('data-tab="efficiency"');
+    });
+
+    it("renders the Spending SECTION, localized, when data.spending is present", () => {
+      const withSpending: DashboardData = {
+        ...mockData,
+        spending: {
+          topSessionsByCost: [],
+          topToolsByCost: [],
+          costByModel: [],
+          expensivePrompts: [],
+          cacheEfficiency: { overallHitRate: 0, estimatedSavings: 0 },
+          mcpServers: [],
+          mcpServerUsage: [],
+          subagentOverhead: { totalCost: 0, agentCount: 0 },
+        } as unknown as DashboardData["spending"],
+      };
+      const html = renderDashboard(withSpending, t);
+      expect(html).toContain('id="tab-spending" data-view="cost-and-controlling"');
+      expect(html).toContain(">Spending<");
+      // `>Spending<` alone cannot distinguish "localized" from "hardcoded" —
+      // the en translation of dashboard:tabs.spending is the literal string
+      // "Spending", so a hardcoded heading satisfies it too (verified by
+      // mutation). Render with an identity translator: the label must arrive
+      // as the i18n KEY, which only happens if it goes through t().
+      const raw = renderDashboard(withSpending, (k) => k);
+      expect(raw).toContain('id="section-spending">dashboard:tabs.spending<');
+    });
+
+    it("the first visible view is marked active — and it is Insights, the default", () => {
+      const html = renderDashboard(mockData, t);
+      expect(html).toMatch(/<button class="tab-btn active" data-tab="insights">/);
+      // Exactly one button carries `active`; a second would leave two views lit.
+      expect(html.match(/class="tab-btn active"/g)).toHaveLength(1);
+      // …and the panel that starts visible is the same one.
+      expect(html).toContain('<div class="tab-panel active" id="tab-insights"');
+      expect(html).toContain('<div class="tab-panel" id="tab-overview"');
+    });
+  });
+
+  // ─── G0: card module — behavior comparison, not a DOM snapshot ─────────────
+  // Numbers must not move when markup moves. The pre-migration cost card
+  // rendered `<div class="value">$3.75</div>`; the post-migration renderCard()
+  // card must still surface the exact figure "$3.75" for the same
+  // DashboardData, just inside new markup.
+  //
+  // Every assertion below is made against `costCard(html)`, NOT the whole page.
+  // Page-wide `toContain` is vacuous here in two independent ways, both
+  // verified by mutation: (a) the summary bar prints the identical dollar
+  // figure in four other tiles, so `expect(html).toContain("$3.75")` still
+  // passes when renderCard() emits no headline value at all; (b) `CARD_CSS` —
+  // embedded in every page — literally contains the substring
+  // "cs-card-unavailable", so `expect(html).toContain("cs-card-unavailable")`
+  // passes for every render whether or not any card is in that state.
+  /**
+   * The rendered cost card element, sliced out of the full page.
+   *
+   * Anchored on `id="card-cost"` rather than "the first `.cs-card` on the
+   * page": since the Insights tab landed, the page's first card is Insights'
+   * Q1 — which renders the SAME answer object — so a positional slice would
+   * quietly stop testing the Overview card it names.
+   */
+  function costCard(html: string): string {
+    const idAt = html.indexOf('id="card-cost"');
+    expect(idAt).toBeGreaterThan(-1);
+    const start = html.lastIndexOf('<div class="cs-card', idAt);
+    expect(start).toBeGreaterThan(-1);
+    // renderCard() closes the card at 4-space indent; its inner elements
+    // close at 6. The first 4-space `</div>` after the open tag is the end.
+    const end = html.indexOf("\n    </div>", start);
+    expect(end).toBeGreaterThan(start);
+    const card = html.slice(start, end);
+    // Guard against the slice silently degenerating to nothing useful.
+    expect(card.length).toBeGreaterThan(40);
+    expect(card).toContain('id="card-cost"');
+    return card;
+  }
+
+  describe("cost card — migrated to renderCard()", () => {
+    it("renders the same dollar figure as before migration for a representative cost", () => {
+      // mockData.summary.estimatedCost === 3.75, planFee === 0 (metered mode).
+      const card = costCard(renderDashboard(mockData, t));
+      // The headline value, not merely the answer sentence: the sentence also
+      // embeds "$3.75", so asserting on the card as a whole would still pass
+      // with the value element deleted.
+      expect(card).toMatch(/<div class="cs-card-value">[\s\S]*?<span>\$3\.75<\/span>/);
+      expect(card).not.toContain("cs-card-unavailable");
+    });
+
+    it("carries the plan-mode caveat and multiplier clause when on a plan", () => {
+      const withPlan: DashboardData = {
+        ...mockData,
+        summary: { ...mockData.summary, planFee: 100, planMultiplier: 3.75 },
+      };
+      const card = costCard(renderDashboard(withPlan, t));
+      // "3.8" alone is a 3-character substring that occurs elsewhere on the
+      // page; anchor it to the multiplier clause inside the card.
+      expect(card).toMatch(/3\.8×/);
+      expect(card).toContain("Equivalent API cost");
+    });
+
+    it("renders the honest-unavailable state, not a fabricated $0.00, when there is no usage", () => {
+      const noUsage: DashboardData = {
+        ...mockData,
+        summary: { ...mockData.summary, estimatedCost: 0 },
+      };
+      const html = renderDashboard(noUsage, t);
+      const card = costCard(html);
+      // Match the class attribute the unavailable branch actually emits, not
+      // the bare token that CARD_CSS also contains.
+      expect(card).toContain('class="cs-card cs-card-unavailable"');
+      expect(card).toContain("No usage recorded for this period.");
+      expect(card).not.toContain("cs-card-value");
+      expect(html).not.toContain("$0.00");
+    });
+
+    it("does not assert unqualified 'Actual metered cost.' when the period's cost rests on a partner-platform fallback rate", () => {
+      // A Bedrock/Vertex account with no configured partner rates: metered
+      // mode (planFee === 0), but `anyFallbackRates` is true because
+      // estimateCost() had to reuse first-party per-token prices for a
+      // separately-priced partner platform (packages/core/src/pricing.ts).
+      const fallbackPriced: DashboardData = {
+        ...mockData,
+        summary: { ...mockData.summary, planFee: 0, anyFallbackRates: true },
+      };
+      const card = costCard(renderDashboard(fallbackPriced, t));
+      expect(card).not.toContain("Actual metered cost.");
+      expect(card).toContain("first-party rates");
     });
   });
 });

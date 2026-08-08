@@ -9,7 +9,9 @@
     "efficiency": "Effizienz",
     "energy": "Energie",
     "settings": "Einstellungen",
-    "classify": "Klassifizieren"
+    "classify": "Klassifizieren",
+    "spending": "Ausgaben",
+    "insights": "Erkenntnisse"
   },
   "toolbar": {
     "period": "Zeitraum:",
@@ -49,6 +51,7 @@
     "tokenBreakdown": "Token-Verteilung",
     "cacheUsage": "Cache-Nutzung",
     "cumulativeApiValue": "Kumulativer API-Wert vs. Abogebühr",
+    "policyEvents": "Richtlinienereignisse",
     "topProjects": "Top-Projekte",
     "tokensByProject": "Token-Anteil nach Projekt",
     "energyByProject": "Energieverbrauch nach Projekt",
@@ -467,5 +470,78 @@
     "splitHint": "Beim Aufteilen bleiben die Kosten jeder Session bei dem Konto, das sie tatsächlich ausgeführt hat. Verwenden Sie es für Projekte, die über mehrere Abonnements hinweg geteilt werden (z. B. wenn das Limit eines Plans nicht ausreicht).",
     "apply": "Anwenden",
     "applying": "Wird angewendet…"
+  },
+  "insights": {
+    "lede": "Die fünf Fragen, für deren Beantwortung dieses Tool existiert. Jede Karte verlinkt auf ihre Belege.",
+    "cards": {
+      "cost": "Was hat KI gekostet?",
+      "bought": "Was hat es gebracht?",
+      "efficiency": "War es effizient?",
+      "setup": "Stimmt das Setup?",
+      "change": "Was sollte sich ändern?"
+    },
+    "alerts": {
+      "fallbackRates": "Ein Teil der Nutzung wurde auf einer Partner-Plattform (Bedrock oder Vertex) zu Erstanbieter-Preisen berechnet. Alle Kostenangaben hier sind Schätzungen, bis Partner-Preise konfiguriert sind.",
+      "action": "Prüfen",
+      "reconciliationDrift": "Die Bottom-up-Kosten stimmen nicht mit der konfigurierten Rechnungssumme überein – die Abgleichstafel weiter unten zeigt die Restdifferenz und deren mögliche Ursachen."
+    },
+    "verdict": {
+      "goodValue": "Ihr Abo ist bei dieser Nutzung ein gutes Preis-Leistungs-Verhältnis",
+      "underusing": "Sie nutzen weniger, als Ihr Abo abdeckt",
+      "noPlan": "Kein Abo erkannt — Kosten werden als nutzungsbasierte Abrechnung gelesen"
+    }
+  },
+  "ticketCard": {
+    "title": "Ticket-Zuordnung",
+    "noSession": "Noch keine Sessions erfasst – nichts zu verknüpfen.",
+    "session": "Aktuelle Session: {{sessionId}}…",
+    "noLinks": "Keine Ticket-Verknüpfungen für diese Session.",
+    "negatedBadge": "negiert",
+    "negateAction": "Negieren",
+    "removeAction": "Entfernen",
+    "linkAction": "Verknüpfen",
+    "keyPlaceholder": "PROJ-123"
+  },
+  "views": {
+    "insights": "Erkenntnisse",
+    "cost-and-controlling": "Kosten & Controlling",
+    "tickets-and-value": "Tickets & Wert",
+    "efficiency-and-hygiene": "Effizienz & Hygiene",
+    "plan-and-policy": "Plan & Richtlinien",
+    "sessions": "Sessions",
+    "energy": "Energie",
+    "settings": "Einstellungen"
+  },
+  "filters": {
+    "legend": "Diese Ansicht eingrenzen",
+    "scopeNote": "Filter führen den gesamten Bericht neu aus und grenzen daher jede Ansicht ein – nicht nur diese.",
+    "project": "Projekt:",
+    "ticket": "Ticket:",
+    "taskClass": "Aufgabenklasse:",
+    "any": "Beliebig",
+    "ticketPlaceholder": "z. B. PROJ-123",
+    "apply": "Filter anwenden",
+    "clear": "Zurücksetzen",
+    "active_one": "{{count}} Filter aktiv",
+    "active_other": "{{count}} Filter aktiv",
+    "modelUnavailable": "Das Filtern nach Modell ist noch nicht verfügbar – es würde die Token-Summen eingrenzen, nicht aber die zugehörigen Sessions."
+  },
+  "taskClasses": {
+    "debug": "Debugging",
+    "greenfield": "Neues Feature",
+    "refactor-multi-file": "Refactoring",
+    "config-chore": "Konfiguration / Wartung",
+    "review": "Review",
+    "explore": "Exploration",
+    "unknown": "Nicht klassifiziert"
+  },
+  "costQuality": {
+    "title": "Kostenqualität",
+    "frontierLayer": "Wo die Ausgaben im Verhältnis zur Effizienzgrenze liegen",
+    "perTaskLayer": "Was eine erfolgreiche Aufgabe gekostet hat",
+    "calibrationLayer": "Wie sehr den Ergebnis-Labels zu trauen ist",
+    "calibrationReady": "Ergebnis-Labels sind kalibriert – Details anzeigen",
+    "calibrationNotReady": "Ergebnis-Labels sind noch nicht kalibriert – Gründe anzeigen",
+    "calibrationNoLabels": "Ergebnis-Labels sind nicht kalibriert – noch nichts gelabelt"
   }
 }

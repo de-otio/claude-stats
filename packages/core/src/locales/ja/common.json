@@ -68,6 +68,142 @@
     "promptsPerHr": "プロンプト/時",
     "outputPerPrompt": "出力/プロンプト"
   },
+  "insight": {
+    "punctuation": {
+      "sentence": "{{text}}。",
+      "clauseJoin": "、",
+      "listJoin": "、",
+      "dotJoin": "・",
+      "caveatJoin": ""
+    },
+    "devTime": {
+      "minutes": "開発者 {{value}} 分",
+      "hours": "開発者 {{value}} 時間",
+      "days": "開発者 {{value}} 日"
+    },
+    "confidence": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    },
+    "caveat": {
+      "plan": "API 換算のコストです — プランの実際の請求額ではありません。",
+      "mixed": "表示中のアカウントで課金方式が混在しています — この金額の一部はプラン料金に対する API 換算値、一部は実際に従量課金された金額です。単一のアカウントを選択するか pricing.mode を設定すると、意味が一つに定まります。",
+      "metered": "実際の従量課金コストです。",
+      "reconciled": "請求書と {{ratio}} 一致しています。",
+      "fallbackRates": "一部の利用がファーストパーティ料金で計算されています — 正確な金額にはパートナー料金の設定が必要です。",
+      "reconciledAndFallback": "請求書と {{ratio}} 一致しています。ただし一部の利用がファーストパーティ料金で計算されています — 正確な金額にはパートナー料金の設定が必要です。",
+      "notReconciled": "請求書と一致しません — ボトムアップ集計はインポートされた合計の {{ratio}} です。",
+      "notReconciledAndFallback": "請求書と一致しません — ボトムアップ集計はインポートされた合計の {{ratio}} です。一部の使用量はファーストパーティ料金で計算されています — 正確な数値を得るにはパートナー料金を設定してください。"
+    },
+    "coverage": {
+      "tier": "{{percent}} が{{tier}}",
+      "mix": "信頼度は {{parts}}。",
+      "mixAmbiguous_one": "信頼度は {{parts}}・{{count}} 件のセッションは判別できません。",
+      "mixAmbiguous_other": "信頼度は {{parts}}・{{count}} 件のセッションは判別できません。",
+      "none": "この期間の支出はどのチケットキーにも割り当てられていません — ブランチ名、コミット件名、プロンプトに PROJ-123 のようなキーが含まれているか、また config.tickets.projectKeys にチームのプレフィックスが登録されているか確認してください（小文字や大小混在の命名規則を認識するには必須です）。"
+    },
+    "cost": {
+      "unavailable": "この期間の利用は記録されていません。",
+      "enablement": "Claude Code のセッションを実行してから更新してください — 収集は自動で行われます。",
+      "thisPeriod": "この期間で {{money}}",
+      "devTime": "設定したレートで約 {{devTime}}",
+      "planMultiplier": "月額 {{fee}} のプランの {{multiplier}} 倍"
+    },
+    "bought": {
+      "unavailable": "作業項目に割り当てられた支出はまだありません。",
+      "enablement": "設定 → チケット でプロジェクトキーを追加すると、支出が自動的に割り当てられます。",
+      "completed_one": "{{count}} 件のタスクが完了",
+      "completed_other": "{{count}} 件のタスクが完了",
+      "attributed": "支出の {{percent}} を作業項目に割り当て",
+      "topTicket": "最大: {{key}}（{{cost}}）"
+    },
+    "efficiency": {
+      "unavailable": "効率を測るには完了した作業が足りません。",
+      "enablement": "効率の算出には期間内に完了したタスクがいくつか必要です — 利用が進んでから再度ご確認ください。",
+      "recoverable": "{{money}} を回収可能（支出の {{percent}}）",
+      "hygiene": "自己診断による無駄は {{percent}}",
+      "hygieneDown": "自己診断による無駄は {{percent}}、{{previous}} から減少",
+      "hygieneUp": "自己診断による無駄は {{percent}}、{{previous}} から増加"
+    },
+    "setup": {
+      "unavailable": "プランの適合度を判断するにはデータが足りません。",
+      "enablement": "プランの適合度を意味のある形で判断するには数週間の利用が必要です。",
+      "policyImpact_one": "{{date}} のポリシー変更以降、{{count}} 件のタスク分類で成功タスクあたりのコストが {{percent}} 上昇しています。",
+      "policyImpact_other": "{{date}} のポリシー変更以降、{{count}} 件のタスク分類で成功タスクあたりのコストが {{percent}} 上昇しています。",
+      "policyCaveat": "根拠であって証明ではありません — 境界をまたいで同一のタスク分類内で比較しています。",
+      "verdictWithSaving": "{{verdict}} — {{plan}} に切り替えると月あたり約 {{saving}} 節約できます。",
+      "savingCaveat": "ご自身の利用実績を各プランの上限に当てはめて推定した値です。"
+    },
+    "change": {
+      "nothing": "今のところ対応が必要な項目はありません。",
+      "withImpact": "{{title}} — {{impact}}",
+      "more_one": "{{lead}}（ほか {{count}} 件）。",
+      "more_other": "{{lead}}（ほか {{count}} 件）。"
+    },
+    "calibration": {
+      "measured": {
+        "attribution": "自動ひも付けは、あなたが判定した {{n}} 件のリンクのうち {{percent}} で支持されました（95% 信頼区間 {{lo}}–{{hi}}）。これはレビュー対象に選んだリンクでの一致率であり、全体の精度ではありません。誤っていそうなものをレビューする傾向があるため、低めに出ます。",
+        "outcome": "成果の自動検出は、あなたがラベルを付けた {{n}} 件のタスクのうち {{percent}} であなたのラベルと一致しました（95% 信頼区間 {{lo}}–{{hi}}）。これはラベル付け対象に選んだタスクでの一致率であり、全体の精度ではありません。誤っていそうなものにラベルを付ける傾向があるため、低めに出ます。"
+      },
+      "uncalibrated": {
+        "attribution": "ひも付けの信頼度は未校正です。一致率が意味を持つには {{minN}} 件の明示的な判定が必要ですが、現在は {{n}} 件です。",
+        "outcome": "成果の検出は未校正です。一致率が意味を持つには {{minN}} 件の成果ラベルが必要ですが、現在は {{n}} 件です。"
+      },
+      "enablement": {
+        "attribution": "`claude-stats ticket <session-id> <key>` で自動リンクを承認または修正し、誤ったリンクは `--negate` で取り消せます。明示的な判定ごとにサンプルが増えます。",
+        "outcome": "完了した作業には `claude-stats task-outcome <item> <success|partial|fail>` でラベルを付けてください。ラベルごとにサンプルが増えます。"
+      },
+      "scope": {
+        "wholeStore": "表示中の期間だけでなく、記録されたすべてのデータを対象に集計しています。",
+        "day": "表示中の期間ではなく、直近 1 日のみを対象に集計しています。",
+        "week": "表示中の期間ではなく、直近 1 週間のみを対象に集計しています。",
+        "month": "表示中の期間ではなく、今月の月初から本日までのみを対象に集計しています。",
+        "customRange": "選択した期間を対象に集計しています。"
+      },
+      "minimumSampleRationale": "minN未満では割合は報告されません。三の法則により、不一致がゼロのn件の観測でもエラー率はおよそ3/nまでしか絞り込めないため、30件未満の完全な連続でも10件に1件のエラー率すら排除できません。",
+      "notCalibratedTaskClass": "実行時の正解データが存在しません — セッションのタスククラスに対する人間の異議を記録した訂正がないため、このマシンでは一致度を測定できません。分類器の公開されている一致率はビルド時に生成されたコーパスに対して測定されたものであり、このストアのデータの測定値ではありません。"
+    },
+    "apiThrottle": {
+      "rejection": {
+        "summary_one": "この期間中、Claude の API によるレート制限が {{count}} 回発生しました。",
+        "summary_other": "この期間中、Claude の API によるレート制限が {{count}} 回発生しました。",
+        "caveatMetered": "Claude Code はレート制限による拒否が発生したことのみを記録し、その継続時間は記録しません。これは時間コストではなく、下限を示すシグナルとして扱ってください。アカウントの API または Bedrock のレート制限ティアを確認してください。",
+        "caveatPlan": "Claude Code はレート制限による拒否が発生したことのみを記録し、その継続時間は記録しません。これは時間コストではなく、下限を示すシグナルとして扱ってください。これはリクエスト単位の制限であり、プランの 5 時間の使用枠とは別のものです。"
+      },
+      "overload": {
+        "summary_one": "この期間中、Claude の API が {{count}} 回過負荷となり、計測された再試行の待機時間が {{time}} 増加しました。",
+        "summary_other": "この期間中、Claude の API が {{count}} 回過負荷となり、計測された再試行の待機時間が {{time}} 増加しました。",
+        "caveat": "これはアカウントのレート制限や組織のポリシーではなく、Anthropic 自体のインフラの可用性を反映したものです。どのアカウントでも発生する可能性があり、制約によるコストではありません。"
+      }
+    },
+    "reconciliation": {
+      "title": "請求書との照合",
+      "verdict": {
+        "within": "請求書と整合しています: ローカル推定値はインポートした合計の {{ratio}} で、許容範囲内です。",
+        "outside": "請求書と整合していません: ローカル推定値はインポートした合計の {{ratio}} で、許容範囲外です。"
+      },
+      "label": {
+        "bottomUp": "ローカル推定値",
+        "invoiceTotal": "インポートした請求書の合計",
+        "residual": "残差",
+        "tolerance": "許容範囲"
+      },
+      "residualInvoiceHigher": "請求書の方が {{money}} ({{percent}}) 多く、ローカル推定値では説明できません",
+      "residualLocalHigher": "ローカル推定値の方が請求額より {{money}} ({{percent}}) 多くなっています",
+      "residualExact": "完全に一致 — 請求額とローカル推定値の間に差はありません。",
+      "toleranceBand": "±{{percent}}%",
+      "causesLabel": "差の考えられる原因",
+      "cause": {
+        "unpricedUsage": "価格未設定の使用 — 一部の token に適用できる単価がありませんでした。",
+        "fallbackRates": "フォールバック単価 — パートナープラットフォームの使用を一次提供元の単価で計算しています。",
+        "scopeMismatch": "対象範囲の不一致 — 請求書がこのビューと同じアカウントや期間を対象としていない可能性があります。対象範囲は指定されていません。",
+        "unexplained": "原因不明 — 既知の原因では、この差を説明できません。"
+      },
+      "scopeStated": "請求書の対象範囲: {{note}}",
+      "scopeUnstated": "請求書の対象範囲が指定されていません。不一致の有無を判断できるよう reconciliation.scopeNote を設定してください。"
+    }
+  },
   "actions": {
     "connect": "接続",
     "disconnect": "切断",

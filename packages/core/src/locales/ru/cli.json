@@ -133,6 +133,11 @@
     "reportTag": "Фильтр сессий по тегу",
     "reportSession": "Показать подробный вид одной сессии",
     "reportHtml": "Записать автономный HTML-отчёт в файл",
+    "pack": "Сформировать обосновывающий пакет: автономный HTML-документ и набор CSV-файлов за один календарный месяц для читателя, у которого нет claude-stats",
+    "packPeriod": "Календарный месяц отчёта, ГГГГ-ММ (обязательно)",
+    "packSections": "Разделы для включения через запятую: headline,tickets,nonticket,hygiene,constraint,calibration (по умолчанию: headline,tickets,nonticket)",
+    "packOut": "Каталог для записи пакета (по умолчанию: текущий каталог)",
+    "packJson": "Вывести пути записанных файлов в формате JSON вместо строки сводки",
     "status": "Показать размер базы данных, количество записей и время последнего сбора",
     "export": "Экспорт данных в CSV или JSON",
     "exportFormat": "Формат вывода: csv или json (по умолчанию: json)",
@@ -174,7 +179,22 @@
     "costPerTaskByModel": "Разбить метрику по доминирующей модели",
     "costPerTaskCalibrate": "Вывести метрики калибровки (согласие прокси/сигналов с вашими метками) в формате JSON",
     "costPerTaskLlmJudge": "Запустить опциональный LLM-судью для неоднозначных задач (требует настройки llmJudge; отправляет обезличенную сводку задачи на ваш эндпоинт)",
-    "costPerTaskLlmJudgeUnconfigured": "Запрошен --llm-judge, но llmJudge.endpoint/model не заданы; судья пропускается."
+    "costPerTaskLlmJudgeUnconfigured": "Запрошен --llm-judge, но llmJudge.endpoint/model не заданы; судья пропускается.",
+    "reportTicket": "Показать стоимость, токены и сессии, отнесённые к одному ключу задачи (например, PROJ-123), а также покрытие за период",
+    "taskClass": "Классифицировать сессии по классам задач и показать распределение",
+    "taskClassLimit": "Классифицировать не более указанного числа сессий за один запуск (с возможностью продолжения)",
+    "ticket": "Привязка, отмена или просмотр ручных привязок тикетов для сессии",
+    "ticketSessionArg": "ID сессии (или префикс)",
+    "ticketKeyArg": "Ключ тикета (например, PROJ-123). Без других флагов: показывает текущие привязки",
+    "ticketNegate": "Пометить этот ключ как отменённый для сессии (скрывает его, даже если извлечение продолжает находить совпадения)",
+    "ticketRemove": "Удалить ручную привязку для этого ключа (не влияет на метку отмены)",
+    "ticketList": "Показать привязки тикетов для сессии до применения изменений",
+    "packInvoiceCsv": "Путь к экспорту CSV из Cost Explorer (или аналогичному) для сверки — переопределяет config.reconciliation.invoiceTotal только для этого запуска",
+    "constraintImpact": "Сколько заявленное изменение политики (лимит бюджета, отмена уровня модели) стоило или сэкономило, в разбивке по классам задач — вывод JSON; направьте в jq",
+    "constraintImpactDate": "Какое заявленное событие политики использовать как точку сравнения (должно совпадать с датой в config.policyEvents). По умолчанию: самое последнее",
+    "constraintImpactCsv": "Также записать таблицу по классам по этому пути CSV",
+    "constraintImpactMinSessions": "Минимальный порог сессий на класс и сторону (по умолчанию: 8)",
+    "packDiscloseScope": "Включать буквальный путь к проекту / UUID учётной записи в строку области действия пакета и столбцы CSV. По умолчанию скрыто — локальный путь может раскрыть имя клиента или невыпущенный продукт, а пакет предназначен для передачи за пределы этой машины."
   },
   "collection": {
     "collecting": "Сбор...",
@@ -229,8 +249,11 @@
     "thinkingDetail": "{{blocks}} блоков ({{percent}}% сессий)",
     "maxTokensWarning": "⚠  {{count}} ответов были обрезаны (max_tokens)",
     "resultsFound_one": "Найден {{count}} результат.",
+    "resultsFound_few": "Найдено {{count}} результата.",
+    "resultsFound_many": "Найдено {{count}} результатов.",
     "resultsFound_other": "Найдено {{count}} результатов.",
     "wroteFile": "Записан файл {{file}}",
+    "wrotePack": "Обосновывающий пакет записан в {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
     "planValueUsed": "План: {{planFee}}/мес → использовано {{percent}}% ценности плана за этот период",
     "trendColumnDay": "День",
     "trendColumnWeek": "Неделя",
@@ -243,6 +266,8 @@
     "tableTotals": "Итоги",
     "unknownTime": "неизвестно",
     "sessionSummary_one": "{{count}} сессия",
+    "sessionSummary_few": "{{count}} сессии",
+    "sessionSummary_many": "{{count}} сессий",
     "sessionSummary_other": "{{count}} сессий",
     "spendingTitle": "Расходы токенов — {{period}} ({{date}})",
     "spendingTotalCost": "Общая стоимость (эквивалент API)",
@@ -273,7 +298,18 @@
     "costPerTaskByModel": "По моделям",
     "costPerTaskSuccessShort": "успех",
     "costPerTaskInsufficient": "n/a (<{{min}} набл.)",
-    "costPerTaskObsShort": "набл."
+    "costPerTaskObsShort": "набл.",
+    "ticketTitle": "Задача {{key}} — {{period}}",
+    "ticketNotFound": "Расходы, отнесённые к {{key}}, за этот период не найдены — проверьте ключ и диапазон дат.",
+    "ticketTokensLabel": "Токены",
+    "ticketSourcesLabel": "Источники",
+    "ticketCoverageTitle": "Покрытие периода",
+    "ticketCoverageLine": "Отнесено {{attributed}} из {{total}} ({{ratio}})",
+    "ticketCoverageNone": "За этот период использование не зафиксировано.",
+    "ticketAmbiguousNote": "Неоднозначных сессий: {{count}} (связаны более чем с одной задачей).",
+    "confidenceHigh": "высокая достоверность",
+    "confidenceMedium": "средняя достоверность",
+    "confidenceLow": "низкая достоверность"
   },
   "status": {
     "databaseSize": "Размер базы данных",
@@ -304,6 +340,8 @@
     "removed": "Удалён(ы) тег(и): {{tags}} из сессии {{sessionId}}",
     "noTagsFound": "Теги не найдены.",
     "tagCount_one": "сессия",
+    "tagCount_few": "сессии",
+    "tagCount_many": "сессий",
     "tagCount_other": "сессий"
   },
   "backfill": {
@@ -322,7 +360,9 @@
   "errors": {
     "cannotCombineHtml": "Нельзя совмещать --html с --trend или --detail",
     "cannotCombineTrendDetail": "Нельзя совмещать --trend и --detail",
-    "invalidDateRange": "Недопустимый диапазон дат: {{message}}"
+    "invalidDateRange": "Недопустимый диапазон дат: {{message}}",
+    "invalidPackPeriod": "Недопустимый период пакета: {{message}}",
+    "invalidInvoiceCsv": "Не удалось прочитать --invoice-csv {{path}}: {{message}}"
   },
   "repair": {
     "description": "Восстановление производных данных, которые обычный сбор не может исправить задним числом.",
@@ -428,5 +468,26 @@
     "deviceRemoved": "Device '{{name}}' removed.",
     "newDeviceDetected": "New device detected in sync group: {{name}} ({{id}}). Review in settings.",
     "mergeConflict": "Merge conflict resolved using latest timestamp."
+  },
+  "taskClass": {
+    "passSummary": "Классифицировано сессий: {{classified}}; {{alreadyCurrent}} уже актуальны, осталось {{remaining}} (классификатор v{{version}}).",
+    "noSessions": "Пока нет классифицированных сессий — сначала выполните 'collect'.",
+    "fineHeader": "По классам задач:",
+    "coarseHeader": "По укрупнённым классам:",
+    "abstainHeader": "Отказ от классификации:",
+    "coverage": "Покрытие: классифицировано сессий — {{classified}}, ещё не классифицировано — {{unclassified}}.",
+    "mixedVersions": "⚠  Сессии классифицированы разными версиями классификатора ({{versions}}). Выполните 'task-class' повторно, прежде чем сравнивать классы за период.",
+    "confidenceMix": "достоверность: {{high}} высокая, {{medium}} средняя, {{low}} низкая",
+    "caveat": "Оговорка: согласованность измерялась на сгенерированном корпусе — по замыслу генератора, а не по человеческой разметке реальных сессий. Детализированные классы пригодны для отчётов только с учётом этой оговорки; приводите любой показатель по классу вместе с ней и с указанным выше распределением достоверности либо используйте укрупнённые классы."
+  },
+  "ticket": {
+    "sessionNoLinks": "Сессия {{sessionId}}: нет привязок тикетов",
+    "sessionLinks": "Сессия {{sessionId}}:",
+    "keyRequired": "Укажите ключ тикета вместе с --negate/--remove.",
+    "activeLabel": "активна",
+    "negatedLabel": "отменена",
+    "linked": "Ключ {{key}} привязан к сессии {{sessionId}}",
+    "negated": "Ключ {{key}} отменён для сессии {{sessionId}} (помечен как удалённый; автоматическое извлечение его не восстановит)",
+    "removed": "Ручная привязка {{key}} удалена из сессии {{sessionId}}"
   }
 }

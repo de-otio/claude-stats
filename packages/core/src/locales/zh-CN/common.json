@@ -68,6 +68,142 @@
     "promptsPerHr": "提示词/小时",
     "outputPerPrompt": "输出/提示词"
   },
+  "insight": {
+    "punctuation": {
+      "sentence": "{{text}}。",
+      "clauseJoin": "，",
+      "listJoin": "，",
+      "dotJoin": " · ",
+      "caveatJoin": ""
+    },
+    "devTime": {
+      "minutes": "{{value}} 开发分钟",
+      "hours": "{{value}} 开发小时",
+      "days": "{{value}} 开发天"
+    },
+    "confidence": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    },
+    "caveat": {
+      "plan": "等值 API 成本 — 并非你的套餐实际收取的金额。",
+      "mixed": "视图内的账户计费方式混杂 — 此金额一部分是相对套餐费用的等值 API 价值，另一部分是按量计费的真实支出。选择单个账户，或设置 pricing.mode，即可得到单一含义。",
+      "metered": "按量计费的实际成本。",
+      "reconciled": "与账单的吻合度为 {{ratio}}。",
+      "fallbackRates": "部分用量按第一方费率计价 — 配置合作伙伴费率可获得准确金额。",
+      "reconciledAndFallback": "与账单的吻合度为 {{ratio}}；部分用量按第一方费率计价 — 配置合作伙伴费率可获得准确金额。",
+      "notReconciled": "与账单不一致——自下而上汇总为导入总额的 {{ratio}}。",
+      "notReconciledAndFallback": "与账单不一致——自下而上汇总为导入总额的 {{ratio}}；部分用量还按第一方费率计价——请配置合作伙伴费率以获得精确数值。"
+    },
+    "coverage": {
+      "tier": "{{percent}} 为{{tier}}",
+      "mix": "置信度 {{parts}}。",
+      "mixAmbiguous_one": "置信度 {{parts}} · {{count}} 个会话归属不明确。",
+      "mixAmbiguous_other": "置信度 {{parts}} · {{count}} 个会话归属不明确。",
+      "none": "本期没有任何支出归因到工单标识 — 请检查分支名、提交标题或提示词中是否包含形如 PROJ-123 的标识，以及 config.tickets.projectKeys 是否列出了你团队的前缀（识别小写或大小写混合的命名约定时必须配置）。"
+    },
+    "cost": {
+      "unavailable": "本期没有记录到任何用量。",
+      "enablement": "运行一次 Claude Code 会话后刷新 — 数据采集是自动的。",
+      "thisPeriod": "本期 {{money}}",
+      "devTime": "按你配置的费率约合 {{devTime}}",
+      "planMultiplier": "为你 {{fee}}/月 套餐的 {{multiplier}} 倍"
+    },
+    "bought": {
+      "unavailable": "尚无支出归因到工作项。",
+      "enablement": "在 设置 → 工单 中添加你的项目标识，即可自动归因支出。",
+      "completed_one": "完成 {{count}} 个任务",
+      "completed_other": "完成 {{count}} 个任务",
+      "attributed": "{{percent}} 的支出已归因到工作项",
+      "topTicket": "最大项：{{key}}（{{cost}}）"
+    },
+    "efficiency": {
+      "unavailable": "已完成的工作量不足，无法衡量效率。",
+      "enablement": "衡量效率需要本期内有若干已完成的任务 — 用量增加后再来查看。",
+      "recoverable": "可回收 {{money}}（占支出的 {{percent}}）",
+      "hygiene": "自查浪费 {{percent}}",
+      "hygieneDown": "自查浪费 {{percent}}，较 {{previous}} 下降",
+      "hygieneUp": "自查浪费 {{percent}}，较 {{previous}} 上升"
+    },
+    "setup": {
+      "unavailable": "数据不足，无法判断你的套餐是否合适。",
+      "enablement": "套餐匹配度需要几周的使用数据才有参考价值。",
+      "policyImpact_one": "自 {{date}} 的策略变更以来，{{count}} 个任务类别中每个成功任务的成本上升了 {{percent}}。",
+      "policyImpact_other": "自 {{date}} 的策略变更以来，{{count}} 个任务类别中每个成功任务的成本上升了 {{percent}}。",
+      "policyCaveat": "这是证据而非证明 — 比较在同一任务类别内跨越该分界点进行。",
+      "verdictWithSaving": "{{verdict}} — 改用 {{plan}} 每月约可节省 {{saving}}。",
+      "savingCaveat": "根据你自己的用量对照各套餐额度推算得出。"
+    },
+    "change": {
+      "nothing": "目前没有需要关注的问题。",
+      "withImpact": "{{title}} — {{impact}}",
+      "more_one": "{{lead}}（还有 {{count}} 项）。",
+      "more_other": "{{lead}}（还有 {{count}} 项）。"
+    },
+    "calibration": {
+      "measured": {
+        "attribution": "在你裁定过的 {{n}} 条关联中，自动关联有 {{percent}} 被判定成立（95% 置信区间 {{lo}}–{{hi}}）——这只是你选择复核的那些关联上的一致率，并非整体准确率；由于人们往往只复核看起来有问题的部分，该数值会偏低。",
+        "outcome": "在你标注过的 {{n}} 个任务中，结果检测有 {{percent}} 与你的标注一致（95% 置信区间 {{lo}}–{{hi}}）——这只是你选择标注的那些任务上的一致率，并非整体准确率；由于人们往往只标注看起来有问题的部分，该数值会偏低。"
+      },
+      "uncalibrated": {
+        "attribution": "关联置信度尚未校准——目前有 {{n}} 条明确裁定，需要达到 {{minN}} 条，一致率才有意义。",
+        "outcome": "结果检测尚未校准——目前有 {{n}} 个结果标注，需要达到 {{minN}} 个，一致率才有意义。"
+      },
+      "enablement": {
+        "attribution": "使用 `claude-stats ticket <session-id> <key>` 确认或更正自动关联，或用 `--negate` 撤销错误的关联；每次明确裁定都会扩大样本量。",
+        "outcome": "使用 `claude-stats task-outcome <item> <success|partial|fail>` 标注已完成的工作；每个标注都会扩大样本量。"
+      },
+      "scope": {
+        "wholeStore": "统计范围为所有已记录的数据，而非仅所示时间段。",
+        "day": "仅统计最近一天，而非所示时间段。",
+        "week": "仅统计最近一周，而非所示时间段。",
+        "month": "仅统计本自然月至今，而非所示时间段。",
+        "customRange": "统计范围为所选日期区间。"
+      },
+      "minimumSampleRationale": "低于 minN 时不报告比率。根据三分之一法则，n 次观察中零分歧只能将错误率限定在约 3/n，因此少于 30 次的完美记录甚至无法排除十分之一的错误率。",
+      "notCalibratedTaskClass": "不存在运行时的真实依据：没有任何纠正记录表明有人对某个会话的任务类别提出过异议，因此在这台机器上无法衡量一致性。分类器公布的一致性数值是在构建时针对生成的语料库测得的，并非对本存储数据的测量。"
+    },
+    "apiThrottle": {
+      "rejection": {
+        "summary_one": "本周期内 Claude API 对你限流了 {{count}} 次。",
+        "summary_other": "本周期内 Claude API 对你限流了 {{count}} 次。",
+        "caveatMetered": "Claude Code 不会记录一次限流拒绝持续了多久，只记录它发生过——请将其视为下限信号，而非时间成本。请检查你账户的 API 或 Bedrock 速率限制层级。",
+        "caveatPlan": "Claude Code 不会记录一次限流拒绝持续了多久，只记录它发生过——请将其视为下限信号，而非时间成本。这是请求级别的限制，与你套餐的 5 小时用量窗口无关。"
+      },
+      "overload": {
+        "summary_one": "本周期内 Claude API 过载 {{count}} 次，额外产生了 {{time}} 的实测重试等待。",
+        "summary_other": "本周期内 Claude API 过载 {{count}} 次，额外产生了 {{time}} 的实测重试等待。",
+        "caveat": "这反映的是 Anthropic 自身的基础设施可用性，与你账户的速率限制或任何组织策略无关——任何账户都可能遇到，也不属于约束成本。"
+      }
+    },
+    "reconciliation": {
+      "title": "与账单的对账",
+      "verdict": {
+        "within": "与账单一致：本地估算为导入总额的 {{ratio}}，处于容差范围内。",
+        "outside": "与账单不一致：本地估算为导入总额的 {{ratio}}，超出容差范围。"
+      },
+      "label": {
+        "bottomUp": "本地估算",
+        "invoiceTotal": "导入的账单总额",
+        "residual": "差额",
+        "tolerance": "容差范围"
+      },
+      "residualInvoiceHigher": "账单比本地估算所能解释的金额多 {{money}}（{{percent}}）",
+      "residualLocalHigher": "本地估算比账单实际计费多 {{money}}（{{percent}}）",
+      "residualExact": "完全一致 — 账单与本地估算之间没有差额。",
+      "toleranceBand": "±{{percent}}%",
+      "causesLabel": "差额的可能原因",
+      "cause": {
+        "unpricedUsage": "未计价用量 —— 部分 token 缺少可用于计价的费率。",
+        "fallbackRates": "回退费率 —— 合作平台的用量按第一方费率计价。",
+        "scopeMismatch": "范围不匹配 —— 账单涵盖的账户或日期可能与此视图不同；未说明其范围。",
+        "unexplained": "无法解释 —— 已知原因均不能解释此差额。"
+      },
+      "scopeStated": "账单涵盖：{{note}}",
+      "scopeUnstated": "从未说明账单涵盖的范围 —— 请设置 reconciliation.scopeNote，以便判断是否存在范围不匹配。"
+    }
+  },
   "actions": {
     "connect": "连接",
     "disconnect": "断开连接",

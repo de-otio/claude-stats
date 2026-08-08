@@ -1004,3 +1004,191 @@ describe("parseSessionFile — duplicate assistant uuids", () => {
     expect(r.session!.webFetchRequests).toBe(2);
   });
 });
+
+// ── apiErrorEvents ───────────────────────────────────────────────────────────
+//
+// Fixtures below match the two REAL structured shapes Claude Code writes for
+// an API error (verified against real transcripts, never captured/committed —
+// see constraintImpact/apiThrottleWait.ts's module doc for the full field
+// list and why the two must not be merged into one figure).
+
+describe("parseSessionFile — apiErrorEvents", () => {
+  let filePath: string;
+
+  beforeEach(() => { filePath = tmpFile(); });
+  afterEach(() => { try { fs.unlinkSync(filePath); } catch { /* ok */ } });
+
+  /** One retry-ladder attempt: `type:"system", subtype:"api_error"`. */
+  function retryLadderEntry(overrides: Record<string, unknown> = {}) {
+    return {
+      type: "system",
+      subtype: "api_error",
+      source: "request_retry",
+      level: "error",
+      sessionId: BASE_SESSION,
+      version: BASE_VERSION,
+      timestamp: 1_002_000,
+      uuid: `sys-${Math.random()}`,
+      error: {
+        message: '529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
+        status: 529,
+        requestId: "req_test",
+        formatted: "529 Overloaded",
+        connection: null,
+        isNetworkDown: false,
+        rateLimits: null,
+      },
+      retryInMs: 2282,
+      retryAttempt: 3,
+      maxRetries: 10,
+      ...overrides,
+    };
+  }
+
+  /** A terminal, user-visible rejection: `type:"assistant", isApiErrorMessage:true`. */
+  function terminalRejectionEntry(overrides: Record<string, unknown> = {}) {
+    return {
+      type: "assistant",
+      sessionId: BASE_SESSION,
+      version: BASE_VERSION,
+      timestamp: 1_003_000,
+      uuid: `term-${Math.random()}`,
+      error: "rate_limit",
+      isApiErrorMessage: true,
+      apiErrorStatus: 429,
+      message: {
+        id: "msg_test",
+        model: "claude-opus-4-6",
+        role: "assistant",
+        stop_reason: "stop_sequence",
+        content: [{ type: "text", text: "You've hit the rate limit." }],
+        usage: {
+          input_tokens: 0, output_tokens: 0,
+          cache_creation_input_tokens: 0, cache_read_input_tokens: 0,
+        },
+      },
+      ...overrides,
+    };
+  }
+
+  it("parses a retry-ladder attempt as a non-terminal, measured-wait event", async () => {
+    writeLines(filePath, [retryLadderEntry()]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.apiErrorEvents).toHaveLength(1);
+    const e = r.apiErrorEvents[0]!;
+    expect(e.terminal).toBe(false);
+    expect(e.kind).toBe("server_error"); // status 529
+    expect(e.status).toBe(529);
+    expect(e.retryInMs).toBe(2282);
+    expect(e.retryAttempt).toBe(3);
+    expect(e.isNetworkDown).toBe(false);
+    expect(e.sessionId).toBe(BASE_SESSION);
+    // A null timestamp would silently exclude the row from every
+    // since/until-scoped read in the store, zeroing the metric without any
+    // visible failure — assert the real value, not just its presence.
+    expect(e.timestamp).toBe(1_002_000);
+  });
+
+  it("parses a terminal rate_limit rejection with no wait duration attached", async () => {
+    writeLines(filePath, [terminalRejectionEntry()]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.apiErrorEvents).toHaveLength(1);
+    const e = r.apiErrorEvents[0]!;
+    expect(e.terminal).toBe(true);
+    expect(e.kind).toBe("rate_limit");
+    expect(e.status).toBe(429);
+    expect(e.retryInMs).toBeNull(); // the load-bearing honesty assertion
+    expect(e.retryAttempt).toBeNull();
+  });
+
+  it("parses a terminal server_error rejection distinctly from rate_limit", async () => {
+    writeLines(filePath, [
+      terminalRejectionEntry({ uuid: "term-se", error: "server_error", apiErrorStatus: 529 }),
+    ]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.apiErrorEvents[0]!.kind).toBe("server_error");
+  });
+
+  it("classifies a retry-ladder entry by its numeric status alone (no error string on this entry kind)", async () => {
+    // A retry-ladder line never carries a short `error` string (only the
+    // terminal entry does) — its ONLY signal is `error.status`. Real data
+    // showed only 529 there, but the classifier must still resolve 429
+    // correctly by status if a future client ever retries a rate limit.
+    writeLines(filePath, [retryLadderEntry({ error: { status: 429, isNetworkDown: false } })]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.apiErrorEvents[0]!.kind).toBe("rate_limit");
+  });
+
+  it("classifies the 5xx band inclusively at its lower edge (500, not just 529)", async () => {
+    // The classifier's band is `status >= 500`; nothing pinned the boundary,
+    // so `>` instead of `>=` silently demoted a plain 500 to "unknown".
+    writeLines(filePath, [retryLadderEntry({ error: { status: 500, isNetworkDown: false } })]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.apiErrorEvents[0]!.kind).toBe("server_error");
+  });
+
+  it("classifies an unrecognised error string/status as unknown rather than guessing", async () => {
+    writeLines(filePath, [
+      terminalRejectionEntry({ uuid: "term-weird", error: "something_new", apiErrorStatus: 402 }),
+    ]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.apiErrorEvents[0]!.kind).toBe("unknown");
+  });
+
+  it("ignores a system/api_error line missing retryInMs rather than fabricating a zero", async () => {
+    const { retryInMs: _drop, ...withoutRetryInMs } = retryLadderEntry();
+    writeLines(filePath, [withoutRetryInMs]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.apiErrorEvents).toHaveLength(0);
+  });
+
+  it("ignores an ordinary system entry (not subtype api_error)", async () => {
+    writeLines(filePath, [
+      { type: "system", subtype: "local_command", sessionId: BASE_SESSION, timestamp: 1_000_000, uuid: "sys-cmd", content: "clear" },
+    ]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.apiErrorEvents).toHaveLength(0);
+  });
+
+  it("ignores a system/api_error line whose source is neither retry mechanism", async () => {
+    writeLines(filePath, [retryLadderEntry({ source: "something_else" })]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.apiErrorEvents).toHaveLength(0);
+  });
+
+  it("captures isNetworkDown when the retry ladder reports a connection failure", async () => {
+    writeLines(filePath, [
+      retryLadderEntry({
+        source: "connection_retry",
+        error: { message: "Connection error.", status: undefined, isNetworkDown: true },
+      }),
+    ]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.apiErrorEvents[0]!.isNetworkDown).toBe(true);
+    expect(r.apiErrorEvents[0]!.status).toBeNull();
+  });
+
+  it("still produces a normal zero-usage message row for a terminal rejection (additive, not replacing)", async () => {
+    writeLines(filePath, [terminalRejectionEntry({ uuid: "term-additive" })]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.messages).toHaveLength(1);
+    expect(r.messages[0]!.uuid).toBe("term-additive");
+    expect(r.messages[0]!.outputTokens).toBe(0);
+    expect(r.session!.assistantMessageCount).toBe(1);
+  });
+
+  it("does not double-emit a terminal event for a replayed (duplicate-uuid) rejection", async () => {
+    writeLines(filePath, [
+      terminalRejectionEntry({ uuid: "term-dup" }),
+      terminalRejectionEntry({ uuid: "term-dup" }),
+    ]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.apiErrorEvents).toHaveLength(1);
+  });
+
+  it("a session with no API errors at all yields an empty apiErrorEvents array", async () => {
+    writeLines(filePath, [userEntry(), assistantEntry()]);
+    const r = await parseSessionFile(filePath, "/proj");
+    expect(r.apiErrorEvents).toEqual([]);
+  });
+});

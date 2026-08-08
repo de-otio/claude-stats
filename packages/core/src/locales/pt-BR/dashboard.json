@@ -9,7 +9,9 @@
     "efficiency": "Eficiência",
     "energy": "Energia",
     "settings": "Configurações",
-    "classify": "Classificar"
+    "classify": "Classificar",
+    "spending": "Gastos",
+    "insights": "Insights"
   },
   "toolbar": {
     "period": "Período:",
@@ -49,6 +51,7 @@
     "tokenBreakdown": "Distribuição de tokens",
     "cacheUsage": "Uso do cache",
     "cumulativeApiValue": "Valor API acumulado vs mensalidade do plano",
+    "policyEvents": "Eventos de política",
     "topProjects": "Principais projetos",
     "tokensByProject": "Participação de tokens por projeto",
     "energyByProject": "Consumo de energia por projeto",
@@ -467,5 +470,79 @@
     "splitHint": "A divisão mantém o custo de cada sessão na conta que realmente a executou. Use para projetos compartilhados entre assinaturas (ex.: quando o limite de um plano não é suficiente).",
     "apply": "Aplicar",
     "applying": "Aplicando..."
+  },
+  "insights": {
+    "lede": "As cinco perguntas que esta ferramenta existe para responder. Cada cartão leva às suas evidências.",
+    "cards": {
+      "cost": "Quanto a IA custou?",
+      "bought": "O que isso rendeu?",
+      "efficiency": "Foi eficiente?",
+      "setup": "A configuração está certa?",
+      "change": "O que deve mudar?"
+    },
+    "alerts": {
+      "fallbackRates": "Parte do uso foi precificada com tarifas first-party em uma plataforma parceira (Bedrock ou Vertex). Todos os valores aqui são estimativas até que as tarifas do parceiro sejam configuradas.",
+      "action": "Revisar",
+      "reconciliationDrift": "O custo calculado de baixo para cima não concilia com o total da fatura configurado — o painel de conciliação abaixo mostra o resíduo e suas possíveis causas."
+    },
+    "verdict": {
+      "goodValue": "Seu plano vale a pena para o quanto você usa",
+      "underusing": "Você está usando menos do que seu plano cobre",
+      "noPlan": "Nenhum plano detectado — os custos são lidos como uso medido"
+    }
+  },
+  "ticketCard": {
+    "title": "Atribuição de ticket",
+    "noSession": "Nenhuma sessão registrada ainda — nada para vincular.",
+    "session": "Sessão atual: {{sessionId}}…",
+    "noLinks": "Nenhum vínculo de ticket para esta sessão.",
+    "negatedBadge": "negado",
+    "negateAction": "Negar",
+    "removeAction": "Remover",
+    "linkAction": "Vincular",
+    "keyPlaceholder": "PROJ-123"
+  },
+  "views": {
+    "insights": "Insights",
+    "cost-and-controlling": "Custos e Controladoria",
+    "tickets-and-value": "Tickets e Valor",
+    "efficiency-and-hygiene": "Eficiência e Higiene",
+    "plan-and-policy": "Plano e Política",
+    "sessions": "Sessões",
+    "energy": "Energia",
+    "settings": "Configurações"
+  },
+  "filters": {
+    "legend": "Refinar esta exibição",
+    "scopeNote": "Os filtros reexecutam todo o relatório, portanto refinam todas as exibições — não apenas esta.",
+    "project": "Projeto:",
+    "ticket": "Ticket:",
+    "taskClass": "Classe da tarefa:",
+    "any": "Qualquer",
+    "ticketPlaceholder": "ex.: PROJ-123",
+    "apply": "Aplicar filtros",
+    "clear": "Limpar",
+    "active_one": "{{count}} filtro ativo",
+    "active_other": "{{count}} filtros ativos",
+    "modelUnavailable": "Filtrar por modelo ainda não está disponível — isso refinaria os totais de tokens sem refinar as sessões às quais eles pertencem.",
+    "active_many": "{{count}} filtros ativos"
+  },
+  "taskClasses": {
+    "debug": "Depuração",
+    "greenfield": "Novo recurso",
+    "refactor-multi-file": "Refatoração",
+    "config-chore": "Configuração / manutenção",
+    "review": "Revisão",
+    "explore": "Exploração",
+    "unknown": "Não classificado"
+  },
+  "costQuality": {
+    "title": "Qualidade de custo",
+    "frontierLayer": "Onde o gasto está em relação à fronteira",
+    "perTaskLayer": "Quanto custou uma tarefa bem-sucedida",
+    "calibrationLayer": "Até que ponto confiar nos rótulos de resultado",
+    "calibrationReady": "Os rótulos de resultado estão calibrados — veja como",
+    "calibrationNotReady": "Os rótulos de resultado ainda não estão calibrados — veja por quê",
+    "calibrationNoLabels": "Os rótulos de resultado não estão calibrados — nada rotulado ainda"
   }
 }

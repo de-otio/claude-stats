@@ -63,10 +63,153 @@
   "units": {
     "tokens": "tokens",
     "session_one": "{{count}} sessão",
+    "session_many": "{{count}} sessões",
     "session_other": "{{count}} sessões",
     "tokPerMin": "tok/min",
     "promptsPerHr": "prompts/h",
     "outputPerPrompt": "saída/prompt"
+  },
+  "insight": {
+    "punctuation": {
+      "sentence": "{{text}}.",
+      "clauseJoin": " — ",
+      "listJoin": ", ",
+      "dotJoin": " · ",
+      "caveatJoin": " "
+    },
+    "devTime": {
+      "minutes": "{{value}} minutos de desenvolvimento",
+      "hours": "{{value}} horas de desenvolvimento",
+      "days": "{{value}} dias de desenvolvimento"
+    },
+    "confidence": {
+      "high": "alta",
+      "medium": "média",
+      "low": "baixa"
+    },
+    "caveat": {
+      "plan": "Custo equivalente de API — não é o que seu plano cobra.",
+      "mixed": "Cobrança mista entre as contas em exibição — parte deste valor é equivalente de API frente a uma mensalidade de plano, parte é dinheiro medido de fato. Selecione uma única conta, ou defina pricing.mode, para ter um significado só.",
+      "metered": "Custo real medido.",
+      "reconciled": "Confere com a fatura em {{ratio}}.",
+      "fallbackRates": "Parte do uso foi precificada com tarifas first-party — configure as tarifas do parceiro para valores exatos.",
+      "reconciledAndFallback": "Confere com a fatura em {{ratio}}; parte do uso foi precificada com tarifas first-party — configure as tarifas do parceiro para valores exatos.",
+      "notReconciled": "Não concilia com a fatura — o cálculo bottom-up é {{ratio}} do total importado.",
+      "notReconciledAndFallback": "Não concilia com a fatura — o cálculo bottom-up é {{ratio}} do total importado; parte do uso também foi precificada com tarifas first-party — configure as tarifas de parceiro para valores exatos."
+    },
+    "coverage": {
+      "tier": "{{percent}} {{tier}}",
+      "mix": "{{parts}} de confiança.",
+      "mixAmbiguous_one": "{{parts}} de confiança · {{count}} sessão ambígua.",
+      "mixAmbiguous_many": "{{parts}} de confiança · {{count}} sessões ambíguas.",
+      "mixAmbiguous_other": "{{parts}} de confiança · {{count}} sessões ambíguas.",
+      "none": "Nenhum gasto atribuído a chaves de ticket neste período — verifique se os nomes de branch, os assuntos de commit ou os prompts contêm uma chave como PROJ-123, e se config.tickets.projectKeys lista o prefixo da sua equipe (necessário para reconhecer uma convenção em minúsculas ou de caixa mista)."
+    },
+    "cost": {
+      "unavailable": "Nenhum uso registrado neste período.",
+      "enablement": "Rode uma sessão do Claude Code e atualize — a coleta é automática.",
+      "thisPeriod": "{{money}} neste período",
+      "devTime": "≈ {{devTime}} pela taxa que você configurou",
+      "planMultiplier": "{{multiplier}}× o seu plano de {{fee}}/mês"
+    },
+    "bought": {
+      "unavailable": "Ainda não há gasto atribuído a itens de trabalho.",
+      "enablement": "Adicione as chaves do seu projeto em Configurações → Tickets para atribuir o gasto automaticamente.",
+      "completed_one": "{{count}} tarefa concluída",
+      "completed_many": "{{count}} tarefas concluídas",
+      "completed_other": "{{count}} tarefas concluídas",
+      "attributed": "{{percent}} do gasto atribuído a itens de trabalho",
+      "topTicket": "maior: {{key}} ({{cost}})"
+    },
+    "efficiency": {
+      "unavailable": "Trabalho concluído insuficiente para medir a eficiência.",
+      "enablement": "A eficiência precisa de algumas tarefas concluídas no período — volte depois de mais uso.",
+      "recoverable": "{{money}} recuperáveis ({{percent}} do gasto)",
+      "hygiene": "desperdício autoavaliado {{percent}}",
+      "hygieneDown": "desperdício autoavaliado {{percent}}, caiu de {{previous}}",
+      "hygieneUp": "desperdício autoavaliado {{percent}}, subiu de {{previous}}"
+    },
+    "setup": {
+      "unavailable": "Dados insuficientes para avaliar se o seu plano se encaixa.",
+      "enablement": "Avaliar o encaixe do plano exige algumas semanas de uso para ter significado.",
+      "policyImpact_one": "Desde a mudança de política em {{date}}, o custo por tarefa bem-sucedida subiu {{percent}} em {{count}} classe de tarefas.",
+      "policyImpact_many": "Desde a mudança de política em {{date}}, o custo por tarefa bem-sucedida subiu {{percent}} em {{count}} classes de tarefas.",
+      "policyImpact_other": "Desde a mudança de política em {{date}}, o custo por tarefa bem-sucedida subiu {{percent}} em {{count}} classes de tarefas.",
+      "policyCaveat": "Indício, não prova — comparado dentro das classes de tarefas, dos dois lados do limite.",
+      "verdictWithSaving": "{{verdict}} — mudar para {{plan}} economizaria cerca de {{saving}}/mês.",
+      "savingCaveat": "Estimado a partir do seu próprio uso aplicado aos limites de cada plano."
+    },
+    "change": {
+      "nothing": "No momento, nada precisa de atenção.",
+      "withImpact": "{{title}} — {{impact}}",
+      "more_one": "{{lead}} (+{{count}} outro).",
+      "more_many": "{{lead}} (+{{count}} outros).",
+      "more_other": "{{lead}} (+{{count}} outros)."
+    },
+    "calibration": {
+      "measured": {
+        "attribution": "A atribuição automática foi confirmada em {{percent}} dos {{n}} vínculos que você avaliou (IC de 95% {{lo}}–{{hi}}) — isso é a concordância nos vínculos que você escolheu revisar, não a precisão geral, e o valor parece baixo porque as pessoas revisam o que parece errado.",
+        "outcome": "A detecção de resultado coincidiu com o seu rótulo em {{percent}} das {{n}} tarefas que você rotulou (IC de 95% {{lo}}–{{hi}}) — isso é a concordância nas tarefas que você escolheu rotular, não a precisão geral, e o valor parece baixo porque as pessoas rotulam o que parece errado."
+      },
+      "uncalibrated": {
+        "attribution": "A confiança da atribuição não está calibrada — {{n}} das {{minN}} avaliações explícitas necessárias para que um índice de concordância signifique algo.",
+        "outcome": "A detecção de resultado não está calibrada — {{n}} dos {{minN}} rótulos de resultado necessários para que um índice de concordância signifique algo."
+      },
+      "enablement": {
+        "attribution": "Confirme ou corrija um vínculo automático com `claude-stats ticket <session-id> <key>`, ou anule um incorreto com `--negate`; cada avaliação explícita amplia a amostra.",
+        "outcome": "Rotule o trabalho concluído com `claude-stats task-outcome <item> <success|partial|fail>`; cada rótulo amplia a amostra."
+      },
+      "scope": {
+        "wholeStore": "Contabilizado sobre tudo o que foi registrado, não apenas o período exibido.",
+        "day": "Contabilizado apenas no último dia, não no período exibido.",
+        "week": "Contabilizado apenas na última semana, não no período exibido.",
+        "month": "Contabilizado apenas no mês corrente até hoje, não no período exibido.",
+        "customRange": "Contabilizado no intervalo de datas selecionado."
+      },
+      "minimumSampleRationale": "Abaixo de minN, nenhuma taxa é reportada. Pela regra dos três, n observações sem discordâncias limitam a taxa de erro a apenas cerca de 3/n, então uma sequência perfeita com menos de 30 avaliações nem sequer consegue descartar uma taxa de erro de um em dez.",
+      "notCalibratedTaskClass": "Não existe verdade de referência em tempo de execução: nenhuma correção registra a discordância de uma pessoa com a classe de tarefa de uma sessão, então a concordância não pode ser medida nesta máquina. A taxa de concordância publicada do classificador é medida contra um corpus GERADO em tempo de compilação e não é uma medição dos dados deste armazenamento."
+    },
+    "apiThrottle": {
+      "rejection": {
+        "summary_one": "A API do Claude aplicou limite de taxa a você {{count}} vez neste período.",
+        "summary_other": "A API do Claude aplicou limite de taxa a você {{count}} vezes neste período.",
+        "caveatMetered": "O Claude Code não registra quanto tempo durou uma rejeição por limite de taxa, apenas que ela ocorreu — trate isso como um sinal de limite inferior, não como custo de tempo. Verifique o tier de limite de taxa da API ou do Bedrock da sua conta.",
+        "caveatPlan": "O Claude Code não registra quanto tempo durou uma rejeição por limite de taxa, apenas que ela ocorreu — trate isso como um sinal de limite inferior, não como custo de tempo. Esse é um limite por requisição, separado da janela de uso de 5 horas do seu plano.",
+        "summary_many": "A API do Claude aplicou limite de taxa a você {{count}} vezes neste período."
+      },
+      "overload": {
+        "summary_one": "A API do Claude ficou sobrecarregada {{count}} vez neste período, somando {{time}} de espera medida em novas tentativas.",
+        "summary_other": "A API do Claude ficou sobrecarregada {{count}} vezes neste período, somando {{time}} de espera medida em novas tentativas.",
+        "caveat": "Isso reflete a disponibilidade da própria infraestrutura da Anthropic, não o limite de taxa da sua conta nem alguma política da organização — vale para qualquer conta e não é um custo de restrição.",
+        "summary_many": "A API do Claude ficou sobrecarregada {{count}} vezes neste período, somando {{time}} de espera medida em novas tentativas."
+      }
+    },
+    "reconciliation": {
+      "title": "Conciliação com a sua fatura",
+      "verdict": {
+        "within": "Concilia com a fatura: a estimativa local é {{ratio}} do total importado, dentro da sua faixa de tolerância.",
+        "outside": "Não concilia com a fatura: a estimativa local é {{ratio}} do total importado, fora da sua faixa de tolerância."
+      },
+      "label": {
+        "bottomUp": "Estimativa local",
+        "invoiceTotal": "Total da fatura importada",
+        "residual": "Residual",
+        "tolerance": "Faixa de tolerância"
+      },
+      "residualInvoiceHigher": "{{money}} ({{percent}}) a mais na fatura do que a estimativa local considera",
+      "residualLocalHigher": "{{money}} ({{percent}}) a mais na estimativa local do que a fatura cobra",
+      "residualExact": "Correspondência exata — nenhuma diferença entre a fatura e a estimativa local.",
+      "toleranceBand": "±{{percent}}%",
+      "causesLabel": "O que pode explicar a diferença",
+      "cause": {
+        "unpricedUsage": "Uso sem preço — alguns tokens não tinham tarifa para serem precificados.",
+        "fallbackRates": "Tarifas de fallback — uso em plataformas parceiras precificado com tarifas de primeira parte.",
+        "scopeMismatch": "Escopo divergente — a fatura pode não cobrir as mesmas contas ou datas desta visualização; nenhum escopo foi informado.",
+        "unexplained": "Sem explicação — nenhuma das causas conhecidas justifica essa diferença."
+      },
+      "scopeStated": "A fatura cobre: {{note}}",
+      "scopeUnstated": "O que a fatura cobre nunca foi informado — defina reconciliation.scopeNote para poder confirmar ou descartar uma divergência."
+    }
   },
   "actions": {
     "connect": "Conectar",

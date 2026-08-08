@@ -133,6 +133,11 @@
     "reportTag": "Filtre les sessions par tag",
     "reportSession": "Affiche la vue détaillée d'une seule session",
     "reportHtml": "Écrit un rapport HTML autonome dans un fichier",
+    "pack": "Génère le dossier de justification : un document HTML autonome plus un lot de fichiers CSV pour un mois calendaire, destiné à un lecteur qui n'utilise pas claude-stats",
+    "packPeriod": "Mois calendaire à traiter, AAAA-MM (obligatoire)",
+    "packSections": "Sections à inclure, séparées par des virgules : headline,tickets,nonticket,hygiene,constraint,calibration (par défaut : headline,tickets,nonticket)",
+    "packOut": "Répertoire où écrire le lot de fichiers (par défaut : répertoire courant)",
+    "packJson": "Affiche les chemins des fichiers écrits en JSON plutôt qu'une ligne récapitulative",
     "status": "Affiche la taille de la base, le nombre de lignes et la dernière collecte",
     "export": "Exporte les données en CSV ou JSON",
     "exportFormat": "Format de sortie : csv ou json (par défaut : json)",
@@ -174,7 +179,22 @@
     "costPerTaskByModel": "Ventiler la métrique par modèle dominant",
     "costPerTaskCalibrate": "Afficher les métriques de calibration (accord proxy/signal avec vos labels) en JSON",
     "costPerTaskLlmJudge": "Exécuter le juge LLM optionnel sur les tâches ambiguës (nécessite la config llmJudge ; envoie un résumé anonymisé de la tâche à votre endpoint)",
-    "costPerTaskLlmJudgeUnconfigured": "--llm-judge demandé mais llmJudge.endpoint/model ne sont pas définis ; juge ignoré."
+    "costPerTaskLlmJudgeUnconfigured": "--llm-judge demandé mais llmJudge.endpoint/model ne sont pas définis ; juge ignoré.",
+    "reportTicket": "Afficher le coût, les tokens et les sessions attribués à une clé de ticket (par ex. PROJ-123), ainsi que la couverture de la période",
+    "taskClass": "Classer les sessions par classe de tâche et afficher la répartition",
+    "taskClassLimit": "Classer au plus ce nombre de sessions lors de cette exécution (reprise possible)",
+    "ticket": "Lier, neutraliser ou lister les attributions manuelles de tickets pour une session",
+    "ticketSessionArg": "ID de session (ou préfixe)",
+    "ticketKeyArg": "Clé de ticket (p. ex. PROJ-123). Omise sans autre option : liste les liens actuels",
+    "ticketNegate": "Neutraliser cette clé pour la session (la masque même si l'extraction continue de la détecter)",
+    "ticketRemove": "Supprimer un lien manuel pour cette clé (sans affecter la neutralisation)",
+    "ticketList": "Lister les liens de tickets de la session avant d'appliquer une modification",
+    "packInvoiceCsv": "Chemin vers un export CSV Cost Explorer (ou équivalent) à utiliser pour le rapprochement — remplace config.reconciliation.invoiceTotal pour cette exécution uniquement",
+    "constraintImpact": "Ce qu'un changement de politique déclaré (plafond budgétaire, retrait d'un niveau de modèle) a coûté ou fait économiser, par classe de tâche — sortie JSON ; à rediriger vers jq",
+    "constraintImpactDate": "Quel événement de politique déclaré utiliser comme point de comparaison (doit correspondre à une date de config.policyEvents). Par défaut : le plus récent",
+    "constraintImpactCsv": "Écrire aussi le tableau par classe dans ce chemin CSV",
+    "constraintImpactMinSessions": "Seuil minimal de sessions par classe et par côté (par défaut : 8)",
+    "packDiscloseScope": "Inclure le chemin de projet littéral / l'UUID du compte dans la ligne de portée du pack et les colonnes CSV. Omis par défaut — un chemin local peut révéler le nom d'un client ou d'un produit non publié, et le pack est destiné à quitter cette machine."
   },
   "collection": {
     "collecting": "Collecte en cours...",
@@ -229,8 +249,10 @@
     "thinkingDetail": "{{blocks}} blocs ({{percent}}% des sessions)",
     "maxTokensWarning": "⚠  {{count}} réponses ont été tronquées (max_tokens)",
     "resultsFound_one": "{{count}} résultat trouvé.",
+    "resultsFound_many": "{{count}} résultats trouvés.",
     "resultsFound_other": "{{count}} résultats trouvés.",
     "wroteFile": "{{file}} écrit",
+    "wrotePack": "Dossier de justification écrit dans {{dir}} (report.html, tickets.csv, nonticket.csv, summary.csv)",
     "planValueUsed": "Forfait : {{planFee}}/mois → {{percent}}% de la valeur du forfait utilisée cette période",
     "trendColumnDay": "Jour",
     "trendColumnWeek": "Semaine",
@@ -243,6 +265,7 @@
     "tableTotals": "Totaux",
     "unknownTime": "inconnu",
     "sessionSummary_one": "{{count}} session",
+    "sessionSummary_many": "{{count}} sessions",
     "sessionSummary_other": "{{count}} sessions",
     "spendingTitle": "Dépenses en tokens — {{period}} ({{date}})",
     "spendingTotalCost": "Coût total (équivalent API)",
@@ -273,7 +296,18 @@
     "costPerTaskByModel": "Par modèle",
     "costPerTaskSuccessShort": "réussite",
     "costPerTaskInsufficient": "n/a (<{{min}} obs.)",
-    "costPerTaskObsShort": "obs."
+    "costPerTaskObsShort": "obs.",
+    "ticketTitle": "Ticket {{key}} — {{period}}",
+    "ticketNotFound": "Aucune dépense attribuée à {{key}} pour cette période — vérifiez la clé et la plage de dates.",
+    "ticketTokensLabel": "Tokens",
+    "ticketSourcesLabel": "Sources",
+    "ticketCoverageTitle": "Couverture de la période",
+    "ticketCoverageLine": "{{attributed}} sur {{total}} attribués ({{ratio}})",
+    "ticketCoverageNone": "Aucune utilisation enregistrée pour cette période.",
+    "ticketAmbiguousNote": "{{count}} session(s) ambiguë(s) (liée(s) à plusieurs tickets).",
+    "confidenceHigh": "confiance élevée",
+    "confidenceMedium": "confiance moyenne",
+    "confidenceLow": "confiance faible"
   },
   "status": {
     "databaseSize": "Taille de la base",
@@ -304,6 +338,7 @@
     "removed": "Tag(s) supprimé(s) : {{tags}} de la session {{sessionId}}",
     "noTagsFound": "Aucun tag trouvé.",
     "tagCount_one": "session",
+    "tagCount_many": "sessions",
     "tagCount_other": "sessions"
   },
   "backfill": {
@@ -322,7 +357,9 @@
   "errors": {
     "cannotCombineHtml": "Impossible de combiner --html avec --trend ou --detail",
     "cannotCombineTrendDetail": "Impossible de combiner --trend et --detail",
-    "invalidDateRange": "Plage de dates invalide : {{message}}"
+    "invalidDateRange": "Plage de dates invalide : {{message}}",
+    "invalidPackPeriod": "Période de dossier invalide : {{message}}",
+    "invalidInvoiceCsv": "Impossible de lire --invoice-csv {{path}} : {{message}}"
   },
   "repair": {
     "description": "Réparer les données dérivées que la collecte normale ne peut pas corriger rétroactivement.",
@@ -428,5 +465,26 @@
     "deviceRemoved": "Device '{{name}}' removed.",
     "newDeviceDetected": "New device detected in sync group: {{name}} ({{id}}). Review in settings.",
     "mergeConflict": "Merge conflict resolved using latest timestamp."
+  },
+  "taskClass": {
+    "passSummary": "{{classified}} session(s) classée(s) ; {{alreadyCurrent}} déjà à jour, {{remaining}} restante(s) (classifieur v{{version}}).",
+    "noSessions": "Aucune session classée pour l'instant — exécutez d'abord « collect ».",
+    "fineHeader": "Par classe de tâche :",
+    "coarseHeader": "Par classe générale :",
+    "abstainHeader": "Classification refusée :",
+    "coverage": "Couverture : {{classified}} session(s) classée(s), {{unclassified}} pas encore classée(s).",
+    "mixedVersions": "⚠  Les sessions ont été classées par plusieurs versions du classifieur ({{versions}}). Réexécutez « task-class » avant de comparer les classes sur une période.",
+    "confidenceMix": "confiance : {{high}} élevée, {{medium}} moyenne, {{low}} faible",
+    "caveat": "Mise en garde : la concordance a été mesurée sur un corpus généré — l'intention du générateur, et non des annotations humaines sur des sessions réelles. Les classes fines ne sont exploitables dans un rapport que sous cette réserve ; citez tout chiffre par classe avec celle-ci et avec la répartition de confiance ci-dessus, ou utilisez les classes générales."
+  },
+  "ticket": {
+    "sessionNoLinks": "Session {{sessionId}} : aucun lien de ticket",
+    "sessionLinks": "Session {{sessionId}} :",
+    "keyRequired": "Indiquez une clé de ticket avec --negate/--remove.",
+    "activeLabel": "actif",
+    "negatedLabel": "neutralisé",
+    "linked": "{{key}} lié à la session {{sessionId}}",
+    "negated": "{{key}} neutralisé pour la session {{sessionId}} (marqué supprimé ; l'extraction automatique ne le rétablira pas)",
+    "removed": "Lien manuel {{key}} supprimé de la session {{sessionId}}"
   }
 }

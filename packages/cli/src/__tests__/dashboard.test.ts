@@ -296,6 +296,30 @@ describe("buildDashboard — with sessions", () => {
     expect(data.summary.cacheCreationTokens).toBe(1_500);
   });
 
+  it("flags anyFallbackRates when the period's usage includes a partner-platform model with no configured partner rate", () => {
+    // "anthropic.claude-opus-5" is a Bedrock model id (pricing-sources.test.ts
+    // proves it resolves to rateBasis "first_party_fallback" with no
+    // overrides configured). The dashboard must surface that provenance so
+    // the cost card's caveat doesn't assert "actual metered cost" over a
+    // separately-priced partner platform (G1).
+    seedSession(store, makeSession({
+      sessionId: "s-bedrock",
+      models: ["anthropic.claude-opus-5"],
+    }), { model: "anthropic.claude-opus-5" });
+
+    const data = buildDashboard(store, { timezone: "UTC" });
+    expect(data.summary.anyFallbackRates).toBe(true);
+  });
+
+  it("does not flag anyFallbackRates when every priced model is first-party", () => {
+    seedSession(store, makeSession({ sessionId: "s-fp", models: ["claude-sonnet-4"] }), {
+      model: "claude-sonnet-4",
+    });
+
+    const data = buildDashboard(store, { timezone: "UTC" });
+    expect(data.summary.anyFallbackRates).toBe(false);
+  });
+
   it("computes cache efficiency correctly", () => {
     seedSession(store, makeSession({
       inputTokens: 1_000,

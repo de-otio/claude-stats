@@ -9,10 +9,12 @@ import type { DailyDigest, DailyDigestItem } from "../recap/index.js";
 import type { CostPerTaskReport } from "../cost-per-task/index.js";
 import { MIN_OBSERVABLE_FOR_MODEL_RATE } from "../cost-per-task/index.js";
 import { estimateCost, formatCost } from "@claude-stats/core/pricing";
+import { formatMoney, formatPercent, confidenceCaveat } from "@claude-stats/core/insight";
 import { attributeToolCosts, groupByMcpServer, detectAnomalies } from "../spending.js";
 import { t } from "../i18n.js";
 import { renderItem } from "../recap/templates.js";
 import { dayWindowInTz } from "../recap/index.js";
+import { getTicketCostReport } from "../ticketing/index.js";
 
 export type Preset = "day" | "week" | "month" | "all";
 
@@ -28,6 +30,20 @@ export interface ReportOptions extends DateRangeOpts {
   accountUuid?: string;
   entrypoint?: string;
   tag?: string;
+  /**
+   * Ticket key. Two consumers, one meaning: `printTicketReport`
+   * (`report --ticket PROJ-123`), and — since the domain views' local filters —
+   * `buildDashboard`, which narrows both halves of the store filter to sessions
+   * attributed to this key.
+   */
+  ticket?: string;
+  /**
+   * Fine task class (schema V21) to narrow to, e.g. `"debug"`. Like `ticket`,
+   * applied to BOTH halves of the store filter; unclassified sessions match
+   * nothing, which is deliberate — folding them into a class would fabricate
+   * attribution (see `taskClassPredicate` in store/index.ts).
+   */
+  taskClass?: string;
   timezone?: string;
   includeCI?: boolean;
   /** Include sessions whose source JSONL was rotated away (source_deleted=1).
@@ -964,6 +980,78 @@ export function printCostPerTask(
     write(`  ${t("dashboard:costEfficiency.basisNote")}`);
   }
   write("");
+}
+
+/**
+ * `report --ticket PROJ-123` — cost/tokens/sessions/confidence for ONE ticket
+ * key, plus the period's coverage line (02 §2.6).
+ *
+ * Every figure is rendered through the shared formatters
+ * (`@claude-stats/core/insight`) — never a locally-formatted number, so this
+ * output can never drift from the dashboard/pack/MCP tool rendering the same
+ * underlying report (F6's anti-drift contract).
+ */
+export function printTicketReport(store: Store, opts: ReportOptions = {}, out: NodeJS.WritableStream = process.stdout): void {
+  const write = (line: string) => out.write(line + "\n");
+  const ticketKey = (opts.ticket ?? "").trim().toUpperCase();
+  const tz = opts.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const isCustomRange = Boolean(opts.since && opts.until);
+  const { since, until } = periodRange({ period: opts.period, since: opts.since, until: opts.until }, tz);
+
+  const periodLabel = opts.since && opts.until
+    ? `${opts.since} – ${opts.until} (${tz})`
+    : opts.period
+      ? `${opts.period} (${tz})`
+      : t("common:periods.allTime");
+
+  const report = getTicketCostReport(store, {
+    since: since > 0 ? since : undefined,
+    until: isCustomRange ? until : undefined,
+    projectPath: opts.projectPath,
+    repoUrl: opts.repoUrl,
+    accountUuid: opts.accountUuid,
+    includeCI: opts.includeCI,
+  });
+
+  write("");
+  write(`─── ${t("cli:report.ticketTitle", { key: ticketKey, period: periodLabel })} ───`);
+  write("");
+
+  const row = report.tickets.find((tk) => tk.ticketKey === ticketKey);
+  if (!row) {
+    write(t("cli:report.ticketNotFound", { key: ticketKey }));
+    write("");
+    return;
+  }
+
+  write(`${t("cli:report.labelCost").padEnd(9)}: ${formatMoney(row.cost)}  (${confidenceLabel(row.confidence)})`);
+  write(`${t("cli:report.labelSessions").padEnd(9)}: ${row.sessionCount}`);
+  write(`${t("cli:report.ticketTokensLabel").padEnd(9)}: ${formatTokens(row.inputTokens)} in / ${formatTokens(row.outputTokens)} out`);
+  write(`${t("cli:report.ticketSourcesLabel").padEnd(9)}: ${row.sources.join(", ")}`);
+  write("");
+
+  write(`─── ${t("cli:report.ticketCoverageTitle")} ───`);
+  if (report.coverage.totalCost > 0) {
+    write(
+      t("cli:report.ticketCoverageLine", {
+        attributed: formatMoney(report.coverage.attributedCost),
+        total: formatMoney(report.coverage.totalCost),
+        ratio: formatPercent(report.coverage.ratio),
+      }),
+    );
+    const caveat = confidenceCaveat(t, report.coverage);
+    if (caveat) write(caveat);
+    if (report.coverage.ambiguousSessions > 0) {
+      write(t("cli:report.ticketAmbiguousNote", { count: report.coverage.ambiguousSessions }));
+    }
+  } else {
+    write(t("cli:report.ticketCoverageNone"));
+  }
+  write("");
+}
+
+function confidenceLabel(c: string): string {
+  return t(`cli:report.confidence${c.charAt(0).toUpperCase()}${c.slice(1)}`);
 }
 
 function highlightMatch(text: string, query: string): string {

@@ -9,7 +9,9 @@
     "efficiency": "Efficacité",
     "energy": "Énergie",
     "settings": "Paramètres",
-    "classify": "Classer"
+    "classify": "Classer",
+    "spending": "Dépenses",
+    "insights": "Analyses"
   },
   "toolbar": {
     "period": "Période :",
@@ -49,6 +51,7 @@
     "tokenBreakdown": "Répartition des tokens",
     "cacheUsage": "Utilisation du cache",
     "cumulativeApiValue": "Valeur API cumulée vs frais du forfait",
+    "policyEvents": "Événements de politique",
     "topProjects": "Projets principaux",
     "tokensByProject": "Part de tokens par projet",
     "energyByProject": "Consommation d'énergie par projet",
@@ -467,5 +470,79 @@
     "splitHint": "La répartition attribue le coût de chaque session au compte qui l'a réellement exécutée. Utilisez-la pour les projets partagés entre abonnements (p. ex. lorsque la limite d'un forfait ne suffit pas).",
     "apply": "Appliquer",
     "applying": "Application..."
+  },
+  "insights": {
+    "lede": "Les cinq questions auxquelles cet outil existe pour répondre. Chaque carte renvoie à ses preuves.",
+    "cards": {
+      "cost": "Combien l'IA a-t-elle coûté ?",
+      "bought": "Qu'est-ce que cela a apporté ?",
+      "efficiency": "Était-ce efficace ?",
+      "setup": "La configuration est-elle la bonne ?",
+      "change": "Que faut-il changer ?"
+    },
+    "alerts": {
+      "fallbackRates": "Une partie de l'usage a été tarifée aux tarifs first-party sur une plateforme partenaire (Bedrock ou Vertex). Tous les montants indiqués ici sont des estimations tant que les tarifs partenaires ne sont pas configurés.",
+      "action": "Examiner",
+      "reconciliationDrift": "Le coût calculé de bas en haut ne concorde pas avec le total de facture configuré — le panneau de rapprochement ci-dessous indique l'écart résiduel et ses causes possibles."
+    },
+    "verdict": {
+      "goodValue": "Votre abonnement est rentable au vu de votre usage",
+      "underusing": "Vous utilisez moins que ce que couvre votre abonnement",
+      "noPlan": "Aucun abonnement détecté — les coûts sont lus comme un usage facturé à la consommation"
+    }
+  },
+  "ticketCard": {
+    "title": "Attribution de ticket",
+    "noSession": "Aucune session enregistrée pour l'instant — rien à lier.",
+    "session": "Session actuelle : {{sessionId}}…",
+    "noLinks": "Aucun lien de ticket pour cette session.",
+    "negatedBadge": "neutralisé",
+    "negateAction": "Neutraliser",
+    "removeAction": "Supprimer",
+    "linkAction": "Lier",
+    "keyPlaceholder": "PROJ-123"
+  },
+  "views": {
+    "insights": "Analyses",
+    "cost-and-controlling": "Coûts et pilotage",
+    "tickets-and-value": "Tickets et valeur",
+    "efficiency-and-hygiene": "Efficacité et hygiène",
+    "plan-and-policy": "Forfait et politique",
+    "sessions": "Sessions",
+    "energy": "Énergie",
+    "settings": "Paramètres"
+  },
+  "filters": {
+    "legend": "Affiner cette vue",
+    "scopeNote": "Les filtres relancent l'intégralité du rapport : ils affinent donc toutes les vues, pas seulement celle-ci.",
+    "project": "Projet :",
+    "ticket": "Ticket :",
+    "taskClass": "Type de tâche :",
+    "any": "Tous",
+    "ticketPlaceholder": "ex. PROJ-123",
+    "apply": "Appliquer les filtres",
+    "clear": "Effacer",
+    "active_one": "{{count}} filtre actif",
+    "active_other": "{{count}} filtres actifs",
+    "modelUnavailable": "Le filtrage par modèle n'est pas encore disponible : il affinerait les totaux de tokens sans affiner les sessions auxquelles ils appartiennent.",
+    "active_many": "{{count}} filtres actifs"
+  },
+  "taskClasses": {
+    "debug": "Débogage",
+    "greenfield": "Nouvelle fonctionnalité",
+    "refactor-multi-file": "Refactorisation",
+    "config-chore": "Config / maintenance",
+    "review": "Revue",
+    "explore": "Exploration",
+    "unknown": "Non classé"
+  },
+  "costQuality": {
+    "title": "Qualité des coûts",
+    "frontierLayer": "Position de la dépense par rapport à la frontière",
+    "perTaskLayer": "Coût d'une tâche réussie",
+    "calibrationLayer": "Quel crédit accorder aux libellés de résultat",
+    "calibrationReady": "Libellés de résultat calibrés — voir comment",
+    "calibrationNotReady": "Libellés de résultat pas encore calibrés — voir pourquoi",
+    "calibrationNoLabels": "Libellés de résultat non calibrés — aucun libellé pour l'instant"
   }
 }

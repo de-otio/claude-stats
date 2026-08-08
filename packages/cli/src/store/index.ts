@@ -21,11 +21,50 @@ import type {
   AccountRecord,
   OwnerRule,
   OwnerTarget,
+  ApiErrorEvent,
 } from "@claude-stats/core/types";
 import { estimateCost } from "@claude-stats/core/pricing";
+import { requireTicketKey } from "@claude-stats/core/tickets";
 import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
-const SCHEMA_VERSION = 18;
+const SCHEMA_VERSION = 22;
+
+/**
+ * SQL narrowing a session-id column to sessions attributed to one ticket key.
+ *
+ * Two clauses, not one: a session qualifies when at least one NON-negated link
+ * names the key, AND no tombstone row negates it. The tombstone arm is what
+ * makes a user's "not this ticket" correction authoritative over any number of
+ * agreeing automatic links — the discrediting failure mode for a justification
+ * report is a single visibly-wrong row, so the correction has to win.
+ *
+ * Parameterised by column so the SAME predicate serves both halves of the
+ * filter-symmetry contract: `session_id` in `getSessions` (unaliased `sessions`)
+ * and `s.session_id` in `buildMessageFilter` (aliased). Two hand-written copies
+ * would be free to drift, which is precisely the bug the contract exists to
+ * prevent. Binds two params, both the ticket key.
+ */
+function ticketPredicate(col: string): string {
+  return `${col} IN (SELECT tl.session_id FROM ticket_links tl WHERE tl.ticket_key = ? AND tl.negated = 0)
+    AND ${col} NOT IN (SELECT tn.session_id FROM ticket_links tn WHERE tn.ticket_key = ? AND tn.negated = 1)`;
+}
+
+/**
+ * SQL narrowing a session-id column to one task class (schema V21).
+ *
+ * Parameterised by BOTH the column and the class column, for the same reason
+ * `ticketPredicate` is parameterised by column: `getSessions` queries the
+ * unaliased `sessions` table while `buildMessageFilter` queries an aliased `s`,
+ * and the fine and coarse grains are two dimensions over the same table. Four
+ * hand-written copies would be four chances to drift, and drift between the two
+ * halves is exactly what the filter-symmetry contract exists to catch.
+ *
+ * `field` is a compile-time union, never caller input — it is interpolated into
+ * SQL, so it must never become a string parameter. Binds one param, the class.
+ */
+function taskClassPredicate(col: string, field: "task_class" | "coarse_class"): string {
+  return `${col} IN (SELECT tc.session_id FROM session_task_class tc WHERE tc.${field} = ?)`;
+}
 
 export class Store {
   private db: DatabaseSync;
@@ -76,6 +115,10 @@ export class Store {
     if (current < 16) this.migrateToV16();
     if (current < 17) this.migrateToV17();
     if (current < 18) this.migrateToV18();
+    if (current < 19) this.migrateToV19();
+    if (current < 20) this.migrateToV20();
+    if (current < 21) this.migrateToV21();
+    if (current < 22) this.migrateToV22();
 
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
@@ -570,6 +613,160 @@ export class Store {
   }
 
   /**
+   * V19 — ticket attribution links (`doc/analysis/ticket-attribution/02 §2.2`).
+   *
+   * One row per (session, ticket key, evidence source), so a session can
+   * accumulate CORROBORATING rows — a branch-name link and a commit-subject
+   * link for the same key are two rows, and agreement between independent
+   * sources is what upgrades the effective confidence. Collapsing them to one
+   * row per (session, key) would throw away exactly the signal the accuracy
+   * ladder is built on.
+   *
+   * `negated` is the tombstone: a user-authored row with `negated = 1`
+   * suppresses that key for that session no matter how many automatic rows
+   * agree. It exists because the discrediting failure mode for a justification
+   * report is one visibly-wrong attribution, and the user must be able to kill
+   * it without deleting evidence.
+   *
+   * `evidence` (the matched branch name / commit subject) is LOCAL-ONLY: it is
+   * free text and therefore can never be added to an org-plane sync shape
+   * (`doc/analysis/05-privacy-security.md` — the "no field capable of carrying
+   * free text" guarantee is structural, not a filter).
+   *
+   * Additive + idempotent; zero backfill (extraction runs in `collect`).
+   */
+  private migrateToV19(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ticket_links (
+        session_id  TEXT NOT NULL,
+        ticket_key  TEXT NOT NULL,
+        source      TEXT NOT NULL,
+        confidence  TEXT NOT NULL,
+        granularity TEXT NOT NULL DEFAULT 'session',
+        first_uuid  TEXT,
+        last_uuid   TEXT,
+        evidence    TEXT,
+        negated     INTEGER NOT NULL DEFAULT 0,
+        created_at  INTEGER NOT NULL,
+        PRIMARY KEY (session_id, ticket_key, source),
+        FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ticket_links_key ON ticket_links (ticket_key);
+      CREATE INDEX IF NOT EXISTS idx_ticket_links_session ON ticket_links (session_id);
+    `);
+  }
+
+  /**
+   * V20 — per-message git branch (`doc/analysis/ticket-attribution/02 §2.3`).
+   *
+   * `sessions.git_branch` is first-seen-only (`parser/session.ts:188` keeps the
+   * first non-empty value), so a session that switches branches mid-way
+   * mis-attributes every message after the switch — and long-lived sessions are
+   * exactly the expensive ones. This column lets attribution split a session at
+   * its branch boundaries.
+   *
+   * NULLABLE with NO backfill, deliberately. Backfill requires re-reading the
+   * transcript, and V18's docstring records why a migration must not force that
+   * (~0.7 GB re-parse, stalled the collector past its timeouts). Historical rows
+   * therefore stay NULL and fall back to the session-level branch, which readers
+   * must treat as `granularity: 'session'` evidence. Backfilling where the
+   * transcript or archive still exists is an explicit, resumable, opt-in command
+   * — not a side effect of opening the database.
+   */
+  private migrateToV20(): void {
+    const addColumn = (table: string, column: string, def: string): void => {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === column)) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+      }
+    };
+    addColumn("messages", "git_branch", "TEXT");
+  }
+
+  /**
+   * V21 — task-class storage (`doc/analysis/constraint-impact/05-task-class-spec.md` §5.9).
+   *
+   * One row per session: the fine class, the coarse class, the confidence, the
+   * rule id that decided, the abstain reason, and the CLASSIFIER VERSION that
+   * produced them.
+   *
+   * The version column is the invalidation mechanism, and it is why this is a
+   * table rather than two columns on `sessions`. The classify pass selects
+   * sessions with no row or a row below the current version, so a rule change
+   * reclassifies exactly the affected corpus with no manual purge — and a store
+   * holding rows at two versions can SAY so, which a before/after comparison
+   * spanning a rule change must be able to do rather than mixing grains
+   * silently.
+   *
+   * `rule` and `abstain_reason` are closed enums from the classifier, never free
+   * text: they are the audit trail from a per-class delta back to a reason, and
+   * a free-text column here would be a field capable of carrying prompt content
+   * into a table the report layer reads.
+   *
+   * Additive + idempotent; zero backfill (classification is an explicit pass).
+   */
+  private migrateToV21(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS session_task_class (
+        session_id         TEXT PRIMARY KEY,
+        task_class         TEXT NOT NULL,
+        coarse_class       TEXT NOT NULL,
+        confidence         TEXT NOT NULL,
+        rule               TEXT NOT NULL,
+        abstain_reason     TEXT,
+        classifier_version INTEGER NOT NULL,
+        classified_at      INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_session_task_class_fine ON session_task_class (task_class);
+      CREATE INDEX IF NOT EXISTS idx_session_task_class_coarse ON session_task_class (coarse_class);
+      CREATE INDEX IF NOT EXISTS idx_session_task_class_version ON session_task_class (classifier_version);
+    `);
+  }
+
+  /**
+   * V22 — structured API-error/throttle events
+   * (`doc/analysis/constraint-impact/03-measurement-mechanics.md` §3.2,
+   * `packages/core/src/constraintImpact/apiThrottleWait.ts`).
+   *
+   * Append-only, one row per structured signal Claude Code itself writes for
+   * an API-level error — a retry-ladder attempt (`terminal = 0`, carries
+   * `retry_in_ms`) or a terminal user-visible rejection (`terminal = 1`, no
+   * wait attached). Kept OUT of `messages`: these are not billed turns (a
+   * terminal rejection already lands a zero-usage row there via the existing
+   * assistant-entry path; this table adds the classification and retry
+   * metadata that path has nowhere to put), and a retry-ladder attempt has no
+   * usage at all — folding either into `messages` would corrupt cost/turn
+   * analytics that assume a row is a real API response.
+   *
+   * `uuid` is the entry's own uuid (Claude Code emits one on both entry
+   * kinds), reused as the idempotency key exactly like `messages` — a
+   * re-parsed byte range upserts the same rows rather than duplicating them.
+   *
+   * Additive + idempotent; zero backfill (a historical file must still exist
+   * and be re-parsed from byte 0 to populate this table for old sessions —
+   * same constraint V20's `git_branch` documents).
+   */
+  private migrateToV22(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS api_error_events (
+        uuid             TEXT PRIMARY KEY,
+        session_id       TEXT NOT NULL,
+        timestamp        INTEGER,
+        terminal         INTEGER NOT NULL,
+        kind             TEXT NOT NULL,
+        status           INTEGER,
+        retry_in_ms      INTEGER,
+        retry_attempt    INTEGER,
+        is_network_down  INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_api_error_events_session ON api_error_events (session_id);
+      CREATE INDEX IF NOT EXISTS idx_api_error_events_ts ON api_error_events (timestamp);
+    `);
+  }
+
+  /**
    * V14 — anchor pins. Durable, session-keyed ground-truth pins produced by the
    * attribution engine's anchor signal (live CLI sessions observed active under
    * the currently-read account). Persisted because the live-session files are
@@ -1003,6 +1200,102 @@ export class Store {
         r.isThrottled ? 1 : 0
       );
     }
+  }
+
+  /** Append-only upsert for `api_error_events` (V22). See `migrateToV22`'s
+   *  doc comment for why this is a separate table from `messages`. Idempotent
+   *  by `uuid`, same as `upsertMessages`; a re-parsed byte range overwrites a
+   *  row with itself rather than duplicating it. */
+  upsertApiErrorEvents(events: ApiErrorEvent[]): void {
+    if (events.length === 0) return;
+    const stmt = this.db.prepare(`
+      INSERT INTO api_error_events (
+        uuid, session_id, timestamp, terminal, kind, status,
+        retry_in_ms, retry_attempt, is_network_down
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (uuid) DO UPDATE SET
+        timestamp        = excluded.timestamp,
+        terminal         = excluded.terminal,
+        kind             = excluded.kind,
+        status           = excluded.status,
+        retry_in_ms      = excluded.retry_in_ms,
+        retry_attempt    = excluded.retry_attempt,
+        is_network_down  = excluded.is_network_down
+    `);
+    for (const e of events) {
+      stmt.run(
+        e.uuid, e.sessionId, e.timestamp, e.terminal ? 1 : 0, e.kind, e.status,
+        e.retryInMs, e.retryAttempt, e.isNetworkDown ? 1 : 0
+      );
+    }
+  }
+
+  /**
+   * Period-scoped read for `api_error_events`, feeding
+   * `summarizeApiThrottle`/`formatApiThrottle` (`packages/core/src/
+   * constraintImpact/apiThrottleWait.ts`). Not part of the filter-symmetry
+   * contract — this is a standalone event table, not a `MessageFilter`
+   * dimension over `messages`/`sessions`.
+   *
+   * N-1: `api_error_events` has no `account_uuid` column of its own, but it
+   * has a `session_id` FK into `sessions`, which does — so `accountUuid` (and
+   * `projectPath`/`repoUrl`, for the same reason) scope through a join to
+   * `sessions`, same as every other event-ish table in this store.
+   * `formatApiThrottle` renders an `accountMode`-specific caveat ("your
+   * account's API or Bedrock rate-limit tier" / "your plan's 5-hour usage
+   * window") — wording that names ONE account. Without this scoping, a
+   * multi-account machine's figure silently pooled every account's rejections
+   * under a caveat naming whichever single account the caller had in mind.
+   */
+  getApiErrorEvents(
+    opts: {
+      since?: number;
+      until?: number;
+      accountUuid?: string;
+      projectPath?: string;
+      repoUrl?: string;
+    } = {},
+  ): ApiErrorEvent[] {
+    const outer: string[] = [];
+    const sessionConds: string[] = [];
+    const params: unknown[] = [];
+    if (opts.since !== undefined) {
+      outer.push("e.timestamp >= ?");
+      params.push(opts.since);
+    }
+    if (opts.until !== undefined) {
+      outer.push("e.timestamp <= ?");
+      params.push(opts.until);
+    }
+    if (opts.accountUuid) {
+      sessionConds.push("s.account_uuid = ?");
+      params.push(opts.accountUuid);
+    }
+    if (opts.projectPath) {
+      sessionConds.push("s.project_path = ?");
+      params.push(opts.projectPath);
+    }
+    if (opts.repoUrl) {
+      sessionConds.push("s.repo_url = ?");
+      params.push(opts.repoUrl);
+    }
+    const sessionAnd = sessionConds.length ? ` AND ${sessionConds.join(" AND ")}` : "";
+    const outerAnd = outer.length ? `${outer.join(" AND ")} AND ` : "";
+    const where = `WHERE ${outerAnd}EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = e.session_id${sessionAnd})`;
+    const rows = this.db
+      .prepare(`SELECT e.* FROM api_error_events e ${where} ORDER BY e.timestamp ASC`)
+      .all(...(params as any[])) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      uuid: r["uuid"] as string,
+      sessionId: r["session_id"] as string,
+      timestamp: r["timestamp"] as number | null,
+      terminal: r["terminal"] === 1,
+      kind: r["kind"] as ApiErrorEvent["kind"],
+      status: r["status"] as number | null,
+      retryInMs: r["retry_in_ms"] as number | null,
+      retryAttempt: r["retry_attempt"] as number | null,
+      isNetworkDown: r["is_network_down"] === 1,
+    }));
   }
 
   // ─── Checkpoint ─────────────────────────────────────────────────────────────
@@ -1612,6 +1905,34 @@ export class Store {
       sessionConditions.push("s.entrypoint = ?");
       params.push(filters.entrypoint);
     }
+    // Ticket / tag symmetry. Both narrow the SESSION set in `getSessions`; a
+    // message-scoped read that ignored them would price a different set of work
+    // than the session list shows — "12 sessions" beside a cost covering 40.
+    // `tag` was asymmetric before this: it filtered session lists only, so
+    // tag-scoped token/cost aggregates did not exist at all.
+    if (filters.ticket) {
+      sessionConditions.push(ticketPredicate("s.session_id"));
+      params.push(filters.ticket, filters.ticket);
+    }
+    if (filters.tag) {
+      sessionConditions.push("s.session_id IN (SELECT session_id FROM session_tags WHERE tag = ?)");
+      params.push(filters.tag);
+    }
+    // Task-class symmetry (schema V21). Phase 0 deliberately left this out —
+    // there was no table to filter against — so it lands here with the table.
+    // An unclassified session matches NEITHER dimension, which is correct and
+    // deliberate: a per-class cost figure must price only sessions the
+    // classifier actually placed, and silently folding the unclassified
+    // remainder into a class would be the fabricated-attribution failure the
+    // honesty invariant forbids.
+    if (filters.taskClass) {
+      sessionConditions.push(taskClassPredicate("s.session_id", "task_class"));
+      params.push(filters.taskClass);
+    }
+    if (filters.coarseTaskClass) {
+      sessionConditions.push(taskClassPredicate("s.session_id", "coarse_class"));
+      params.push(filters.coarseTaskClass);
+    }
     // CI / deleted symmetry. `getSessions` narrows the SESSION set on these two
     // flags; if the message-scoped reads ignore them, the two halves of every
     // aggregate describe different work again — cost would keep counting a CI
@@ -1788,6 +2109,21 @@ export class Store {
     accountUuid?: string;
     entrypoint?: string;
     tag?: string;
+    /**
+     * Narrow to sessions attributed to this work-item key. Negated (tombstoned)
+     * links are excluded, so a user's "not this ticket" correction wins over any
+     * number of agreeing automatic links. Mirrored in `MessageFilter` — see the
+     * symmetry contract there.
+     */
+    ticket?: string;
+    /**
+     * Narrow to sessions the classifier placed in this FINE task class
+     * (schema V21). Unclassified sessions match nothing. Mirrored in
+     * `MessageFilter` — see the symmetry contract there.
+     */
+    taskClass?: string;
+    /** Same, at the coarse grain (`build` | `diagnose` | `support` | `unknown`). */
+    coarseTaskClass?: string;
     since?: number;
     /**
      * Include sessions that were ACTIVE at/after this epoch-ms — i.e. their last
@@ -1838,6 +2174,18 @@ export class Store {
     if (filters.tag) {
       conditions.push("session_id IN (SELECT session_id FROM session_tags WHERE tag = ?)");
       params.push(filters.tag);
+    }
+    if (filters.ticket) {
+      conditions.push(ticketPredicate("session_id"));
+      params.push(filters.ticket, filters.ticket);
+    }
+    if (filters.taskClass) {
+      conditions.push(taskClassPredicate("session_id", "task_class"));
+      params.push(filters.taskClass);
+    }
+    if (filters.coarseTaskClass) {
+      conditions.push(taskClassPredicate("session_id", "coarse_class"));
+      params.push(filters.coarseTaskClass);
     }
     if (filters.since !== undefined) {
       conditions.push("first_timestamp >= ?");
@@ -1945,12 +2293,48 @@ export class Store {
     return rows[0]!;
   }
 
+  /**
+   * The most recently active non-deleted session, or null when the store is
+   * empty. "Active" is `COALESCE(last_timestamp, first_timestamp)` — the same
+   * ordering `getSessions({activeSince})` treats as membership — so "current
+   * session" for the dashboard's attribution card means the same session a
+   * period-scoped view would call most-recent, not an independent notion.
+   * Subagent sessions are excluded: they inherit their parent's ticket
+   * attribution rather than carrying their own correction UI.
+   */
+  getMostRecentSessionId(): string | null {
+    const stmt = this.db.prepare(
+      `SELECT session_id FROM sessions
+        WHERE source_deleted = 0 AND is_subagent = 0
+        ORDER BY COALESCE(last_timestamp, first_timestamp) DESC
+        LIMIT 1`,
+    );
+    const row = stmt.get() as { session_id: string } | undefined;
+    return row?.session_id ?? null;
+  }
+
   getSessionMessages(sessionId: string): MessageRow[] {
     const stmt = this.db.prepare(
       "SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp ASC"
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (stmt.all as (...args: any[]) => unknown[])(sessionId) as MessageRow[];
+  }
+
+  /**
+   * `uuid` + `prompt_text` only, for one session's non-null-prompt messages, in
+   * the same ORDER BY timestamp ASC as `getSessionMessages` (callers depend on
+   * encounter order — see ticket-attribution's `collectSignal`). A4: ticket
+   * extraction (`runTicketExtraction`) only ever reads these two columns, but
+   * called `getSessionMessages` (`SELECT *`) — `prompt_text` is the largest
+   * column in the table, and every other column it pulled back was discarded
+   * immediately. This is the targeted read.
+   */
+  getSessionPromptTexts(sessionId: string): Array<{ uuid: string; prompt_text: string }> {
+    const stmt = this.db.prepare(
+      "SELECT uuid, prompt_text FROM messages WHERE session_id = ? AND prompt_text IS NOT NULL AND prompt_text != '' ORDER BY timestamp ASC"
+    );
+    return stmt.all(sessionId) as Array<{ uuid: string; prompt_text: string }>;
   }
 
   /**
@@ -2056,6 +2440,380 @@ export class Store {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = (stmt.all as (...args: any[]) => unknown[])(tag) as Array<{ session_id: string }>;
     return rows.map(r => r.session_id);
+  }
+
+  /**
+   * Session ids owning at least one message selected by `filters` — i.e. the
+   * SESSION set implied by the message-scoped half of the filter contract.
+   *
+   * Exists so the two halves can be compared directly: every session the
+   * message half prices must appear in `getSessions` under the same filter.
+   * That property is asserted as a test, and this is the read it asserts
+   * against. Also the natural basis for a coverage denominator (which sessions
+   * contributed cost in the window).
+   */
+  getSessionIdsWithMessages(filters: MessageFilter = {}): string[] {
+    const f = this.buildMessageFilter(filters);
+    const where = this.messageWhereExists(f);
+    const stmt = this.db.prepare(
+      `SELECT DISTINCT m.session_id AS session_id FROM messages m WHERE ${where} ORDER BY m.session_id`,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (stmt.all as (...args: any[]) => unknown[])(...f.params) as Array<{ session_id: string }>;
+    return rows.map((r) => r.session_id);
+  }
+
+  // ─── Ticket links ──────────────────────────────────────────────────────────
+  //
+  // Storage seam only. The extraction pass (which sources to scan, how to grade
+  // and upgrade confidence) is a separate concern and lives outside the store —
+  // it is a pure function of already-parsed data, and keeping it out of here is
+  // what lets it be property-tested without a database.
+
+  /**
+   * Record one attribution link. Idempotent per (session, key, source): a
+   * re-run of extraction refreshes the row rather than duplicating it.
+   *
+   * An AUTOMATIC row never overwrites an existing MANUAL ('tag') row.
+   * Extraction re-runs on every collect, so without that rule a user's
+   * correction would silently revert the next time the branch name was
+   * re-scanned — the single most corrosive bug this feature could ship,
+   * because it would look like the tool ignoring the user.
+   *
+   * The converse is deliberately NOT blocked: a fresh MANUAL write (this
+   * method called with `source: 'tag'`, as the CLI/dashboard link action
+   * does) always overwrites an existing 'tag' row — including a tombstone
+   * left by an earlier `negateTicketLink`. Manual-wins is symmetric: the
+   * newest explicit user statement about a session/key pair overrides the
+   * previous one, whichever direction it runs. Without this, `ticket <s>
+   * <key> --negate` followed by `ticket <s> <key>` would print "Linked" while
+   * the tombstone silently survived underneath — a surface asserting an
+   * outcome it did not produce. The guard below keys off `excluded.source`
+   * (the INCOMING row), not `ticket_links.source` (the existing row), so it
+   * reads as "block this write only when it is automatic AND the existing
+   * row is manual."
+   */
+  addTicketLink(link: {
+    sessionId: string;
+    ticketKey: string;
+    source: string;
+    confidence: string;
+    granularity?: string;
+    firstUuid?: string | null;
+    lastUuid?: string | null;
+    evidence?: string | null;
+    negated?: boolean;
+  }): void {
+    const key = requireTicketKey(link.ticketKey);
+    this.db
+      .prepare(
+        `INSERT INTO ticket_links
+           (session_id, ticket_key, source, confidence, granularity,
+            first_uuid, last_uuid, evidence, negated, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (session_id, ticket_key, source) DO UPDATE SET
+           confidence  = excluded.confidence,
+           granularity = excluded.granularity,
+           first_uuid  = excluded.first_uuid,
+           last_uuid   = excluded.last_uuid,
+           evidence    = excluded.evidence,
+           negated     = excluded.negated
+         WHERE ticket_links.source != 'tag' OR excluded.source = 'tag'`,
+      )
+      .run(
+        link.sessionId,
+        key,
+        link.source,
+        link.confidence,
+        link.granularity ?? "session",
+        link.firstUuid ?? null,
+        link.lastUuid ?? null,
+        link.evidence ?? null,
+        link.negated ? 1 : 0,
+        Date.now(),
+      );
+  }
+
+  /** Remove one link. Used to undo a manual assignment. */
+  removeTicketLink(sessionId: string, ticketKey: string, source: string): void {
+    this.db
+      .prepare("DELETE FROM ticket_links WHERE session_id = ? AND ticket_key = ? AND source = ?")
+      .run(sessionId, requireTicketKey(ticketKey), source);
+  }
+
+  /**
+   * Tombstone a key for a session: "this session is NOT this ticket". Written
+   * at the `tag` (manual) source so it outranks every automatic row, and so a
+   * later extraction pass cannot resurrect the wrong link.
+   */
+  negateTicketLink(sessionId: string, ticketKey: string): void {
+    const key = requireTicketKey(ticketKey);
+    this.db
+      .prepare(
+        `INSERT INTO ticket_links
+           (session_id, ticket_key, source, confidence, granularity, negated, created_at)
+         VALUES (?, ?, 'tag', 'high', 'session', 1, ?)
+         ON CONFLICT (session_id, ticket_key, source) DO UPDATE SET negated = 1`,
+      )
+      .run(sessionId, key, Date.now());
+  }
+
+  /** All links for one session, tombstones included (callers decide). */
+  getTicketLinksForSession(sessionId: string): TicketLinkRow[] {
+    const stmt = this.db.prepare(
+      "SELECT * FROM ticket_links WHERE session_id = ? ORDER BY ticket_key, source",
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(sessionId) as TicketLinkRow[];
+  }
+
+  /**
+   * Distinct ticket keys present in the store, with their session counts.
+   *
+   * Applies the same two-clause tombstone rule as `ticketPredicate`: a
+   * (session, key) pair counts only when some row affirms it AND no row negates
+   * it. Checking `negated = 0` alone would keep counting a session whose branch
+   * name still says `PROJ-9` after the user explicitly said it isn't — the
+   * correction has to hold everywhere the key is reported, not just where it is
+   * filtered.
+   */
+  getTicketKeys(): Array<{ ticket_key: string; session_count: number }> {
+    return this.db
+      .prepare(
+        `SELECT ticket_key, COUNT(DISTINCT session_id) AS session_count
+           FROM ticket_links tl
+          WHERE tl.negated = 0
+            AND NOT EXISTS (
+              SELECT 1 FROM ticket_links tn
+               WHERE tn.session_id = tl.session_id
+                 AND tn.ticket_key = tl.ticket_key
+                 AND tn.negated = 1
+            )
+          GROUP BY ticket_key ORDER BY session_count DESC, ticket_key`,
+      )
+      .all() as Array<{ ticket_key: string; session_count: number }>;
+  }
+
+  /**
+   * Every ACTIVE (non-tombstoned) `ticket_links` row, source-graded, across the
+   * whole store. Query-path building block for per-ticket cost aggregation
+   * (`packages/cli/src/ticketing/index.ts`): the caller already knows which
+   * sessions fall in its reporting window (from `getSessionIdsWithMessages`
+   * under the SAME filters used to price them), so intersecting there — rather
+   * than this method taking its own period/project/account filter — keeps
+   * exactly one source of truth for "which sessions are in scope" instead of
+   * two overlapping filter implementations that could drift apart.
+   *
+   * Same two-clause tombstone rule as `getTicketKeys` / `ticketPredicate`, at
+   * row (not just distinct-key) granularity, since aggregation needs every
+   * corroborating source row to grade confidence correctly.
+   */
+  getActiveTicketLinks(): Array<{
+    session_id: string;
+    ticket_key: string;
+    source: string;
+    confidence: string;
+  }> {
+    // A5: without an ORDER BY, equal-cost tickets resolve in SQLite's
+    // unspecified scan order — a latent flake for any test/caller indexing
+    // `tickets[0]`. (session_id, ticket_key, source) is the table's own
+    // PRIMARY KEY, so ordering by all three is a deterministic total order:
+    // no two rows can tie.
+    return this.db
+      .prepare(
+        `SELECT tl.session_id, tl.ticket_key, tl.source, tl.confidence
+           FROM ticket_links tl
+          WHERE tl.negated = 0
+            AND NOT EXISTS (
+              SELECT 1 FROM ticket_links tn
+               WHERE tn.session_id = tl.session_id
+                 AND tn.ticket_key = tl.ticket_key
+                 AND tn.negated = 1
+            )
+          ORDER BY tl.session_id, tl.ticket_key, tl.source`,
+      )
+      .all() as Array<{ session_id: string; ticket_key: string; source: string; confidence: string }>;
+  }
+
+  /**
+   * Every `ticket_links` row, **tombstones included**, reduced to the grading
+   * columns. The calibration input (`cli/src/calibration/`).
+   *
+   * Deliberately NOT `getActiveTicketLinks`: that method's two-clause rule
+   * filters tombstoned pairs out, and a tombstone is precisely the evidence
+   * calibration needs — it is the user's explicit "the automatic pass got this
+   * wrong". Calibrating on the active set would measure agreement over the rows
+   * that survived disagreement, which is a rate of 100% by construction.
+   *
+   * Whole-store, not period-scoped: calibration is a property of the mechanism,
+   * not of a reporting window, and an already-scarce sample cut down to one
+   * month would sit under the minimum forever. Callers surface it as such.
+   *
+   * Ordered by the table's own PRIMARY KEY, so the result is a deterministic
+   * total order (no two rows can tie).
+   */
+  getTicketLinkGrades(): Array<{
+    session_id: string;
+    ticket_key: string;
+    source: string;
+    negated: number;
+  }> {
+    return this.db
+      .prepare(
+        `SELECT session_id, ticket_key, source, negated
+           FROM ticket_links
+          ORDER BY session_id, ticket_key, source`,
+      )
+      .all() as Array<{ session_id: string; ticket_key: string; source: string; negated: number }>;
+  }
+
+  // ─── Task classes (schema V21) ─────────────────────────────────────────────
+  //
+  // Storage seam only. The classifier itself is pure and lives in
+  // `@claude-stats/core/taskClass`, so its rules can be property-tested and
+  // measured against a labelled corpus without a database anywhere near them.
+
+  /**
+   * Record one session's classification. Idempotent: re-running the pass at the
+   * same version rewrites the row rather than duplicating it, and re-running at
+   * a NEWER version overwrites the stale one — which is the whole invalidation
+   * story (spec §5.9). `classifiedAt` is injected, never `Date.now()` here, so
+   * a test can pin it.
+   */
+  setTaskClass(row: {
+    sessionId: string;
+    taskClass: string;
+    coarseClass: string;
+    confidence: string;
+    rule: string;
+    abstainReason?: string | null;
+    classifierVersion: number;
+    classifiedAt: number;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO session_task_class
+           (session_id, task_class, coarse_class, confidence, rule,
+            abstain_reason, classifier_version, classified_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (session_id) DO UPDATE SET
+           task_class         = excluded.task_class,
+           coarse_class       = excluded.coarse_class,
+           confidence         = excluded.confidence,
+           rule               = excluded.rule,
+           abstain_reason     = excluded.abstain_reason,
+           classifier_version = excluded.classifier_version,
+           classified_at      = excluded.classified_at`,
+      )
+      .run(
+        row.sessionId,
+        row.taskClass,
+        row.coarseClass,
+        row.confidence,
+        row.rule,
+        row.abstainReason ?? null,
+        row.classifierVersion,
+        row.classifiedAt,
+      );
+  }
+
+  /** One session's stored classification, or null when it has never been classified. */
+  getTaskClass(sessionId: string): TaskClassRow | null {
+    const stmt = this.db.prepare("SELECT * FROM session_task_class WHERE session_id = ?");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row = (stmt.get as (...args: any[]) => unknown)(sessionId) as TaskClassRow | undefined;
+    return row ?? null;
+  }
+
+  /**
+   * Session ids the classify pass still owes work on: never classified, or
+   * classified by an OLDER classifier version.
+   *
+   * This is what makes a rule change safe. Bumping `TASK_CLASS_VERSION` makes
+   * every stored row stale, this query finds them, and the pass rewrites them —
+   * no purge, no full re-parse, and resumable if it is interrupted.
+   *
+   * Returns the FULL work list, unbounded: batching is the pass's concern, and
+   * a `LIMIT` here would give the caller a second, redundant way to bound the
+   * run while making `remaining` uncomputable. The result is session ids only.
+   */
+  getSessionIdsNeedingTaskClass(currentVersion: number): string[] {
+    const stmt = this.db.prepare(
+      `SELECT s.session_id AS session_id
+         FROM sessions s
+         LEFT JOIN session_task_class tc ON tc.session_id = s.session_id
+        WHERE tc.session_id IS NULL OR tc.classifier_version < ?
+        ORDER BY s.session_id`,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (stmt.all as (...args: any[]) => unknown[])(currentVersion) as Array<{ session_id: string }>;
+    return rows.map((r) => r.session_id);
+  }
+
+  /**
+   * Session counts per class at both grains, plus the abstention breakdown.
+   *
+   * Returns the UNCLASSIFIED count too, because that is the coverage
+   * denominator: a per-class table without it implies a completeness it does
+   * not have. Callers must surface it.
+   *
+   * `byConfidence` is the fine class crossed with the stored confidence tier.
+   * Spec §5.7 gives every classification a tier and §5.10 forbids quoting a
+   * per-class figure without its caveat; a seam that returned only `fine`
+   * counts left every downstream surface unable to show the tier even if it
+   * wanted to, so the tier travels with the count rather than beside it.
+   */
+  getTaskClassCounts(): {
+    fine: Array<{ task_class: string; n: number }>;
+    coarse: Array<{ coarse_class: string; n: number }>;
+    abstain: Array<{ abstain_reason: string; n: number }>;
+    byConfidence: Array<{ task_class: string; confidence: string; n: number }>;
+    unclassified: number;
+  } {
+    const fine = this.db
+      .prepare("SELECT task_class, COUNT(*) AS n FROM session_task_class GROUP BY task_class ORDER BY n DESC, task_class")
+      .all() as Array<{ task_class: string; n: number }>;
+    const coarse = this.db
+      .prepare("SELECT coarse_class, COUNT(*) AS n FROM session_task_class GROUP BY coarse_class ORDER BY n DESC, coarse_class")
+      .all() as Array<{ coarse_class: string; n: number }>;
+    const abstain = this.db
+      .prepare(
+        `SELECT abstain_reason, COUNT(*) AS n FROM session_task_class
+          WHERE abstain_reason IS NOT NULL GROUP BY abstain_reason ORDER BY n DESC, abstain_reason`,
+      )
+      .all() as Array<{ abstain_reason: string; n: number }>;
+    const byConfidence = this.db
+      .prepare(
+        `SELECT task_class, confidence, COUNT(*) AS n FROM session_task_class
+          GROUP BY task_class, confidence ORDER BY task_class, confidence`,
+      )
+      .all() as Array<{ task_class: string; confidence: string; n: number }>;
+    const { n } = this.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM sessions s
+          LEFT JOIN session_task_class tc ON tc.session_id = s.session_id
+          WHERE tc.session_id IS NULL`,
+      )
+      .get() as { n: number };
+    return { fine, coarse, abstain, byConfidence, unclassified: n };
+  }
+
+  /**
+   * Distinct classifier versions present, with counts.
+   *
+   * A report spanning a rule change MUST be able to see that its two periods
+   * were classified by different rules — otherwise the rule change shows up as
+   * a workload shift, which is precisely the confound the whole per-class
+   * design exists to remove. More than one row here means "reclassify before
+   * quoting a per-class delta".
+   */
+  getTaskClassVersions(): Array<{ classifier_version: number; n: number }> {
+    return this.db
+      .prepare(
+        `SELECT classifier_version, COUNT(*) AS n FROM session_task_class
+          GROUP BY classifier_version ORDER BY classifier_version`,
+      )
+      .all() as Array<{ classifier_version: number; n: number }>;
   }
 
   // ─── Usage windows ──────────────────────────────────────────────────────────
@@ -2290,6 +3048,43 @@ export class Store {
     const stmt = this.db.prepare(sql);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (stmt.all as (...args: any[]) => unknown[])(...params) as ContextMessageRow[];
+  }
+
+  /**
+   * Returns per-message rows for the efficiency-hygiene detectors
+   * (`packages/core/src/hygiene/`): everything they need in one seek, ordered
+   * by timestamp so a caller can group into per-session, per-project sequences
+   * without a second query. INNER JOIN (not the EXISTS-membership pattern used
+   * by the neighboring `getMessagesFor*` methods) because, unlike those, this
+   * query needs `project_path` in the SELECT list itself — the abandoned-spend
+   * detector groups sessions by project to find same-project successors.
+   */
+  getMessagesForHygiene(
+    filters: Pick<
+      MessageFilter,
+      "projectPath" | "repoUrl" | "accountUuid" | "since" | "until" | "includeCI" | "includeDeleted"
+    > = {},
+  ): HygieneMessageStoreRow[] {
+    // Routed through the same `buildMessageFilter`/`messageWhereJoin` every
+    // other message-scoped aggregate uses (INNER-JOIN form, since this query
+    // needs `s.project_path` in the SELECT list — see class doc above). Doing
+    // it by hand here would let this query silently diverge from includeCI/
+    // includeDeleted narrowing the rest of the product applies; see F4 in
+    // `filter-symmetry.test.ts`.
+    const f = this.buildMessageFilter(filters);
+    const sql = `
+      SELECT m.session_id, s.project_path, m.uuid, m.timestamp, m.model,
+             m.input_tokens, m.output_tokens,
+             m.cache_read_tokens, m.cache_creation_tokens,
+             m.tool_error_count
+      FROM messages m
+      JOIN sessions s ON s.session_id = m.session_id
+      WHERE ${this.messageWhereJoin(f)}
+      ORDER BY m.timestamp ASC, m.uuid ASC
+    `;
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(...f.params) as HygieneMessageStoreRow[];
   }
 
   /**
@@ -3170,6 +3965,36 @@ export interface MessageRow {
   account_uuid?: string | null;
 }
 
+/**
+ * A raw `session_task_class` row (schema V21). Column types only — the closed
+ * enums live with the classifier in `@claude-stats/core/taskClass`, so the
+ * store never has an opinion about which classes exist.
+ */
+export interface TaskClassRow {
+  session_id: string;
+  task_class: string;
+  coarse_class: string;
+  confidence: string;
+  rule: string;
+  abstain_reason: string | null;
+  classifier_version: number;
+  classified_at: number;
+}
+
+/** A raw `ticket_links` row (schema V19). */
+export interface TicketLinkRow {
+  session_id: string;
+  ticket_key: string;
+  source: string;
+  confidence: string;
+  granularity: string;
+  first_uuid: string | null;
+  last_uuid: string | null;
+  evidence: string | null;
+  negated: number;
+  created_at: number;
+}
+
 export interface SessionMessageTotalRow {
   session_id: string;
   model: string;
@@ -3190,6 +4015,23 @@ export interface MessageFilter {
   repoUrl?: string;
   accountUuid?: string;
   entrypoint?: string;
+  /**
+   * Work-item key (schema V19 `ticket_links`). Excludes tombstoned links, and
+   * uses the same `ticketPredicate` SQL as `getSessions` so the two halves
+   * cannot diverge.
+   */
+  ticket?: string;
+  /** Session tag (schema V5 `session_tags`). Mirrors `getSessions({tag})`. */
+  tag?: string;
+  /**
+   * Fine task class (schema V21 `session_task_class`). Uses the same
+   * `taskClassPredicate` SQL as `getSessions` so the two halves cannot diverge.
+   * Unclassified sessions match nothing — a per-class cost figure must price
+   * only what the classifier actually placed.
+   */
+  taskClass?: string;
+  /** Coarse task class (`build` | `diagnose` | `support` | `unknown`). */
+  coarseTaskClass?: string;
   since?: number;
   until?: number;
   /** Explicit `false` excludes non-interactive (CI) sessions. */
@@ -3261,6 +4103,20 @@ export interface ContextMessageRow {
   input_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+}
+
+/** Row shape for `getMessagesForHygiene` — see `core/src/hygiene/`. */
+export interface HygieneMessageStoreRow {
+  session_id: string;
+  project_path: string;
+  uuid: string;
+  timestamp: number | null;
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  tool_error_count: number;
 }
 
 export interface EnergyMessageRow {

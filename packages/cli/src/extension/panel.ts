@@ -10,8 +10,9 @@ import * as fs from "node:fs";
 import * as vscode from "vscode";
 import { Store } from "../store/index.js";
 import { getNonce, escapeHtml } from "./utils.js";
-import { buildDashboard, attachCostPerTask, attachCalibration } from "../dashboard/index.js";
+import { buildDashboard, attachCostPerTask, attachCalibration, attachInsights, attachTicketAttribution } from "../dashboard/index.js";
 import { renderDashboard } from "../server/template.js";
+import { DEFAULT_NAV_TAB } from "../server/nav.js";
 import { loadConfig, saveConfig, mergeConfig, buildAccountsForConfig, type Config } from "../config.js";
 import { readClaudeAccount } from "../account.js";
 import { openCorrections, type CorrectionSignature, type OutcomeValue } from "../recap/corrections.js";
@@ -49,7 +50,14 @@ export class DashboardPanel {
   private since: string | undefined;
   private until: string | undefined;
   private accountUuid: string | undefined;
-  private activeTab: string = "overview";
+  // The domain views' local filters (gui-redesign/02 §2.5). Panel state rather
+  // than URL state, because a webview has no URL: the served host puts these in
+  // query params, this host remembers them across refreshes. Both end up in the
+  // same `ReportOptions` fields, so the narrowing is identical in both hosts.
+  private filterProject: string | undefined;
+  private filterTicket: string | undefined;
+  private filterTaskClass: string | undefined;
+  private activeTab: string = DEFAULT_NAV_TAB;
   // The AutoCollector fires refreshIfVisible() on every ~/.claude/projects/
   // write, which is constant during an active session. A full webview.html
   // replacement wipes DOM-only state on the Settings tab (recovery key shown
@@ -104,7 +112,7 @@ export class DashboardPanel {
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
     this.panel.webview.onDidReceiveMessage(
-      (msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; signature?: unknown; value?: string }) => this.handleMessage(msg),
+      (msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; signature?: unknown; value?: string; project?: string; ticket?: string; taskClass?: string }) => this.handleMessage(msg),
       null,
       this.disposables,
     );
@@ -142,6 +150,9 @@ export class DashboardPanel {
         since: this.since,
         until: this.until,
         accountUuid: this.accountUuid,
+        projectPath: this.filterProject,
+        ticket: this.filterTicket,
+        taskClass: this.filterTaskClass,
         accountFees: cfg.accountFees,
       };
       const data = buildDashboard(store, dashOpts);
@@ -154,6 +165,10 @@ export class DashboardPanel {
       // Calibration view (proxy/signal agreement vs the user's labels) — drives
       // the trust display + the activation toggle. Sync signals only.
       await attachCalibration(store, data, dashOpts);
+      // Insights tab inputs (ticket coverage, hourly rate, cost vocabulary).
+      // Synchronous and cheap; needs the config the two attaches above do not.
+      attachInsights(store, data, dashOpts, cfg);
+      attachTicketAttribution(store, data);
       const html = renderDashboard(data, t);
       this.panel.webview.html = patchForWebview(
         html,
@@ -166,7 +181,7 @@ export class DashboardPanel {
     }
   }
 
-  private handleMessage(msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean; assignments?: unknown; action?: string; payload?: unknown }): void {
+  private handleMessage(msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean; assignments?: unknown; action?: string; payload?: unknown; sessionId?: string; key?: string; project?: string; ticket?: string; taskClass?: string }): void {
     if (msg.command === "changePeriod" && msg.period) {
       this.period = msg.period as ReportOptions["period"];
       // Mutual exclusivity per the toolbar contract: a preset pick clears any
@@ -190,6 +205,17 @@ export class DashboardPanel {
     } else if (msg.command === "changeAccount") {
       // Empty string from the dropdown means "all accounts combined".
       this.accountUuid = msg.accountUuid ? msg.accountUuid : undefined;
+      void this.refresh();
+    } else if (msg.command === "changeFilters") {
+      // The webview's half of the local-filter bar. Empty string is "cleared",
+      // mapped to undefined exactly as the served host's parseOpts does — a
+      // filter on the empty key would narrow to nothing and show a page of
+      // zeroes rather than an unfiltered dashboard.
+      const clean = (v: unknown): string | undefined =>
+        typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined;
+      this.filterProject = clean(msg.project);
+      this.filterTicket = clean(msg.ticket);
+      this.filterTaskClass = clean(msg.taskClass);
       void this.refresh();
     } else if (msg.command === "refresh") {
       void this.refresh();
@@ -247,6 +273,12 @@ export class DashboardPanel {
       void this.handleBackupAction(msg.action, msg.payload, msg.callbackId);
     } else if (msg.command === "getClusters" && msg.callbackId) {
       this.getClusters(msg.callbackId);
+    } else if (msg.command === "linkTicket" && typeof msg.sessionId === "string" && typeof msg.key === "string") {
+      this.correctTicketLink(msg.sessionId, msg.key, "link");
+    } else if (msg.command === "negateTicket" && typeof msg.sessionId === "string" && typeof msg.key === "string") {
+      this.correctTicketLink(msg.sessionId, msg.key, "negate");
+    } else if (msg.command === "removeTicket" && typeof msg.sessionId === "string" && typeof msg.key === "string") {
+      this.correctTicketLink(msg.sessionId, msg.key, "remove");
     } else if (msg.command === "applyClassification") {
       // Fire-and-forget: apply writes rules + reattributes, then refresh()
       // re-renders every tab with the new attribution (and re-fetches the
@@ -450,9 +482,64 @@ export class DashboardPanel {
     void this.refresh();
   }
 
+  /**
+   * Link, negate, or remove a ticket link for a session, then refresh.
+   * Webview-only — same trust plane as {@link setOutcome}: the served HTTP
+   * path has no message channel and never reaches this handler. `key` is
+   * whatever the input box held; the store methods {@link applyTicketCorrection}
+   * dispatches to validate it via `requireTicketKey` and throw on a malformed
+   * key, which this treats as best-effort UI (swallowed, panel stays
+   * responsive).
+   *
+   * The action→store-call mapping itself lives in the standalone
+   * {@link applyTicketCorrection} (not inlined here) specifically so it can be
+   * unit-tested against a real `Store` without constructing a full
+   * `DashboardPanel` (which needs a live `vscode.window.createWebviewPanel`).
+   * See `ticket-panel-correction.test.ts` — its coverage is what would have
+   * caught the three action branches being interchangeable (e.g. Negate
+   * silently wired to `addTicketLink`) with the suite otherwise green.
+   */
+  private correctTicketLink(sessionId: string, key: string, action: "link" | "negate" | "remove"): void {
+    const store = new Store();
+    try {
+      applyTicketCorrection(store, sessionId, key, action);
+    } catch {
+      // Invalid key shape or similar — best-effort UI, swallowed like setOutcome.
+    } finally {
+      store.close();
+    }
+    void this.refresh();
+  }
+
   private dispose(): void {
     DashboardPanel.instance = undefined;
     for (const d of this.disposables) d.dispose();
+  }
+}
+
+/**
+ * The dashboard ticket card's action→store-call mapping, extracted from
+ * {@link DashboardPanel.correctTicketLink} so it can be exercised directly
+ * against a real `Store` in tests: constructing a `DashboardPanel` needs a
+ * live `vscode.window.createWebviewPanel`, which is exactly the kind of
+ * friction that leaves a handler like this one uncovered. Three branches, one
+ * store call each — a mutation swapping any two (e.g. Negate wired to
+ * `addTicketLink`, silently turning the "un-link" button into a "link"
+ * button) must fail a test that asserts the RESULTING row shape, not just
+ * that "some store method was called".
+ */
+export function applyTicketCorrection(
+  store: Store,
+  sessionId: string,
+  key: string,
+  action: "link" | "negate" | "remove",
+): void {
+  if (action === "link") {
+    store.addTicketLink({ sessionId, ticketKey: key, source: "tag", confidence: "high" });
+  } else if (action === "negate") {
+    store.negateTicketLink(sessionId, key);
+  } else {
+    store.removeTicketLink(sessionId, key, "tag");
   }
 }
 
@@ -649,6 +736,66 @@ export function patchForWebview(html: string, cspSource: string, chartJsUri: str
       vscode.postMessage({ command: 'setOutcome', signature: task.signature, value: b.getAttribute('data-cpt-value') });
     });
   });
+
+  // Wire up the ticket attribution card (webview-only, same reasoning as the
+  // cost-per-task controls above): link/negate/remove buttons read the
+  // session id off the card root and the key off either the input box (link)
+  // or the row's own data attribute (negate/remove).
+  var ticketCard = document.getElementById('ticket-attribution-card');
+  if (ticketCard) {
+    var ticketSessionId = ticketCard.getAttribute('data-session-id');
+    var linkBtn = document.getElementById('ticket-link-btn');
+    var keyInput = document.getElementById('ticket-key-input');
+    if (linkBtn && keyInput && ticketSessionId) {
+      linkBtn.addEventListener('click', function() {
+        var key = keyInput.value.trim();
+        if (!key) return;
+        vscode.postMessage({ command: 'linkTicket', sessionId: ticketSessionId, key: key });
+      });
+    }
+    ticketCard.querySelectorAll('[data-ticket-action]').forEach(function(b) {
+      b.addEventListener('click', function() {
+        var key = b.getAttribute('data-ticket-key');
+        var action = b.getAttribute('data-ticket-action');
+        if (!key || !ticketSessionId) return;
+        var command = action === 'negate' ? 'negateTicket' : 'removeTicket';
+        vscode.postMessage({ command: command, sessionId: ticketSessionId, key: key });
+      });
+    });
+  }
+
+  // Local-filter bar (gui-redesign/02 §2.5). The served page navigates with
+  // query params; a webview has no URL, so the same two buttons post the filter
+  // values to the extension, which holds them and rebuilds. window.applyFilters
+  // / clearFilters are overridden too, since the served page's own listeners
+  // are already attached to these buttons and would otherwise ALSO navigate the
+  // webview's document to a file:// URL with query params.
+  window.applyFilters = function () {
+    var proj = document.getElementById('filter-project');
+    var cls = document.getElementById('filter-taskclass');
+    var tkt = document.getElementById('filter-ticket');
+    vscode.postMessage({
+      command: 'changeFilters',
+      project: proj ? proj.value : '',
+      taskClass: cls ? cls.value : '',
+      ticket: tkt ? tkt.value : ''
+    });
+  };
+  window.clearFilters = function () {
+    vscode.postMessage({ command: 'changeFilters', project: '', taskClass: '', ticket: '' });
+  };
+  var applyFiltersBtn = document.getElementById('filter-apply');
+  if (applyFiltersBtn) {
+    var freshApply = applyFiltersBtn.cloneNode(true);
+    applyFiltersBtn.parentNode.replaceChild(freshApply, applyFiltersBtn);
+    freshApply.addEventListener('click', function () { window.applyFilters(); });
+  }
+  var clearFiltersBtn = document.getElementById('filter-clear');
+  if (clearFiltersBtn) {
+    var freshClear = clearFiltersBtn.cloneNode(true);
+    clearFiltersBtn.parentNode.replaceChild(freshClear, clearFiltersBtn);
+    freshClear.addEventListener('click', function () { window.clearFilters(); });
+  }
 
   // Signal-activation toggle: flip config.experimentalSignals and re-render.
   var sigToggle = document.getElementById('signals-toggle');

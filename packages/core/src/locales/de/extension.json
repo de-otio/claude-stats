@@ -60,19 +60,6 @@
         }
       ]
     },
-    "models": {
-      "title": "Modelle",
-      "sections": [
-        {
-          "heading": "Token nach Modell",
-          "body": "Gestapelter Balken mit Eingabe- und Ausgabe-Token-Verbrauch pro Modell. Hilft Ihnen zu erkennen, welche Modelle Sie am intensivsten nutzen."
-        },
-        {
-          "heading": "Abbruchgründe",
-          "body": "Wie häufig jeder Abbruchgrund auftritt. «end_turn» bedeutet, das Modell hat regulär beendet, «tool_use» bedeutet, es hat ein Tool aufgerufen, «max_tokens» bedeutet, es hat das Ausgabelimit erreicht."
-        }
-      ]
-    },
     "projects": {
       "title": "Projekte",
       "sections": [
@@ -237,6 +224,36 @@
         {
           "heading": "Wo Einstellungen gespeichert werden",
           "body": "Alle Einstellungen werden in ~/.claude-stats/config.json gespeichert. Sie können diese Datei auch direkt bearbeiten."
+        }
+      ]
+    },
+    "classify": {
+      "title": "Klassifizieren",
+      "sections": [
+        {
+          "heading": "Wozu dieser Tab dient",
+          "body": "Ordnen Sie jedes Projekt dem Abonnement zu, über das es abgerechnet werden soll. Die Projekte sind nach Kosten sortiert – wenn Sie die obersten klassifizieren, ist der Großteil Ihrer Ausgaben abgedeckt."
+        },
+        {
+          "heading": "Nur in VS Code",
+          "body": "Die Projektklassifizierung ist im VS Code-Panel verfügbar; das im Browser bereitgestellte Dashboard bietet sie nicht."
+        }
+      ]
+    },
+    "insights": {
+      "title": "Erkenntnisse",
+      "sections": [
+        {
+          "heading": "Was Sie hier sehen",
+          "body": "Die fünf geschäftlichen Fragen, für deren Beantwortung dieses Tool existiert: Was hat KI gekostet, was hat es gebracht, war es effizient, stimmt das Setup und was sollte sich ändern. Je ein Satz und eine Zahl, mit Link zu den zugrunde liegenden Belegen."
+        },
+        {
+          "heading": "Karten, die sagen, dass sie nicht antworten können",
+          "body": "Eine Karte ohne Daten nennt, was fehlt und wie man es aktiviert, statt ein leeres Widget oder eine erfundene Null zu zeigen. Bei einer neuen Installation starten die meisten Karten so und nennen jeweils den nächsten Schritt."
+        },
+        {
+          "heading": "Die Hinweisleiste",
+          "body": "Wird nur angezeigt, wenn wirklich etwas Aufmerksamkeit braucht — bewusst zurückhaltend: Ein Hinweis, der bei Rauschen auslöst, bringt Ihnen bei, die Leiste zu ignorieren."
         }
       ]
     }
