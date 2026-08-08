@@ -34,7 +34,7 @@
  * Exit code is non-zero on any packing, install, or synth failure.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, symlinkSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, symlinkSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -133,6 +133,32 @@ function symlinkFromRoot(name) {
   symlinkSync(src, dest, "dir");
 }
 for (const dep of ["aws-cdk-lib", "constructs", "source-map-support", "esbuild"]) {
+  symlinkFromRoot(dep);
+}
+// The two packed packages' own `dependencies` must be present too, or the real
+// `cdk synth` below cannot bundle `lambda/**`. A real consumer gets these from
+// its own `npm install`; this harness installs offline, so it has to stand in.
+//
+// Derived from the packed package.json files rather than listed by hand: a
+// hardcoded list silently rots the moment a lambda gains an import, and the
+// failure it produces ("Could not resolve X" deep inside an esbuild bundling
+// step) reads like a product bug rather than a gap in this harness. That
+// already happened once with `@aws-crypto/sha256-js`.
+//
+// Skipped only: the workspace packages themselves, which are installed from
+// their own tarball above. Everything else is linked, including `@aws-sdk/*` —
+// not every NodejsFunction here passes `--external:@aws-sdk/*`, and a real
+// consumer's `npm install` would have them on disk regardless.
+const packedDeps = new Set();
+for (const installDir of [coreInstallDir, infraInstallDir]) {
+  const pkg = JSON.parse(readFileSync(join(installDir, "package.json"), "utf8"));
+  for (const name of Object.keys(pkg.dependencies ?? {})) {
+    if (name.startsWith("@claude-stats/") || name.startsWith("@de-otio/")) continue;
+    packedDeps.add(name);
+  }
+}
+for (const dep of packedDeps) {
+  if (existsSync(join(consumerNodeModules, ...dep.split("/")))) continue; // already linked above
   symlinkFromRoot(dep);
 }
 // NodejsFunction's default bundler shells out to `npx --no-install esbuild`,
