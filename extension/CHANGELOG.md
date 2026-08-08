@@ -26,9 +26,22 @@ All notable changes to the Claude Stats VS Code extension are documented here.
 - **The dashboard's recommendation panel is localized** in all ten languages,
   including its two section headings. It was the last hardcoded English on the
   default view.
+- **Dependency majors:** commander 12 → 15, vite 6 → 8 (with
+  `@vitejs/plugin-react` 4 → 6, which requires it), and
+  `@testing-library/jest-dom` 6 → 7. The frontend stays on React 18 and
+  Tailwind 3 for now — `@tremor/react` v3 peer-requires React 18 and its class
+  names are scanned by a Tailwind 3 config, so those two majors move together
+  with a Tremor migration or not at all.
 
 ### Fixed
 
+- **`claude-stats dashboard` emitted invalid JSON.** i18next 26 prints a
+  promotional banner through `console.info` on startup, and `console.info`
+  writes to stdout — which this CLI uses as a protocol channel: `dashboard`
+  and `export` emit JSON/CSV there and `mcp` speaks JSON-RPC over it. Anything
+  piping `dashboard` into `jq` got a parse error. The banner is now off, and a
+  test runs the real binary and parses its stdout so the class of bug cannot
+  come back unnoticed.
 - Durations under 30 seconds rendered as "0 dev-minutes", and 0.999 hours
   rendered as "60 dev-minutes" one rounding step away from "1.0 dev-hours".
 - The tokens-per-call figure in the MCP-server recommendation followed the

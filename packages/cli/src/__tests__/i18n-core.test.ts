@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, afterEach, afterAll } from "vitest";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { detectLocaleFromEnv } from "@claude-stats/core/i18n";
 import { initCliI18n, t } from "../i18n.js";
 
@@ -71,5 +75,52 @@ describe("CLI i18n renders each supported locale (not fallback to en)", () => {
   it("en renders the canonical English string", async () => {
     await initCliI18n("en");
     expect(t("commands.programDescription")).toBe(EN_PROBE);
+  });
+});
+
+describe("the CLI keeps stdout free of non-payload output", () => {
+  // i18next >= 26 prints a Locize promo banner through console.info on init,
+  // and console.info writes to STDOUT. For this CLI stdout is a protocol
+  // channel: `dashboard` and `export` emit JSON/CSV on it and `mcp` speaks
+  // JSON-RPC over it, so one stray line makes the output unparseable. That
+  // regression shipped once — `claude-stats dashboard` emitted invalid JSON —
+  // and this guards `showSupportNotice: false` in core's initI18n.
+  //
+  // It has to run the real binary in a child process. i18next latches the
+  // banner behind a module-global set on first init, and setup.ts initializes
+  // i18n before any test body runs; vi.resetModules() does not clear it,
+  // because i18next is cached by Node outside vitest's registry. An
+  // in-process spy therefore can never observe the banner and would pass
+  // whether or not the fix is present.
+  const CLI = path.resolve(__dirname, "../../dist/index.js");
+
+  // An empty HOME keeps this independent of whatever the developer has
+  // collected locally, and keeps the suite from reading real usage data.
+  const run = (...args: string[]) => {
+    const home = mkdtempSync(path.join(tmpdir(), "cs-stdout-"));
+    try {
+      return spawnSync(process.execPath, [CLI, ...args], {
+        encoding: "utf8",
+        env: { ...process.env, HOME: home, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8" },
+        timeout: 120_000,
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  };
+
+  it("prints only the version on `--version`", () => {
+    expect(existsSync(CLI)).toBe(true);
+    const res = run("--version");
+    expect(res.status).toBe(0);
+    expect(res.stdout).toMatch(/^\d+\.\d+\.\d+\s*$/);
+    expect(res.stdout.toLowerCase()).not.toContain("locize");
+  });
+
+  it("emits parseable JSON on `dashboard`", () => {
+    expect(existsSync(CLI)).toBe(true);
+    const res = run("dashboard");
+    expect(res.status).toBe(0);
+    expect(() => JSON.parse(res.stdout)).not.toThrow();
   });
 });

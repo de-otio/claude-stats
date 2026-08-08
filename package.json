@@ -32,7 +32,7 @@
     "@hono/node-server": "^2.0.5",
     "sharp": "^0.35.3",
     "qs": "^6.15.2",
-    "vite": "^6.4.3"
+    "vite": "^8.2.1"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
@@ -44,6 +44,7 @@
     "fast-check": "^4.0.0",
     "tsx": "^4.23.0",
     "typescript": "^5.5.0",
+    "vite": "^8.2.1",
     "vitest": "^4.0.18"
   }
 }

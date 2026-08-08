@@ -71,6 +71,11 @@ export function resetCurrentT(): void {
 export async function initI18n(options: I18nOptions): Promise<I18nInstance> {
   const instance = i18next.createInstance();
   await instance.init({
+    // i18next >= 26 prints a Locize promo banner via console.info on init.
+    // console.info writes to STDOUT, which is a protocol channel here: the
+    // `dashboard` and `export` commands emit JSON/CSV there, and `mcp` speaks
+    // JSON-RPC over it. The banner made `claude-stats dashboard` unparseable.
+    showSupportNotice: false,
     lng: options.lng ?? "en",
     fallbackLng: "en",
     ns: [...options.ns, "common"],

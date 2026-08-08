@@ -27,6 +27,7 @@ i18next
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
+    showSupportNotice: false,
     fallbackLng: 'en',
     ns: ['frontend', 'common'],
     defaultNS: 'frontend',
