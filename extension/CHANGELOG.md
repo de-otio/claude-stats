@@ -2,6 +2,39 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## Unreleased
+
+### Added
+
+- **The justification pack's `hygiene`, `constraint` and `calibration`
+  sections now carry real figures.** All three were accepted by `--sections`
+  but rendered an "engine not wired" block. Each is minimized before it enters
+  the document: hygiene reports a per-detector count and cost and never the
+  findings themselves (the session ids behind them are structurally incapable
+  of reaching the pack), constraint drops the local-only detail on a policy
+  event, and calibration quotes the same caveat sentence the dashboard shows.
+  Two of the three deliberately span a wider window than the pack's month and
+  say so where they render — a month either side of a policy boundary rarely
+  clears the per-class session floor.
+- **The cost card's trend arrow.** It compares against the window of equal
+  length immediately preceding, under your current filters. See
+  [output-guide.md](../doc/user-doc/output-guide.md#insights-tab) for why not
+  the same calendar period.
+
+### Changed
+
+- **The dashboard's recommendation panel is localized** in all ten languages,
+  including its two section headings. It was the last hardcoded English on the
+  default view.
+
+### Fixed
+
+- Durations under 30 seconds rendered as "0 dev-minutes", and 0.999 hours
+  rendered as "60 dev-minutes" one rounding step away from "1.0 dev-hours".
+- The tokens-per-call figure in the MCP-server recommendation followed the
+  *machine's* locale for its thousands separators, so the same report could
+  not be compared across two machines.
+
 ## 0.19.0 — 2026-08-08
 
 ### Added — The Insight Suite: ticket attribution, self-audit, calibration, and the justification pack
