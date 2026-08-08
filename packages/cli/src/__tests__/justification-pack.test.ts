@@ -30,12 +30,18 @@ import {
   buildNonTicketRows,
   buildPackMethodology,
   buildJustificationPackModel,
+  buildPackHygieneSection,
+  buildPackConstraintSection,
+  buildPackCalibrationSection,
   renderJustificationPackHtml,
   renderTicketsCsv,
   renderSummaryCsv,
   renderNonTicketCsv,
   type RawPackTicketRow,
 } from "@claude-stats/core/pack";
+import { selectComparablePolicyEvent, type ConstraintImpactReport } from "@claude-stats/core/constraintImpact";
+import { calibrate, type CalibrationEstimate } from "@claude-stats/core/calibration";
+import type { HygieneDigest, HygieneDetectorResult } from "@claude-stats/core/hygiene";
 import { formatDevTime, costCaveat, confidenceCaveat } from "@claude-stats/core/insight";
 // The real `en` translator (setup.ts runs initCliI18n("en")) — the same one the
 // pack's own shell injects, so these tests exercise the production path.
@@ -269,14 +275,27 @@ describe("buildJustificationPackModel — section opt-in", () => {
     expect(model.sections).toEqual(["headline"]);
   });
 
-  it("marks hygiene/constraint/calibration unavailable ONLY when opted into", () => {
+  it("leaves hygiene/constraint/calibration null unless opted into", () => {
     const optedOut = buildJustificationPackModel(t, { ...baseInput, sections: ["headline"] });
-    expect(optedOut.unavailableSections).toEqual({ hygiene: null, constraint: null, calibration: null });
+    expect(optedOut.hygiene).toBeNull();
+    expect(optedOut.constraint).toBeNull();
+    expect(optedOut.calibration).toBeNull();
+  });
 
-    const optedIn = buildJustificationPackModel(t, { ...baseInput, sections: ["headline", "hygiene", "calibration"] });
-    expect(optedIn.unavailableSections.hygiene).not.toBeNull();
-    expect(optedIn.unavailableSections.calibration).not.toBeNull();
-    expect(optedIn.unavailableSections.constraint).toBeNull();
+  it("reports an opted-in section with no engine input as a WIRING fault, not an empty period", () => {
+    // The two states must never read alike: "you passed nothing" and "your
+    // data has nothing" call for different actions from different people.
+    const model = buildJustificationPackModel(t, {
+      ...baseInput,
+      sections: ["headline", "hygiene", "constraint", "calibration"],
+    });
+    for (const section of [model.hygiene, model.constraint, model.calibration]) {
+      expect(section).not.toBeNull();
+      expect(section!.available).toBe(false);
+      const unavailable = section as Extract<typeof section, { available: false }>;
+      expect(unavailable.reason).toContain("no");
+      expect(unavailable.enablementPath).toContain("wiring fault");
+    }
   });
 
   it("canonicalizes section order regardless of input order", () => {
@@ -311,7 +330,9 @@ describe("renderJustificationPackHtml — escaping", () => {
       ],
       nonTicket: null,
       methodology: buildPackMethodology({ pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] }),
-      unavailableSections: { hygiene: null, constraint: null, calibration: null },
+      hygiene: null,
+      constraint: null,
+      calibration: null,
     };
     const html = renderJustificationPackHtml(model);
     expect(html).not.toContain("<script>alert");
@@ -403,8 +424,10 @@ describe("renderJustificationPackHtml — unavailable sections carry the RIGHT h
     expect(html).toContain("<h2>Constraint impact</h2>");
     expect(html).not.toContain("<h2>Calibration</h2>");
     expect(html).not.toContain("<h2>Hygiene trend</h2>");
-    // …and the placeholder under that heading is the constraint one.
-    expect(html.slice(html.indexOf("<h2>Constraint impact</h2>"))).toContain("Constraint-impact before/after");
+    // …and the block under that heading is the constraint one. No engine
+    // input was supplied, so it is the wiring-fault empty state — which must
+    // still name the constraint section rather than a neighbour's.
+    expect(html.slice(html.indexOf("<h2>Constraint impact</h2>"))).toContain("constraint section was requested");
   });
 });
 
@@ -421,7 +444,9 @@ describe("CSV bundle rendering", () => {
       tickets: [{ ticketKey: "PROJ-1", cost: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, sessionCount: 1, confidence: "high" }],
       nonTicket: null,
       methodology: buildPackMethodology({ pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] }),
-      unavailableSections: { hygiene: null, constraint: null, calibration: null },
+      hygiene: null,
+      constraint: null,
+      calibration: null,
     };
     const csv = renderTicketsCsv(model);
     expect(csv).toContain('"2026-01, has a comma"');
@@ -437,7 +462,9 @@ describe("CSV bundle rendering", () => {
       tickets: [{ ticketKey: "PROJ-9", cost: 12.5, inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheCreationTokens: 5, sessionCount: 3, confidence: "medium" }],
       nonTicket: null,
       methodology: buildPackMethodology({ pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] }),
-      unavailableSections: { hygiene: null, constraint: null, calibration: null },
+      hygiene: null,
+      constraint: null,
+      calibration: null,
     };
     const lines = renderTicketsCsv(model).trim().split("\r\n");
     expect(lines[0]).toBe(
@@ -456,7 +483,9 @@ describe("CSV bundle rendering", () => {
       tickets: [{ ticketKey: "PROJ-9", cost: 12.5, inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheCreationTokens: 5, sessionCount: 3, confidence: "medium" }],
       nonTicket: null,
       methodology: buildPackMethodology({ pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] }),
-      unavailableSections: { hygiene: null, constraint: null, calibration: null },
+      hygiene: null,
+      constraint: null,
+      calibration: null,
     };
     // Scope columns carry a stable marker, never the literal path or uuid —
     // see pack-scope-redaction.test.ts. Everything else on the row is pinned
@@ -484,7 +513,9 @@ describe("CSV bundle rendering", () => {
       tickets: [{ ticketKey: "PROJ-1", cost: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, sessionCount: 1, confidence: "high" }],
       nonTicket: null,
       methodology: buildPackMethodology({ pricingVerifiedDate: "2026-07-03", taskClassVersion: 2, languageMode: "metered", policyEvents: [] }),
-      unavailableSections: { hygiene: null, constraint: null, calibration: null },
+      hygiene: null,
+      constraint: null,
+      calibration: null,
     };
     expect(renderTicketsCsv(model)).toContain(`"2026-01 ""Q1"""`);
   });
@@ -509,14 +540,18 @@ describe("CSV bundle rendering", () => {
     expect(lines[0]).toBe(
       "period,projectPath,accountUuid,mode,currency,totalCost,coverageRatio,confidenceHigh,confidenceMedium,confidenceLow," +
         "anyFallbackRates,unknownTokens,planFee,reconciledInvoiceTotal,reconciledRatio,withinTolerance," +
-        "reconciliationResidual,reconciliationScopeNote,reconciliationCandidateCauses",
+        "reconciliationResidual,reconciliationScopeNote,reconciliationCandidateCauses," +
+        "hygieneWasteRatio,hygieneWasteCost,constraintNetEffect,attributionAgreementRate,attributionAgreementN",
     );
     // COVERAGE: byConfidence {high:40,medium:20,low:0}, attributedCost 60 → 0.6667/0.3333/0.0000.
     // bottomUp 100 vs invoice 200 → ratio 0.5, outside ±5% tolerance → residual
     // 100.00, and with no scopeNote configured "scope-mismatch" is named as a
     // candidate cause (nothing rules it out).
     expect(lines[1]).toBe(
-      "2026-04,,,metered,USD,100.00,0.6000,0.6667,0.3333,0.0000,false,0,,200.00,0.5000,false,100.00,,scope-mismatch",
+      // The five trailing cells are empty: no optional section was opted into,
+      // and an absent section must never render as a zero a reader could
+      // mistake for "measured, and it was nil".
+      "2026-04,,,metered,USD,100.00,0.6000,0.6667,0.3333,0.0000,false,0,,200.00,0.5000,false,100.00,,scope-mismatch,,,,,",
     );
   });
 
@@ -625,9 +660,12 @@ describe("justification pack — generated against a seeded store", () => {
     // "unclassified" bucket) — proves runTaskClassPass's output is wired in,
     // not silently dropped.
     expect(result.model.nonTicket!.some((r) => r.taskClass !== "unclassified")).toBe(true);
-    expect(result.model.unavailableSections.hygiene).toContain("not available");
-    expect(result.model.unavailableSections.constraint).toContain("not available");
-    expect(result.model.unavailableSections.calibration).toContain("not available");
+    // All three optional sections are wired to real engines now: each is
+    // either computed or an honest empty state, never "not yet shipped".
+    expect(result.model.hygiene).not.toBeNull();
+    expect(result.model.constraint).not.toBeNull();
+    expect(result.model.calibration).not.toBeNull();
+    expect(result.model.calibration!.available).toBe(true);
   });
 
   it("DETERMINISM: regenerating under the same frozen clock produces byte-identical html and csv", () => {
@@ -1106,5 +1144,464 @@ describe("justification pack — generated against a seeded store", () => {
     expect(result.model.nonTicket!.some((r) => r.confidence !== null)).toBe(true);
     const dataLines = result.nonTicketCsv.trim().split("\r\n").slice(1);
     expect(dataLines.some((line) => !line.endsWith(",n/a"))).toBe(true);
+  });
+});
+
+// ─── The three engine-fed sections ──────────────────────────────────────────
+// Each of these was a "not yet shipped" placeholder while its engine already
+// existed. What matters now is not that a number appears, but that the honest
+// empty states stay distinguishable from real zeros — a pack going to a
+// manager must never say "0% waste" when it means "no data".
+
+const BASE_MODEL_INPUT = {
+  generatedAt: FIXED_NOW,
+  period: { since: 0, until: 1, label: "2026-01" },
+  headline: { mode: "metered" as const, currency: "USD", coverage: COVERAGE },
+  methodology: {
+    pricingVerifiedDate: "2026-07-03",
+    taskClassVersion: 2,
+    languageMode: "metered" as const,
+    policyEvents: [],
+  },
+};
+
+function detectorResult(over: Partial<HygieneDetectorResult> & Pick<HygieneDetectorResult, "detectorId">): HygieneDetectorResult {
+  return {
+    title: over.detectorId,
+    findings: [],
+    suppressed: false,
+    computed: true,
+    ...over,
+  } as HygieneDetectorResult;
+}
+
+function finding(estimatedWaste: number, sessionIds: string[]) {
+  return {
+    detectorId: "cache-churn" as const,
+    sessionIds,
+    estimatedWaste,
+    rule: "r",
+    threshold: "t",
+    remedy: "m",
+    detail: "d",
+  };
+}
+
+function digestOf(active: HygieneDetectorResult[], suppressedIds: string[] = []): HygieneDigest {
+  return {
+    active,
+    suppressedIds: suppressedIds as HygieneDigest["suppressedIds"],
+    totalEstimatedWaste: active.reduce((n, r) => n + r.findings.reduce((m, f) => m + f.estimatedWaste, 0), 0),
+    totalFindings: active.reduce((n, r) => n + r.findings.length, 0),
+  };
+}
+
+describe("pack hygiene section", () => {
+  it("reports NO SPEND as unavailable with a way out, never as a 0% clean sheet", () => {
+    const section = buildPackHygieneSection({
+      digest: digestOf([]),
+      totalCost: 0,
+      wasteRatio: null,
+      previousWasteRatio: null,
+    });
+    expect(section.available).toBe(false);
+    if (section.available) throw new Error("unreachable");
+    expect(section.reason).toContain("no denominator");
+    expect(section.enablementPath).toContain("collect");
+  });
+
+  it("orders detectors by waste and states the trend against the preceding window", () => {
+    const section = buildPackHygieneSection({
+      digest: digestOf([
+        detectorResult({ detectorId: "retry-loop", title: "Retry loop", findings: [finding(2, ["s1"])] }),
+        detectorResult({ detectorId: "cache-churn", title: "Cache churn", findings: [finding(9, ["s2"]), finding(1, ["s3"])] }),
+      ]),
+      totalCost: 100,
+      wasteRatio: 0.12,
+      previousWasteRatio: 0.2,
+    });
+    expect(section.available).toBe(true);
+    if (!section.available) throw new Error("unreachable");
+    expect(section.detectors.map((d) => d.detectorId)).toEqual(["cache-churn", "retry-loop"]);
+    expect(section.detectors[0]!.estimatedWaste).toBe(10);
+    expect(section.detectors[0]!.findingCount).toBe(2);
+    // Waste fell 12% vs 20% → "down", which for THIS metric is the good news.
+    expect(section.trend).toBe("down");
+  });
+
+  it("REDACTION: a finding's session ids never reach the model or the document", () => {
+    const MARKER = "sess-marker-4b81c0";
+    const model = buildJustificationPackModel(t, {
+      ...BASE_MODEL_INPUT,
+      sections: ["hygiene"],
+      hygiene: {
+        digest: digestOf([
+          detectorResult({ detectorId: "cache-churn", title: "Cache churn", findings: [finding(5, [MARKER])] }),
+        ]),
+        totalCost: 50,
+        wasteRatio: 0.1,
+        previousWasteRatio: null,
+      },
+    });
+    expect(JSON.stringify(model)).not.toContain(MARKER);
+    expect(renderJustificationPackHtml(model)).not.toContain(MARKER);
+  });
+
+  it("renders a detector that could not run as '—' plus its enablement path, never as zero waste", () => {
+    const html = renderJustificationPackHtml(
+      buildJustificationPackModel(t, {
+        ...BASE_MODEL_INPUT,
+        sections: ["hygiene"],
+        hygiene: {
+          digest: digestOf([
+            detectorResult({
+              detectorId: "tier-mismatch",
+              title: "Tier mismatch",
+              computed: false,
+              enablementPath: "Run the `task-class` command at least once.",
+            }),
+          ]),
+          totalCost: 50,
+          wasteRatio: 0.04,
+          previousWasteRatio: null,
+        },
+      }),
+    );
+    expect(html).toContain("Tier mismatch");
+    expect(html).toContain("not computed");
+    expect(html).toContain("Run the `task-class` command at least once.");
+    expect(html).toContain("No comparable preceding period");
+  });
+
+  it("names suppressed detectors so a switched-off detector cannot merely LOOK clean", () => {
+    const html = renderJustificationPackHtml(
+      buildJustificationPackModel(t, {
+        ...BASE_MODEL_INPUT,
+        sections: ["hygiene"],
+        hygiene: {
+          digest: digestOf([detectorResult({ detectorId: "cache-churn", title: "Cache churn" })], ["retry-loop"]),
+          totalCost: 50,
+          wasteRatio: 0,
+          previousWasteRatio: null,
+        },
+      }),
+    );
+    expect(html).toContain("retry-loop");
+    expect(html).toContain("switched off");
+  });
+});
+
+describe("selectComparablePolicyEvent", () => {
+  const at = (d: string) => Date.parse(`${d}T00:00:00.000Z`);
+
+  it("picks the LATEST boundary on or before the data's end", () => {
+    const picked = selectComparablePolicyEvent(
+      [{ date: "2026-01-10", kind: "model-removal" as const }, { date: "2026-03-01", kind: "budget-cap" as const }],
+      at("2026-04-01"),
+    );
+    expect(picked?.date).toBe("2026-03-01");
+  });
+
+  it("ignores an event dated after the available data — it has no after-side to compare", () => {
+    const picked = selectComparablePolicyEvent(
+      [{ date: "2026-01-10", kind: "model-removal" as const }, { date: "2026-09-01", kind: "budget-cap" as const }],
+      at("2026-04-01"),
+    );
+    expect(picked?.date).toBe("2026-01-10");
+  });
+
+  it("returns null when every declared event is in the future", () => {
+    expect(selectComparablePolicyEvent([{ date: "2026-09-01", kind: "other" as const }], at("2026-04-01"))).toBeNull();
+  });
+
+  it("breaks a same-date tie deterministically, not by config key order", () => {
+    const a = selectComparablePolicyEvent(
+      [{ date: "2026-02-01", kind: "quota-change" as const }, { date: "2026-02-01", kind: "budget-cap" as const }],
+      at("2026-04-01"),
+    );
+    const b = selectComparablePolicyEvent(
+      [{ date: "2026-02-01", kind: "budget-cap" as const }, { date: "2026-02-01", kind: "quota-change" as const }],
+      at("2026-04-01"),
+    );
+    expect(a?.kind).toBe("budget-cap");
+    expect(a).toEqual(b);
+  });
+});
+
+describe("pack constraint section", () => {
+  const REPORT: ConstraintImpactReport = {
+    policyEvent: { date: "2026-01-10", kind: "model-removal", scope: "org", detail: "internal budget note" },
+    boundaryMs: Date.parse("2026-01-10T00:00:00.000Z"),
+    minSessionsPerClass: 8,
+    hourlyRate: null,
+    currency: "USD",
+    classes: [
+      {
+        classKey: "debug",
+        grain: "fine",
+        verdict: "compared",
+        minSessionsPerClass: 8,
+        nBefore: 10,
+        nAfter: 12,
+        avgCostBefore: 2,
+        avgCostAfter: 1.5,
+        medianCostBefore: 2,
+        medianCostAfter: 1.5,
+        costTrend: "down",
+        avgTokensBefore: 10,
+        avgTokensAfter: 9,
+        tokensTrend: "down",
+        avgTurnsBefore: 5,
+        avgTurnsAfter: 5,
+        turnsTrend: "flat",
+        toolErrorRateBefore: 0.1,
+        toolErrorRateAfter: 0.1,
+        toolErrorRateTrend: "flat",
+        avgActiveMinutesBefore: null,
+        avgActiveMinutesAfter: null,
+        activeMinutesTrend: "unknown",
+        activeMinutesCoverageBefore: 0,
+        activeMinutesCoverageAfter: 0,
+        medianResponseMsBefore: null,
+        medianResponseMsAfter: null,
+        medianResponseTrend: "unknown",
+        modelsBefore: ["a"],
+        modelsAfter: ["b"],
+        tokenSavingsAtAfterVolume: 6,
+        devTimeDeltaMinutesAtAfterVolume: null,
+        devTimeCostAtAfterVolume: null,
+        netEffectAtAfterVolume: null,
+        direction: "unknown",
+      },
+      {
+        classKey: "review",
+        grain: "fine",
+        verdict: "insufficient-data",
+        minSessionsPerClass: 8,
+        nBefore: 2,
+        nAfter: 1,
+        avgCostBefore: null,
+        avgCostAfter: null,
+        medianCostBefore: null,
+        medianCostAfter: null,
+        costTrend: "unknown",
+        avgTokensBefore: null,
+        avgTokensAfter: null,
+        tokensTrend: "unknown",
+        avgTurnsBefore: null,
+        avgTurnsAfter: null,
+        turnsTrend: "unknown",
+        toolErrorRateBefore: null,
+        toolErrorRateAfter: null,
+        toolErrorRateTrend: "unknown",
+        avgActiveMinutesBefore: null,
+        avgActiveMinutesAfter: null,
+        activeMinutesTrend: "unknown",
+        activeMinutesCoverageBefore: 0,
+        activeMinutesCoverageAfter: 0,
+        medianResponseMsBefore: null,
+        medianResponseMsAfter: null,
+        medianResponseTrend: "unknown",
+        modelsBefore: [],
+        modelsAfter: [],
+        tokenSavingsAtAfterVolume: null,
+        devTimeDeltaMinutesAtAfterVolume: null,
+        devTimeCostAtAfterVolume: null,
+        netEffectAtAfterVolume: null,
+        direction: "unknown",
+      },
+    ],
+    classesCompared: 1,
+    classesInsufficientData: 1,
+    totalTokenSavings: 6,
+    totalDevTimeCost: null,
+    totalNetEffect: null,
+    netEffectAvailable: false,
+    notMeasured: ["escalation chains"],
+    confoundNote: "Evidence, not proof.",
+  };
+
+  it("reports NO DECLARED BOUNDARY as unavailable, and says the boundary is declared not inferred", () => {
+    const section = buildPackConstraintSection({ report: null, otherPolicyEventCount: 0 });
+    expect(section.available).toBe(false);
+    if (section.available) throw new Error("unreachable");
+    expect(section.reason).toContain("not evidence that a policy changed");
+    expect(section.enablementPath).toContain("policyEvents");
+  });
+
+  it("REDACTION: the policy event's LOCAL-ONLY detail never crosses into the pack", () => {
+    const model = buildJustificationPackModel(t, {
+      ...BASE_MODEL_INPUT,
+      sections: ["constraint"],
+      constraint: { report: REPORT, otherPolicyEventCount: 0 },
+    });
+    expect(JSON.stringify(model)).not.toContain("internal budget note");
+    expect(renderJustificationPackHtml(model)).not.toContain("internal budget note");
+  });
+
+  it("refuses to present a one-sided token saving as a result when no hourly rate is configured", () => {
+    const html = renderJustificationPackHtml(
+      buildJustificationPackModel(t, {
+        ...BASE_MODEL_INPUT,
+        sections: ["constraint"],
+        constraint: { report: REPORT, otherPolicyEventCount: 0 },
+      }),
+    );
+    expect(html).toContain("$6.00 saved");
+    expect(html).toContain("no net effect is stated");
+    expect(html).toContain("rate.hourly");
+    // …and no "net effect" figure is rendered anywhere.
+    expect(html).not.toContain("net effect at the after-period");
+  });
+
+  it("carries insufficient-data classes into the document rather than dropping them", () => {
+    const html = renderJustificationPackHtml(
+      buildJustificationPackModel(t, {
+        ...BASE_MODEL_INPUT,
+        sections: ["constraint"],
+        constraint: { report: REPORT, otherPolicyEventCount: 0 },
+      }),
+    );
+    expect(html).toContain("Code review");
+    expect(html).toContain("Too few sessions (floor 8)");
+    expect(html).toContain("1 abstained for want of sessions");
+  });
+
+  it("states that its window is the whole history, not the pack's period", () => {
+    const html = renderJustificationPackHtml(
+      buildJustificationPackModel(t, {
+        ...BASE_MODEL_INPUT,
+        sections: ["constraint"],
+        constraint: { report: REPORT, otherPolicyEventCount: 2 },
+      }),
+    );
+    expect(html).toContain("all recorded sessions either side of that date");
+    expect(html).toContain("2 other policy events are declared and not compared here");
+    expect(html).toContain("Deliberately not measured:");
+  });
+});
+
+describe("pack calibration section", () => {
+  const estimateOf = (agreed: number, disagreed: number) =>
+    calibrate("attribution", { agreed, disagreed }, { scope: "whole-store" });
+
+  it("below the sample floor there is no percentage to print", () => {
+    const section = buildPackCalibrationSection(t, { estimate: estimateOf(9, 1), unproposed: 0 });
+    expect(section.state).toBe("uncalibrated");
+    expect(section.rate).toBeNull();
+    expect(section.interval).toBeNull();
+    expect(section.needed).toBe(20);
+
+    const html = renderJustificationPackHtml(
+      buildJustificationPackModel(t, {
+        ...BASE_MODEL_INPUT,
+        sections: ["calibration"],
+        calibration: { estimate: estimateOf(9, 1), unproposed: 0 },
+      }),
+    );
+    expect(html).toContain("10 of the 30 rulings needed");
+    expect(html).not.toMatch(/class="figure">\d/);
+  });
+
+  it("above the floor states the rate, its interval and its denominator together", () => {
+    const html = renderJustificationPackHtml(
+      buildJustificationPackModel(t, {
+        ...BASE_MODEL_INPUT,
+        sections: ["calibration"],
+        calibration: { estimate: estimateOf(36, 4), unproposed: 0 },
+      }),
+    );
+    expect(html).toContain("90.0%");
+    expect(html).toContain("95% CI");
+    expect(html).toContain("over 40 rulings");
+  });
+
+  it("reports unproposed links beside the rate and never inside it", () => {
+    const section = buildPackCalibrationSection(t, { estimate: estimateOf(36, 4), unproposed: 7 });
+    expect(section.rate).toBeCloseTo(0.9, 5);
+    expect(section.unproposed).toBe(7);
+    expect(section.measures).toBe("agreement-on-reviewed-subset");
+
+    const html = renderJustificationPackHtml(
+      buildJustificationPackModel(t, {
+        ...BASE_MODEL_INPUT,
+        sections: ["calibration"],
+        calibration: { estimate: estimateOf(36, 4), unproposed: 7 },
+      }),
+    );
+    expect(html).toContain("7 links were added by hand");
+    expect(html).toContain("kept out of the agreement rate");
+  });
+
+  it("quotes the shared caveat sentence rather than rewording it", () => {
+    const estimate: CalibrationEstimate = estimateOf(36, 4);
+    const section = buildPackCalibrationSection(t, { estimate: estimateOf(36, 4), unproposed: 0 });
+    // The scope clause is the load-bearing half here: this figure counts every
+    // ruling ever made, while the document around it covers one month.
+    expect(section.caveat).toContain("not only the period shown");
+    expect(section.caveat).toContain("not overall accuracy");
+    expect(estimate.scope).toBe("whole-store");
+  });
+});
+
+describe("summary.csv — the three optional sections' headline figures", () => {
+  it("populates the five trailing columns only from COMPUTED sections", () => {
+    const model = buildJustificationPackModel(t, {
+      ...BASE_MODEL_INPUT,
+      period: { since: 0, until: 1, label: "2026-04" },
+      sections: ["headline", "hygiene", "calibration"],
+      hygiene: {
+        digest: digestOf([detectorResult({ detectorId: "cache-churn", title: "Cache churn", findings: [finding(12.5, ["s"])] })]),
+        totalCost: 100,
+        wasteRatio: 0.125,
+        previousWasteRatio: null,
+      },
+      calibration: { estimate: calibrate("attribution", { agreed: 36, disagreed: 4 }, { scope: "whole-store" }), unproposed: 0 },
+    });
+    const cells = renderSummaryCsv(model).trim().split("\r\n")[1]!.split(",");
+    expect(cells.slice(-5)).toEqual(["0.1250", "12.50", "", "0.9000", "40"]);
+  });
+
+  it("leaves the agreement RATE empty while uncalibrated, but still reports the denominator", () => {
+    const model = buildJustificationPackModel(t, {
+      ...BASE_MODEL_INPUT,
+      period: { since: 0, until: 1, label: "2026-04" },
+      sections: ["headline", "calibration"],
+      calibration: { estimate: calibrate("attribution", { agreed: 4, disagreed: 1 }, { scope: "whole-store" }), unproposed: 0 },
+    });
+    const cells = renderSummaryCsv(model).trim().split("\r\n")[1]!.split(",");
+    expect(cells.slice(-2)).toEqual(["", "5"]);
+  });
+});
+
+describe("pack constraint section — a section that compared nothing must say so", () => {
+  it("states 'not evaluated' up front when no class cleared the session floor", () => {
+    const html = renderJustificationPackHtml(
+      buildJustificationPackModel(t, {
+        ...BASE_MODEL_INPUT,
+        sections: ["constraint"],
+        constraint: {
+          report: {
+            policyEvent: { date: "2026-01-10", kind: "budget-cap" },
+            boundaryMs: Date.parse("2026-01-10T00:00:00.000Z"),
+            minSessionsPerClass: 8,
+            hourlyRate: null,
+            currency: "USD",
+            classes: [],
+            classesCompared: 0,
+            classesInsufficientData: 3,
+            totalTokenSavings: null,
+            totalDevTimeCost: null,
+            totalNetEffect: null,
+            netEffectAvailable: false,
+            notMeasured: [],
+            confoundNote: "Evidence, not proof.",
+          },
+          otherPolicyEventCount: 0,
+        },
+      }),
+    );
+    expect(html).toContain("This boundary is not evaluated.");
+    expect(html).toContain("nothing below supports a claim either way");
   });
 });

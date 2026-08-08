@@ -901,12 +901,36 @@ accident*, which is the real failure mode. Pass `--disclose-scope` when the
 recipient is entitled to the literal values.
 
 **Sections are opt-in.** The default (`headline,tickets,nonticket`) is the
-smallest complete pack. `hygiene`, `constraint`, and `calibration` are
-accepted but currently render an honest "not available in this build" block
-in the output — those detectors/engines exist and are reachable through their
-own commands (`constraint-impact`, `get_efficiency_hints`, `get_calibration`)
-but are not yet wired into the pack renderer. Requesting them never fabricates
-a number in their place.
+smallest complete pack. The other three are computed from the same engines as
+their standalone commands, and each costs real work, so you ask for them
+explicitly:
+
+| Section | What it adds | Its window |
+|---|---|---|
+| `hygiene` | Self-audited waste as a share of spend, per detector, with the direction of travel against the preceding period. Same engine as `get_efficiency_hints`. | The pack's month, plus the equal-length month before it for the trend |
+| `constraint` | Before/after across the **latest policy boundary declared on or before the end of the period** (`config.policyEvents`), as a two-sided ledger: token cost saved *and* developer time spent. Same engine as `constraint-impact`. | **All recorded history either side of that boundary** — stated in the section |
+| `calibration` | How often the automatic ticket-attribution pass agreed with rulings you made by hand, with its 95% interval and denominator. Same gate as `get_calibration`. | **Whole store** — every ruling ever made — stated in the section |
+
+Two of the three deliberately do **not** use the pack's own month, and each
+says so where it is rendered. A month either side of a policy boundary almost
+never clears the per-class session floor, and a per-month cut of an
+already-scarce set of manual rulings would read "uncalibrated" forever.
+
+None of them ever fabricates a number in place of a missing one. Each has an
+honest empty state that names the reason and the way out — no spend in the
+period, no policy event declared, fewer than 30 rulings — and those states are
+kept textually distinct from a real zero, so "0% waste" never stands in for
+"no data". A `constraint` section that compared nothing opens by saying the
+boundary is **not evaluated**, rather than leaving that to a footnote.
+
+`summary.csv` gains five columns for these sections
+(`hygieneWasteRatio`, `hygieneWasteCost`, `constraintNetEffect`,
+`attributionAgreementRate`, `attributionAgreementN`). They are empty — never
+zero — when the section was not requested or could not be computed.
+
+The `constraint` section needs `rate.hourly` configured to state a net effect
+at all: without it the developer-time half of the ledger has no price, and a
+token saving on its own is half a ledger, not a result.
 
 **Determinism:** generating the pack twice from the same inputs under a
 frozen clock produces byte-identical output — every collection is sorted

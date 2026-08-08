@@ -43,7 +43,11 @@ import type { CalibrationReport, CalibrationMetrics } from "../cost-per-task/cal
 const KNOWN_SOURCES: ReadonlySet<string> = new Set<AttributionSource>(["tag", "branch", "commit", "prompt"]);
 
 export interface AttributionCalibration {
-  readonly estimate: CalibrationEstimate;
+  /** Narrowed to the attribution subject: this function only ever calibrates
+   *  attribution, and downstream surfaces that hardcode the subject label
+   *  (the justification pack's calibration section) should be unable to be
+   *  handed an outcome estimate by mistake. */
+  readonly estimate: CalibrationEstimate & { readonly subject: "attribution" };
   /** The recall-side counts, reported beside the rate and never folded into it. */
   readonly review: AttributionReview;
 }

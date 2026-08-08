@@ -112,12 +112,163 @@ export interface PackMethodology {
   readonly policyEvents: readonly PackMethodologyPolicyEvent[];
 }
 
-/** Enablement sentence for an opted-in section this build cannot yet compute,
- *  or null when the section wasn't opted into (and is simply omitted). */
-export interface PackUnavailableSections {
-  readonly hygiene: string | null;
-  readonly constraint: string | null;
-  readonly calibration: string | null;
+/**
+ * An opted-in section with nothing to report, plus the concrete step that
+ * would give it something.
+ *
+ * This is NOT "the feature isn't built" — the three optional sections are all
+ * wired to real engines. It is the honest empty state: no policy event has
+ * been declared, or the window carries no spend to divide waste by. `reason`
+ * says which; `enablementPath` says what to do about it. A section that can
+ * only say "unavailable" and leaves the reader no way to produce the number
+ * is the failure this shape exists to prevent.
+ */
+export interface PackSectionUnavailable {
+  readonly available: false;
+  readonly reason: string;
+  readonly enablementPath: string | null;
+}
+
+/** Direction of travel vs the comparable previous window — the same vocabulary
+ *  `insight.ts#trendOf` produces. Restated here rather than imported so this
+ *  types module keeps its one-way dependency on `types/insight.js`; the
+ *  builders assign `trendOf`'s output straight into it, so a drift in either
+ *  union fails to compile. */
+export type PackTrend = "up" | "down" | "flat" | "unknown";
+
+/**
+ * One detector's contribution to the hygiene section — a COUNT and a cost,
+ * never the findings themselves.
+ *
+ * `HygieneFinding` carries `sessionIds` and free-text evidence. Both are
+ * deliberately dropped here: the efficiency-hygiene design states that only
+ * the aggregate trend is meant to leave the machine, never a per-session or
+ * per-developer feed, and this document is the one artifact built to leave.
+ * `sessionIds` is additionally a `ForbiddenPackField`, so the omission is
+ * enforced by the compile-time assertions at the bottom of this file rather
+ * than by this comment.
+ */
+export interface PackHygieneDetectorRow {
+  readonly detectorId: string;
+  readonly title: string;
+  readonly findingCount: number;
+  readonly estimatedWaste: number;
+  /** False when the detector could not run for lack of a required input —
+   *  distinct from "ran and found nothing", which is a clean sheet. */
+  readonly computed: boolean;
+  /** Set only when `computed` is false. */
+  readonly enablementPath: string | null;
+}
+
+/** Self-audited waste as a share of spend, and its direction of travel. */
+export interface PackHygieneSection {
+  readonly available: true;
+  readonly totalCost: number;
+  readonly estimatedWaste: number;
+  /** `estimatedWaste / totalCost`. Never a bare 0 standing in for "no spend
+   *  to divide by" — that case is a `PackSectionUnavailable` instead. */
+  readonly wasteRatio: number;
+  /** The same ratio over the immediately-preceding window of equal length,
+   *  or null when there was no prior spend to compare against. */
+  readonly previousWasteRatio: number | null;
+  readonly trend: PackTrend;
+  readonly findingCount: number;
+  readonly detectors: readonly PackHygieneDetectorRow[];
+  /** Detector ids the developer has switched off. Reported so a suppressed
+   *  detector cannot make the sheet merely LOOK clean. */
+  readonly suppressedDetectorIds: readonly string[];
+}
+
+/** Loose direction read off a class's net effect — `insight`-side vocabulary
+ *  restated for the same reason as {@link PackTrend}. */
+export type PackImpactDirection = "favorable" | "unfavorable" | "negligible" | "unknown";
+
+/** One task class's before/after row. `insufficient-data` rows are carried,
+ *  not dropped: a report that silently omits the classes it could not compare
+ *  looks complete when it is not. */
+export interface PackConstraintClassRow {
+  readonly classKey: string;
+  readonly grain: "fine" | "coarse";
+  readonly verdict: "compared" | "insufficient-data";
+  readonly nBefore: number;
+  readonly nAfter: number;
+  readonly avgCostBefore: number | null;
+  readonly avgCostAfter: number | null;
+  readonly tokenSavingsAtAfterVolume: number | null;
+  readonly devTimeCostAtAfterVolume: number | null;
+  readonly netEffectAtAfterVolume: number | null;
+  readonly direction: PackImpactDirection;
+}
+
+/**
+ * Before/after across one declared policy boundary.
+ *
+ * `comparisonScope` is `"all-recorded-history"` and says so as a machine
+ * token, because this is the one section whose window is NOT the pack's
+ * period: a month-long slice either side of a boundary rarely clears the
+ * per-class session floor, so the comparison spans everything recorded on
+ * each side. The calibration section states its own scope for the same
+ * reason. A figure whose window the reader has to assume is a claim stronger
+ * than its basis.
+ */
+export interface PackConstraintSection {
+  readonly available: true;
+  readonly policyEvent: PackMethodologyPolicyEvent;
+  readonly comparisonScope: "all-recorded-history";
+  readonly currency: string;
+  readonly minSessionsPerClass: number;
+  readonly classesCompared: number;
+  readonly classesInsufficientData: number;
+  readonly totalTokenSavings: number | null;
+  readonly totalDevTimeCost: number | null;
+  readonly totalNetEffect: number | null;
+  /** False when no hourly rate is configured, so the dev-time half of the
+   *  ledger has no price and the net effect cannot be stated at all. */
+  readonly netEffectAvailable: boolean;
+  readonly classes: readonly PackConstraintClassRow[];
+  /** What this comparison deliberately does not compute. */
+  readonly notMeasured: readonly string[];
+  readonly confoundNote: string;
+  /** Declared policy events OTHER than the one compared here. They are all
+   *  listed in the methodology appendix; this count is what stops the section
+   *  from reading as "the only policy change there was". */
+  readonly otherPolicyEventCount: number;
+}
+
+/**
+ * How well the automatic attribution pass agrees with the developer's own
+ * rulings — the footnote every ticket figure above rests on.
+ *
+ * Attribution, not outcome: the pack's numbers are attribution-derived, and
+ * outcome calibration is gathered over a different window by a much more
+ * expensive path. `state: "uncalibrated"` is a first-class, fully-available
+ * answer — `rate` and `interval` are both null there by construction, so a
+ * renderer cannot print a percentage from a sample too small to support one.
+ */
+export interface PackCalibrationSection {
+  readonly available: true;
+  readonly subject: "attribution";
+  /** `"whole-store"` — every ruling ever made, not this period's. Stated,
+   *  because the section sits inside a period-scoped document. */
+  readonly scope: string;
+  readonly state: "measured" | "uncalibrated";
+  readonly n: number;
+  readonly agreed: number;
+  readonly disagreed: number;
+  readonly rate: number | null;
+  readonly interval: { readonly lo: number; readonly hi: number } | null;
+  readonly minN: number;
+  readonly needed: number;
+  /** Stable machine token for what the rate is a rate OF — never "accuracy". */
+  readonly measures: "agreement-on-reviewed-subset";
+  /** The localized honesty sentence, quoted from `insight.ts` so the pack and
+   *  the dashboard can never disagree about what the figure means. */
+  readonly caveat: string;
+  /** The localized labelling nudge; null once measured. */
+  readonly enablement: string | null;
+  /** Manual links naming a ticket the automatic pass never proposed — a
+   *  RECALL figure, reported beside the rate and never folded into it. */
+  readonly unproposed: number;
 }
 
 /**
@@ -145,7 +296,13 @@ export interface JustificationPackModel {
   /** Null when "nonticket" was not opted into this generation. */
   readonly nonTicket: readonly PackNonTicketRow[] | null;
   readonly methodology: PackMethodology;
-  readonly unavailableSections: PackUnavailableSections;
+  /** Null in each of the three below means "not opted into this generation",
+   *  and the section is omitted from the document entirely. Opted in, a
+   *  section is either its computed shape or a `PackSectionUnavailable`
+   *  carrying the reason and the way out. */
+  readonly hygiene: PackHygieneSection | PackSectionUnavailable | null;
+  readonly constraint: PackConstraintSection | PackSectionUnavailable | null;
+  readonly calibration: PackCalibrationSection | PackSectionUnavailable | null;
 }
 
 // ─── Compile-time plane-separation invariants ────────────────────────────────
@@ -157,6 +314,14 @@ type _PackTicketRowSafe = Assert<HasNoForbiddenPackFields<PackTicketRow>>;
 type _PackNonTicketRowSafe = Assert<HasNoForbiddenPackFields<PackNonTicketRow>>;
 type _PackMethodologyPolicyEventSafe = Assert<HasNoForbiddenPackFields<PackMethodologyPolicyEvent>>;
 type _PackHeadlineSafe = Assert<HasNoForbiddenPackFields<PackHeadline>>;
+// The three engine-fed sections run the same gate. `PackHygieneDetectorRow` is
+// the one that would fail loudest: `HygieneFinding.sessionIds` is exactly the
+// field a "just pass the findings through" change would carry in.
+type _PackHygieneDetectorRowSafe = Assert<HasNoForbiddenPackFields<PackHygieneDetectorRow>>;
+type _PackHygieneSectionSafe = Assert<HasNoForbiddenPackFields<PackHygieneSection>>;
+type _PackConstraintClassRowSafe = Assert<HasNoForbiddenPackFields<PackConstraintClassRow>>;
+type _PackConstraintSectionSafe = Assert<HasNoForbiddenPackFields<PackConstraintSection>>;
+type _PackCalibrationSectionSafe = Assert<HasNoForbiddenPackFields<PackCalibrationSection>>;
 // Re-assert the underlying org-plane invariant is actually imported and live,
 // not merely referenced in a comment.
 type _ReusesOrgPlaneVocabulary = Assert<HasNoPersonalFields<PackTicketRow>>;
@@ -165,5 +330,10 @@ export type {
   _PackNonTicketRowSafe,
   _PackMethodologyPolicyEventSafe,
   _PackHeadlineSafe,
+  _PackHygieneDetectorRowSafe,
+  _PackHygieneSectionSafe,
+  _PackConstraintClassRowSafe,
+  _PackConstraintSectionSafe,
+  _PackCalibrationSectionSafe,
   _ReusesOrgPlaneVocabulary,
 };

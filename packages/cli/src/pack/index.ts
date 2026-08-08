@@ -14,10 +14,14 @@ import * as path from "node:path";
 import type { Store } from "../store/index.js";
 import type { Config } from "../config.js";
 import { getTicketCostReport } from "../ticketing/index.js";
+import { buildHygieneReport } from "../hygiene/index.js";
+import { buildConstraintImpactReport } from "../constraintImpact/index.js";
+import { buildAttributionCalibration } from "../calibration/index.js";
 import { dayWindowInTz } from "../recap/index.js";
 import { t } from "../i18n.js";
 import { PRICING_VERIFIED_DATE } from "@claude-stats/core/pricing";
 import { TASK_CLASS_VERSION } from "@claude-stats/core/taskClass";
+import { selectComparablePolicyEvent } from "@claude-stats/core/constraintImpact";
 import {
   ALL_PACK_SECTIONS,
   DEFAULT_PACK_SECTIONS,
@@ -27,6 +31,9 @@ import {
   renderNonTicketCsv,
   renderSummaryCsv,
   renderTicketsCsv,
+  type BuildPackConstraintInput,
+  type BuildPackHygieneInput,
+  type BuildPackCalibrationInput,
 } from "@claude-stats/core/pack";
 import type { AccountMode, Confidence } from "@claude-stats/core/types/insight";
 import type { JustificationPackModel, JustificationPackSectionId } from "@claude-stats/core/types/pack";
@@ -82,6 +89,65 @@ function resolvePackMode(config: Config): { mode: AccountMode; planFee: number }
   const planFee = config.plan?.monthly_fee && config.plan.monthly_fee > 0 ? config.plan.monthly_fee : accountFeesTotal;
   const mode: AccountMode = config.pricing?.mode ?? (planFee > 0 ? "plan" : "metered");
   return { mode, planFee };
+}
+
+/**
+ * Self-audited waste over the pack's own period, with the equal-length
+ * preceding window as the trend baseline (`buildHygieneReport` computes both).
+ * Period-scoped, unlike the two sections below — this is the one figure whose
+ * window genuinely is the month the pack covers.
+ */
+function gatherHygiene(
+  store: Store,
+  config: Config,
+  opts: PackGenerateOptions,
+  period: { since: number; until: number },
+): BuildPackHygieneInput {
+  const report = buildHygieneReport(store, {
+    since: period.since,
+    until: period.until,
+    projectPath: opts.projectPath,
+    accountUuid: opts.accountUuid,
+    suppressions: config.hygiene?.suppressions,
+    rateOverrides: config.pricing?.rates,
+  });
+  return {
+    digest: report.digest,
+    totalCost: report.totalCost,
+    wasteRatio: report.hygieneRatio,
+    previousWasteRatio: report.previousHygieneRatio,
+  };
+}
+
+/**
+ * Before/after across the latest policy boundary declared on or before the end
+ * of the pack's period.
+ *
+ * Deliberately UNBOUNDED on both sides (no `since`/`until` passed): a month
+ * either side of a boundary almost never clears the per-class session floor,
+ * so a period-scoped comparison would abstain on every class and report
+ * nothing while looking like it had looked. The section states its own
+ * `all-recorded-history` scope for exactly this reason.
+ */
+function gatherConstraint(store: Store, config: Config, opts: PackGenerateOptions, untilMs: number): BuildPackConstraintInput {
+  const events = config.policyEvents ?? [];
+  const policyEvent = selectComparablePolicyEvent(events, untilMs);
+  if (!policyEvent) return { report: null, otherPolicyEventCount: events.length };
+
+  const { report } = buildConstraintImpactReport(store, policyEvent, {
+    projectPath: opts.projectPath,
+    accountUuid: opts.accountUuid,
+    rateOverrides: config.pricing?.rates,
+    hourlyRate: config.rate?.hourly ?? null,
+    currency: config.rate?.currency ?? "USD",
+  });
+  return { report, otherPolicyEventCount: Math.max(0, events.length - 1) };
+}
+
+/** Whole-store by design — see `buildAttributionCalibration`. */
+function gatherCalibration(store: Store): BuildPackCalibrationInput {
+  const { estimate, review } = buildAttributionCalibration(store);
+  return { estimate, unproposed: review.unproposed };
 }
 
 export interface PackGenerateOptions {
@@ -145,6 +211,11 @@ export function buildJustificationPack(store: Store, config: Config, opts: PackG
     nonTicketByClass.set(key, cur);
   }
 
+  // Each engine only runs when its section was opted into. Constraint-impact
+  // in particular scans the whole history either side of the boundary, so a
+  // default three-section pack must not pay for it.
+  const wanted = new Set(sections);
+
   // The CLI's i18n singleton is injected here, at the imperative shell — the
   // pure builders take it as a parameter so they never reach for a singleton
   // themselves (and so a test can hand them an identity translator).
@@ -182,6 +253,9 @@ export function buildJustificationPack(store: Store, config: Config, opts: PackG
       languageMode: mode,
       policyEvents: config.policyEvents ?? [],
     },
+    ...(wanted.has("hygiene") ? { hygiene: gatherHygiene(store, config, opts, period) } : {}),
+    ...(wanted.has("constraint") ? { constraint: gatherConstraint(store, config, opts, period.until) } : {}),
+    ...(wanted.has("calibration") ? { calibration: gatherCalibration(store) } : {}),
   });
 
   return {

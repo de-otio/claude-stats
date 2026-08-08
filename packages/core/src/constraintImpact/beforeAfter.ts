@@ -262,6 +262,42 @@ export function parsePolicyEventBoundaryMs(date: string): number {
   return Date.parse(`${date}T00:00:00.000Z`);
 }
 
+/**
+ * Pick the one declared boundary a report can actually compare across, given
+ * data that ends at `untilMs`: the LATEST event on or before that instant.
+ *
+ * Latest, not earliest: with several declared policies the most recent one is
+ * the only boundary whose "after" side describes the regime currently in
+ * force. An earlier boundary's after-side is contaminated by every policy
+ * declared since, which is precisely the confound this comparison exists to
+ * limit.
+ *
+ * On or before `untilMs`, not any: an event dated after the available data has
+ * no after-side at all, so comparing across it would report the before-side
+ * against nothing and call the difference an effect.
+ *
+ * Ties (two events on the same date) resolve by `kind` so the choice is
+ * deterministic rather than dependent on config key order. Returns null when
+ * no event qualifies — the caller states that as an empty result with an
+ * enablement path, never as "no impact".
+ */
+export function selectComparablePolicyEvent<T extends Pick<PolicyEvent, "date" | "kind">>(
+  events: readonly T[],
+  untilMs: number,
+): T | null {
+  let best: T | null = null;
+  let bestMs = Number.NEGATIVE_INFINITY;
+  for (const e of events) {
+    const ms = parsePolicyEventBoundaryMs(e.date);
+    if (!Number.isFinite(ms) || ms > untilMs) continue;
+    if (ms > bestMs || (ms === bestMs && best !== null && e.kind.localeCompare(best.kind) < 0)) {
+      best = e;
+      bestMs = ms;
+    }
+  }
+  return best;
+}
+
 // ─── Arithmetic helpers ─────────────────────────────────────────────────────────
 
 function mean(ns: readonly number[]): number {

@@ -24,19 +24,37 @@
  */
 import { isTicketKey } from "./tickets.js";
 import type { InsightT } from "./insight.js";
-import { formatDevTime, formatMoney, formatMoneyCsv, formatPercent, confidenceCaveat, costCaveat } from "./insight.js";
+import {
+  calibrationCaveat,
+  calibrationEnablement,
+  confidenceCaveat,
+  costCaveat,
+  formatDevTime,
+  formatMoney,
+  formatMoneyCsv,
+  formatPercent,
+  trendOf,
+} from "./insight.js";
 import { computeReconciliation } from "./reconciliation.js";
+import type { CalibrationEstimate } from "./calibration.js";
+import type { ConstraintImpactReport } from "./constraintImpact/index.js";
+import type { HygieneDigest } from "./hygiene/index.js";
 import type { AccountMode, Confidence, PolicyEvent, ReconciliationCause, TaskClass, TicketCoverage } from "./types/insight.js";
 import type {
   JustificationPackModel,
   JustificationPackSectionId,
+  PackCalibrationSection,
+  PackConstraintClassRow,
+  PackConstraintSection,
   PackHeadline,
+  PackHygieneDetectorRow,
+  PackHygieneSection,
   PackMethodology,
   PackNonTicketRow,
   PackReconciliation,
   PackScope,
+  PackSectionUnavailable,
   PackTicketRow,
-  PackUnavailableSections,
 } from "./types/pack.js";
 
 /** English one-line explanation per residual cause — pack chrome, deliberately
@@ -271,18 +289,166 @@ export function buildPackMethodology(input: BuildMethodologyInput): PackMethodol
   };
 }
 
-const UNAVAILABLE_TEXT: Readonly<Record<"hygiene" | "constraint" | "calibration", string>> = {
-  hygiene:
-    "Hygiene trend is not available in this build — it needs the efficiency-hygiene " +
-    "detectors (self-audited waste as % of spend). Not yet shipped.",
-  constraint:
-    "Constraint-impact before/after is not available in this build — it needs the " +
-    "constraint-engine comparison across a declared policy boundary. Not yet shipped. " +
-    "Configured policy events are still listed in the methodology appendix.",
-  calibration:
-    "The calibration footnote is not available in this build — it needs outcome-" +
-    "detection agreement tracked against manual labels. Not yet shipped.",
-};
+// ─── The three engine-fed sections ────────────────────────────────────────────
+//
+// Each takes an already-computed engine result and MINIMIZES it to the pack's
+// outward-facing shape. The minimization lives here, in core, beside the
+// compile-time forbidden-field assertions in `types/pack.ts` — not in the CLI
+// shell, where a future caller could quietly hand a richer object straight to
+// a renderer.
+
+export interface BuildPackHygieneInput {
+  /** `buildHygieneDigest`'s output, verbatim. */
+  readonly digest: HygieneDigest;
+  /** Total equivalent-API cost over the same window — the denominator. */
+  readonly totalCost: number;
+  /** `digest.totalEstimatedWaste / totalCost` as the caller computed it, and
+   *  the same ratio over the preceding window of equal length. Both null-able
+   *  for the same reason: no spend to divide by. */
+  readonly wasteRatio: number | null;
+  readonly previousWasteRatio: number | null;
+}
+
+/**
+ * Reduce the hygiene digest to a per-detector waste table plus a trend.
+ *
+ * Unavailable — rather than a 0% clean sheet — when there is no spend to
+ * divide by. Zero waste over zero spend is not good hygiene; it is no data,
+ * and a "0% wasted" line in a document going to a manager would be a claim
+ * the window cannot support.
+ */
+export function buildPackHygieneSection(input: BuildPackHygieneInput): PackHygieneSection | PackSectionUnavailable {
+  if (input.wasteRatio === null || input.totalCost <= 0) {
+    return {
+      available: false,
+      reason: "No spend was recorded in this period, so there is no denominator to express waste as a share of.",
+      enablementPath: "Run `claude-stats collect`, then regenerate the pack for a period with recorded usage.",
+    };
+  }
+
+  const detectors: PackHygieneDetectorRow[] = input.digest.active
+    .map((r): PackHygieneDetectorRow => ({
+      detectorId: r.detectorId,
+      title: r.title,
+      findingCount: r.findings.length,
+      estimatedWaste: r.findings.reduce((n, f) => n + f.estimatedWaste, 0),
+      computed: r.computed,
+      enablementPath: r.enablementPath ?? null,
+    }))
+    .sort((a, b) => b.estimatedWaste - a.estimatedWaste || a.detectorId.localeCompare(b.detectorId));
+
+  return {
+    available: true,
+    totalCost: input.totalCost,
+    estimatedWaste: input.digest.totalEstimatedWaste,
+    wasteRatio: input.wasteRatio,
+    previousWasteRatio: input.previousWasteRatio,
+    trend: trendOf(input.wasteRatio, input.previousWasteRatio),
+    findingCount: input.digest.totalFindings,
+    detectors,
+    suppressedDetectorIds: [...input.digest.suppressedIds].sort(),
+  };
+}
+
+export interface BuildPackConstraintInput {
+  /** `compareConstraintImpact`'s report, or null when no declared policy
+   *  event could be compared across (none declared, or all dated after the
+   *  available data). */
+  readonly report: ConstraintImpactReport | null;
+  /** Declared events other than the compared one — see the field's doc. */
+  readonly otherPolicyEventCount: number;
+}
+
+export function buildPackConstraintSection(
+  input: BuildPackConstraintInput,
+): PackConstraintSection | PackSectionUnavailable {
+  const report = input.report;
+  if (!report) {
+    return {
+      available: false,
+      reason:
+        "No policy event has been declared on or before the end of this period, so there is no boundary " +
+        "to compare across. This section never infers a boundary from the data — a change in the numbers " +
+        "is not evidence that a policy changed.",
+      enablementPath:
+        "Declare the date a policy took effect under `policyEvents` in your claude-stats config, then " +
+        "regenerate the pack.",
+    };
+  }
+
+  const classes = report.classes.map((c): PackConstraintClassRow => ({
+    classKey: c.classKey,
+    grain: c.grain,
+    verdict: c.verdict,
+    nBefore: c.nBefore,
+    nAfter: c.nAfter,
+    avgCostBefore: c.avgCostBefore,
+    avgCostAfter: c.avgCostAfter,
+    tokenSavingsAtAfterVolume: c.tokenSavingsAtAfterVolume,
+    devTimeCostAtAfterVolume: c.devTimeCostAtAfterVolume,
+    netEffectAtAfterVolume: c.netEffectAtAfterVolume,
+    direction: c.direction,
+  }));
+
+  return {
+    available: true,
+    // `detail` is LOCAL-ONLY and is dropped structurally here, exactly as the
+    // methodology appendix's own policy-event shape drops it.
+    policyEvent: {
+      date: report.policyEvent.date,
+      kind: report.policyEvent.kind,
+      scope: report.policyEvent.scope ?? null,
+    },
+    comparisonScope: "all-recorded-history",
+    currency: report.currency,
+    minSessionsPerClass: report.minSessionsPerClass,
+    classesCompared: report.classesCompared,
+    classesInsufficientData: report.classesInsufficientData,
+    totalTokenSavings: report.totalTokenSavings,
+    totalDevTimeCost: report.totalDevTimeCost,
+    totalNetEffect: report.totalNetEffect,
+    netEffectAvailable: report.netEffectAvailable,
+    classes,
+    notMeasured: [...report.notMeasured],
+    confoundNote: report.confoundNote,
+    otherPolicyEventCount: input.otherPolicyEventCount,
+  };
+}
+
+export interface BuildPackCalibrationInput {
+  /** `buildAttributionCalibration(store).estimate`. Narrowed to the
+   *  attribution subject so this builder's fixed `subject: "attribution"`
+   *  cannot be made to mislabel an outcome estimate. */
+  readonly estimate: CalibrationEstimate & { readonly subject: "attribution" };
+  /** `…​.review.unproposed` — the recall-side count. */
+  readonly unproposed: number;
+}
+
+/**
+ * Always available: `uncalibrated` is an answer, not a missing section. The
+ * gate lives in `calibrate`, which returns a null `rate` below the floor, so
+ * there is nothing here for a renderer to print a percentage from.
+ */
+export function buildPackCalibrationSection(t: InsightT, input: BuildPackCalibrationInput): PackCalibrationSection {
+  const e = input.estimate;
+  return {
+    available: true,
+    subject: "attribution",
+    scope: e.scope,
+    state: e.state,
+    n: e.n,
+    agreed: e.agreed,
+    disagreed: e.disagreed,
+    rate: e.rate,
+    interval: e.interval ? { lo: e.interval.lo, hi: e.interval.hi } : null,
+    minN: e.minN,
+    needed: e.needed,
+    measures: "agreement-on-reviewed-subset",
+    caveat: calibrationCaveat(t, e),
+    enablement: calibrationEnablement(t, e),
+    unproposed: input.unproposed,
+  };
+}
 
 export interface BuildPackModelInput {
   generatedAt: number;
@@ -296,6 +462,13 @@ export interface BuildPackModelInput {
   tickets?: readonly RawPackTicketRow[];
   nonTicketByClass?: ReadonlyMap<string, NonTicketClassAggregate>;
   methodology: BuildMethodologyInput;
+  /** Engine results for the three optional sections. Each is only read when
+   *  its section was opted into; omitting one while opting the section in
+   *  yields a `PackSectionUnavailable` naming the missing input, never a
+   *  silently absent heading. */
+  hygiene?: BuildPackHygieneInput;
+  constraint?: BuildPackConstraintInput;
+  calibration?: BuildPackCalibrationInput;
 }
 
 /** Assemble the whole pack model. The single place section opt-in is applied
@@ -311,11 +484,33 @@ export function buildJustificationPackModel(t: InsightT, input: BuildPackModelIn
       ? buildNonTicketRows(input.nonTicketByClass)
       : null;
 
-  const unavailableSections: PackUnavailableSections = {
-    hygiene: wanted.has("hygiene") ? UNAVAILABLE_TEXT.hygiene : null,
-    constraint: wanted.has("constraint") ? UNAVAILABLE_TEXT.constraint : null,
-    calibration: wanted.has("calibration") ? UNAVAILABLE_TEXT.calibration : null,
-  };
+  // An opted-in section with no engine input is a WIRING fault, not an empty
+  // period, and it says so rather than borrowing the honest empty state's
+  // wording — a caller that forgot to pass a report must not read as "your
+  // data has nothing to show".
+  const missingInput = (section: string, call: string): PackSectionUnavailable => ({
+    available: false,
+    reason: `The ${section} section was requested but no ${section} data was supplied to this generation.`,
+    enablementPath: `This is a wiring fault in the caller: pass \`${call}\` through to buildJustificationPackModel.`,
+  });
+
+  const hygiene = !wanted.has("hygiene")
+    ? null
+    : input.hygiene
+      ? buildPackHygieneSection(input.hygiene)
+      : missingInput("hygiene", "buildHygieneReport(...)");
+
+  const constraint = !wanted.has("constraint")
+    ? null
+    : input.constraint
+      ? buildPackConstraintSection(input.constraint)
+      : missingInput("constraint", "buildConstraintImpactReport(...)");
+
+  const calibration = !wanted.has("calibration")
+    ? null
+    : input.calibration
+      ? buildPackCalibrationSection(t, input.calibration)
+      : missingInput("calibration", "buildAttributionCalibration(store)");
 
   const scope: PackScope = {
     projectPath: input.scope?.projectPath ?? null,
@@ -331,7 +526,9 @@ export function buildJustificationPackModel(t: InsightT, input: BuildPackModelIn
     tickets,
     nonTicket,
     methodology: buildPackMethodology(input.methodology),
-    unavailableSections,
+    hygiene,
+    constraint,
+    calibration,
   };
 }
 
@@ -438,6 +635,217 @@ function shortDigest(value: string): string {
     h = Math.imul(h, 0x01000193) >>> 0;
   }
   return h.toString(16).padStart(8, "0");
+}
+
+// ─── Section renderers ────────────────────────────────────────────────────────
+
+/** The honest empty state: what is missing, and the way to produce it. The
+ *  enablement line is never dropped — an "unavailable" with no way out is the
+ *  failure this block exists to avoid. */
+function renderUnavailable(s: PackSectionUnavailable): string {
+  const out = [`<div class="unavailable">${escapeHtml(s.reason)}`];
+  if (s.enablementPath) out.push(`<br><strong>To enable:</strong> ${escapeHtml(s.enablementPath)}`);
+  out.push(`</div>`);
+  return out.join("");
+}
+
+/** `up` in waste is bad and `down` is good, which is the opposite of every
+ *  other trend in this document — so the direction is spelled out in words
+ *  rather than left to an arrow the reader has to interpret. */
+const WASTE_TREND_TEXT: Readonly<Record<PackHygieneSection["trend"], string>> = {
+  up: "up from",
+  down: "down from",
+  flat: "level with",
+  unknown: "",
+};
+
+function renderHygieneSection(s: PackHygieneSection, currency: string): string {
+  const parts: string[] = [`<div class="headline">`];
+  parts.push(
+    `<div class="figure">${fmtPct(s.wasteRatio)}</div>`,
+    `<div>of spend this period is self-audited waste — ${fmtMoney(s.estimatedWaste, currency)} of ` +
+      `${fmtMoney(s.totalCost, currency)}, across ${s.findingCount} finding${s.findingCount === 1 ? "" : "s"}.</div>`,
+  );
+  parts.push(
+    s.previousWasteRatio !== null
+      ? `<div class="caveat">${WASTE_TREND_TEXT[s.trend]} ${fmtPct(s.previousWasteRatio)} over the preceding ` +
+          `period of equal length.</div>`
+      : `<div class="caveat">No comparable preceding period with recorded spend, so there is no trend to state.</div>`,
+  );
+  parts.push(
+    `<div class="caveat">Waste is estimated conservatively by six local detectors and is an upper bound on what ` +
+      `could plausibly have been avoided, not money that was definitely lost.</div>`,
+  );
+  parts.push(`</div>`);
+
+  parts.push(
+    `<table><thead><tr><th>Pattern</th><th class="num">Findings</th><th class="num">Estimated waste</th>` +
+      `</tr></thead><tbody>`,
+  );
+  for (const d of s.detectors) {
+    parts.push(
+      `<tr><td>${escapeHtml(d.title)}${
+        d.computed ? "" : ` — <em>not computed${d.enablementPath ? `: ${escapeHtml(d.enablementPath)}` : ""}</em>`
+      }</td>` +
+        `<td class="num">${d.computed ? d.findingCount : "—"}</td>` +
+        `<td class="num">${d.computed ? fmtMoney(d.estimatedWaste, currency) : "—"}</td></tr>`,
+    );
+  }
+  parts.push(`</tbody></table>`);
+
+  if (s.suppressedDetectorIds.length > 0) {
+    parts.push(
+      `<div class="caveat">${s.suppressedDetectorIds.length} detector` +
+        `${s.suppressedDetectorIds.length === 1 ? " is" : "s are"} switched off and excluded from the figures above: ` +
+        `${escapeHtml(s.suppressedDetectorIds.join(", "))}.</div>`,
+    );
+  }
+  return parts.join("\n");
+}
+
+const IMPACT_DIRECTION_LABEL: Readonly<Record<PackConstraintClassRow["direction"], string>> = {
+  favorable: "Favourable",
+  unfavorable: "Unfavourable",
+  negligible: "Negligible",
+  unknown: "Unknown",
+};
+
+/** `classKey` is a fine task class, or `coarse:<name>` when confidence did not
+ *  support the fine grain. Fine names get their reader-facing label; anything
+ *  else is shown verbatim rather than guessed at. */
+function constraintClassLabel(row: PackConstraintClassRow): string {
+  if (row.grain === "coarse") return row.classKey.replace(/^coarse:/, "") + " (coarse grain)";
+  return TASK_CLASS_LABELS[row.classKey as TaskClass] ?? row.classKey;
+}
+
+function renderConstraintSection(s: PackConstraintSection): string {
+  const parts: string[] = [];
+  const c = s.currency;
+  const e = s.policyEvent;
+
+  parts.push(`<div class="headline">`);
+  parts.push(
+    `<div>Compared across the <strong>${escapeHtml(e.kind)}</strong> policy declared ` +
+      `${escapeHtml(e.date)}${e.scope ? ` (${escapeHtml(e.scope)})` : ""}.</div>`,
+  );
+  // The one section whose window is NOT the pack's period. Said plainly, in
+  // the section itself, rather than left to the appendix.
+  parts.push(
+    `<div class="caveat">This comparison spans <strong>all recorded sessions either side of that date</strong>, ` +
+      `not only this period. A month either side rarely clears the ${s.minSessionsPerClass}-session-per-class ` +
+      `floor this report abstains below.</div>`,
+  );
+
+  // Stated up front, not left to the "0 classes compared" footnote under the
+  // table: a reader who sees a "Constraint impact" heading with a policy date
+  // under it will take the section's presence as evidence the policy was
+  // evaluated. When no class cleared the floor, it was not.
+  if (s.classesCompared === 0) {
+    parts.push(
+      `<div><strong>This boundary is not evaluated.</strong> No task class had enough sessions on both sides ` +
+        `to compare, so nothing below supports a claim either way about the policy's effect.</div>`,
+    );
+  }
+
+  if (s.netEffectAvailable && s.totalNetEffect !== null) {
+    const favourable = s.totalNetEffect > 0;
+    parts.push(
+      `<div class="figure">${favourable ? "" : "−"}${fmtMoney(Math.abs(s.totalNetEffect), c)}</div>`,
+      `<div>net effect at the after-period's volume — ${favourable ? "in favour of" : "against"} the policy.</div>`,
+    );
+  }
+  parts.push(
+    `<div>Token cost: ${s.totalTokenSavings !== null ? `${fmtMoney(s.totalTokenSavings, c)} saved` : "not comparable"}` +
+      ` · Developer time: ${
+        s.totalDevTimeCost !== null
+          ? `${fmtMoney(s.totalDevTimeCost, c)} ${s.totalDevTimeCost >= 0 ? "additional" : "recovered"}`
+          : "not priced"
+      }</div>`,
+  );
+  if (!s.netEffectAvailable) {
+    parts.push(
+      `<div class="caveat">No hourly rate is configured, so the developer-time half of this ledger has no price ` +
+        `and no net effect is stated. A token saving on its own is half a ledger, not a result — configure ` +
+        `<code>rate.hourly</code> to complete it.</div>`,
+    );
+  }
+  parts.push(`<div class="caveat">${escapeHtml(s.confoundNote)}</div>`);
+  parts.push(`</div>`);
+
+  parts.push(
+    `<table><thead><tr><th>Kind of work</th><th class="num">Sessions before → after</th>` +
+      `<th class="num">Avg cost before → after</th><th class="num">Net effect</th><th>Direction</th>` +
+      `</tr></thead><tbody>`,
+  );
+  for (const row of s.classes) {
+    const compared = row.verdict === "compared";
+    parts.push(
+      `<tr><td>${escapeHtml(constraintClassLabel(row))}</td>` +
+        `<td class="num">${row.nBefore} → ${row.nAfter}</td>` +
+        `<td class="num">${
+          compared && row.avgCostBefore !== null && row.avgCostAfter !== null
+            ? `${fmtMoney(row.avgCostBefore, c)} → ${fmtMoney(row.avgCostAfter, c)}`
+            : "—"
+        }</td>` +
+        `<td class="num">${row.netEffectAtAfterVolume !== null ? fmtMoney(row.netEffectAtAfterVolume, c) : "—"}</td>` +
+        `<td>${
+          compared
+            ? escapeHtml(IMPACT_DIRECTION_LABEL[row.direction])
+            : `<em>Too few sessions (floor ${s.minSessionsPerClass})</em>`
+        }</td></tr>`,
+    );
+  }
+  parts.push(`</tbody></table>`);
+
+  parts.push(
+    `<div class="caveat">${s.classesCompared} class${s.classesCompared === 1 ? "" : "es"} compared, ` +
+      `${s.classesInsufficientData} abstained for want of sessions.</div>`,
+  );
+  if (s.otherPolicyEventCount > 0) {
+    parts.push(
+      `<div class="caveat">${s.otherPolicyEventCount} other policy event` +
+        `${s.otherPolicyEventCount === 1 ? " is" : "s are"} declared and not compared here — see the methodology ` +
+        `appendix. This is one boundary, not the whole policy history.</div>`,
+    );
+  }
+  if (s.notMeasured.length > 0) {
+    parts.push(
+      `<div class="caveat"><strong>Deliberately not measured:</strong> ${s.notMeasured
+        .map(escapeHtml)
+        .join("; ")}.</div>`,
+    );
+  }
+  return parts.join("\n");
+}
+
+function renderCalibrationSection(s: PackCalibrationSection): string {
+  const parts: string[] = [`<div class="headline">`];
+  if (s.state === "measured" && s.rate !== null) {
+    parts.push(`<div class="figure">${fmtPct(s.rate)}</div>`);
+    parts.push(
+      `<div>agreement between the automatic attribution pass and the developer's own rulings` +
+        `${s.interval ? ` (95% CI ${fmtPct(s.interval.lo)}–${fmtPct(s.interval.hi)})` : ""}, over ${s.n} ruling` +
+        `${s.n === 1 ? "" : "s"}.</div>`,
+    );
+  } else {
+    parts.push(
+      `<div>Not calibrated: ${s.n} of the ${s.minN} rulings needed before an agreement rate would be reported. ` +
+        `Nothing is claimed about attribution accuracy on this evidence.</div>`,
+    );
+  }
+  // Quoted from the shared formatter, never reworded — the same sentence the
+  // dashboard shows for the same estimate.
+  parts.push(`<div class="caveat">${escapeHtml(s.caveat)}</div>`);
+  if (s.enablement) parts.push(`<div class="caveat">${escapeHtml(s.enablement)}</div>`);
+  if (s.unproposed > 0) {
+    parts.push(
+      `<div class="caveat">${s.unproposed} link${s.unproposed === 1 ? " was" : "s were"} added by hand naming a ` +
+        `ticket the automatic pass never proposed. That is a miss on the pass's part; it is reported here and ` +
+        `deliberately kept out of the agreement rate above, which would otherwise flatter it.</div>`,
+    );
+  }
+  parts.push(`</div>`);
+  return parts.join("\n");
 }
 
 /**
@@ -559,12 +967,31 @@ export function renderJustificationPackHtml(model: JustificationPackModel): stri
     }
   }
 
-  for (const key of ["hygiene", "constraint", "calibration"] as const) {
-    const msg = model.unavailableSections[key];
-    if (msg) {
-      parts.push(`<h2>${key === "hygiene" ? "Hygiene trend" : key === "constraint" ? "Constraint impact" : "Calibration"}</h2>`);
-      parts.push(`<div class="unavailable">${escapeHtml(msg)}</div>`);
-    }
+  if (model.hygiene) {
+    parts.push(`<h2>Hygiene trend</h2>`);
+    parts.push(
+      model.hygiene.available
+        ? renderHygieneSection(model.hygiene, h.currency)
+        : renderUnavailable(model.hygiene),
+    );
+  }
+
+  if (model.constraint) {
+    parts.push(`<h2>Constraint impact</h2>`);
+    parts.push(
+      model.constraint.available
+        ? renderConstraintSection(model.constraint)
+        : renderUnavailable(model.constraint),
+    );
+  }
+
+  if (model.calibration) {
+    parts.push(`<h2>Calibration</h2>`);
+    parts.push(
+      model.calibration.available
+        ? renderCalibrationSection(model.calibration)
+        : renderUnavailable(model.calibration),
+    );
   }
 
   const m = model.methodology;
@@ -699,6 +1126,15 @@ export function renderSummaryCsv(model: JustificationPackModel): string {
       "reconciliationResidual",
       "reconciliationScopeNote",
       "reconciliationCandidateCauses",
+      // The three optional sections' headline figures. Empty when the section
+      // was not opted into OR could not be computed — a spreadsheet reader
+      // must not be able to tell those apart from a zero, so neither ever
+      // renders as one.
+      "hygieneWasteRatio",
+      "hygieneWasteCost",
+      "constraintNetEffect",
+      "attributionAgreementRate",
+      "attributionAgreementN",
     ]),
     csvLine([
       model.period.label,
@@ -720,6 +1156,17 @@ export function renderSummaryCsv(model: JustificationPackModel): string {
       h.reconciliation ? formatMoneyCsv(h.reconciliation.residual) : "",
       h.reconciliation?.scopeNote ?? "",
       h.reconciliation ? h.reconciliation.candidateCauses.join(";") : "",
+      model.hygiene?.available ? model.hygiene.wasteRatio.toFixed(4) : "",
+      model.hygiene?.available ? formatMoneyCsv(model.hygiene.estimatedWaste) : "",
+      model.constraint?.available && model.constraint.totalNetEffect !== null
+        ? formatMoneyCsv(model.constraint.totalNetEffect)
+        : "",
+      // Null below the sample floor by construction, so an uncalibrated store
+      // yields an empty cell rather than a rate nobody may quote.
+      model.calibration?.available && model.calibration.rate !== null
+        ? model.calibration.rate.toFixed(4)
+        : "",
+      model.calibration?.available ? model.calibration.n : "",
     ]),
   ];
   return lines.join("\r\n") + "\r\n";

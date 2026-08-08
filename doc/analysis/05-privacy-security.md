@@ -342,11 +342,32 @@ or per-session evidence text (`ticket_links.evidence`). A policy event's
   "plan"`) the configured monthly plan fee** — all of this is the intended
   content of the document.
 
-**Sections not yet wired.** `hygiene`, `constraint`, and `calibration` can be
-requested but currently render an honest "not available in this build" block
-— those engines exist and are reachable through their own commands, but the
-pack renderer does not yet pull from them. No number is fabricated in their
-place; nothing from those subsystems currently leaves via the pack at all.
+**The three opt-in sections, and what each lets out.** `hygiene`,
+`constraint`, and `calibration` are wired to their engines and carry real
+figures when requested. Each was minimized before it was allowed into the
+document, and the minimization is enforced by the same compile-time
+forbidden-field check as every other pack row (`HasNoForbiddenPackFields`),
+not by a filter applied afterwards:
+
+- **`hygiene`** carries a per-detector **count and cost**, never the findings
+  themselves. `HygieneFinding` holds `sessionIds` and free-text evidence; both
+  are dropped structurally. The efficiency-hygiene design states that only the
+  aggregate trend is meant to leave the machine, never a per-session or
+  per-developer feed, and `sessionIds` is on the forbidden list, so a future
+  "just pass the findings through" change fails to compile rather than
+  shipping a per-session waste log to a manager.
+- **`constraint`** carries per-task-class before/after aggregates and drops
+  `PolicyEvent.detail`, which `types/insight.ts` marks LOCAL-ONLY (it commonly
+  holds a budget figure or an internal policy note). Same omission the
+  methodology appendix already makes.
+- **`calibration`** carries counts, a rate, an interval, and the shared caveat
+  sentence — no ticket keys, no session ids, and nothing about *which* links
+  were disputed.
+
+None of the three fabricates a figure in place of a missing one, and each
+distinguishes its honest empty state (no spend, no declared policy event,
+fewer than 30 rulings) from a real zero — a document going to a manager must
+never say "0% waste" when it means "no data".
 
 **How this plane differs from the other two.** The org plane is protected by
 the *shape* of its payload, and the personal plane by encryption. The pack has

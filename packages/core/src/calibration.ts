@@ -199,11 +199,11 @@ export interface CalibrateOptions {
  * `uncalibrated` state with a null rate, and the caller has nothing to render a
  * percentage from even if it wanted to.
  */
-export function calibrate(
-  subject: CalibrationSubject,
+export function calibrate<S extends CalibrationSubject>(
+  subject: S,
   tally: ReviewTally,
   opts: CalibrateOptions,
-): CalibrationEstimate {
+): CalibrationEstimate & { readonly subject: S } {
   const minN = opts.minN ?? MIN_CALIBRATION_N;
   const agreed = Math.max(0, Math.trunc(tally.agreed));
   const disagreed = Math.max(0, Math.trunc(tally.disagreed));
