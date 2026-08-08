@@ -41,8 +41,18 @@ jobs:
       - name: Per-directory coverage gate (crypto / sync-merge / org >=90% lines)
         run: node scripts/check-coverage-dirs.mjs
 
+      # FrontendStack asserts its SPA bundle exists at synth time rather than
+      # emitting an empty distribution, so the infra tests below cannot run
+      # against an unbuilt frontend. The dedicated "Build Frontend" job does not
+      # help — it is a separate job with a separate workspace, and it is skipped
+      # entirely when this one fails. ~4s.
+      - name: Build frontend (FrontendStack synth needs packages/frontend/dist)
+        run: npm run build -w @claude-stats/frontend
+        timeout-minutes: 5
+
       - name: Infra stack synth tests
         run: npm test -w @de-otio/claude-stats-infra
+        timeout-minutes: 10
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v7
