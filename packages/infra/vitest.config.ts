@@ -20,6 +20,16 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: false,
+    // A CDK synth of the full app is seconds of CPU, not milliseconds, and
+    // vitest's 5s default is a wall-clock budget. On a shared CI runner where
+    // this suite competes with itself for two cores, synth-backed tests have
+    // been observed blowing that default while doing exactly the work they do
+    // locally in well under it. These tests assert on the synthesized
+    // template; how long the synth took is not the property under test, so the
+    // timeout is set where a genuine hang lives rather than where a slow
+    // runner does.
+    testTimeout: 60_000,
+    hookTimeout: 60_000,
     // `lib/**` = synth-template assertions on the declarative stacks.
     // `lambda/**` = real business-logic units (e.g. the aggregate-stats
     // stream worker), which DO warrant executed line coverage.
