@@ -545,5 +545,60 @@
     "calibrationReady": "Etykiety wyników są skalibrowane — zobacz jak",
     "calibrationNotReady": "Etykiety wyników nie są jeszcze skalibrowane — zobacz dlaczego",
     "calibrationNoLabels": "Etykiety wyników nie są skalibrowane — nic jeszcze nie oznaczono"
+  },
+  "recommendations": {
+    "panel": {
+      "actions": "Sugerowane działania",
+      "positives": "Co robisz dobrze"
+    },
+    "modelTierWaste": {
+      "title": "Kieruj prostsze prompty do tańszych modeli",
+      "body": "{{overusePercent}}% Twoich sklasyfikowanych tur trafiło do droższego modelu, niż wymagała tego ich złożoność. Sprawdź sekcję Efektywność, aby zobaczyć, które prompty wygenerowały nadmierne koszty, i rozważ użycie Haiku/Sonnet dla tych prostszych.",
+      "impact": "~{{amount}} do zaoszczędzenia"
+    },
+    "planUnderusing": {
+      "title": "Rozważ zmianę planu na {{plan}}",
+      "body": "Twoje średnie zużycie w przeliczeniu na API to tylko ~{{monthlyUse}}/mies. — znacznie poniżej opłaty za obecny plan wynoszącej ~{{monthlyFee}}/mies. Niższy plan nadal pokryłby Twoje typowe zużycie.",
+      "impact": "~{{amount}}/mies."
+    },
+    "contextCompaction": {
+      "title": "Używaj /compact lub /clear bardziej zdecydowanie",
+      "body": "{{count}} długich sesji (15+ promptów) przebiegło bez kompaktowania. Długie, nieskompaktowane konteksty przesyłają całą historię w każdej turze, zwiększając koszt tokenów wejściowych. Rozpocznij nową rozmowę lub uruchom /compact przy niepowiązanych zadaniach."
+    },
+    "cacheLowHitRate": {
+      "title": "Niski współczynnik trafień cache — przebuduj prompty",
+      "body": "Tylko {{percent}}% Twoich tokenów wejściowych trafiło do cache promptów. Utrzymywanie stabilnego prefiksu (prompt systemowy, definicje narzędzi, długi kontekst) na początku każdej tury pozwala Anthropic wykorzystać go ponownie za ~10% ceny nowych tokenów wejściowych."
+    },
+    "runawayConversation": {
+      "title": "Jedna rozmowa dominuje w Twoich wydatkach",
+      "body": "Sesja w {{project}} kosztowała {{cost}} przy {{promptCount}} promptach — {{ratio}}× więcej niż mediana sesji. Długie pojedyncze rozmowy powiększają własny kontekst w każdej turze; rozważ podzielenie niepowiązanych zadań na nowe sesje.",
+      "impact": "{{amount}}"
+    },
+    "contextNearLimit": {
+      "title": "Sesje regularnie zapełniają okno kontekstu",
+      "body": "Twój średni szczytowy input sięga ~{{thousands}}k tokenów (przy limicie 200k). Niemal pełne konteksty są wolniejsze i droższe w przeliczeniu na turę, a kolejne prompty grożą obcięciem. Uruchamiaj /compact wcześniej — albo rozpocznij nową sesję po ukończeniu zadania."
+    },
+    "mcpHeavy": {
+      "title": "Serwer MCP „{{server}}” zużywa nietypowo duży udział",
+      "body": "{{sharePercent}}% Twoich całkowitych wydatków (~{{cost}}) przypadło na ten serwer w {{calls}} wywołaniach, średnio {{avgTokens}} tokenów na wywołanie{{medianClause}}. Sprawdź, czy zwraca odpowiednią ilość danych i czy nie zapętla się ani nie powiela dużych ładunków.",
+      "medianClause": " ({{ratio}}× więcej niż mediana serwera MCP)",
+      "impact": "~{{amount}}"
+    },
+    "goodCache": {
+      "title": "Doskonała dyscyplina cache",
+      "body": "{{percent}}% Twoich tokenów wejściowych pochodzi z cache promptów — skuteczne ponowne wykorzystanie stabilnych prefiksów oszczędza realne pieniądze w każdej turze."
+    },
+    "goodModelRouting": {
+      "title": "Dobierasz właściwy model do zadania",
+      "body": "Tylko {{overusePercent}}% Twoich sklasyfikowanych tur użyło droższego modelu, niż było to potrzebne. Dobrze dopasowujesz złożoność promptu do klasy modelu."
+    },
+    "goodPlanValue": {
+      "title": "Świetna wartość z Twojego planu",
+      "body": "Twoje zużycie w przeliczeniu na API wynosi średnio ~{{multiplier}}× opłatę za plan. Subskrypcja zwraca się kilkukrotnie."
+    },
+    "goodCompaction": {
+      "title": "Dobra higiena kontekstu",
+      "body": "{{percent}}% Twoich sesji wykazuje aktywność kompaktowania, a niewiele długich sesji pozostało nieskompaktowanych. Utrzymujesz rozmiar kontekstu pod kontrolą."
+    }
   }
 }

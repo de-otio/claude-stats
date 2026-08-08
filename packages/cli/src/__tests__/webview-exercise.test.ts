@@ -63,6 +63,7 @@ const populatedData: DashboardData = {
     topTicket: { key: "PROJ-123", cost: 41.2 },
     hourlyRate: 90, currency: "USD",
     attributionCalibration: null,
+    previousCost: null,
     reconciliation: null,
   },
 };

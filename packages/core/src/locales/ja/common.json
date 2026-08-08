@@ -79,7 +79,8 @@
     "devTime": {
       "minutes": "開発者 {{value}} 分",
       "hours": "開発者 {{value}} 時間",
-      "days": "開発者 {{value}} 日"
+      "days": "開発者 {{value}} 日",
+      "underMinute": "開発1分未満"
     },
     "confidence": {
       "high": "高",

@@ -16,8 +16,9 @@
  * the sentences this pack SHARES with the dashboard and the CLI — the cost
  * caveat, the coverage caveat, the dev-time label — go through the injected
  * `InsightT` and are localized. The pack's OWN chrome (section headings, the
- * table column labels, `MODE_LABEL`, `TASK_CLASS_LABELS`, `UNAVAILABLE_TEXT`,
- * `scopeLabel`) is still English. That is deliberate: those strings have
+ * table column labels, `MODE_LABEL`, `TASK_CLASS_LABELS`, the three optional
+ * sections' prose and empty-state text, `scopeLabel`) is still English. That
+ * is deliberate: those strings have
  * exactly one surface, so localizing them cannot create the cross-surface drift
  * this module exists to prevent, and folding them in would double this change.
  * They are a separate, self-contained lane.
@@ -31,6 +32,7 @@ import {
   costCaveat,
   formatDevTime,
   formatMoney,
+  formatCount,
   formatMoneyCsv,
   formatPercent,
   trendOf,
@@ -566,12 +568,10 @@ function fmtPct(n: number): string {
   return formatPercent(n, 1);
 }
 
-/** Non-money integer with the same fixed-locale thousands separator as
- *  `formatMoney` — used for the unpriced-token count, which is a count, not
- *  a currency figure, and must not silently drift to a runtime locale. */
-function fmtInt(n: number): string {
-  return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
+/** The unpriced-token count — a count, not a currency figure. Re-exported
+ *  from `insight.ts` rather than re-implemented, so the pack and the dashboard
+ *  separate thousands the same way. */
+const fmtInt = formatCount;
 
 const MODE_LABEL: Record<AccountMode, string> = {
   plan: "Flat-rate plan (equivalent-API-value framing)",

@@ -544,5 +544,60 @@
     "calibrationReady": "Os rótulos de resultado estão calibrados — veja como",
     "calibrationNotReady": "Os rótulos de resultado ainda não estão calibrados — veja por quê",
     "calibrationNoLabels": "Os rótulos de resultado não estão calibrados — nada rotulado ainda"
+  },
+  "recommendations": {
+    "panel": {
+      "actions": "Ações sugeridas",
+      "positives": "O que você está fazendo bem"
+    },
+    "modelTierWaste": {
+      "title": "Direcione prompts mais simples para modelos mais baratos",
+      "body": "{{overusePercent}}% dos seus turnos classificados foram enviados a um modelo mais caro do que a complexidade exigia. Confira a seção Eficiência para ver quais prompts geraram o gasto excedente e considere usar Haiku/Sonnet nos mais simples.",
+      "impact": "~{{amount}} economizáveis"
+    },
+    "planUnderusing": {
+      "title": "Considere fazer downgrade para o {{plan}}",
+      "body": "Seu uso médio equivalente à API é de apenas ~{{monthlyUse}}/mês — bem abaixo da mensalidade atual do seu plano, de ~{{monthlyFee}}/mês. Fazer downgrade ainda cobriria seu uso típico.",
+      "impact": "~{{amount}}/mês"
+    },
+    "contextCompaction": {
+      "title": "Use /compact ou /clear de forma mais agressiva",
+      "body": "{{count}} sessões longas (15+ prompts) rodaram sem compactação. Contextos longos sem compactação reenviam todo o histórico a cada turno, inflando o custo de tokens de entrada. Inicie uma nova conversa ou execute /compact para tarefas não relacionadas."
+    },
+    "cacheLowHitRate": {
+      "title": "Taxa de acerto do cache está baixa — reestruture os prompts",
+      "body": "Apenas {{percent}}% dos seus tokens de entrada atingiram o cache de prompt. Manter um prefixo estável (system prompt, definições de ferramentas, contexto longo) no início de cada turno permite que a Anthropic o reutilize por ~10% do preço de tokens de entrada novos."
+    },
+    "runawayConversation": {
+      "title": "Uma conversa está dominando o seu gasto",
+      "body": "A sessão em {{project}} custou {{cost}} em {{promptCount}} prompts — {{ratio}}× a sessão mediana. Conversas únicas e longas aumentam o próprio contexto a cada turno; considere dividir trabalhos não relacionados em novas sessões.",
+      "impact": "{{amount}}"
+    },
+    "contextNearLimit": {
+      "title": "As sessões estão enchendo a janela de contexto com frequência",
+      "body": "Seu pico médio de entrada chega a ~{{thousands}}k tokens (de um teto de 200k). Contextos quase cheios são mais lentos e mais caros por turno, e novos prompts correm risco de truncamento. Execute /compact mais cedo — ou inicie uma nova sessão assim que uma tarefa terminar."
+    },
+    "mcpHeavy": {
+      "title": "O servidor MCP “{{server}}” está consumindo uma fatia muito grande",
+      "body": "{{sharePercent}}% do seu gasto total (~{{cost}}) foi para este servidor em {{calls}} chamadas, com média de {{avgTokens}} tokens por chamada{{medianClause}}. Verifique se ele está retornando a quantidade certa de dados e não está em loop ou repetindo payloads grandes.",
+      "medianClause": " ({{ratio}}× a mediana dos servidores MCP)",
+      "impact": "~{{amount}}"
+    },
+    "goodCache": {
+      "title": "Excelente disciplina de cache",
+      "body": "{{percent}}% dos seus tokens de entrada vêm do cache de prompt — o forte reuso de prefixos estáveis está economizando dinheiro de verdade a cada turno."
+    },
+    "goodModelRouting": {
+      "title": "Você está escolhendo o modelo certo para cada tarefa",
+      "body": "Apenas {{overusePercent}}% dos seus turnos classificados usaram um modelo mais caro que o necessário. Você está alinhando bem a complexidade do prompt ao nível do modelo."
+    },
+    "goodPlanValue": {
+      "title": "Ótimo custo-benefício no seu plano",
+      "body": "Seu uso equivalente à API é, em média, ~{{multiplier}}× a mensalidade do seu plano. A assinatura está se pagando várias vezes."
+    },
+    "goodCompaction": {
+      "title": "Boa higiene de contexto",
+      "body": "{{percent}}% das suas sessões apresentam atividade de compactação, e poucas sessões longas ficaram sem compactar. Você está mantendo o tamanho do contexto sob controle."
+    }
   }
 }

@@ -543,5 +543,60 @@
     "calibrationReady": "Outcome labels are calibrated — see how",
     "calibrationNotReady": "Outcome labels are not calibrated yet — see why",
     "calibrationNoLabels": "Outcome labels are not calibrated — nothing labelled yet"
+  },
+  "recommendations": {
+    "panel": {
+      "actions": "Suggested actions",
+      "positives": "What you're doing well"
+    },
+    "modelTierWaste": {
+      "title": "Route simpler prompts to cheaper models",
+      "body": "{{overusePercent}}% of your classified turns were sent to a pricier model than their complexity warranted. Check the Efficiency section to see which prompts drove the overspend and consider using Haiku/Sonnet for the simpler ones.",
+      "impact": "~{{amount}} saveable"
+    },
+    "planUnderusing": {
+      "title": "Consider downgrading to {{plan}}",
+      "body": "Your average API-equivalent usage is only ~{{monthlyUse}}/mo — well below your current ~{{monthlyFee}}/mo plan fee. Downgrading would still cover your typical usage.",
+      "impact": "~{{amount}}/mo"
+    },
+    "contextCompaction": {
+      "title": "Use /compact or /clear more aggressively",
+      "body": "{{count}} long sessions (15+ prompts) ran without compaction. Long uncompacted contexts re-send the entire history each turn, inflating input-token cost. Start a new conversation or run /compact for unrelated tasks."
+    },
+    "cacheLowHitRate": {
+      "title": "Cache hit rate is low — restructure prompts",
+      "body": "Only {{percent}}% of your input tokens hit the prompt cache. Keeping a stable prefix (system prompt, tool definitions, long context) at the start of each turn lets Anthropic reuse it at ~10% the price of fresh input tokens."
+    },
+    "runawayConversation": {
+      "title": "One conversation is dominating your spend",
+      "body": "Session in {{project}} cost {{cost}} across {{promptCount}} prompts — {{ratio}}× the median session. Long single conversations grow their own context on every turn; consider splitting unrelated work into fresh sessions.",
+      "impact": "{{amount}}"
+    },
+    "contextNearLimit": {
+      "title": "Sessions are regularly filling the context window",
+      "body": "Your average peak input reaches ~{{thousands}}k tokens (out of a 200k ceiling). Near-full contexts are slower and more expensive per turn, and further prompts risk truncation. Run /compact earlier — or start a fresh session once a task is complete."
+    },
+    "mcpHeavy": {
+      "title": "MCP server “{{server}}” is consuming an unusually large share",
+      "body": "{{sharePercent}}% of your total spend (~{{cost}}) went to this server across {{calls}} calls, averaging {{avgTokens}} tokens per call{{medianClause}}. Verify that it is returning the right amount of data and not looping or echoing large payloads.",
+      "medianClause": " ({{ratio}}× the median MCP server)",
+      "impact": "~{{amount}}"
+    },
+    "goodCache": {
+      "title": "Excellent cache discipline",
+      "body": "{{percent}}% of your input tokens are coming from the prompt cache — strong reuse of stable prefixes is saving you real money on every turn."
+    },
+    "goodModelRouting": {
+      "title": "You're picking the right model for the job",
+      "body": "Only {{overusePercent}}% of your classified turns used a pricier model than needed. You're matching prompt complexity to model tier well."
+    },
+    "goodPlanValue": {
+      "title": "Great value from your plan",
+      "body": "Your API-equivalent usage averages ~{{multiplier}}× your plan fee. The subscription is paying for itself several times over."
+    },
+    "goodCompaction": {
+      "title": "Good context hygiene",
+      "body": "{{percent}}% of your sessions show compaction activity, and few long sessions went uncompacted. You're keeping context sizes in check."
+    }
   }
 }

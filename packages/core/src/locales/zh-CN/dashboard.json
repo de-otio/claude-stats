@@ -543,5 +543,60 @@
     "calibrationReady": "结果标签已校准 — 查看方式",
     "calibrationNotReady": "结果标签尚未校准 — 查看原因",
     "calibrationNoLabels": "结果标签未校准 — 尚无已标注数据"
+  },
+  "recommendations": {
+    "panel": {
+      "actions": "建议操作",
+      "positives": "做得好的方面"
+    },
+    "modelTierWaste": {
+      "title": "将较简单的 prompt 路由到更便宜的模型",
+      "body": "{{overusePercent}}% 的已分类轮次使用了超出其复杂度所需的高价模型。请查看“效率”部分，了解哪些 prompt 造成了额外开销，并考虑对较简单的 prompt 使用 Haiku/Sonnet。",
+      "impact": "可节省约 {{amount}}"
+    },
+    "planUnderusing": {
+      "title": "考虑降级到 {{plan}}",
+      "body": "您的平均 API 等效用量仅约 {{monthlyUse}}/月，远低于当前约 {{monthlyFee}}/月的套餐费用。降级后仍可覆盖您的日常用量。",
+      "impact": "约 {{amount}}/月"
+    },
+    "contextCompaction": {
+      "title": "更积极地使用 /compact 或 /clear",
+      "body": "有 {{count}} 个长 session（15 个以上 prompt）未进行压缩。未压缩的长上下文会在每一轮重新发送全部历史记录，抬高输入 token 成本。对于不相关的任务，请开启新对话或运行 /compact。"
+    },
+    "cacheLowHitRate": {
+      "title": "cache 命中率偏低——请调整 prompt 结构",
+      "body": "只有 {{percent}}% 的输入 token 命中了 prompt cache。在每一轮开头保持稳定的前缀（system prompt、工具定义、长上下文），可让 Anthropic 复用它，价格仅为新输入 token 的约 10%。"
+    },
+    "runawayConversation": {
+      "title": "单个对话占据了您的大部分开销",
+      "body": "{{project}} 中的 session 在 {{promptCount}} 个 prompt 中花费了 {{cost}}，是中位 session 的 {{ratio}} 倍。单个长对话每一轮都会不断扩大自身上下文；建议将不相关的工作拆分到新的 session 中。",
+      "impact": "{{amount}}"
+    },
+    "contextNearLimit": {
+      "title": "session 经常填满上下文窗口",
+      "body": "您的平均峰值输入达到约 {{thousands}}k token（上限为 200k）。接近满载的上下文每一轮都更慢、更贵，后续 prompt 还可能被截断。请更早运行 /compact——或在任务完成后开启新的 session。"
+    },
+    "mcpHeavy": {
+      "title": "MCP 服务器“{{server}}”占用比例异常偏高",
+      "body": "您总开销的 {{sharePercent}}%（约 {{cost}}）用于该服务器，共 {{calls}} 次调用，平均每次调用 {{avgTokens}} 个 token{{medianClause}}。请确认它返回的数据量是否合适，是否存在循环调用或回显大量数据的情况。",
+      "medianClause": "（是 MCP 服务器中位值的 {{ratio}} 倍）",
+      "impact": "约 {{amount}}"
+    },
+    "goodCache": {
+      "title": "出色的 cache 使用习惯",
+      "body": "{{percent}}% 的输入 token 来自 prompt cache——对稳定前缀的良好复用让您在每一轮都实实在在地省钱。"
+    },
+    "goodModelRouting": {
+      "title": "您为任务选择了合适的模型",
+      "body": "只有 {{overusePercent}}% 的已分类轮次使用了高于所需的高价模型。您很好地将 prompt 复杂度与模型层级相匹配。"
+    },
+    "goodPlanValue": {
+      "title": "套餐物有所值",
+      "body": "您的 API 等效用量平均约为套餐费用的 {{multiplier}} 倍。订阅费用已经数倍回本。"
+    },
+    "goodCompaction": {
+      "title": "良好的上下文管理习惯",
+      "body": "{{percent}}% 的 session 有压缩记录，且很少有长 session 未经压缩。您很好地控制了上下文规模。"
+    }
   }
 }

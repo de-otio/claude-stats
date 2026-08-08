@@ -79,7 +79,8 @@
     "devTime": {
       "minutes": "{{value}} 开发分钟",
       "hours": "{{value}} 开发小时",
-      "days": "{{value}} 开发天"
+      "days": "{{value}} 开发天",
+      "underMinute": "不到一开发分钟"
     },
     "confidence": {
       "high": "高",

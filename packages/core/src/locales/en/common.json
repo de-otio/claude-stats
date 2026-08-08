@@ -77,6 +77,7 @@
       "caveatJoin": " "
     },
     "devTime": {
+      "underMinute": "under a dev-minute",
       "minutes": "{{value}} dev-minutes",
       "hours": "{{value}} dev-hours",
       "days": "{{value}} dev-days"

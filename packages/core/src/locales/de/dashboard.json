@@ -543,5 +543,60 @@
     "calibrationReady": "Ergebnis-Labels sind kalibriert – Details anzeigen",
     "calibrationNotReady": "Ergebnis-Labels sind noch nicht kalibriert – Gründe anzeigen",
     "calibrationNoLabels": "Ergebnis-Labels sind nicht kalibriert – noch nichts gelabelt"
+  },
+  "recommendations": {
+    "panel": {
+      "actions": "Vorgeschlagene Aktionen",
+      "positives": "Das machen Sie gut"
+    },
+    "modelTierWaste": {
+      "title": "Einfachere Prompts an günstigere Modelle leiten",
+      "body": "{{overusePercent}}% Ihrer klassifizierten Turns gingen an ein teureres Modell, als es ihre Komplexität erfordert hätte. Sehen Sie im Abschnitt „Effizienz“ nach, welche Prompts die Mehrkosten verursacht haben, und ziehen Sie für die einfacheren Haiku/Sonnet in Betracht.",
+      "impact": "~{{amount}} einsparbar"
+    },
+    "planUnderusing": {
+      "title": "Downgrade auf {{plan}} erwägen",
+      "body": "Ihre durchschnittliche API-äquivalente Nutzung liegt bei nur ~{{monthlyUse}}/Monat — deutlich unter Ihrer aktuellen Plangebühr von ~{{monthlyFee}}/Monat. Ein Downgrade würde Ihre typische Nutzung weiterhin abdecken.",
+      "impact": "~{{amount}}/Monat"
+    },
+    "contextCompaction": {
+      "title": "/compact oder /clear konsequenter nutzen",
+      "body": "{{count}} lange Sessions (15+ Prompts) liefen ohne Compaction. Lange, unkomprimierte Kontexte senden bei jedem Turn den gesamten Verlauf erneut und treiben die Kosten für Input-Token in die Höhe. Beginnen Sie für nicht zusammenhängende Aufgaben eine neue Konversation oder führen Sie /compact aus."
+    },
+    "cacheLowHitRate": {
+      "title": "Niedrige Cache-Trefferquote — Prompts umstrukturieren",
+      "body": "Nur {{percent}}% Ihrer Input-Token treffen den Prompt-Cache. Ein stabiler Präfix (System-Prompt, Tool-Definitionen, langer Kontext) am Anfang jedes Turns ermöglicht es Anthropic, ihn zu ~10% des Preises neuer Input-Token wiederzuverwenden."
+    },
+    "runawayConversation": {
+      "title": "Eine Konversation dominiert Ihre Ausgaben",
+      "body": "Die Session in {{project}} hat {{cost}} über {{promptCount}} Prompts gekostet — {{ratio}}× der Median-Session. Lange Einzelkonversationen vergrößern ihren eigenen Kontext bei jedem Turn; erwägen Sie, nicht zusammenhängende Arbeit in neue Sessions aufzuteilen.",
+      "impact": "{{amount}}"
+    },
+    "contextNearLimit": {
+      "title": "Sessions füllen regelmäßig das Kontextfenster",
+      "body": "Ihr durchschnittlicher Input-Höchstwert erreicht ~{{thousands}}k Token (von maximal 200k). Nahezu volle Kontexte sind pro Turn langsamer und teurer, und weitere Prompts riskieren eine Kürzung. Führen Sie /compact früher aus — oder starten Sie eine neue Session, sobald eine Aufgabe abgeschlossen ist."
+    },
+    "mcpHeavy": {
+      "title": "MCP-Server „{{server}}“ verbraucht einen ungewöhnlich großen Anteil",
+      "body": "{{sharePercent}}% Ihrer Gesamtausgaben (~{{cost}}) entfielen auf diesen Server, verteilt auf {{calls}} Aufrufe mit durchschnittlich {{avgTokens}} Token pro Aufruf{{medianClause}}. Prüfen Sie, ob er die richtige Datenmenge zurückgibt und nicht in Schleifen läuft oder große Payloads wiederholt ausgibt.",
+      "medianClause": " ({{ratio}}× des Median-MCP-Servers)",
+      "impact": "~{{amount}}"
+    },
+    "goodCache": {
+      "title": "Ausgezeichnete Cache-Disziplin",
+      "body": "{{percent}}% Ihrer Input-Token stammen aus dem Prompt-Cache — die konsequente Wiederverwendung stabiler Präfixe spart Ihnen bei jedem Turn bares Geld."
+    },
+    "goodModelRouting": {
+      "title": "Sie wählen das passende Modell für die Aufgabe",
+      "body": "Nur {{overusePercent}}% Ihrer klassifizierten Turns nutzten ein teureres Modell als nötig. Sie stimmen Prompt-Komplexität und Modellklasse gut aufeinander ab."
+    },
+    "goodPlanValue": {
+      "title": "Ihr Plan zahlt sich aus",
+      "body": "Ihre API-äquivalente Nutzung beträgt im Schnitt ~{{multiplier}}× Ihrer Plangebühr. Das Abonnement amortisiert sich mehrfach."
+    },
+    "goodCompaction": {
+      "title": "Gute Kontexthygiene",
+      "body": "{{percent}}% Ihrer Sessions zeigen Compaction-Aktivität, und nur wenige lange Sessions blieben unkomprimiert. Sie halten die Kontextgrößen im Griff."
+    }
   }
 }

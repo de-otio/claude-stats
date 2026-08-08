@@ -80,10 +80,16 @@ export type InsightT = (key: string, options?: Record<string, unknown>) => strin
  * The slot marker is U+0000, which cannot occur in a locale file, in any
  * formatter's output, or in a `{{...}}` placeholder name — so a marker can
  * never collide with real content, and a caller's own text cannot forge one.
+ *
+ * Exported because the hazard is not specific to the insight answers: the
+ * dashboard's recommendation engine interpolates an MCP server name and a
+ * project directory into its sentences, and both are attacker-shaped input in
+ * exactly the same way. One implementation, so a second surface cannot get a
+ * subtly weaker version of this.
  */
 const SLOT = "\u0000";
 
-function tLiteral(
+export function tLiteral(
   t: InsightT,
   key: string,
   values: Record<string, unknown>,
@@ -122,20 +128,44 @@ function sentence(t: InsightT, text: string): string {
  *  glanceable form: whole dollars once the amount reaches 100. Both branches
  *  route through this one function so no surface can silently diverge on
  *  what a given number of cents renders as (I-1). */
-export function formatMoney(amount: number, currency = "USD", opts: { precise?: boolean } = {}): string {
+export function formatMoney(
+  amount: number,
+  currency = "USD",
+  opts: { precise?: boolean; whole?: boolean } = {},
+): string {
   const symbol = currency === "USD" ? "$" : currency === "EUR" ? "€" : `${currency} `;
   // I-6: a positive amount that rounds to "0.00" at 2 decimals is real, priced
   // spend, not nothing — stating it as an exact zero is more confident than
   // the basis supports. Every `formatMoney` call site gets this for free
   // rather than each surface needing to remember to special-case it.
   if (amount > 0 && amount < 0.005) return `<${symbol}0.01`;
-  const rounded = opts.precise
-    ? amount.toFixed(2)
-    : Math.abs(amount) >= 100
-      ? Math.round(amount).toString()
-      : amount.toFixed(2);
+  // `whole` is for figures that ARE whole by construction — a monthly plan
+  // fee, a rounded monthly average — where ".00" is two characters of false
+  // precision. It wins over the magnitude rule so a $50 fee and a $200 fee
+  // render alike in the same sentence, which the magnitude rule alone does
+  // not do (it would give "$50.00" beside "$200").
+  const rounded = opts.whole
+    ? Math.round(amount).toString()
+    : opts.precise
+      ? amount.toFixed(2)
+      : Math.abs(amount) >= 100
+        ? Math.round(amount).toString()
+        : amount.toFixed(2);
   const withSeparators = rounded.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return `${symbol}${withSeparators}`;
+}
+
+/**
+ * A plain integer count with the same fixed-locale thousands separator
+ * `formatMoney` uses.
+ *
+ * Fixed-locale, NOT `Number.toLocaleString()`: the runtime locale of the
+ * machine rendering a report is not the report's locale, and a figure whose
+ * separators change with an environment variable cannot be compared between
+ * two runs. This is a count, not a currency figure, so it carries no symbol.
+ */
+export function formatCount(n: number): string {
+  return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 /**
@@ -178,7 +208,19 @@ export function formatPercent(ratio: number | null, decimals = 0): string {
  * translated, because "dev-hours" is a word.
  */
 export function formatDurationHours(t: InsightT, hours: number): string {
-  if (hours < 1) return t("common:insight.devTime.minutes", { value: Math.round(hours * 60) });
+  const minutes = Math.round(hours * 60);
+  // A positive duration must never render as "0 dev-minutes". Same rule, and
+  // the same reason, as `formatMoney`'s `<$0.01`: real work that rounds below
+  // the unit is not the absence of work, and stating it as an exact zero is
+  // more confident than the basis supports. Previously `Math.round` produced
+  // exactly that for anything under 30 seconds.
+  if (hours > 0 && minutes === 0) return t("common:insight.devTime.underMinute");
+  // Branch on the ROUNDED minutes rather than on `hours < 1`, so the rounding
+  // and the unit choice cannot disagree. They did: 0.999 hours rounded to 60
+  // and then rendered as "60 dev-minutes" instead of promoting to "1.0
+  // dev-hours" — a discontinuity right at the boundary the branch exists to
+  // draw.
+  if (minutes < 60) return t("common:insight.devTime.minutes", { value: minutes });
   if (hours < 8) return t("common:insight.devTime.hours", { value: hours.toFixed(1) });
   return t("common:insight.devTime.days", { value: (hours / 8).toFixed(1) });
 }

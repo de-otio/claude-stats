@@ -114,12 +114,12 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   `;
   const actionsHtml = actions.length > 0 ? `
     <div class="recommendations-panel" style="margin-bottom:1rem;background:#16213e;border:1px solid #2a3552;border-radius:6px;padding:0.75rem 1rem;">
-      <div style="font-size:0.75rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">Suggested actions</div>
+      <div style="font-size:0.75rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">${escapeHtml(t("dashboard:recommendations.panel.actions"))}</div>
       ${actions.map(renderRec).join("")}
     </div>` : "";
   const positivesHtml = positives.length > 0 ? `
     <div class="recommendations-panel" style="margin-bottom:1rem;background:#14291e;border:1px solid #2b5238;border-radius:6px;padding:0.75rem 1rem;">
-      <div style="font-size:0.75rem;color:#8ec07c;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">What you're doing well</div>
+      <div style="font-size:0.75rem;color:#8ec07c;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">${escapeHtml(t("dashboard:recommendations.panel.positives"))}</div>
       ${positives.map(renderRec).join("")}
     </div>` : "";
   const recsHtml = actionsHtml + positivesHtml;

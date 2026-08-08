@@ -14,6 +14,8 @@ import { getTicketCostReport } from "../ticketing/index.js";
 import { resolveDashboardCostVocabulary, type VocabularyResolution } from "../server/insights.js";
 import type { Reconciliation, TicketCoverage, PolicyEvent } from "@claude-stats/core/types/insight";
 import { computeReconciliation } from "@claude-stats/core/reconciliation";
+import { formatCount, formatMoney, tLiteral, type InsightT } from "@claude-stats/core/insight";
+import { currentT } from "@claude-stats/core/i18n";
 import { buildFeeAttribution, type FeeAttribution } from "./fee-attribution.js";
 import {
   scoreComplexity,
@@ -413,6 +415,24 @@ export interface DashboardInsights {
    * had reviewed. Null only when the gather itself failed.
    */
   attributionCalibration: CalibrationEstimate | null;
+  /**
+   * Equivalent-API cost over the window of EQUAL LENGTH immediately preceding
+   * this one, under the identical filters — the baseline the cost card's trend
+   * arrow is computed against.
+   *
+   * Equal length and immediately preceding, not "the same calendar period last
+   * time": on a preset like `week` the current window runs from the period's
+   * start to *now*, so three days into a week a calendar comparison would
+   * measure three days against seven and report a collapse in spend that never
+   * happened. The preceding span of the same size is the only baseline that
+   * does not manufacture a trend out of the clock.
+   *
+   * Null when there is nothing honest to compare against: an all-time window
+   * (no earlier data by definition), a zero-length span, or a preceding window
+   * with no spend — `trendOf` treats a zero baseline as `unknown` anyway, and
+   * an invented baseline is worse than a missing arrow.
+   */
+  previousCost: number | null;
   /**
    * Bottom-up cost reconciled against `config.reconciliation.invoiceTotal`
    * for exactly this dashboard's window and filters — the SAME
@@ -1416,7 +1436,13 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   }
 
   // ── Actionable recommendations ─────────────────────────────────────────
-  const recommendations = buildRecommendations({
+  // `buildDashboard` runs under both the CLI and the VS Code extension host,
+  // which initialize i18n through different singletons, so the translator is
+  // resolved from the shared one rather than threaded through nine call sites
+  // (see `currentT`). Before any surface has initialized, keys render as keys:
+  // visibly wrong, which a test or a screenshot catches, rather than an empty
+  // list that would be indistinguishable from "nothing to recommend".
+  const recommendations = buildRecommendations(currentT() ?? ((key: string) => key), {
     totalCost,
     totalPrompts,
     cacheEfficiency,
@@ -1606,6 +1632,47 @@ export function attachInsights(
     attributionCalibration = null;
   }
 
+  // One extra aggregate read, not a second `buildDashboard`: the trend needs a
+  // single number, and `getMessageTotals` is the same indexed roll-up the
+  // headline cost already comes from. Filters are re-derived from `opts` here
+  // rather than reaching into `buildDashboard`'s local `msgFilter`, so the
+  // comparison is like-for-like by construction — a baseline computed under
+  // different filters is worse than none.
+  let previousCost: number | null = null;
+  try {
+    const { since, until } = periodRange(opts, tz);
+    const span = until - since;
+    if (since > 0 && span > 0) {
+      let sum = 0;
+      for (const mt of store.getMessageTotals({
+        projectPath: opts.projectPath,
+        repoUrl: opts.repoUrl,
+        accountUuid: opts.accountUuid,
+        entrypoint: opts.entrypoint,
+        ticket: opts.ticket,
+        taskClass: opts.taskClass,
+        since: since - span,
+        until: since,
+        includeCI: opts.includeCI ?? true,
+        includeDeleted: opts.includeDeleted ?? true,
+      })) {
+        sum += estimateCost(
+          mt.model,
+          mt.input_tokens,
+          mt.output_tokens,
+          mt.cache_read_tokens,
+          mt.cache_creation_tokens,
+        ).cost;
+      }
+      // Zero means the preceding window had no recorded spend, which is not a
+      // baseline — it is the absence of one. Left null so the card renders
+      // "unknown" rather than an infinite increase.
+      previousCost = sum > 0 ? sum : null;
+    }
+  } catch {
+    previousCost = null;
+  }
+
   data.insights = {
     vocabulary,
     ticketCoverage,
@@ -1613,6 +1680,7 @@ export function attachInsights(
     hourlyRate,
     currency,
     attributionCalibration,
+    previousCost,
     reconciliation,
   };
   // Passive timeline annotation, not a comparison — `constraint-impact`/
@@ -1810,7 +1878,18 @@ const PLAN_LABELS: Record<string, string> = {
   enterprise: "Enterprise (metered)",
 };
 
-function buildRecommendations(input: {
+/**
+ * The recommendation engine.
+ *
+ * LOCALIZATION: every reader-facing string here goes through the injected
+ * `t`. Numbers are formatted BEFORE interpolation — money through the shared
+ * `formatMoney` so a recommendation's dollar figure can never disagree with
+ * the same number elsewhere on the page — because a locale's translator must
+ * not be handed a raw float and left to decide separators.
+ *
+ * `PLAN_LABELS` above stays English on purpose: those are product names.
+ */
+export function buildRecommendations(t: InsightT, input: {
   totalCost: number;
   totalPrompts: number;
   cacheEfficiency: number;
@@ -1822,6 +1901,7 @@ function buildRecommendations(input: {
 }): Recommendation[] {
   const out: Recommendation[] = [];
   const { totalCost, totalPrompts, cacheEfficiency, planUtilization, modelEfficiency, contextAnalysis, spending, byConversationCost } = input;
+  const K = "dashboard:recommendations";
 
   // 1. Model tier waste — biggest actionable lever when present
   if (modelEfficiency && modelEfficiency.summary.potentialSavings >= 5) {
@@ -1830,9 +1910,9 @@ function buildRecommendations(input: {
     out.push({
       id: "model-tier-waste",
       severity: savings >= 25 ? "critical" : "warning",
-      title: "Route simpler prompts to cheaper models",
-      body: `${overuse}% of your classified turns were sent to a pricier model than their complexity warranted. Check the Efficiency tab to see which prompts drove the overspend and consider using Haiku/Sonnet for the simpler ones.`,
-      impact: `~$${savings.toFixed(2)} saveable`,
+      title: t(`${K}.modelTierWaste.title`),
+      body: t(`${K}.modelTierWaste.body`, { overusePercent: overuse }),
+      impact: t(`${K}.modelTierWaste.impact`, { amount: formatMoney(savings) }),
     });
   }
 
@@ -1854,7 +1934,7 @@ function buildRecommendations(input: {
       planUtilization.recommendedPlan !== "enterprise"
     ) {
       const monthlyFee = Math.round(planUtilization.weeklyPlanBudget * 4.33);
-      const monthlyUse = (planUtilization.avgWeeklyCost * 4.33).toFixed(0);
+      const monthlyUse = Math.round(planUtilization.avgWeeklyCost * 4.33);
       const suggested = PLAN_LABELS[planUtilization.recommendedPlan] ?? planUtilization.recommendedPlan;
       // Only suggest downgrade if the suggested plan is actually cheaper
       const suggestedFeeMatch = suggested.match(/\$(\d+)/);
@@ -1863,9 +1943,17 @@ function buildRecommendations(input: {
         out.push({
           id: "plan-underusing",
           severity: "info",
-          title: `Consider downgrading to ${suggested}`,
-          body: `Your average API-equivalent usage is only ~$${monthlyUse}/mo — well below your current ~$${monthlyFee}/mo plan fee. Downgrading would still cover your typical usage.`,
-          impact: `~$${monthlyFee - suggestedFee}/mo`,
+          // `suggested` is a PLAN_LABELS value — internal, but spliced as a
+          // literal like every other non-key string so no call site here has
+          // to be individually judged safe.
+          title: tLiteral(t, `${K}.planUnderusing.title`, {}, { plan: suggested }),
+          body: t(`${K}.planUnderusing.body`, {
+            monthlyUse: formatMoney(monthlyUse, undefined, { whole: true }),
+            monthlyFee: formatMoney(monthlyFee, undefined, { whole: true }),
+          }),
+          impact: t(`${K}.planUnderusing.impact`, {
+            amount: formatMoney(monthlyFee - suggestedFee, undefined, { whole: true }),
+          }),
         });
       }
     }
@@ -1877,8 +1965,8 @@ function buildRecommendations(input: {
     out.push({
       id: "context-compaction",
       severity: n >= 10 ? "warning" : "info",
-      title: "Use /compact or /clear more aggressively",
-      body: `${n} long sessions (15+ prompts) ran without compaction. Long uncompacted contexts re-send the entire history each turn, inflating input-token cost. Start a new conversation or run /compact for unrelated tasks.`,
+      title: t(`${K}.contextCompaction.title`),
+      body: t(`${K}.contextCompaction.body`, { count: n }),
     });
   }
 
@@ -1887,8 +1975,8 @@ function buildRecommendations(input: {
     out.push({
       id: "cache-low-hit-rate",
       severity: "info",
-      title: "Cache hit rate is low — restructure prompts",
-      body: `Only ${cacheEfficiency.toFixed(0)}% of your input tokens hit the prompt cache. Keeping a stable prefix (system prompt, tool definitions, long context) at the start of each turn lets Anthropic reuse it at ~10% the price of fresh input tokens.`,
+      title: t(`${K}.cacheLowHitRate.title`),
+      body: t(`${K}.cacheLowHitRate.body`, { percent: cacheEfficiency.toFixed(0) }),
     });
   }
 
@@ -1910,9 +1998,17 @@ function buildRecommendations(input: {
         out.push({
           id: "runaway-conversation",
           severity: top.estimatedCost >= median * 10 ? "warning" : "info",
-          title: "One conversation is dominating your spend",
-          body: `Session in ${projLabel} cost $${top.estimatedCost.toFixed(2)} across ${top.promptCount} prompts — ${ratio}× the median session. Long single conversations grow their own context on every turn; consider splitting unrelated work into fresh sessions.`,
-          impact: `$${top.estimatedCost.toFixed(2)}`,
+          title: t(`${K}.runawayConversation.title`),
+          // `projLabel` is two path segments off disk. A directory literally
+          // named `{{cost}}` would otherwise eat this sentence's own cost
+          // slot and leave it raw on the default view.
+          body: tLiteral(
+            t,
+            `${K}.runawayConversation.body`,
+            { cost: formatMoney(top.estimatedCost), promptCount: top.promptCount, ratio },
+            { project: projLabel },
+          ),
+          impact: t(`${K}.runawayConversation.impact`, { amount: formatMoney(top.estimatedCost) }),
         });
       }
     }
@@ -1924,8 +2020,8 @@ function buildRecommendations(input: {
     out.push({
       id: "context-near-limit",
       severity: contextAnalysis.avgPeakInputTokens >= 180_000 ? "warning" : "info",
-      title: "Sessions are regularly filling the context window",
-      body: `Your average peak input reaches ~${k}k tokens (out of a 200k ceiling). Near-full contexts are slower and more expensive per turn, and further prompts risk truncation. Run /compact earlier — or start a fresh session once a task is complete.`,
+      title: t(`${K}.contextNearLimit.title`),
+      body: t(`${K}.contextNearLimit.body`, { thousands: k }),
     });
   }
 
@@ -1941,12 +2037,32 @@ function buildRecommendations(input: {
         const costShare = s.estimatedCost / totalCost;
         const avgRatio = median > 0 ? s.avgTokensPerCall / median : 1;
         if (costShare >= 0.15 || (avgRatio >= 10 && s.estimatedCost >= 1)) {
+          // The "N× the median" comparison is only meaningful when there IS a
+          // median to compare against and the ratio is worth stating. Its own
+          // key rather than a conditional fragment inside the sentence, so the
+          // join is the locale's decision — the same shape `calibrationCaveat`
+          // uses for its scope clause.
+          const medianClause =
+            median > 0 && avgRatio >= 2 ? t(`${K}.mcpHeavy.medianClause`, { ratio: avgRatio.toFixed(1) }) : "";
           out.push({
             id: `mcp-heavy-${s.server}`,
             severity: costShare >= 0.3 ? "warning" : "info",
-            title: `MCP server “${s.server}” is consuming an unusually large share`,
-            body: `${(costShare * 100).toFixed(1)}% of your total spend (~$${s.estimatedCost.toFixed(2)}) went to this server across ${s.totalCalls} calls, averaging ${Math.round(s.avgTokensPerCall).toLocaleString()} tokens per call${median > 0 && avgRatio >= 2 ? ` (${avgRatio.toFixed(1)}× the median MCP server)` : ""}. Verify that it is returning the right amount of data and not looping or echoing large payloads.`,
-            impact: `~$${s.estimatedCost.toFixed(2)}`,
+            // An MCP server names itself; the name reaches this sentence
+            // unmodified. `medianClause` is already-translated prose, so it is
+            // spliced rather than re-scanned for placeholders too.
+            title: tLiteral(t, `${K}.mcpHeavy.title`, {}, { server: s.server }),
+            body: tLiteral(
+              t,
+              `${K}.mcpHeavy.body`,
+              {
+                sharePercent: (costShare * 100).toFixed(1),
+                cost: formatMoney(s.estimatedCost),
+                calls: s.totalCalls,
+                avgTokens: formatCount(Math.round(s.avgTokensPerCall)),
+              },
+              { medianClause },
+            ),
+            impact: t(`${K}.mcpHeavy.impact`, { amount: formatMoney(s.estimatedCost) }),
           });
           break; // only flag the worst offender to avoid noise
         }
@@ -1962,8 +2078,8 @@ function buildRecommendations(input: {
     out.push({
       id: "good-cache",
       severity: "success",
-      title: "Excellent cache discipline",
-      body: `${cacheEfficiency.toFixed(0)}% of your input tokens are coming from the prompt cache — strong reuse of stable prefixes is saving you real money on every turn.`,
+      title: t(`${K}.goodCache.title`),
+      body: t(`${K}.goodCache.body`, { percent: cacheEfficiency.toFixed(0) }),
     });
   }
 
@@ -1977,8 +2093,8 @@ function buildRecommendations(input: {
     out.push({
       id: "good-model-routing",
       severity: "success",
-      title: "You're picking the right model for the job",
-      body: `Only ${modelEfficiency.summary.overusePercent}% of your classified turns used a pricier model than needed. You're matching prompt complexity to model tier well.`,
+      title: t(`${K}.goodModelRouting.title`),
+      body: t(`${K}.goodModelRouting.body`, { overusePercent: modelEfficiency.summary.overusePercent }),
     });
   }
 
@@ -1991,8 +2107,8 @@ function buildRecommendations(input: {
       out.push({
         id: "good-plan-value",
         severity: "success",
-        title: "Great value from your plan",
-        body: `Your API-equivalent usage averages ~${multiplier.toFixed(1)}× your plan fee. The subscription is paying for itself several times over.`,
+        title: t(`${K}.goodPlanValue.title`),
+        body: t(`${K}.goodPlanValue.body`, { multiplier: multiplier.toFixed(1) }),
       });
     }
   }
@@ -2002,8 +2118,8 @@ function buildRecommendations(input: {
     out.push({
       id: "good-compaction",
       severity: "success",
-      title: "Good context hygiene",
-      body: `${contextAnalysis.compactionRate.toFixed(0)}% of your sessions show compaction activity, and few long sessions went uncompacted. You're keeping context sizes in check.`,
+      title: t(`${K}.goodCompaction.title`),
+      body: t(`${K}.goodCompaction.body`, { percent: contextAnalysis.compactionRate.toFixed(0) }),
     });
   }
 

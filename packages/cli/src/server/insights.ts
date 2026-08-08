@@ -200,11 +200,12 @@ export function buildInsightAnswers(data: DashboardData, opts: InsightBuildOptio
   const cost = answerCost(opts.t, {
     mode: opts.vocabulary,
     cost: data.summary.estimatedCost,
-    // No previous-period figure is available: `buildDashboard` returns one
-    // window, and computing a comparison would mean a second full build over
-    // the prior window. Rather than invent a baseline, the trend renders
-    // "unknown" — the formatter's own honest state for a missing comparison.
-    previousCost: null,
+    // The preceding window of EQUAL LENGTH under identical filters — see
+    // `DashboardInsights.previousCost`. Null whenever there is nothing honest
+    // to compare against (all-time window, or no spend before this one), and
+    // the trend then renders "unknown", which is the formatter's own state for
+    // a missing comparison rather than a manufactured flat line.
+    previousCost: ins?.previousCost ?? null,
     currency: opts.currency,
     hourlyRate: opts.hourlyRate,
     // Passed unconditionally: these are facts about the payload, and whether

@@ -544,5 +544,60 @@
     "calibrationReady": "Libellés de résultat calibrés — voir comment",
     "calibrationNotReady": "Libellés de résultat pas encore calibrés — voir pourquoi",
     "calibrationNoLabels": "Libellés de résultat non calibrés — aucun libellé pour l'instant"
+  },
+  "recommendations": {
+    "panel": {
+      "actions": "Actions suggérées",
+      "positives": "Ce que vous faites bien"
+    },
+    "modelTierWaste": {
+      "title": "Router les prompts simples vers des modèles moins coûteux",
+      "body": "{{overusePercent}} % de vos tours classifiés ont été envoyés à un modèle plus coûteux que leur complexité ne le justifiait. Consultez la section Efficacité pour voir quels prompts ont généré ce surcoût et envisagez d'utiliser Haiku/Sonnet pour les plus simples.",
+      "impact": "~{{amount}} économisables"
+    },
+    "planUnderusing": {
+      "title": "Envisagez de passer au forfait {{plan}}",
+      "body": "Votre utilisation moyenne en équivalent API n'est que d'environ {{monthlyUse}}/mois — bien en dessous du coût actuel de votre forfait (~{{monthlyFee}}/mois). Un forfait inférieur couvrirait toujours votre utilisation habituelle.",
+      "impact": "~{{amount}}/mois"
+    },
+    "contextCompaction": {
+      "title": "Utilisez /compact ou /clear plus systématiquement",
+      "body": "{{count}} sessions longues (15 prompts ou plus) se sont déroulées sans compactage. Les contextes longs non compactés renvoient tout l'historique à chaque tour, ce qui gonfle le coût des tokens d'entrée. Démarrez une nouvelle conversation ou lancez /compact pour les tâches sans rapport."
+    },
+    "cacheLowHitRate": {
+      "title": "Taux de succès du cache faible — restructurez vos prompts",
+      "body": "Seuls {{percent}} % de vos tokens d'entrée atteignent le cache de prompt. Conserver un préfixe stable (prompt système, définitions d'outils, contexte long) au début de chaque tour permet à Anthropic de le réutiliser à environ 10 % du prix de nouveaux tokens d'entrée."
+    },
+    "runawayConversation": {
+      "title": "Une seule conversation domine vos dépenses",
+      "body": "La session dans {{project}} a coûté {{cost}} sur {{promptCount}} prompts — soit {{ratio}}× la session médiane. Les longues conversations uniques alimentent leur propre contexte à chaque tour ; envisagez de répartir les travaux sans rapport dans de nouvelles sessions.",
+      "impact": "{{amount}}"
+    },
+    "contextNearLimit": {
+      "title": "Vos sessions remplissent régulièrement la fenêtre de contexte",
+      "body": "Votre pic d'entrée moyen atteint environ {{thousands}}k tokens (sur un plafond de 200k). Les contextes presque pleins sont plus lents et plus coûteux par tour, et les prompts suivants risquent d'être tronqués. Lancez /compact plus tôt — ou démarrez une nouvelle session une fois la tâche terminée."
+    },
+    "mcpHeavy": {
+      "title": "Le serveur MCP « {{server}} » consomme une part inhabituellement élevée",
+      "body": "{{sharePercent}} % de vos dépenses totales (~{{cost}}) sont allées à ce serveur sur {{calls}} appels, soit une moyenne de {{avgTokens}} tokens par appel{{medianClause}}. Vérifiez qu'il renvoie la bonne quantité de données et qu'il ne boucle pas ou ne répète pas de gros volumes.",
+      "medianClause": " ({{ratio}}× le serveur MCP médian)",
+      "impact": "~{{amount}}"
+    },
+    "goodCache": {
+      "title": "Excellente discipline de cache",
+      "body": "{{percent}} % de vos tokens d'entrée proviennent du cache de prompt — la bonne réutilisation des préfixes stables vous fait réellement économiser à chaque tour."
+    },
+    "goodModelRouting": {
+      "title": "Vous choisissez le bon modèle pour chaque tâche",
+      "body": "Seuls {{overusePercent}} % de vos tours classifiés ont utilisé un modèle plus coûteux que nécessaire. Vous adaptez bien la complexité des prompts au niveau de modèle."
+    },
+    "goodPlanValue": {
+      "title": "Votre forfait est très rentable",
+      "body": "Votre utilisation en équivalent API représente en moyenne ~{{multiplier}}× le coût de votre forfait. L'abonnement est largement rentabilisé."
+    },
+    "goodCompaction": {
+      "title": "Bonne hygiène du contexte",
+      "body": "{{percent}} % de vos sessions montrent une activité de compactage, et peu de sessions longues sont restées non compactées. Vous maîtrisez bien la taille des contextes."
+    }
   }
 }

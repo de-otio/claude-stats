@@ -40,6 +40,34 @@ export interface I18nOptions {
  * Initialize i18next with the given options. Returns the i18next instance.
  * Safe to call multiple times — subsequent calls re-initialize.
  */
+/**
+ * The most recently initialized instance's translator.
+ *
+ * Exists for one narrow case: a shared builder that runs under BOTH the CLI
+ * and the VS Code extension host, and so cannot import either surface's own
+ * i18n singleton — the CLI's `t` throws inside the extension, and the
+ * extension never sets it. `buildDashboard` is the one such builder, and
+ * threading a translator through its nine call sites (several of which never
+ * touch a localized string) would be a large change for a small gain.
+ *
+ * Deliberately not a general-purpose escape hatch: everything that CAN take a
+ * translator as a parameter still does, so it stays testable with an identity
+ * translator and the locale can never leak between two surfaces in one
+ * process. Null until some surface has initialized — callers must have a
+ * defined answer for that state rather than assuming English.
+ */
+let _current: TFunction | null = null;
+
+export function currentT(): TFunction | null {
+  return _current;
+}
+
+/** Test seam: drop the singleton so a suite can exercise the not-yet-ready
+ *  branch its production callers must handle. */
+export function resetCurrentT(): void {
+  _current = null;
+}
+
 export async function initI18n(options: I18nOptions): Promise<I18nInstance> {
   const instance = i18next.createInstance();
   await instance.init({
@@ -63,6 +91,7 @@ export async function initI18n(options: I18nOptions): Promise<I18nInstance> {
       escapeValue: false,
     },
   });
+  _current = instance.t.bind(instance) as TFunction;
   return instance;
 }
 

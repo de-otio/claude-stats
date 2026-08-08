@@ -81,7 +81,8 @@
     "devTime": {
       "minutes": "{{value}} minut pracy programisty",
       "hours": "{{value}} godzin pracy programisty",
-      "days": "{{value}} dni pracy programisty"
+      "days": "{{value}} dni pracy programisty",
+      "underMinute": "poniżej dev-minuty"
     },
     "confidence": {
       "high": "wysoka",

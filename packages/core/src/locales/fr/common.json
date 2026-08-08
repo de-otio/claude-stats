@@ -80,7 +80,8 @@
     "devTime": {
       "minutes": "{{value}} minutes-développeur",
       "hours": "{{value}} heures-développeur",
-      "days": "{{value}} jours-développeur"
+      "days": "{{value}} jours-développeur",
+      "underMinute": "moins d'une minute de dev"
     },
     "confidence": {
       "high": "élevée",

@@ -216,6 +216,17 @@ so the tab's shape never changes with how much you've configured:
 No card is ever a single composite score ("AI ROI: 87/100") — five honest,
 independently-checkable sentences, never one manufactured number.
 
+**The cost card's trend arrow** compares against the window of **equal length
+immediately preceding** the one you are looking at — not against the same
+calendar period a month ago. Three days into a `week` view, a calendar
+comparison would measure three days against seven and report a collapse in
+spend that never happened; the preceding span of the same size is the only
+baseline that does not manufacture a trend out of the clock. The comparison
+uses your current filters, so a project-scoped view is compared against that
+project's own history. When there is nothing honest to compare against — an
+all-time view, or no recorded spend before this window — the arrow reads
+**unknown** rather than showing a direction derived from a zero.
+
 **3. The reconciliation panel** (only rendered when
 `config.reconciliation.invoiceTotal` is set) — the local estimate, the
 imported invoice figure, the residual, the tolerance band, and (when the

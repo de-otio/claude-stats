@@ -79,7 +79,8 @@
     "devTime": {
       "minutes": "{{value}} Entwicklerminuten",
       "hours": "{{value}} Entwicklerstunden",
-      "days": "{{value}} Entwicklertage"
+      "days": "{{value}} Entwicklertage",
+      "underMinute": "unter einer Dev-Minute"
     },
     "confidence": {
       "high": "hoch",

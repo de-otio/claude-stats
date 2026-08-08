@@ -34,6 +34,7 @@ import {
   formatMoneyCsv,
   formatPercent,
   formatDevTime,
+  formatDurationHours,
   trendOf,
   confidenceCaveat,
   calibrationScopeNote,
@@ -256,6 +257,37 @@ describe("answer formatters", () => {
     expect(formatDevTime(t, 360, 90)).toBe("4.0 dev-hours");
     expect(formatDevTime(t, 1440, 90)).toBe("2.0 dev-days");
     expect(formatDevTime(t, 100, 0)).toBe("—");
+  });
+
+  // ── Duration rounding: the unit and the rounding must agree ──────────────
+  //
+  // Both branches below were wrong before they were pinned, and both failed
+  // in the direction the rest of this module works hard to avoid: stating
+  // something more definite than the number supports.
+  it("never renders a positive duration as an exact zero", () => {
+    // $0.10 at $90/h is 4 seconds. `Math.round(0.067)` is 0, so this said
+    // "0 dev-minutes" — the same defect `formatMoney`'s `<$0.01` guard exists
+    // to stop, on a figure a manager reads as "this cost no time at all".
+    expect(formatDurationHours(t, 0.001)).toBe("under a dev-minute");
+    expect(formatDevTime(t, 0.1, 90)).toBe("under a dev-minute");
+    // Exactly zero is a real zero and keeps saying so.
+    expect(formatDurationHours(t, 0)).toBe("0 dev-minutes");
+  });
+
+  it("promotes to hours at the boundary instead of emitting '60 dev-minutes'", () => {
+    // 0.999h rounds to 60 minutes; branching on `hours < 1` then rendered
+    // that as "60 dev-minutes", one rounding step away from the "1.0
+    // dev-hours" the very next value produces.
+    expect(formatDurationHours(t, 0.999)).toBe("1.0 dev-hours");
+    expect(formatDurationHours(t, 1)).toBe("1.0 dev-hours");
+    // …and just below the promotion it is still minutes, so the branch did
+    // not simply move.
+    expect(formatDurationHours(t, 0.99)).toBe("59 dev-minutes");
+  });
+
+  it("keeps the hours→days boundary where it was", () => {
+    expect(formatDurationHours(t, 7.9)).toBe("7.9 dev-hours");
+    expect(formatDurationHours(t, 8)).toBe("1.0 dev-days");
   });
 
   it("keeps two decimals in `precise` mode regardless of magnitude (I-1: the pack's own precision, same implementation)", () => {
