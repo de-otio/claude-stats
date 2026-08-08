@@ -239,8 +239,8 @@ its own local SQLite database (`~/.claude-stats/stats.db`, schema version 22
 at time of writing) from that raw data — added since this reference was last
 updated. See [`packages/cli/src/store/index.ts`](../../packages/cli/src/store/index.ts)
 for the authoritative migration source, and
-[05-privacy-security.md](05-privacy-security.md)'s draft amendment for what
-each addition means for data leaving the machine.
+[05-privacy-security.md](05-privacy-security.md) for what each addition
+means for data leaving the machine.
 
 ### V19 — `ticket_links`
 

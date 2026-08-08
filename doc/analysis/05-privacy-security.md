@@ -5,11 +5,15 @@
 | Data | Sensitivity | Reason |
 |------|-------------|--------|
 | Prompt content | **High** | Contains code, instructions, business logic |
+| Ticket-link evidence | **High** | A verbatim fragment of prompt text, branch, or commit subject — inherits prompt sensitivity |
 | File paths, project names | **Medium** | Reveals project structure and naming |
 | Git branch names | **Medium** | May reveal feature names, ticket IDs |
+| Ticket keys (`PROJ-123`) | **Medium** | A project prefix can encode a client or an unreleased codename |
 | Token counts | **Low** | Aggregate metrics, no content |
 | Model names, timestamps | **Low** | Operational metadata |
 | Tool names and counts | **Low** | Usage patterns, no content |
+| Task classification labels | **Low** | Closed enum, cannot carry free text |
+| API error and retry events | **Low** | Error kind, status, timing — no content |
 
 ## Local-Only Principle
 
@@ -27,6 +31,15 @@ All raw data stays on the developer's machine. The tool reads from `~/.claude/` 
   Prompt *counts* and *lengths* are also stored, but text itself is no longer
   excluded — this corrects an earlier version of this document.
 - Project identifiers (paths)
+- **Ticket links** — work-item keys extracted from prompt text, branch names,
+  and commit subjects, with a fragment of the matching text as evidence (see
+  "Derived Ticket Links" below)
+- **Per-message git branch** (`messages.git_branch`), in addition to the
+  per-session branch already stored
+- **A task classification label per session** (`session_task_class`) — a
+  closed-enum label plus the rule and classifier version that produced it
+- **API error and retry events** (`api_error_events`) — error kind, HTTP
+  status, and retry timing per session
 
 ## What the Tool Does NOT Store
 
@@ -60,6 +73,30 @@ behavior is spelled out precisely:
 - **Permissions:** the DB file inherits the same `0600`/owner-only posture as
   the rest of `~/.claude-stats/`.
 
+## Derived Ticket Links
+
+Ticket attribution reads `messages.prompt_text` (plus git branch names and
+commit subjects) looking for work-item key patterns (`PROJ-123`-shaped
+strings) and writes a **derived, structured fact** — "this session touched
+this ticket" — into the `ticket_links` table. This is a materially different
+practice from "prompt text is stored", and is called out separately because
+of it:
+
+- **Derived data outlives its source in practice.** Other features
+  (cost-per-ticket reporting, the justification pack, the dashboard) read
+  `ticket_links` directly and never go back through `prompt_text`, so the
+  privacy posture of the derived table has to stand on its own.
+- **`ticket_links.evidence` inherits prompt sensitivity, not a lower one.**
+  It can hold a fragment of the matched prompt text, branch name, or commit
+  subject, and it is **not** passed through `sanitizePromptText` — the
+  escaping boundary described above does not apply to it.
+- **A ticket key is itself disclosive.** A Jira project prefix routinely
+  encodes a client, a team, or an unreleased product codename.
+- **Never synced to the org plane** — the aggregate payload has no field for
+  it, by the same structural guarantee described below.
+- **`evidence` never leaves via the justification pack**; ticket *keys* do,
+  deliberately (see "The Justification Pack" below).
+
 ## Quarantine Table
 
 The resilience system (see [08-resilience.md](08-resilience.md)) stores unparseable JSONL lines in a `quarantine` table within the SQLite database for later reprocessing. These raw lines may contain prompt content or code. The quarantine table:
@@ -84,6 +121,7 @@ following leave the machine:
 **Never synced to the org plane:**
 - Prompt content or response content (including the locally-stored
   `prompt_text` described above)
+- Ticket links, and in particular `ticket_links.evidence`
 - File paths or code
 - Raw session JSONL data
 - The transcript archive (see below), in whole or in part
@@ -106,11 +144,21 @@ path by which the org plane receives, stores, or decrypts that data.
   - Management sees organization-level aggregates
   - No role sees individual prompt content — it is collected locally (see
     above) but is never part of what reaches the org plane
+- The justification pack has no access control of its own: it is a file the
+  user generates and hands to someone directly. Its protection is what it
+  omits, not who can open it (see "The Justification Pack" below)
 
 ## Retention
 
 - Local aggregated data: follows `~/.claude/` lifecycle (data exists as long as session files do)
 - Local prompt text: follows the same lifecycle as the rest of the `messages` row it belongs to
+- Ticket links (including `evidence`), per-message branch names, task
+  classifications, and API error events: same lifecycle as the session rows
+  they hang off; removed by `claude-stats purge --all` along with the rest of
+  the DB
+- Generated justification packs: **not** managed by claude-stats. They are
+  ordinary files the user chose to write, and deleting the DB does not delete
+  a pack already sent
 - Transcript archive (if enabled): bounded retention keyed on real session activity, not file mtime — see below
 - Server-side data: configurable retention (suggested default: 90 days for detailed, 1 year for monthly rollups)
 - Export before deletion for compliance needs
@@ -124,6 +172,9 @@ Every data-sharing feature defaults to off:
 - Team identification: requires explicit configuration
 - Transcript archive: off by default, requires explicit informed-consent opt-in (see below)
 - Personal-plane backup/sync: off by default, requires explicit setup
+- Justification pack: nothing is generated unless the user runs the command,
+  every section is requested explicitly, and the scope value is withheld
+  unless `--disclose-scope` is passed
 
 ## The Transcript Archive (Opt-In)
 
@@ -211,68 +262,19 @@ path in either direction by which the org plane could obtain, store, or
 decrypt personal-plane ciphertext, raw transcripts, or `prompt_text` — the
 aggregate payload type simply has no field shaped to carry any of them.
 
----
+The two planes describe everything the *tool* transmits. They do not describe
+everything that leaves the machine: the justification pack is a plaintext
+document the tool writes to disk for the user to hand onward themselves, and
+it is governed by neither plane's protections. It gets its own section next.
 
-## DRAFT AMENDMENT — pending human review
+## The Justification Pack: A Third Egress Path
 
-**Status: DRAFT.** Everything below this line documents what a large build
-(the "Insight Suite": ticket attribution, efficiency-hygiene detectors, a
-task classifier, a constraint-impact engine, outcome calibration, invoice
-reconciliation, and the justification pack) actually changed in this file's
-subject matter, verified against the source as of this writing. It has not
-been reviewed by a human as an amendment to the document above. Nothing
-above this line has been edited to match — where the two disagree, the
-change below is the newer, correct statement, and the section above needs a
-human edit pass to fold it in (or supersede it) properly. Read this section
-before trusting anything above it that touches ticket keys, prompt-derived
-data, or artifacts that leave the machine.
-
-None of what follows is softened. If a change below widens what is stored or
-what could leave the machine, it is stated as such, not qualified away.
-
-### New local storage
-
-Four additions to the local SQLite database, all local-only except where
-"The justification pack" section below says otherwise.
-
-1. **Ticket keys are extracted from prompt text and persisted, in a new
-   `ticket_links` table.** This is a materially different practice from
-   "prompt text is stored" (already documented above since schema V8): the
-   extractor now *reads* `messages.prompt_text` (and git branch names and
-   commit subjects) looking for work-item key patterns (`PROJ-123`-shaped
-   strings) and writes a **derived, structured fact** — "this session touched
-   this ticket" — into a table that other features (cost-per-ticket
-   reporting, the justification pack, the dashboard) read directly, without
-   going back through `prompt_text`. `ticket_links.evidence` can hold a
-   fragment of the matched prompt text, branch name, or commit subject — it
-   inherits `prompt_text`'s sensitivity, not a lower one, and is **not**
-   passed through `sanitizePromptText`. This table is never synced to the
-   org plane (see "Two-Plane Model" above — the aggregate payload has no
-   field for it) and never appears in the justification pack (see below).
-2. **`messages.git_branch`** stores a git branch name **per message**, not
-   just once per session as `sessions.git_branch` already did. This is a
-   precision increase on an already-documented Medium-sensitivity field
-   (branch names may reveal feature names or ticket IDs), not a new category
-   of data — but it does mean a session that switches branches now has that
-   fact recorded turn-by-turn rather than only at first-seen.
-3. **`session_task_class`** stores a classification label per session (e.g.
-   "debug", "refactor-multi-file", "greenfield") plus the rule and classifier
-   version that produced it. Low sensitivity — it is a closed-enum label, not
-   free text, and cannot carry prompt content — but it is a new inference
-   *about* a session's content that did not exist before.
-4. **`api_error_events`** persists structured API-error and retry signals
-   (error kind, HTTP status, retry timing) per session. Low sensitivity — no
-   prompt or response content — but it is new: this data was previously
-   discarded rather than stored.
-
-### The justification pack: the first artifact designed to leave the machine
-
-Every prior local-plane feature (the SQLite DB, the transcript archive) is
-local-only by default, and the two opt-in ways data has ever left a machine
-before this build were (a) the org/team-sync aggregate payload (day-bucketed
-totals only, no prompt content, described above) and (b) the personal-plane
-encrypted backup (a blind ciphertext blob, described above). **The
-justification pack is a third, new kind of thing: a plaintext document the
+The stored-data features (the SQLite DB, the transcript archive) are
+local-only by default, and the two planes above are the only ways the tool
+itself transmits anything: (a) the org/team-sync aggregate payload
+(day-bucketed totals only, no prompt content) and (b) the personal-plane
+encrypted backup (a blind ciphertext blob). **The
+justification pack is a third kind of thing: a plaintext document the
 tool generates specifically so a human can hand it to another human who does
 not run claude-stats** — typically a manager, typically over email, typically
 outside any encryption or sync channel this document has previously
@@ -303,8 +305,9 @@ or per-session evidence text (`ticket_links.evidence`). A policy event's
   a fact the reader needs, not an omission). When `--project` or `--account`
   was used, that line — and the `projectPath`/`accountUuid` column on every CSV
   row — renders a stable marker (`[withheld:a1b2c3d4]`) rather than the value.
-  This was **not** the case when this amendment was first drafted: the raw
-  absolute path was embedded in the scope line and in every row of two CSVs. A
+  This was **not** the pack's original behavior: the raw absolute path was
+  embedded in the scope line and in every row of two CSVs, and was found and
+  fixed during review before the feature shipped. A
   local path like `/Users/alice/repos/<client>/<codename>` is Medium
   sensitivity per the classification table at the top of this document, and
   this is the one artifact built to leave the machine, so shipping it by
@@ -326,16 +329,13 @@ requested but currently render an honest "not available in this build" block
 pack renderer does not yet pull from them. No number is fabricated in their
 place; nothing from those subsystems currently leaves via the pack at all.
 
-### What did not change
-
-The classification table, the "What the Tool Stores Locally / Does NOT
-Store" lists, the quarantine-table section, the org/team-sync rules, the
-opt-in philosophy, the transcript archive section, and the personal-plane
-backup/sync section above all remain accurate as written for the data they
-describe — none of the four subsystems above changes what those sections
-say about `prompt_text`, file contents, or the transcript archive itself.
-The one place they interact: `ticket_links` is a *second* place derived
-prompt-text-adjacent content now lives, alongside the `prompt_text` column
-those sections already cover, and a human reviewer should decide whether
-this document's retention/access-control sections should name it explicitly
-rather than leaving it implied.
+**How this plane differs from the other two.** The org plane is protected by
+the *shape* of its payload, and the personal plane by encryption. The pack has
+neither: it is plaintext, it has no recipient model, and once sent it is
+outside the tool's reach — retention, access control, and deletion all stop
+at the moment the user attaches it to an email. Its only protection is what it
+refuses to contain, which is why the forbidden-field check is enforced at
+compile time rather than as a runtime filter, and why the scope value is
+withheld by default. When adding a section or a column to the pack, the
+question to ask is not "is this sensitive?" but "is a manager entitled to see
+this about a named developer, forever, with no way to take it back?"

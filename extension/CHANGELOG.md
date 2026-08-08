@@ -41,8 +41,9 @@ token mechanics. See [output-guide.md](../doc/user-doc/output-guide.md#insights-
   `generate_justification_pack`) writes a self-contained HTML + CSV bundle
   for one month — the first artifact in this project designed to leave the
   machine. It runs the stricter org-plane redaction (no prompt text, file
-  paths, or session ids), not the looser local rules. See the draft privacy
-  amendment in [05-privacy-security.md](../doc/analysis/05-privacy-security.md).
+  paths, or session ids), not the looser local rules. See "The Justification
+  Pack: A Third Egress Path" in
+  [05-privacy-security.md](../doc/analysis/05-privacy-security.md).
 - **`claude-stats recap correct ticket`** assigns a ticket key to a whole
   clustered recap item at once, linking every session it covers.
 
@@ -54,7 +55,8 @@ alongside the existing session-level branch); sessions carry a task
 classification (`session_task_class`); and structured API-error/retry events
 are persisted (`api_error_events`). All of this stays local-only, same as the
 rest of the database, with the single exception of the justification pack
-above. See the draft privacy amendment for the full accounting.
+above. See [05-privacy-security.md](../doc/analysis/05-privacy-security.md)
+for the full accounting.
 
 ## 0.18.1 — 2026-07-25
 
