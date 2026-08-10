@@ -75,6 +75,14 @@ updates:
     commit-message:
       prefix: "deps"
       include: scope
+    ignore:
+      # onnxruntime-node's version is not ours to choose: it must equal the
+      # exact version @huggingface/transformers pins, or npm nests a second
+      # copy and the VSIX ships two sets of native binaries (scripts/
+      # prepare-vsix.mjs asserts there is exactly one). A lone bump here is
+      # how that broke — so the version follows transformers, and is updated
+      # by hand alongside it.
+      - dependency-name: onnxruntime-node
 
   # ── GitHub Actions ────────────────────────────────────────────────────────
   - package-ecosystem: github-actions

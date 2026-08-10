@@ -23,7 +23,7 @@
  * Targets: darwin-arm64, darwin-x64, linux-x64, linux-arm64, win32-x64
  */
 import { execSync } from "node:child_process";
-import { existsSync, rmSync, readdirSync, statSync } from "node:fs";
+import { existsSync, rmSync, readdirSync, statSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -55,15 +55,73 @@ if (target !== null && !VALID_TARGETS.has(target)) {
 }
 
 // ── Step 1: install runtime deps in extension/ ───────────────────────────────
-console.log("[prepare-vsix] Installing runtime deps in extension/");
-execSync(
-  "npm install --omit=dev --omit=peer --no-package-lock --no-audit --no-fund",
-  {
-    cwd: extensionDir,
-    stdio: "inherit",
-    env: { ...process.env, npm_config_progress: "false" },
-  },
-);
+//
+// `npm ci` against extension/package-lock.json, not `npm install
+// --no-package-lock`: the deps installed here are the ones that ship inside the
+// VSIX, so resolving them fresh on every build made the artifact
+// non-reproducible (two builds of the same commit could bundle different
+// transitive versions) and left the transitive tree invisible to Dependabot,
+// which can only alert on what a lockfile pins.
+console.log("[prepare-vsix] Installing runtime deps in extension/ (npm ci)");
+execSync("npm ci --omit=dev --omit=peer --no-audit --no-fund", {
+  cwd: extensionDir,
+  stdio: "inherit",
+  env: { ...process.env, npm_config_progress: "false" },
+});
+
+// ── Step 1a: assert exactly one onnxruntime-node ─────────────────────────────
+//
+// @huggingface/transformers pins onnxruntime-node to an EXACT version. If
+// extension/package.json declares a different exact version, npm cannot dedupe
+// and nests a second copy under
+// node_modules/@huggingface/transformers/node_modules/. The Step-2 prune below
+// only walks the top-level copy, so the nested one ships every platform's
+// native binaries — hundreds of MB — and verify-vsix.mjs then fails its
+// "exactly one onnxruntime_binding.node" check on every release leg.
+//
+// This is checked here rather than left to the release build because
+// `npm run package:ext` (which CI runs on every push) reaches this line,
+// whereas the prune and verify-vsix only run for per-target release builds.
+// A lone Dependabot bump of onnxruntime-node is exactly how this breaks.
+const onnxCopies = [];
+const findOnnxCopies = (dir) => {
+  for (const entry of readdirSync(dir)) {
+    const path = join(dir, entry);
+    if (entry === "onnxruntime-node") {
+      onnxCopies.push(path);
+      continue;
+    }
+    // Recurse only into scopes (@foo/) and nested node_modules trees.
+    if (entry.startsWith("@") || entry === "node_modules") {
+      if (statSync(path).isDirectory()) findOnnxCopies(path);
+    } else if (existsSync(join(path, "node_modules"))) {
+      findOnnxCopies(join(path, "node_modules"));
+    }
+  }
+};
+findOnnxCopies(join(extensionDir, "node_modules"));
+
+if (onnxCopies.length !== 1) {
+  const transformersPin = JSON.parse(
+    readFileSync(
+      join(
+        extensionDir,
+        "node_modules",
+        "@huggingface",
+        "transformers",
+        "package.json",
+      ),
+      "utf8",
+    ),
+  ).dependencies?.["onnxruntime-node"];
+  console.error(
+    `[prepare-vsix] Expected exactly one onnxruntime-node, found ${onnxCopies.length}:\n` +
+      onnxCopies.map((p) => `  ${p.slice(extensionDir.length + 1)}`).join("\n") +
+      `\n\n@huggingface/transformers pins onnxruntime-node@${transformersPin}. ` +
+      `Set the same exact version in extension/package.json so npm dedupes to one copy.`,
+  );
+  process.exit(1);
+}
 
 // ── Step 1b: ensure the embedding model is fetched ───────────────────────────
 //
