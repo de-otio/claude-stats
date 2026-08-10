@@ -312,7 +312,10 @@ describe("TeamCard", () => {
     );
 
     expect(screen.getByText("Prompts")).toBeDefined();
-    expect(screen.getByText("2,847")).toBeDefined();
+    // Derived, not the literal "2,847": the component uses toLocaleString() with
+    // no locale, so the group separator follows the host's locale — a hardcoded
+    // US form passes in CI and fails on, say, a German-locale machine ("2.847").
+    expect(screen.getByText((2847).toLocaleString())).toBeDefined();
     expect(screen.getByText("Cost")).toBeDefined();
     expect(screen.getByText("$142.30")).toBeDefined();
   });
@@ -356,7 +359,8 @@ describe("MemberCard", () => {
     expect(screen.getByText("12-day streak")).toBeDefined();
     expect(screen.getByText("312")).toBeDefined();
     expect(screen.getByText("$18.42")).toBeDefined();
-    expect(screen.getByText("2,341 tok/min")).toBeDefined();
+    // Host-locale separator — see the note on TeamCard's prompts assertion.
+    expect(screen.getByText(`${(2341).toLocaleString()} tok/min`)).toBeDefined();
     expect(screen.getByText("87%")).toBeDefined();
   });
 

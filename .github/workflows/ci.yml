@@ -54,6 +54,15 @@ jobs:
         run: npm test -w @de-otio/claude-stats-infra
         timeout-minutes: 10
 
+      # Not covered by "Run tests" above: the root vitest config includes only
+      # packages/cli and packages/infra/lambda, because packages/frontend needs
+      # a jsdom environment and the React/JSX transform and so carries its own
+      # config. Without this step the frontend suite ran nowhere and rotted
+      # unnoticed. ~2s.
+      - name: Frontend component tests
+        run: npm test -w @claude-stats/frontend
+        timeout-minutes: 10
+
       - name: Upload coverage report
         uses: actions/upload-artifact@v7
         if: always()

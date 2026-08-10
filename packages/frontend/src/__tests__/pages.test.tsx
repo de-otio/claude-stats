@@ -581,7 +581,9 @@ describe("Teams Page", () => {
       </TestWrapper>,
     );
 
-    expect(screen.getByText("2,847")).toBeDefined();
+    // Derived rather than the literal "2,847": Teams renders the total through
+    // toLocaleString() with no locale, so the group separator is the host's.
+    expect(screen.getByText((2847).toLocaleString())).toBeDefined();
     expect(screen.getByText("$142.30")).toBeDefined();
   });
 });
