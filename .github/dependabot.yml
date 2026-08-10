@@ -52,6 +52,30 @@ updates:
           - minor
           - patch
 
+  # ── VS Code extension runtime deps ────────────────────────────────────────
+  # extension/ is deliberately outside the npm workspaces (its deps ship inside
+  # the VSIX and must not be hoisted into the repo root), so the "/" entry above
+  # does not see it. Without this entry nothing watches @huggingface/transformers
+  # or onnxruntime-node — the two packages that actually reach users' machines.
+  #
+  # Note: scripts/prepare-vsix.mjs installs these with --no-package-lock, so
+  # Dependabot can only offer updates for the declared ranges; it cannot see the
+  # transitive tree, and no security alert will ever fire for one. Adding a
+  # lockfile here would close that gap and make the VSIX build reproducible.
+  - package-ecosystem: npm
+    directory: "/extension"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "deps"
+      include: scope
+
   # ── GitHub Actions ────────────────────────────────────────────────────────
   - package-ecosystem: github-actions
     directory: "/"
