@@ -396,6 +396,11 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   // Also neutralize `-->` in case the JSON ever ends up inside an HTML comment.
   // Both replacements preserve JSON validity (escaped as < / > inside
   // string literals) and are reversed transparently by JSON.parse at runtime.
+  // SR-7 (pre-existing, not this lane's to fix): `data.contextCarry` — and so
+  // its `turns[].sessionId`/`.uuid`/`.model` — is serialised whole into this
+  // payload and forwarded in every exported/shared report; the setup card's
+  // auto-compact-window-fit addition (autocompact-window-fit B2) reads off
+  // the same already-embedded object and neither widens nor narrows this.
   const jsonData = JSON.stringify(data)
     .replace(/</g, "\\u003c")
     .replace(/-->/g, "--\\u003e");

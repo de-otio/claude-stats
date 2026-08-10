@@ -544,6 +544,18 @@
     "unpricedNote": "{{unpricedRows}} messages ({{unpricedTokens}} tokens) have no priced model and are excluded from every dollar figure above.",
     "excludedNote": "{{excludedRows}} messages were excluded from ordering (no usable timestamp) but are still counted in the carried-token total.",
     "concentrationTitle": "Sessions by carried volume (top {{count}}):",
-    "concentrationRow": "{{sessionId}}: {{requests}} requests, mean context {{meanContext}}, {{share}} of the window's carried volume"
+    "concentrationRow": "{{sessionId}}: {{requests}} requests, mean context {{meanContext}}, {{share}} of the window's carried volume",
+    "autoCompactFit": {
+      "title": "Auto-compact window fit — what autoCompactWindow could be set to:",
+      "notAvailable": "not available",
+      "observedMedianLine": "Observed median cycle length today: {{observedMedianCycleRequests}} requests.",
+      "candidateTableTitle": "Candidate windows (window · saved tokens · extra resets · net saving · median cycle length):",
+      "candidateRow": "{{windowTokens}} tokens: saves {{savedTokens}} tokens, {{extraResets}} extra reset(s), net saving {{netSaving}}, median cycle {{medianCycleRequests}} requests",
+      "verdictInsufficientData": "Not enough data in this window to compute an auto-compact window recommendation.",
+      "verdictAlreadyTuned": "This workload's observed peak context (~{{maxPeakTokens}} tokens) already sits close to a candidate window — no change recommended.",
+      "verdictTooCloseToCall": "Too close to call: the best candidate's net saving ({{bestNetSaving}}) does not clear a {{marginPercent}} margin against this window's total carry cost ({{totalCarryCost}}) — and that margin is itself biased toward recommending a change, since totalCarryCost is a lower bound.",
+      "verdictRecommend": "Recommendation: set autoCompactWindow to {{recommendedTokens}} tokens as your default (a launch flag or managed settings can still override it). Range considered: {{conservativeTokens}} tokens (conservative, recommended) down to {{aggressiveTokens}} tokens (aggressive, more saving but more resets).",
+      "divergenceNote": "This block was computed at a lower reset-detection floor ({{resetFloorUsed}} tokens) than the reset count shown above (detected at the {{resetFloorDefault}}-token default) — so its reset/cycle counts will not match the primary figures on this screen."
+    }
   }
 }

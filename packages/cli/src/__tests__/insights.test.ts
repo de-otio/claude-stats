@@ -38,6 +38,7 @@ import type { TranslateFn } from "../server/template.js";
 import { initI18n } from "@claude-stats/core/i18n";
 import { createRequire } from "node:module";
 import type { TtlFitResult } from "@claude-stats/core/ttlFit";
+import type { AutoCompactFitResult } from "@claude-stats/core/autoCompactFit";
 
 const require = createRequire(import.meta.url);
 // Relative into this worktree's own source — see the same note in
@@ -185,6 +186,42 @@ function ttlFitFixture(over: Partial<TtlFitResult> = {}): TtlFitResult {
 }
 
 /**
+ * A minimal, well-formed `AutoCompactFitResult` (autocompact-window-fit B2) —
+ * every field `computeAutoCompactFit` (Phase A) would always populate, at the
+ * honest `insufficient-data` default, so a test only overrides what it is
+ * actually exercising. This lane owns none of Phase A's computation; the
+ * fixture exists only to drive the RENDERING this lane owns, same rule
+ * `ttlFitFixture` follows for `computeTtlFit`.
+ */
+function autoCompactFitFixture(over: Partial<AutoCompactFitResult> = {}): AutoCompactFitResult {
+  return {
+    candidates: [],
+    droppedCandidates: [],
+    recommendation: {
+      verdict: "insufficient-data",
+      recommendedTokens: null,
+      range: null,
+      reasonCode: "no-sawtooth",
+      reasonFacts: { resets: 0, minResets: 3 },
+    },
+    closedCycleCarriedTokens: 0,
+    openCycleCarriedTokens: 0,
+    excludedRowCarriedTokens: 0,
+    openCyclesExcluded: 0,
+    observedFloorTokens: null,
+    observedPeakTokens: null,
+    observedMaxPeakTokens: null,
+    observedMedianCycleRequests: null,
+    resetFloorUsed: 150_000,
+    resetFloorDefault: 150_000,
+    modelMix: { uniform: true, models: [], unknownModels: 0 },
+    savingCaveat: "test-fixture savingCaveat — never rendered raw; see dashboard:autoCompactFit.caveat",
+    settableRange: [100_000, 1_000_000],
+    ...over,
+  };
+}
+
+/**
  * A minimal, well-formed `DashboardContextCarry` — B1's `concentration`/
  * `preludeByProject`-STRIPPED projection of `ContextCarryResult` (see that
  * field's doc in `cli/src/dashboard/index.ts`). Every field a real
@@ -209,8 +246,16 @@ function contextCarryFixture(over: Partial<DashboardContextCarry> = {}): Dashboa
     excludedRows: 0,
     unpricedRows: 0,
     unpricedTokens: 0,
+    autoCompactFit: autoCompactFitFixture(),
     ...over,
   };
+}
+
+/** `DashboardData` with a given `AutoCompactFitResult` wired onto
+ *  `contextCarry.autoCompactFit` — the path `insights.ts`'s
+ *  `autoCompactSetupInput` actually reads (never a bare top-level field). */
+function withAutoCompactFit(fit: AutoCompactFitResult, over: Partial<DashboardData> = {}): DashboardData {
+  return { ...goldenData, ...over, contextCarry: contextCarryFixture({ autoCompactFit: fit }) };
 }
 
 /** One card's own markup, sliced out by its DOM id. */
@@ -1100,6 +1145,209 @@ describe("cache-TTL evidence block — escaping (cache-ttl-fit C2)", () => {
     const data: DashboardData = { ...goldenData, ttlFit: fit };
     const html = renderDashboard(data, t);
     expect(html).not.toContain(HOSTILE_MODEL);
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+  });
+});
+
+// ─── Auto-compact-window fit (autocompact-window-fit B2) ─────────────────────
+
+describe("auto-compact-window fit — the setup card composes rather than gates", () => {
+  // Positive AND negative on the same code path (`answerSetup`'s auto-compact
+  // branch, `autoCompactSetupClause`): a clause appears for the one
+  // actionable verdict and NOT for the three that are deliberately
+  // unactionable, and NOT when there is no fit at all — mirroring the
+  // cache-TTL clause's identical precision-over-recall rule above.
+  it("carries an auto-compact clause on recommend-window, and none on already-tuned/too-close-to-call/insufficient-data/absent", () => {
+    const recommend = autoCompactFitFixture({
+      recommendation: {
+        verdict: "recommend-window",
+        recommendedTokens: 250_000,
+        range: [250_000, 150_000],
+        reasonCode: "recommended",
+        reasonFacts: {},
+      },
+      candidates: [
+        { windowTokens: 250_000, savedTokens: 400_000, extraResets: 3, netSaving: 12.5, medianCycleRequests: 40 },
+      ],
+      observedMedianCycleRequests: 118,
+    });
+    const a = buildInsightAnswers(withAutoCompactFit(recommend), buildOpts)[3]!;
+    expect(a.answer).toContain("auto-compact");
+    expect(a.answer).toContain("250,000");
+    // The two MEDIANS, paired on the same line: the simulated 40 alongside
+    // the observed 118 — never a simulated median against an observed mean.
+    expect(a.answer).toContain("40");
+    expect(a.answer).toContain("118");
+
+    const alreadyTuned = autoCompactFitFixture({
+      recommendation: {
+        verdict: "already-tuned",
+        recommendedTokens: null,
+        range: null,
+        reasonCode: "peak-at-candidate",
+        reasonFacts: {},
+      },
+    });
+    const aTuned = buildInsightAnswers(withAutoCompactFit(alreadyTuned), buildOpts)[3]!;
+    expect(aTuned.answer).not.toContain("auto-compact");
+
+    const tooClose = autoCompactFitFixture({
+      recommendation: {
+        verdict: "too-close-to-call",
+        recommendedTokens: null,
+        range: null,
+        reasonCode: "saving-under-margin",
+        reasonFacts: {},
+      },
+    });
+    const aTooClose = buildInsightAnswers(withAutoCompactFit(tooClose), buildOpts)[3]!;
+    expect(aTooClose.answer).not.toContain("auto-compact");
+
+    const insufficient = autoCompactFitFixture(); // default fixture: insufficient-data
+    const aInsufficient = buildInsightAnswers(withAutoCompactFit(insufficient), buildOpts)[3]!;
+    expect(aInsufficient.answer).not.toContain("auto-compact");
+
+    const absent = buildInsightAnswers({ ...goldenData, contextCarry: null }, buildOpts)[3]!;
+    expect(absent.answer).not.toContain("auto-compact");
+  });
+
+  // D6: `netSaving` degrades to an explicit unavailable phrase, never a
+  // fabricated `$0` — paired with the ordinary case so a stub that always
+  // returned "$0.00" would fail the second half.
+  it("a null netSaving renders as an explicit unavailable, and a non-null one renders the figure — never a fabricated 0", () => {
+    const withSaving = autoCompactFitFixture({
+      recommendation: {
+        verdict: "recommend-window",
+        recommendedTokens: 200_000,
+        range: [200_000, 150_000],
+        reasonCode: "recommended",
+        reasonFacts: {},
+      },
+      candidates: [
+        { windowTokens: 200_000, savedTokens: 300_000, extraResets: 2, netSaving: 8.4, medianCycleRequests: 30 },
+      ],
+      observedMedianCycleRequests: 90,
+    });
+    const a = buildInsightAnswers(withAutoCompactFit(withSaving), buildOpts)[3]!;
+    expect(a.answer).toContain("$8.40");
+
+    const noSaving = autoCompactFitFixture({
+      recommendation: {
+        verdict: "recommend-window",
+        recommendedTokens: 200_000,
+        range: [200_000, 150_000],
+        reasonCode: "recommended",
+        reasonFacts: {},
+      },
+      // `candidates[]` IS populated on the nothing-priced path with real token
+      // figures and `netSaving: null` (Phase A handoff, point 3) — this
+      // fixture mirrors that shape rather than an empty candidate table.
+      candidates: [
+        { windowTokens: 200_000, savedTokens: 300_000, extraResets: 2, netSaving: null, medianCycleRequests: 30 },
+      ],
+      observedMedianCycleRequests: 90,
+    });
+    const aNoSaving = buildInsightAnswers(withAutoCompactFit(noSaving), buildOpts)[3]!;
+    expect(aNoSaving.answer).not.toContain("$0");
+    expect(aNoSaving.answer).toContain("not available");
+  });
+
+  // D5: the caveat renders on the SAME line/slot as any dollar figure, never
+  // as a footnote — and is withheld entirely when there is no dollar figure
+  // to qualify. Paired on the same fixtures as the null/non-null test above.
+  it("the caveat is present whenever the clause has a dollar figure, and absent when it does not", () => {
+    const withSaving = autoCompactFitFixture({
+      recommendation: {
+        verdict: "recommend-window",
+        recommendedTokens: 200_000,
+        range: [200_000, 150_000],
+        reasonCode: "recommended",
+        reasonFacts: {},
+      },
+      candidates: [
+        { windowTokens: 200_000, savedTokens: 300_000, extraResets: 2, netSaving: 8.4, medianCycleRequests: 30 },
+      ],
+      observedMedianCycleRequests: 90,
+    });
+    const a = buildInsightAnswers(withAutoCompactFit(withSaving), buildOpts)[3]!;
+    expect(a.caveat).toBe(t("dashboard:autoCompactFit.caveat"));
+
+    const noSaving = autoCompactFitFixture({
+      recommendation: {
+        verdict: "recommend-window",
+        recommendedTokens: 200_000,
+        range: [200_000, 150_000],
+        reasonCode: "recommended",
+        reasonFacts: {},
+      },
+      candidates: [
+        { windowTokens: 200_000, savedTokens: 300_000, extraResets: 2, netSaving: null, medianCycleRequests: 30 },
+      ],
+      observedMedianCycleRequests: 90,
+    });
+    const aNoSaving = buildInsightAnswers(withAutoCompactFit(noSaving), buildOpts)[3]!;
+    expect(aNoSaving.caveat).toBeNull();
+  });
+
+  // Phase A's handoff, point 1: `range` is `[conservative, aggressive]` —
+  // DESCENDING, and `range[0] === recommendedTokens`. This pins that the
+  // card presents the CONSERVATIVE candidate's own figures (300,000 tokens,
+  // its own 60-request median) — never the aggressive end's (150,000, 20
+  // requests) swapped in by an off-by-one on the range order.
+  it("renders the CONSERVATIVE end of the range — never the aggressive end printed backwards", () => {
+    const fit = autoCompactFitFixture({
+      recommendation: {
+        verdict: "recommend-window",
+        recommendedTokens: 300_000,
+        range: [300_000, 150_000],
+        reasonCode: "recommended",
+        reasonFacts: {},
+      },
+      candidates: [
+        { windowTokens: 150_000, savedTokens: 500_000, extraResets: 6, netSaving: 20, medianCycleRequests: 20 },
+        { windowTokens: 300_000, savedTokens: 200_000, extraResets: 1, netSaving: 11, medianCycleRequests: 60 },
+      ],
+      observedMedianCycleRequests: 118,
+    });
+    const a = buildInsightAnswers(withAutoCompactFit(fit), buildOpts)[3]!;
+    expect(a.answer).toContain("300,000");
+    expect(a.answer).not.toContain("150,000");
+    expect(a.answer).toContain("60");
+    expect(a.answer).not.toContain("$20.00"); // the AGGRESSIVE candidate's own saving
+    expect(a.answer).toContain("$11.00"); // the CONSERVATIVE candidate's own saving
+  });
+});
+
+describe("auto-compact evidence — escaping (autocompact-window-fit B2)", () => {
+  // The caveat text is translation-controlled, not literally attacker
+  // input — but `renderCard` escapes it exactly like any other `InsightAnswer`
+  // field, and this proves that path is actually exercised for the NEW
+  // clause rather than assumed. Same technique the context-carry and cache-TTL
+  // evidence blocks above use for their own hostile-string tests.
+  it("escapes a hostile caveat translation rather than trusting it as markup", () => {
+    const HOSTILE = "<img src=x onerror=alert(1)>";
+    const hostileT: TranslateFn = (key, opts) =>
+      key === "dashboard:autoCompactFit.caveat" ? HOSTILE : t(key, opts);
+    const fit = autoCompactFitFixture({
+      recommendation: {
+        verdict: "recommend-window",
+        recommendedTokens: 200_000,
+        range: [200_000, 150_000],
+        reasonCode: "recommended",
+        reasonFacts: {},
+      },
+      candidates: [
+        { windowTokens: 200_000, savedTokens: 300_000, extraResets: 2, netSaving: 8.4, medianCycleRequests: 30 },
+      ],
+      observedMedianCycleRequests: 90,
+    });
+    const data = withAutoCompactFit(fit);
+    const html = renderInsightsTab(
+      buildInsightAnswers(data, { ...buildOpts, t: hostileT }),
+      buildAlerts(data, hostileT),
+      hostileT,
+    );
+    expect(html).not.toContain(HOSTILE);
     expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
   });
 });

@@ -30,7 +30,7 @@
  * `DashboardData` in, exact rendered figures out — instead of a DOM snapshot.
  */
 import type { InsightAnswer, Reconciliation, TicketCoverage } from "@claude-stats/core/types/insight";
-import type { CostVocabulary, SetupTtlInput } from "@claude-stats/core/insight";
+import type { CostVocabulary, SetupAutoCompactInput, SetupTtlInput } from "@claude-stats/core/insight";
 import {
   answerBought,
   answerChange,
@@ -43,6 +43,7 @@ import {
 } from "@claude-stats/core/insight";
 import type { TtlFitResult } from "@claude-stats/core/ttlFit";
 import type { ContextCarryResult } from "@claude-stats/core/contextCarry";
+import type { AutoCompactFitResult } from "@claude-stats/core/autoCompactFit";
 import { outcomeCalibrationFrom } from "../calibration/index.js";
 import type { DashboardData } from "../dashboard/index.js";
 import type { Config } from "../config.js";
@@ -199,6 +200,53 @@ function ttlSetupInput(fit: TtlFitResult | null | undefined): SetupTtlInput | nu
   };
 }
 
+// ─── Auto-compact-window fit → the setup card (autocompact-window-fit B2) ─────
+
+/**
+ * Narrow, structural view of `data.contextCarry.autoCompactFit`.
+ *
+ * B1 (`cli/src/dashboard/index.ts`) owns widening `DashboardContextCarry` to
+ * carry `AutoCompactFitResult` in the TYPE, and this module does not touch
+ * that file (sibling lane, mid-flight — see the task handoff). Reading the
+ * field through this local, structurally-typed accessor rather than through
+ * `DashboardContextCarry` itself means this module compiles against B1's
+ * eventual widened type without depending on the edit landing first: once B1
+ * lands, `data.contextCarry.autoCompactFit` is exactly this shape (it IS
+ * `AutoCompactFitResult`), so the cast below stays sound.
+ */
+type ContextCarryWithFit = { autoCompactFit?: AutoCompactFitResult | null };
+
+/**
+ * Reduce the already-computed fit to exactly what `answerSetup` needs — this
+ * module reads `data.contextCarry.autoCompactFit`, it never recomputes
+ * `computeAutoCompactFit` (autocompact-window-fit B2 deliverable 1).
+ *
+ * The `netSaving`/`medianCycleRequests` pair comes off the RECOMMENDED
+ * candidate specifically (the one at `recommendation.recommendedTokens`),
+ * never the aggressive end's — `candidates[]` is ascending by
+ * `windowTokens` and un-keyed by token count, so it is looked up by value.
+ *
+ * SR-7 (pre-existing, not this lane's to fix): `data.contextCarry` — and so
+ * this fit's `candidates[]`/`droppedCandidates[]` — reaches the embedded
+ * `window.__DASHBOARD__` payload (`server/template.ts`) regardless of what
+ * this function reduces to, because the whole object is serialised there.
+ * Nothing here widens or narrows that condition.
+ */
+function autoCompactSetupInput(contextCarry: ContextCarryWithFit | null | undefined): SetupAutoCompactInput | null {
+  const fit = contextCarry?.autoCompactFit;
+  if (!fit) return null;
+  const { verdict, recommendedTokens } = fit.recommendation;
+  const recommended =
+    recommendedTokens === null ? null : (fit.candidates.find((c) => c.windowTokens === recommendedTokens) ?? null);
+  return {
+    verdict,
+    recommendedTokens,
+    netSaving: recommended?.netSaving ?? null,
+    medianCycleRequests: recommended?.medianCycleRequests ?? null,
+    observedMedianCycleRequests: fit.observedMedianCycleRequests,
+  };
+}
+
 // ─── Building the five answers ────────────────────────────────────────────────
 
 /** Everything the answers need that does not live on `DashboardData`. */
@@ -329,6 +377,19 @@ export function buildInsightAnswers(data: DashboardData, opts: InsightBuildOptio
     // (`cli/src/ttlFit/`, populated by `attachInsights`); this module never
     // recomputes it.
     ttl: ttlSetupInput(data.ttlFit),
+    // Same rule for the auto-compact-window fit: `data.contextCarry
+    // .autoCompactFit` is already computed by the glue's second
+    // `computeContextCarry` pass (D13); this module only reduces it.
+    autoCompact: autoCompactSetupInput(data.contextCarry),
+    // Pre-translated from the `dashboard` namespace this module's translator
+    // has loaded — NEVER `AutoCompactFitResult.savingCaveat`, which is
+    // English source text composed in core for a CLI/log context
+    // (autocompact-window-fit D5; see `SetupAnswerInput.autoCompactCaveat`'s
+    // doc comment in `@claude-stats/core/insight`). `answerSetup` renders it
+    // only when the clause actually has a dollar figure to qualify, so
+    // translating it unconditionally here costs nothing on the common path
+    // where the card has nothing to say.
+    autoCompactCaveat: opts.t("dashboard:autoCompactFit.caveat"),
   });
 
   const change = answerChange(opts.t, {

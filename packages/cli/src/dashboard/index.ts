@@ -15,6 +15,7 @@ import { computeTtlFitForWindow } from "../ttlFit/index.js";
 import type { TtlFitResult } from "@claude-stats/core/ttlFit";
 import { computeContextCarryForWindow } from "../contextCarry/index.js";
 import type { ContextCarryResult } from "@claude-stats/core/contextCarry";
+import type { AutoCompactFitResult } from "@claude-stats/core/autoCompactFit";
 import { detectResets, type HygieneMessageRow } from "@claude-stats/core/hygiene";
 import { resolveDashboardCostVocabulary, type VocabularyResolution } from "../server/insights.js";
 import type { Reconciliation, TicketCoverage, PolicyEvent } from "@claude-stats/core/types/insight";
@@ -412,11 +413,25 @@ export interface DashboardProjectPrelude {
 }
 
 /** {@link DashboardData.contextCarry}'s shape — see that field's doc for why
- *  `concentration` is dropped and `preludeByProject` is re-keyed. */
+ *  `concentration` is dropped and `preludeByProject` is re-keyed.
+ *
+ * `autoCompactFit` is declared explicitly here (autocompact-window-fit CR-15,
+ * §4/B1) rather than inherited implicitly through `ContextCarryResult`: the
+ * glue (`contextCarry/index.ts#ContextCarryWithFit`) attaches the fit onto
+ * the object this type projects from, so it DOES reach `data.contextCarry` at
+ * runtime via the `...rest` spread in `buildDashboardData` below — but
+ * `ContextCarryResult` itself (the core interface, which the plan forbids
+ * adding fields to) has no such field, so without this line the fit would be
+ * invisible in the type and unreadable by whatever renders the dashboard
+ * card. Declared OPTIONAL, not required: `buildDashboardData` always attaches
+ * it at runtime (the glue always returns a fit-bearing result), but B2 owns
+ * `insights.test.ts`'s fixtures and this build must not force every existing
+ * `DashboardContextCarry` literal across the codebase — including files this
+ * phase does not own — to specify a field it did not have yesterday. */
 export type DashboardContextCarry = Omit<
   ContextCarryResult,
   "concentration" | "preludeByProject"
-> & { preludeByProject: DashboardProjectPrelude[] };
+> & { preludeByProject: DashboardProjectPrelude[]; autoCompactFit?: AutoCompactFitResult };
 
 /** Last-two-segments project label. Mirrors `template.ts`'s `projShort` and
  *  `insights.ts`'s `shortProjectLabel`; kept as a third local copy because

@@ -864,6 +864,90 @@ function ttlSetupClause(
   };
 }
 
+/**
+ * One clause for the setup card's auto-compact-window-fit finding, or `null`
+ * when there is nothing actionable to say.
+ *
+ * Renders ONLY for `"recommend-window"` — `"already-tuned"`,
+ * `"too-close-to-call"` and `"insufficient-data"` render no clause at all,
+ * matching `ttlSetupClause`'s identical precision-over-recall rule (an
+ * unactionable margin is not a recommendation) and this deployment's
+ * "does NOT render when the verdict is insufficient-data" requirement
+ * (autocompact-window-fit plan §4/B2).
+ *
+ * `netSaving` degrades to an explicit "not available" clause rather than
+ * being omitted or rendered as `0` (D6) — the setting recommendation and the
+ * cycle-length consequence are worth stating even on the (defensive-only, see
+ * `autoCompactFit.ts`'s ladder) path where nothing could be priced. The
+ * caveat is withheld on that path: there is no dollar figure left to qualify.
+ */
+function autoCompactSetupClause(
+  t: InsightT,
+  fit: SetupAutoCompactInput | null | undefined,
+  caveat: string | null | undefined,
+  currency: string,
+): { text: string; value: string; caveat: string | null } | null {
+  if (!fit) return null;
+  if (fit.verdict !== "recommend-window") return null;
+  if (fit.recommendedTokens === null) return null;
+
+  const tokens = formatCount(fit.recommendedTokens);
+  const medianCycleRequests =
+    fit.medianCycleRequests === null ? "—" : formatCount(fit.medianCycleRequests);
+  const observedMedianCycleRequests =
+    fit.observedMedianCycleRequests === null ? "—" : formatCount(fit.observedMedianCycleRequests);
+
+  if (fit.netSaving === null) {
+    return {
+      text: t("common:insight.setup.autoCompactRecommendNoSaving", {
+        tokens,
+        medianCycleRequests,
+        observedMedianCycleRequests,
+      }),
+      value: tokens,
+      caveat: null,
+    };
+  }
+
+  const money = formatMoney(fit.netSaving, currency);
+  return {
+    text: t("common:insight.setup.autoCompactRecommend", {
+      tokens,
+      money,
+      medianCycleRequests,
+      observedMedianCycleRequests,
+    }),
+    value: tokens,
+    caveat: caveat ?? null,
+  };
+}
+
+/**
+ * Inputs for the setup card's auto-compact-window-fit finding
+ * (autocompact-window-fit B2). Reduced to EXACTLY the five fields the card
+ * needs by `autoCompactSetupInput` in `cli/src/server/insights.ts`, read off
+ * the already-computed `AutoCompactFitResult` — this module never recomputes
+ * the fit, same rule `SetupTtlInput` follows for the cache-TTL fit.
+ */
+export interface SetupAutoCompactInput {
+  verdict: "recommend-window" | "already-tuned" | "too-close-to-call" | "insufficient-data";
+  /** The conservative end of the range — `recommendation.recommendedTokens`.
+   *  `null` for every verdict but `"recommend-window"` (autoCompactFit.ts C10). */
+  recommendedTokens: number | null;
+  /** The RECOMMENDED candidate's own `netSaving` (never the aggressive end's).
+   *  `number | null` — `null` renders as an explicit unavailable, NEVER `0`
+   *  (D6). */
+  netSaving: number | null;
+  /** The recommended candidate's simulated median cycle length, in requests —
+   *  the decision variable a reader can actually judge (plan §4/B2 deliverable
+   *  2). Paired with `observedMedianCycleRequests` below; both are MEDIANS —
+   *  never a simulated median rendered against an observed MEAN. */
+  medianCycleRequests: number | null;
+  /** `AutoCompactFitResult.observedMedianCycleRequests` — the median cycle
+   *  length as actually observed, for the "instead of" comparison. */
+  observedMedianCycleRequests: number | null;
+}
+
 /** Inputs for Q4 — "Is the setup right?" */
 export interface SetupAnswerInput {
   planVerdict: string | null;
@@ -877,6 +961,24 @@ export interface SetupAnswerInput {
    *  one). Composes with the two inputs above rather than gating them —
    *  see the restructure note below. */
   ttl?: SetupTtlInput | null;
+  /** The auto-compact-window fit's contribution, or `null`/absent when no fit
+   *  was computed. Composes the same way `ttl` does. */
+  autoCompact?: SetupAutoCompactInput | null;
+  /**
+   * Pre-translated caveat text for the auto-compact clause, from
+   * `dashboard:autoCompactFit.caveat` — deliberately NOT
+   * `AutoCompactFitResult.savingCaveat`, which is English source text
+   * `computeAutoCompactFit` composes for a CLI/log context and must never
+   * render raw on a localized surface (autocompact-window-fit D5; see the doc
+   * comment above `renderContextCarryEvidence` in `server/template.ts` for the
+   * identical rule already enforced for `capCaveat`). The CALLER supplies it
+   * already localized — via ITS OWN translator, which has the `dashboard`
+   * namespace loaded — so this module never hardcodes a dashboard-only
+   * namespace key itself. Rendered only alongside the clause's own dollar
+   * figure (never when `netSaving` is `null`, since there is then nothing to
+   * caveat).
+   */
+  autoCompactCaveat?: string | null;
 }
 
 /**
@@ -910,6 +1012,7 @@ export function answerSetup(t: InsightT, input: SetupAnswerInput): InsightAnswer
   let savingCaveat: string | null = null;
   let policyCaveat: string | null = null;
   let ttlCaveat: string | null = null;
+  let autoCompactCaveat: string | null = null;
 
   if (input.policyImpact) {
     const pct = formatPercent(input.policyImpact.costPerTaskDelta);
@@ -950,6 +1053,13 @@ export function answerSetup(t: InsightT, input: SetupAnswerInput): InsightAnswer
     ttlCaveat = ttlClause.caveat;
   }
 
+  const autoCompactClause = autoCompactSetupClause(t, input.autoCompact, input.autoCompactCaveat, currency);
+  if (autoCompactClause) {
+    clauses.push(autoCompactClause.text);
+    if (value === null) value = autoCompactClause.value;
+    autoCompactCaveat = autoCompactClause.caveat;
+  }
+
   if (clauses.length === 0) {
     return unavailable("setup", t("common:insight.setup.unavailable"), {
       reason: "no-data",
@@ -967,7 +1077,12 @@ export function answerSetup(t: InsightT, input: SetupAnswerInput): InsightAnswer
     answer: clauses.join(t("common:insight.punctuation.caveatJoin")),
     value,
     trend,
-    caveat: ttlCaveat ?? savingCaveat ?? policyCaveat,
+    // `autoCompactCaveat` sits beside `ttlCaveat` in the precedence, ahead of
+    // `savingCaveat`/`policyCaveat`: both `ttl` and `autoCompact` qualify a
+    // dollar figure this card computed from a fit result, the more specific
+    // basis a reader needs before trusting the number. Ordering between the
+    // two matters only when both fire at once, which no caller triggers today.
+    caveat: ttlCaveat ?? autoCompactCaveat ?? savingCaveat ?? policyCaveat,
     evidenceLink: "plan-and-policy",
   };
 }

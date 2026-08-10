@@ -16,6 +16,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import type { Store } from "../store/index.js";
 import { buildDashboard, type DashboardData } from "../dashboard/index.js";
+import type { AutoCompactFitResult } from "@claude-stats/core/autoCompactFit";
 import { estimateCost } from "@claude-stats/core/pricing";
 import { searchHistory } from "../history/index.js";
 import { sanitizePromptText } from "@claude-stats/core/sanitize";
@@ -136,6 +137,54 @@ function redactPlanUtilizationForMcp(
       cacheCreationTokens: account.cacheCreationTokens,
       byModel: account.byModel,
     })),
+  };
+}
+
+/**
+ * Auto-compact window fit, allowlisted field-by-field for MCP
+ * (autocompact-window-fit §4/B1, SR-1 — see the call site's comment for why
+ * this cannot be a rest-spread). Every field copied here is a number, a
+ * fixed/enum string, or a `Record<string, number>` — no session id, no raw
+ * model id, no absolute path can ride through any of them.
+ *
+ * `modelMix.models` is the one field from `AutoCompactFitResult` NOT copied.
+ * Core already normalises it to known pricing-table ids only — but core's own
+ * doc on that field states the scope explicitly: raw model ids already reach
+ * MCP via `byModel` elsewhere, and this build declines to become a second
+ * site. Only `uniform` (a boolean) and `unknownModels` (a count) cross this
+ * channel.
+ */
+function autoCompactFitForMcp(fit: AutoCompactFitResult): Record<string, unknown> {
+  return {
+    candidates: fit.candidates.map((c) => ({
+      windowTokens: c.windowTokens,
+      savedTokens: c.savedTokens,
+      extraResets: c.extraResets,
+      netSaving: c.netSaving,
+      medianCycleRequests: c.medianCycleRequests,
+    })),
+    droppedCandidates: fit.droppedCandidates.map((d) => ({ windowTokens: d.windowTokens, reason: d.reason })),
+    recommendation: {
+      verdict: fit.recommendation.verdict,
+      recommendedTokens: fit.recommendation.recommendedTokens,
+      range: fit.recommendation.range,
+      reasonCode: fit.recommendation.reasonCode,
+      reasonFacts: fit.recommendation.reasonFacts,
+    },
+    closedCycleCarriedTokens: fit.closedCycleCarriedTokens,
+    openCycleCarriedTokens: fit.openCycleCarriedTokens,
+    excludedRowCarriedTokens: fit.excludedRowCarriedTokens,
+    openCyclesExcluded: fit.openCyclesExcluded,
+    observedFloorTokens: fit.observedFloorTokens,
+    observedPeakTokens: fit.observedPeakTokens,
+    observedMaxPeakTokens: fit.observedMaxPeakTokens,
+    observedMedianCycleRequests: fit.observedMedianCycleRequests,
+    resetFloorUsed: fit.resetFloorUsed,
+    resetFloorDefault: fit.resetFloorDefault,
+    // SR-1: `uniform` ONLY — never `modelMix.models` (see this function's doc).
+    modelMix: { uniform: fit.modelMix.uniform, unknownModels: fit.modelMix.unknownModels },
+    savingCaveat: fit.savingCaveat,
+    settableRange: fit.settableRange,
   };
 }
 
@@ -1264,7 +1313,19 @@ export function createMcpServer(store: Store): McpServer {
       // of the four may cross this channel; `turns` is dropped entirely
       // (per-request grain adds nothing here without it), `resets`/`cycles`
       // keep every other field but strip `sessionId`.
-      const { concentration, preludeByProject, turns, resets, cycles, ...payload } = result;
+      //
+      // `autoCompactFit` is pulled OUT of the rest-spread deliberately
+      // (autocompact-window-fit §4/B1, SR-1): `...payload` below is itself a
+      // denylist-by-omission for everything NOT named above it, and a fit
+      // attached by the glue would otherwise ride across this boundary with
+      // no code written at this site — and so would every field added to
+      // `AutoCompactFitResult` in the future, with no diff for a reviewer to
+      // notice. Built field-by-field below instead, mirroring the ALLOWLIST
+      // posture `redactPlanUtilizationForMcp` documents near the top of this
+      // file: `modelMix.models` (raw transcript model ids — can be a Bedrock
+      // ARN carrying an AWS account id, or a gateway alias named after
+      // whoever provisioned it) is the one field deliberately NOT copied.
+      const { concentration, preludeByProject, turns, resets, cycles, autoCompactFit, ...payload } = result;
       void concentration;
       void preludeByProject;
       void turns;
@@ -1274,6 +1335,7 @@ export function createMcpServer(store: Store): McpServer {
         ...payload,
         resets: resets.map(({ sessionId: _sessionId, ...rest }) => rest),
         cycles: cycles.map(({ sessionId: _sessionId, ...rest }) => rest),
+        autoCompactFit: autoCompactFitForMcp(autoCompactFit),
       });
     },
   );

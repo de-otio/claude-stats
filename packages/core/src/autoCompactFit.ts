@@ -432,7 +432,7 @@ const TOO_CLOSE_COST_FRACTION = 0.05;
 const DEFAULT_RESET_FLOOR_TOKENS = 150_000;
 
 /** Distinct key for a `null` model in the mix. Never emitted. */
-const NULL_MODEL_KEY = " null";
+const NULL_MODEL_KEY = "\u0000null";
 
 /**
  * Rendered on the same line as any dollar figure from this module (D5).

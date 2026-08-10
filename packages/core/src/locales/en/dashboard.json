@@ -484,6 +484,9 @@
       "caveat": "Tokens above a cap are priced at the cache-read rate — the cheapest form this cost can take, and a lower bound on it. This is not the cost of capping context at that level: capping means the same work gets done with less context in front of the model, and what that rework costs is not measured here."
     }
   },
+  "autoCompactFit": {
+    "caveat": "Upper bound: assumes the same work happens with less context and does not price the cost of any extra rework, and the token savings themselves are a lower bound too. The margin behind this recommendation is measured against a cost figure that is itself a lower bound, biasing it toward recommending a change. This is the default auto-compact window — the launch flag can still override it — and this tool cannot tell whether Claude Code is already clamping the window to the model's own context size."
+  },
   "footer": {
     "generated": "Generated {{timestamp}} • Timezone: {{timezone}}"
   },

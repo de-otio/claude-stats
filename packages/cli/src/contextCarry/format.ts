@@ -26,8 +26,16 @@
  *    data, never averaged from 1 or 2 events.
  */
 import type { ContextCarryResult } from "@claude-stats/core/contextCarry";
+import type { AutoCompactFitResult, AutoCompactFitRecommendation } from "@claude-stats/core/autoCompactFit";
 import { formatCost } from "@claude-stats/core/pricing";
 import { formatCount, formatPercent } from "@claude-stats/core/insight";
+
+/** The glue (`contextCarry/index.ts#ContextCarryWithFit`) attaches the fit
+ *  under this optional property — optional so every existing plain
+ *  `ContextCarryResult` fixture (and the ~15 call sites built on it) keeps
+ *  compiling and rendering unchanged (autocompact-window-fit assumptions.md
+ *  B4): the block below is simply omitted when the property is absent. */
+export type ContextCarryResultWithOptionalFit = ContextCarryResult & { autoCompactFit?: AutoCompactFitResult };
 
 /** Minimal translator shape — matches `../i18n.js`'s exported `t()` exactly,
  *  same convention as `ttlFit/format.ts#Translate`. */
@@ -59,8 +67,136 @@ function costOrDash(cost: number | null): string {
   return cost === null ? "—" : formatCost(cost);
 }
 
+/** `null` renders as the localized "not available" phrase — never a `0`,
+ *  never a bare dash that a `formatCost`-style "$0.00" could be confused
+ *  with (D6). */
+function tokensOrUnavailable(value: number | null, t: Translate): string {
+  return value === null ? t("cli:contextCarry.autoCompactFit.notAvailable") : formatCount(value);
+}
+
+/** Same rule as `costOrDash`, but through the locale key rather than a bare
+ *  "—" — the candidate table sits right beside `formatCost` figures and a
+ *  dash alone reads as ambiguous there. D6: a `null` `netSaving` is NEVER
+ *  rendered as `$0.00`; a genuine zero saving (not `null`) is rendered as the
+ *  real `$0.00` it is. */
+function dollarsOrUnavailable(value: number | null, t: Translate): string {
+  return value === null ? t("cli:contextCarry.autoCompactFit.notAvailable") : formatCost(value);
+}
+
+/**
+ * The verdict sentence (IMPLEMENTATION.md §3.4/§4-B1). Built from the typed
+ * `reasonCode`/`reasonFacts` (D14/SR-2) — never from `recommendation.reason`
+ * free text, because there is none: this module's contract is structured
+ * reasons only.
+ *
+ * D7/D8 apply here specifically: never a sentence that could be read as
+ * "disable compaction", and never "will enforce" — a recommendation is
+ * always phrased as a DEFAULT to set, because the `--autocompact` launch flag
+ * and managed settings can still override it (C4).
+ */
+function verdictLine(rec: AutoCompactFitRecommendation, t: Translate): string {
+  switch (rec.verdict) {
+    case "insufficient-data":
+      return t("cli:contextCarry.autoCompactFit.verdictInsufficientData");
+    case "already-tuned":
+      // `reasonFacts` is `Record<string, number>` (D14/SR-2) and both
+      // `already-tuned` reason codes (`peaks-below-smallest-window`,
+      // `peak-at-candidate`) always populate `maxPeakTokens` — trusted per
+      // core's own contract rather than defended against with a fallback
+      // that no real `AutoCompactFitResult` can ever exercise.
+      return t("cli:contextCarry.autoCompactFit.verdictAlreadyTuned", {
+        maxPeakTokens: formatCount(rec.reasonFacts.maxPeakTokens!),
+      });
+    case "too-close-to-call":
+      // `saving-under-margin` always populates all three facts.
+      return t("cli:contextCarry.autoCompactFit.verdictTooCloseToCall", {
+        bestNetSaving: formatCost(rec.reasonFacts.bestNetSaving!),
+        totalCarryCost: formatCost(rec.reasonFacts.totalCarryCost!),
+        marginPercent: formatPercent(rec.reasonFacts.marginFraction!),
+      });
+    case "recommend-window": {
+      // C10/§3.3: `range` is non-null exactly when `verdict ===
+      // "recommend-window"` — the aggressive end's `netSaving` was checked
+      // non-null and strictly positive before this verdict was ever chosen.
+      const [conservative, aggressive] = rec.range!;
+      // Handoff item 1: `range` is `[conservative, aggressive]`, DESCENDING —
+      // labelled explicitly below rather than printed as a bare "X-Y" that a
+      // reader (or a future edit) could misread as ascending.
+      return t("cli:contextCarry.autoCompactFit.verdictRecommend", {
+        recommendedTokens: formatCount(rec.recommendedTokens!),
+        conservativeTokens: formatCount(conservative),
+        aggressiveTokens: formatCount(aggressive),
+      });
+    }
+  }
+}
+
+/**
+ * The auto-compact window fit block (IMPLEMENTATION.md §4/B1 deliverable 3).
+ * Appended after the caps table's surrounding material — the caps table
+ * itself is untouched by this addition (it stays; this is interpretation on
+ * top of the raw observation, per the plan).
+ *
+ * D5: the saving caveat renders immediately after the verdict sentence, in
+ * the same block — never a detached footnote — covering every dollar figure
+ * shown above it in the candidate table too.
+ */
+function formatAutoCompactFitLines(fit: AutoCompactFitResult, t: Translate): string[] {
+  const lines: string[] = [];
+  const push = (s: string): void => {
+    lines.push(s);
+  };
+
+  push(t("cli:contextCarry.autoCompactFit.title"));
+
+  // A8/handoff: `candidates[]` IS populated on the nothing-priced path with
+  // real token figures and `netSaving: null` — a full table whose dollar
+  // column is honestly unavailable, never an empty table on that path.
+  if (fit.candidates.length > 0) {
+    push(
+      t("cli:contextCarry.autoCompactFit.observedMedianLine", {
+        observedMedianCycleRequests: tokensOrUnavailable(fit.observedMedianCycleRequests, t),
+      }),
+    );
+    push(t("cli:contextCarry.autoCompactFit.candidateTableTitle"));
+    for (const c of fit.candidates) {
+      push(
+        "  " +
+          t("cli:contextCarry.autoCompactFit.candidateRow", {
+            windowTokens: formatCount(c.windowTokens),
+            savedTokens: formatCount(c.savedTokens),
+            extraResets: formatCount(c.extraResets),
+            netSaving: dollarsOrUnavailable(c.netSaving, t),
+            medianCycleRequests: formatCount(c.medianCycleRequests),
+          }),
+      );
+    }
+  }
+
+  push(verdictLine(fit.recommendation, t));
+  // The CLI/MCP carry this verbatim (D5) — the dashboard renders its own
+  // locale key instead (`template.ts` forbids core-composed English raw
+  // there; this surface is not that one).
+  push(fit.savingCaveat);
+
+  // D13: disclosed, not hidden — the primary block above this one (the
+  // `resetsLine`/`sawtoothLine` pair) was computed at the DEFAULT floor; this
+  // block's reset/cycle counts come from the adaptive-floor pass and will not
+  // match it whenever the two floors differ.
+  if (fit.resetFloorUsed !== fit.resetFloorDefault) {
+    push(
+      t("cli:contextCarry.autoCompactFit.divergenceNote", {
+        resetFloorUsed: formatCount(fit.resetFloorUsed),
+        resetFloorDefault: formatCount(fit.resetFloorDefault),
+      }),
+    );
+  }
+
+  return lines;
+}
+
 /** Render one `ContextCarryResult` as plain-text lines, localized through `t`. */
-export function formatContextCarryLines(result: ContextCarryResult, t: Translate): string[] {
+export function formatContextCarryLines(result: ContextCarryResultWithOptionalFit, t: Translate): string[] {
   const lines: string[] = [];
   const push = (s: string): void => {
     lines.push(s);
@@ -207,12 +343,20 @@ export function formatContextCarryLines(result: ContextCarryResult, t: Translate
     }
   }
 
+  // D13/§4-B1 deliverable 3 — appended after everything above (the caps
+  // table stays exactly as it was); omitted entirely when the glue has not
+  // attached a fit (B4).
+  if (result.autoCompactFit !== undefined) {
+    push("");
+    for (const line of formatAutoCompactFitLines(result.autoCompactFit, t)) push(line);
+  }
+
   return lines;
 }
 
 /** Render (or JSON-dump) one `ContextCarryResult` to a stream. */
 export function printContextCarry(
-  result: ContextCarryResult,
+  result: ContextCarryResultWithOptionalFit,
   out: NodeJS.WritableStream,
   t: Translate,
   opts: { json?: boolean } = {},

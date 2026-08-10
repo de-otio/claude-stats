@@ -200,7 +200,9 @@
       "savingCaveat": "Estimated from your own usage replayed against plan limits.",
       "ttlPrefer5m": "The 5-minute cache TTL would cost about {{money}} less over this window.",
       "ttlPrefer1h": "The 1-hour cache TTL would cost about {{money}} less over this window.",
-      "ttlProjectionCaveat": "Projected from a window recorded at the other cache TTL — the second-order effect of actually switching is not modelled."
+      "ttlProjectionCaveat": "Projected from a window recorded at the other cache TTL — the second-order effect of actually switching is not modelled.",
+      "autoCompactRecommend": "Consider setting the auto-compact window to {{tokens}} tokens — cycles would run about {{medianCycleRequests}} requests instead of {{observedMedianCycleRequests}}, with an estimated saving of {{money}}.",
+      "autoCompactRecommendNoSaving": "Consider setting the auto-compact window to {{tokens}} tokens — cycles would run about {{medianCycleRequests}} requests instead of {{observedMedianCycleRequests}}. Estimated saving: not available."
     },
     "change": {
       "nothing": "Nothing needs attention right now.",
