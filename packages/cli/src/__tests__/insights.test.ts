@@ -22,20 +22,22 @@ import { describe, it, expect } from "vitest";
 import {
   buildAlerts,
   buildInsightAnswers,
+  detectContextStepChanges,
   renderInsightsTab,
   resolveDashboardCostVocabulary,
   EVIDENCE_TAB,
   type InsightBuildOptions,
 } from "../server/insights.js";
 import { renderDashboard } from "../server/template.js";
-import { answerCost } from "@claude-stats/core/insight";
+import { answerCost, formatPercent } from "@claude-stats/core/insight";
 import { calibrate } from "@claude-stats/core/calibration";
 import { NAV_TAB_IDS } from "../server/nav.js";
-import type { DashboardData } from "../dashboard/index.js";
+import type { DashboardData, DashboardContextCarry } from "../dashboard/index.js";
 import { resolveAccountMode, type Config } from "../config.js";
 import type { TranslateFn } from "../server/template.js";
 import { initI18n } from "@claude-stats/core/i18n";
 import { createRequire } from "node:module";
+import type { TtlFitResult } from "@claude-stats/core/ttlFit";
 
 const require = createRequire(import.meta.url);
 // Relative into this worktree's own source — see the same note in
@@ -144,6 +146,72 @@ const buildOpts: InsightBuildOptions = {
   currency: "USD",
   verdictSentence: "Your plan is good value for how much you use it",
 };
+
+/**
+ * A minimal, well-formed `TtlFitResult` — every field `computeTtlFit` (B2)
+ * would always populate, at honest defaults, so a test only has to override
+ * what it is actually exercising. Cache-ttl-fit C2 owns no part of
+ * `computeTtlFit` itself; this fixture exists only to drive the RENDERING
+ * this lane owns.
+ */
+function ttlFitFixture(over: Partial<TtlFitResult> = {}): TtlFitResult {
+  const bucket = (label: string, minGapMs: number, maxGapMs: number | null) => ({
+    label, minGapMs, maxGapMs, requests: 0, readTokens: 0, creationTokens: 0, pctRebuilt: 0,
+  });
+  return {
+    gapHistogram: [
+      bucket("<4 min", 0, 240_000),
+      bucket("4-5 min", 240_000, 300_000),
+      bucket("5-60 min", 300_000, 3_600_000),
+      bucket("60+ min", 3_600_000, null),
+    ],
+    writesByOrigin: [
+      { origin: "session-start", creationTokens: 0, share: 0 },
+      { origin: "mid-work", creationTokens: 0, share: 0 },
+      { origin: "resume-short", creationTokens: 0, share: 0 },
+      { origin: "resume-long", creationTokens: 0, share: 0 },
+    ],
+    byModel: [],
+    totals: { recoveredReadTokens: 0, writeTokens: 0, writeTokens1h: 0, netCostOfShortTtl: null },
+    windowCost: 100,
+    nearBoundary: { requests: 0, readTokens: 0, windowMs: 60_000, impliedSwing: 0 },
+    observedTtl: "1h",
+    recommendation: { verdict: "insufficient-data", reason: "not enough data (test fixture)" },
+    excludedRows: 0,
+    unpricedRows: 0,
+    unpricedWriteTokens: 0,
+    ...over,
+  };
+}
+
+/**
+ * A minimal, well-formed `DashboardContextCarry` — B1's `concentration`/
+ * `preludeByProject`-STRIPPED projection of `ContextCarryResult` (see that
+ * field's doc in `cli/src/dashboard/index.ts`). Every field a real
+ * `computeContextCarry` would always populate, at honest defaults, so a test
+ * only overrides what it is actually exercising.
+ */
+function contextCarryFixture(over: Partial<DashboardContextCarry> = {}): DashboardContextCarry {
+  return {
+    carriedTokens: 1_000_000,
+    distinctTokensEstimate: 200_000,
+    amplificationEstimate: 5,
+    sizeBands: [],
+    aboveCap: [],
+    capCaveat: "test-fixture capCaveat — never rendered raw; see dashboard:contextCarry.aboveCap.caveat",
+    resets: [],
+    cycles: [],
+    sawtooth: null,
+    prelude: { medianFirstRequestTokens: 0, shareOfCarriedVolume: null, cost: 0, sessions: 0 },
+    preludeByProject: [],
+    turns: [],
+    totalCarryCost: 50,
+    excludedRows: 0,
+    unpricedRows: 0,
+    unpricedTokens: 0,
+    ...over,
+  };
+}
 
 /** One card's own markup, sliced out by its DOM id. */
 function card(html: string, id: string): string {
@@ -877,5 +945,436 @@ describe("the served page", () => {
     // resolve it to the view that now shows it, or the two-click evidence
     // promise breaks silently.
     expect(html).toContain("function resolveHashTarget(target)");
+  });
+});
+
+// ─── Cache-TTL fit (cache-ttl-fit C2) ─────────────────────────────────────────
+
+describe("cache-TTL fit — the setup card composes rather than gates", () => {
+  const withTtlFit = (fit: TtlFitResult, over: Partial<DashboardData> = {}): DashboardData => ({
+    ...goldenData,
+    ...over,
+    ttlFit: fit,
+  });
+
+  // Positive AND negative on the same code path (`answerSetup`'s ttl branch):
+  // a clause appears for the two decisive verdicts and NOT for the two that
+  // are deliberately unactionable — mirroring `buildAlerts`' identical rule.
+  it("carries a TTL clause on prefer-5m/prefer-1h, and none on too-close-to-call/insufficient-data", () => {
+    const prefer5m = ttlFitFixture({
+      recommendation: { verdict: "prefer-5m", reason: "test" },
+      totals: { recoveredReadTokens: 10, writeTokens: 6_000_000, writeTokens1h: 6_000_000, netCostOfShortTtl: -12.5 },
+      observedTtl: "5m",
+    });
+    const a5 = buildInsightAnswers(withTtlFit(prefer5m), buildOpts)[3]!;
+    expect(a5.answer).toContain("5-minute cache TTL would cost about $12.50 less");
+
+    const prefer1h = ttlFitFixture({
+      recommendation: { verdict: "prefer-1h", reason: "test" },
+      totals: { recoveredReadTokens: 10, writeTokens: 6_000_000, writeTokens1h: 6_000_000, netCostOfShortTtl: 9 },
+      observedTtl: "1h",
+    });
+    const a1 = buildInsightAnswers(withTtlFit(prefer1h), buildOpts)[3]!;
+    expect(a1.answer).toContain("1-hour cache TTL would cost about $9.00 less");
+
+    const tooClose = ttlFitFixture({
+      recommendation: { verdict: "too-close-to-call", reason: "test" },
+      totals: { recoveredReadTokens: 10, writeTokens: 6_000_000, writeTokens1h: 6_000_000, netCostOfShortTtl: 0.2 },
+      observedTtl: "1h",
+    });
+    const aTooClose = buildInsightAnswers(withTtlFit(tooClose), buildOpts)[3]!;
+    expect(aTooClose.answer).not.toContain("cache TTL");
+
+    const insufficient = ttlFitFixture({
+      recommendation: { verdict: "insufficient-data", reason: "test" },
+      totals: { recoveredReadTokens: 0, writeTokens: 0, writeTokens1h: 0, netCostOfShortTtl: null },
+      observedTtl: "unknown",
+    });
+    const aInsufficient = buildInsightAnswers(withTtlFit(insufficient), buildOpts)[3]!;
+    expect(aInsufficient.answer).not.toContain("cache TTL");
+  });
+
+  // The regression guard for the `answerSetup` restructure: an earlier
+  // version returned the honest-`unavailable` branch whenever `planVerdict`
+  // was falsy, which would have made the TTL clause — this whole phase's
+  // point — unreachable on a typical install that has no plan verdict yet.
+  it("is AVAILABLE — not the honest-unavailable branch — from a TTL verdict alone, with no plan verdict", () => {
+    const prefer5m = ttlFitFixture({
+      recommendation: { verdict: "prefer-5m", reason: "test" },
+      totals: { recoveredReadTokens: 10, writeTokens: 6_000_000, writeTokens1h: 6_000_000, netCostOfShortTtl: -5 },
+      observedTtl: "5m",
+    });
+    const data = withTtlFit(prefer5m, { planUtilization: null });
+    const answer = buildInsightAnswers(data, { ...buildOpts, verdictSentence: null })[3]!;
+    expect(answer.unavailable).toBeUndefined();
+    expect(answer.answer).toContain("5-minute cache TTL");
+  });
+
+  // Paired: the SAME verdict labelled a projection when the window was
+  // recorded at the other TTL, and NOT labelled when it was recorded at the
+  // TTL the verdict actually names.
+  it("labels a verdict computed from a window recorded at the OTHER TTL as a projection — and only then", () => {
+    const projected = ttlFitFixture({
+      recommendation: { verdict: "prefer-1h", reason: "test" },
+      totals: { recoveredReadTokens: 10, writeTokens: 6_000_000, writeTokens1h: 6_000_000, netCostOfShortTtl: 7 },
+      observedTtl: "5m", // recorded at the OTHER TTL from the one recommended
+    });
+    const projectedAnswer = buildInsightAnswers(withTtlFit(projected), buildOpts)[3]!;
+    expect(projectedAnswer.caveat).toBe(t("common:insight.setup.ttlProjectionCaveat"));
+
+    const measured = ttlFitFixture({
+      recommendation: { verdict: "prefer-1h", reason: "test" },
+      totals: { recoveredReadTokens: 10, writeTokens: 6_000_000, writeTokens1h: 6_000_000, netCostOfShortTtl: 7 },
+      observedTtl: "1h", // recorded at the SAME TTL the verdict recommends
+    });
+    const measuredAnswer = buildInsightAnswers(withTtlFit(measured), buildOpts)[3]!;
+    expect(measuredAnswer.caveat).toBeNull();
+  });
+});
+
+describe("cache-TTL alert — precision over recall, same bar as the rest of the strip", () => {
+  it("fires when the window's OWN recorded TTL is the more expensive one by a clear margin", () => {
+    const fit = ttlFitFixture({
+      recommendation: { verdict: "prefer-5m", reason: "test" },
+      totals: { recoveredReadTokens: 10, writeTokens: 6_000_000, writeTokens1h: 6_000_000, netCostOfShortTtl: -40 },
+      observedTtl: "1h", // currently recording at the TTL the verdict says is pricier
+    });
+    const data: DashboardData = { ...goldenData, recommendations: [], ttlFit: fit };
+    const alerts = buildAlerts(data, t);
+    expect(alerts.map((a) => a.id)).toEqual(["ttl-mismatch"]);
+    expect(alerts[0]!.text).toContain("$40.00");
+    expect(alerts[0]!.tab).toBe("plan");
+  });
+
+  it("does NOT fire when the window is already recorded at the cheaper TTL", () => {
+    const fit = ttlFitFixture({
+      recommendation: { verdict: "prefer-1h", reason: "test" },
+      totals: { recoveredReadTokens: 10, writeTokens: 6_000_000, writeTokens1h: 6_000_000, netCostOfShortTtl: 40 },
+      observedTtl: "1h", // already on the TTL the verdict recommends
+    });
+    const data: DashboardData = { ...goldenData, recommendations: [], ttlFit: fit };
+    expect(buildAlerts(data, t)).toEqual([]);
+  });
+
+  it("does NOT fire on too-close-to-call or insufficient-data — a fresh install must never trip it", () => {
+    const tooClose = ttlFitFixture({
+      recommendation: { verdict: "too-close-to-call", reason: "test" },
+      totals: { recoveredReadTokens: 10, writeTokens: 6_000_000, writeTokens1h: 6_000_000, netCostOfShortTtl: 0.2 },
+      observedTtl: "1h",
+    });
+    const insufficient = ttlFitFixture(); // default fixture: insufficient-data, observedTtl "1h" but net null
+    for (const fit of [tooClose, insufficient]) {
+      const data: DashboardData = { ...goldenData, recommendations: [], ttlFit: fit };
+      expect(buildAlerts(data, t)).toEqual([]);
+    }
+  });
+});
+
+describe("cache-TTL evidence block — escaping (cache-ttl-fit C2)", () => {
+  const HOSTILE_MODEL = "<img src=x onerror=alert(1)>";
+
+  // `i18n.ts` disables i18next's own escaping, and `t()` results are spliced
+  // into raw HTML by hand — so an unescaped model id would break out of the
+  // markup. Asserted on the SERVED PAGE (both the pre-existing cost-per-task
+  // table and the new cache-TTL evidence table render the same hostile model
+  // id), not on an isolated string, because the escaping obligation is on the
+  // HTML assembly, not on any one formatter.
+  it("escapes a hostile model name everywhere a model id reaches the page, including the new evidence block", () => {
+    const fit = ttlFitFixture({
+      byModel: [
+        {
+          model: HOSTILE_MODEL,
+          recoveredReadTokens: 100,
+          writeTokens: 200,
+          writeTokens1h: 200,
+          extraCostAtShortTtl: 1,
+          savedOnWritesAtShortTtl: 2,
+          netCostOfShortTtl: -1,
+          breakEvenRatio: 0.6,
+        },
+      ],
+      recommendation: { verdict: "prefer-5m", reason: "test" },
+      totals: { recoveredReadTokens: 100, writeTokens: 200, writeTokens1h: 200, netCostOfShortTtl: -1 },
+      observedTtl: "5m",
+    });
+    const data: DashboardData = { ...goldenData, ttlFit: fit };
+    const html = renderDashboard(data, t);
+    expect(html).not.toContain(HOSTILE_MODEL);
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+  });
+});
+
+// ─── Context-carry cost (context-carry-cost C2) ───────────────────────────────
+
+describe("cost card's context-carry clause — D11's counterfactual (context-carry-cost C2)", () => {
+  // Positive AND negative on the same code path (`answerCost`'s
+  // `contextCarryClause`): the clause appears when `contextCarry` is present
+  // with a priced `totalCarryCost`, and it never appears otherwise — never a
+  // bare "X% is cache reads" (D11 rejects the spec's literal headline for
+  // exactly this reason: a cache read is the CHEAPEST form this cost can
+  // take, not a $0 alternative).
+  it("carries the percentage AND the D11 counterfactual on the same line, whenever the percentage is present", () => {
+    const data: DashboardData = {
+      ...goldenData,
+      contextCarry: contextCarryFixture({ totalCarryCost: 62.48 }),
+    };
+    const cost = buildInsightAnswers(data, buildOpts)[0]!;
+    const percent = formatPercent(62.48 / data.summary.estimatedCost);
+    expect(cost.answer).toContain(percent);
+    // The counterfactual — never the bare percentage alone.
+    expect(cost.answer).toContain("cache reads");
+    expect(cost.answer).toContain("a tenth the price of sending it fresh");
+    expect(cost.answer).toContain("carrying less, not caching less");
+    expect(cost.answer).toContain("what carrying less costs in rework is not measured here");
+  });
+
+  it("renders no clause at all when no context-carry fit was computed", () => {
+    const data: DashboardData = { ...goldenData, contextCarry: null };
+    const cost = buildInsightAnswers(data, buildOpts)[0]!;
+    expect(cost.answer).not.toContain("cache reads");
+  });
+
+  // `totalCarryCost` is `null` when no priced model appears anywhere in the
+  // window (`ContextCarryResult.totalCarryCost`'s own honest-degrade rule) —
+  // this must render NO clause, never a fabricated 0%.
+  it("renders no clause when totalCarryCost is null (no priced model in the window)", () => {
+    const data: DashboardData = {
+      ...goldenData,
+      contextCarry: contextCarryFixture({ totalCarryCost: null }),
+    };
+    const cost = buildInsightAnswers(data, buildOpts)[0]!;
+    expect(cost.answer).not.toContain("cache reads");
+    expect(cost.answer).not.toContain("0% of spend");
+  });
+});
+
+describe("spending evidence block — size bands, sawtooth, tokens-above-cap (context-carry-cost C2)", () => {
+  // A minimal, well-formed `DashboardSpending` — the evidence block renders
+  // regardless of what the PRE-EXISTING spending tab has to say, so this
+  // fixture is just enough for that tab's own content not to throw.
+  const minimalSpending: DashboardData["spending"] = {
+    topSessionsByCost: [],
+    topToolsByCost: [],
+    costByModel: [],
+    expensivePrompts: [],
+    cacheEfficiency: { overallHitRate: 0, estimatedSavings: 0 },
+    mcpServers: [],
+    mcpServerUsage: [],
+    subagentOverhead: { totalCost: 0, agentCount: 0 },
+  };
+
+  const withContextCarry = (cc: DashboardContextCarry): DashboardData => ({
+    ...goldenData,
+    spending: minimalSpending,
+    contextCarry: cc,
+  });
+
+  it("renders the size-band table with its figures, and states the sawtooth as insufficient-data below 3 resets", () => {
+    const cc = contextCarryFixture({
+      sizeBands: [
+        {
+          label: "20K-50K",
+          minTokens: 20_000,
+          maxTokens: 50_000,
+          requests: 40,
+          shareOfVolume: 0.6,
+          shareOfCost: 0.5,
+          costPerRequest: 1.25,
+        },
+      ],
+      sawtooth: null,
+    });
+    const html = renderDashboard(withContextCarry(cc), t);
+    expect(html).toContain("20K-50K");
+    expect(html).toContain("60%"); // shareOfVolume
+    expect(html).toContain("$1.25"); // costPerRequest
+    expect(html).toContain("Fewer than 3 resets in this window");
+  });
+
+  it("renders the sawtooth's shape when there are enough resets, and NOT the insufficient-data sentence", () => {
+    const cc = contextCarryFixture({
+      sawtooth: { floorTokens: 67_000, peakTokens: 387_000, requestsPerCycle: 79 },
+    });
+    const html = renderDashboard(withContextCarry(cc), t);
+    expect(html).toContain("67,000");
+    expect(html).toContain("387,000");
+    expect(html).not.toContain("Fewer than 3 resets in this window");
+  });
+
+  it("renders the tokens-above-cap table with its rework caveat on the same block", () => {
+    const cc = contextCarryFixture({
+      aboveCap: [{ capTokens: 200_000, tokensAbove: 5_000_000, share: 0.3, cost: 12.5 }],
+    });
+    const html = renderDashboard(withContextCarry(cc), t);
+    expect(html).toContain("200,000");
+    expect(html).toContain("5,000,000");
+    expect(html).toContain("$12.50");
+    expect(html).toContain("not the cost of capping context at that level");
+    expect(html).toContain("what that rework costs is not measured here");
+  });
+
+  // The whole `DashboardData` payload (including `contextCarry.capCaveat`) is
+  // separately embedded verbatim as JSON for the page's own chart scripts —
+  // a pre-existing architectural fact this lane does not change. What THIS
+  // rendering function must never do is COMPOSE its own visible prose from
+  // that raw string; it must go through the translator instead. Asserted on
+  // the evidence block's OWN markup, not the page as a whole.
+  it("composes the above-cap caveat through the translator, not by echoing the core module's raw capCaveat string", () => {
+    const cc = contextCarryFixture({
+      aboveCap: [{ capTokens: 200_000, tokensAbove: 5_000_000, share: 0.3, cost: 12.5 }],
+      capCaveat: "RAW-CORE-CAVEAT-MARKER-should-never-be-composed-into-visible-prose",
+    });
+    const html = renderDashboard(withContextCarry(cc), t);
+    const blockStart = html.indexOf("Tokens carried above a cap");
+    expect(blockStart).toBeGreaterThan(-1);
+    const block = html.slice(blockStart, blockStart + 2000);
+    expect(block).not.toContain("RAW-CORE-CAVEAT-MARKER");
+    expect(block).toContain("not the cost of capping context at that level");
+  });
+
+  it("escapes a hostile size-band label rather than trusting it as markup", () => {
+    const HOSTILE_LABEL = "<img src=x onerror=alert(1)>";
+    const cc = contextCarryFixture({
+      sizeBands: [
+        {
+          label: HOSTILE_LABEL,
+          minTokens: 0,
+          maxTokens: null,
+          requests: 1,
+          shareOfVolume: 1,
+          shareOfCost: 1,
+          costPerRequest: 1,
+        },
+      ],
+    });
+    const html = renderDashboard(withContextCarry(cc), t);
+    expect(html).not.toContain(HOSTILE_LABEL);
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+  });
+});
+
+// ─── Phase 3: per-project session-start baseline step-change (D6) ────────────
+
+describe("context step-change detector — a sustained shift only (D6)", () => {
+  const sessionsAt = (tokens: readonly number[]) =>
+    tokens.map((firstRequestTokens, i) => ({ startedAt: i, firstRequestTokens }));
+
+  it("fires on a sustained shift — at least 5 sessions on each side, at least a 25% jump, project has >=10 sessions", () => {
+    const before = Array<number>(6).fill(20_000);
+    const after = Array<number>(6).fill(30_000); // +50%, clears the 25% floor
+    const projects = [{ projectPath: "/Users/dev/repos/example-project", sessions: sessionsAt([...before, ...after]) }];
+    const found = detectContextStepChanges(projects);
+    expect(found).toHaveLength(1);
+    expect(found[0]!.projectPath).toBe("/Users/dev/repos/example-project");
+    expect(found[0]!.beforeMedianTokens).toBe(20_000);
+    expect(found[0]!.afterMedianTokens).toBe(30_000);
+    expect(found[0]!.shift).toBeCloseTo(0.5, 5);
+  });
+
+  // The measured max first-request context was 175.9K on a legitimately
+  // RESUMED session — a restored conversation, not a defect. A single such
+  // session among many ordinary ones must not read as a sustained step: the
+  // midpoint-median split absorbs one outlier rather than reporting on it.
+  it("does NOT fire on a single large resumed session among otherwise-flat sessions", () => {
+    const tokens = [...Array<number>(10).fill(20_000), 175_900];
+    const projects = [{ projectPath: "/Users/dev/repos/example-project", sessions: sessionsAt(tokens) }];
+    expect(detectContextStepChanges(projects)).toEqual([]);
+  });
+
+  it("does NOT fire below the 10-session floor, even with a genuine 2x jump", () => {
+    const tokens = [...Array<number>(4).fill(20_000), ...Array<number>(4).fill(40_000)]; // 8 sessions total
+    const projects = [{ projectPath: "/Users/dev/repos/example-project", sessions: sessionsAt(tokens) }];
+    expect(detectContextStepChanges(projects)).toEqual([]);
+  });
+
+  it("does NOT fire when a shift is under the 25% floor", () => {
+    const before = Array<number>(6).fill(20_000);
+    const after = Array<number>(6).fill(22_000); // +10%
+    const projects = [{ projectPath: "/Users/dev/repos/example-project", sessions: sessionsAt([...before, ...after]) }];
+    expect(detectContextStepChanges(projects)).toEqual([]);
+  });
+});
+
+describe("context step-change alert — shortened project label, never the full path (review F5)", () => {
+  // The alert strip is the most screenshot-and-paste-prone element on the
+  // page (review F5) — project identifiers are ABSOLUTE FILESYSTEM PATHS, and
+  // escaping does not help (`escapeHtml` of a path is still the path).
+  const HOME_LIKE_PROJECT = "/Users/exampledev/repos/internal-project-x";
+  const stepChangeProjects = (projectPath: string) => [
+    {
+      projectPath,
+      sessions: [
+        ...Array<number>(6).fill(20_000).map((v, i) => ({ startedAt: i, firstRequestTokens: v })),
+        ...Array<number>(6).fill(30_000).map((v, i) => ({ startedAt: i + 6, firstRequestTokens: v })),
+      ],
+    },
+  ];
+
+  it("fires with a shortened label — no home directory, no leading slash", () => {
+    const data: DashboardData = { ...goldenData, recommendations: [] };
+    const alerts = buildAlerts(data, t, "USD", { contextPreludeByProject: stepChangeProjects(HOME_LIKE_PROJECT) });
+    expect(alerts.map((a) => a.id)).toContain("context-step-change");
+    const alert = alerts.find((a) => a.id === "context-step-change")!;
+    expect(alert.text).not.toContain("/Users");
+    expect(alert.text).not.toContain("exampledev");
+    expect(alert.text).not.toMatch(/^\//);
+    expect(alert.text).toContain("repos/internal-project-x");
+    expect(alert.text).toContain("50%");
+  });
+
+  it("does not fire at all when no sustained shift is supplied — never on a single window", () => {
+    const data: DashboardData = { ...goldenData, recommendations: [] };
+    const alerts = buildAlerts(data, t, "USD", {});
+    expect(alerts.map((a) => a.id)).not.toContain("context-step-change");
+  });
+
+  // THE LIVE WIRING. Everything above passes `contextPreludeByProject`
+  // explicitly, which is a caller the dashboard does not have: `template.ts`
+  // calls `buildAlerts(data, t, currency)` with no fourth argument. So these
+  // two pin the path the page actually takes — off
+  // `data.contextCarry.preludeByProject`, already shortened by
+  // `attachInsights` — with the no-shift case as the paired negative on the
+  // SAME path, proving the positive isn't just "any non-empty series fires".
+  it("fires from data.contextCarry.preludeByProject with NO opts — the path template.ts takes", () => {
+    const data: DashboardData = {
+      ...goldenData,
+      recommendations: [],
+      contextCarry: contextCarryFixture({
+        preludeByProject: [{ projectLabel: "repos/internal-project-x", sessions: stepChangeProjects(HOME_LIKE_PROJECT)[0]!.sessions }],
+      }),
+    };
+    const alerts = buildAlerts(data, t, "USD");
+    const alert = alerts.find((a) => a.id === "context-step-change");
+    expect(alert).toBeDefined();
+    expect(alert!.text).toContain("repos/internal-project-x");
+    expect(alert!.text).not.toContain("/Users");
+    expect(alert!.text).toContain("50%");
+  });
+
+  it("does NOT fire from data.contextCarry.preludeByProject when that series holds no sustained shift", () => {
+    const flat = Array<number>(12).fill(20_000).map((v, i) => ({ startedAt: i, firstRequestTokens: v }));
+    const data: DashboardData = {
+      ...goldenData,
+      recommendations: [],
+      contextCarry: contextCarryFixture({
+        preludeByProject: [{ projectLabel: "repos/internal-project-x", sessions: flat }],
+      }),
+    };
+    expect(buildAlerts(data, t, "USD").map((a) => a.id)).not.toContain("context-step-change");
+  });
+
+  // A hostile project name is exactly as untrusted as a hostile recommendation
+  // title or a hostile tool-call name elsewhere in this codebase — asserted on
+  // the RENDERED strip, since `renderInsightsTab` (not `buildAlerts`) is where
+  // `escapeHtml` actually runs.
+  it("escapes a hostile project name in the rendered alert, on top of the path-shortening", () => {
+    const HOSTILE_PROJECT = "/Users/attacker/<img src=x onerror=alert(1)>/proj";
+    const data: DashboardData = { ...goldenData, recommendations: [] };
+    const alerts = buildAlerts(data, t, "USD", { contextPreludeByProject: stepChangeProjects(HOSTILE_PROJECT) });
+    const html = renderInsightsTab(buildInsightAnswers(data, buildOpts), alerts, t);
+    expect(html).not.toContain("<img src=x onerror=alert(1)>");
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(html).not.toContain("/Users");
+    expect(html).not.toContain("attacker");
   });
 });

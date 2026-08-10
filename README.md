@@ -73,7 +73,7 @@ claude mcp add -s user claude-stats -- "$(which node)" --experimental-sqlite \
 
 ### Available tools
 
-16 tools, all read-only except where noted. Enumerated from
+18 tools, all read-only except where noted. Enumerated from
 [`packages/cli/src/mcp/index.ts`](packages/cli/src/mcp/index.ts) — if this
 list and that file ever disagree, the file wins.
 
@@ -90,6 +90,8 @@ list and that file ever disagree, the file wins.
 | `get_cost_per_ticket` | Cost attributed to work-item ticket keys (e.g. `PROJ-123`) from locally observed evidence — git branch, commit subjects, prompt mentions — with a coverage denominator and per-figure confidence tier. No Jira/tracker API is called. |
 | `get_calibration`    | Whether this tool's own confidence tiers have ever been checked against your corrections — an agreement rate on the reviewed subset, never "accuracy," and "uncalibrated" below a minimum sample |
 | `get_efficiency_hints` | Self-audit: your own wasted spend from six local patterns (cache churn, retry loops, abandoned spend, context bloat, re-entry burn, tier mismatch) — nothing here ranks developers or leaves the machine |
+| `get_cache_ttl_fit`  | Is this workload cheaper on the 5-minute or the 1-hour cache TTL? Idle-gap distribution, cache-write origin, per-model net cost, and one verdict — always shown beside the margin that decided it, and labelled a projection when the window was recorded at the other TTL |
+| `get_context_carry`  | How much of the bill is carrying context forward, and where does it concentrate? Context-size bands, tokens carried above a set of caps, reset/compaction cycles and their sawtooth shape, and the session-start "prelude" every fresh session repays — every bound labelled as an estimate, never a bare ratio. Omits `concentration`, `preludeByProject`, and `turns`, and strips session ids from `resets`/`cycles` |
 | `generate_justification_pack` | Write a self-contained HTML + CSV bundle for one month to local disk — the artifact you hand to someone who doesn't run claude-stats. Runs the stricter org-plane redaction (no prompt text, file paths, or session ids) |
 | `get_constraint_impact` | What a *declared* policy boundary (budget cap, model-tier removal, quota change) measurably cost or saved, per task class, on both sides — never inferred from the data |
 | `get_account_info`   | Current login's seat tier, billing type, and known accounts on this machine     |
@@ -152,6 +154,8 @@ claude-stats report --html        # export a standalone HTML dashboard file
 | `export`       | Export sessions as JSON or CSV                                  |
 | `search`       | Search prompt history by keyword                                |
 | `dashboard`    | Output pre-aggregated dashboard JSON to stdout                  |
+| `ttl-fit`      | Is this workload cheaper on the 5-minute or the 1-hour cache TTL? |
+| `context`      | How much of the bill is carrying context forward, and where does it concentrate — over time, not at an instant |
 | `tag` / `tags` | Tag sessions and list tags                                      |
 | `task-class`   | Classify sessions into task classes and show the distribution   |
 | `account`      | Show and re-attribute the Claude accounts seen on this machine  |

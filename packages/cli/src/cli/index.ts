@@ -464,6 +464,96 @@ export async function buildCli(): Promise<Command> {
     });
 
   program
+    .command("ttl-fit")
+    .description(t("cli:commands.ttlFit"))
+    .option("--period <period>", t("cli:commands.ttlFitPeriod"), "month")
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
+    .option("--project <path>", t("cli:commands.reportProject"))
+    .option("--account <uuid>", t("cli:commands.reportAccount"))
+    .option("--json", t("cli:commands.ttlFitJson"))
+    .action(async (opts: {
+      period?: string;
+      since?: string;
+      until?: string;
+      project?: string;
+      account?: string;
+      json?: boolean;
+    }) => {
+      loadCachedPricing();
+      const store = new Store();
+      try {
+        const { periodRange } = await import("../reporter/index.js");
+        const { computeTtlFitForWindow } = await import("../ttlFit/index.js");
+        const { printTtlFit } = await import("../ttlFit/format.js");
+        const effectivePeriod = (opts.period ?? "month") as "day" | "week" | "month" | "all";
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const range = periodRange({ period: effectivePeriod, since: opts.since, until: opts.until }, tz);
+        const result = computeTtlFitForWindow(store, {
+          since: range.since > 0 ? range.since : undefined,
+          until: range.until,
+          projectPath: opts.project,
+          accountUuid: opts.account,
+        });
+        printTtlFit(result, process.stdout, t, { json: opts.json === true });
+      } catch (err) {
+        if (err instanceof RangeError) {
+          console.error(t("cli:errors.invalidDateRange", { message: err.message }));
+          process.exitCode = 1;
+          return;
+        }
+        throw err;
+      } finally {
+        store.close();
+      }
+    });
+
+  program
+    .command("context")
+    .description(t("cli:commands.context"))
+    .option("--period <period>", t("cli:commands.contextPeriod"), "month")
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
+    .option("--project <path>", t("cli:commands.reportProject"))
+    .option("--account <uuid>", t("cli:commands.reportAccount"))
+    .option("--json", t("cli:commands.contextJson"))
+    .action(async (opts: {
+      period?: string;
+      since?: string;
+      until?: string;
+      project?: string;
+      account?: string;
+      json?: boolean;
+    }) => {
+      loadCachedPricing();
+      const store = new Store();
+      try {
+        const { periodRange } = await import("../reporter/index.js");
+        const { computeContextCarryForWindow } = await import("../contextCarry/index.js");
+        const { printContextCarry } = await import("../contextCarry/format.js");
+        const effectivePeriod = (opts.period ?? "month") as "day" | "week" | "month" | "all";
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const range = periodRange({ period: effectivePeriod, since: opts.since, until: opts.until }, tz);
+        const result = computeContextCarryForWindow(store, {
+          since: range.since > 0 ? range.since : undefined,
+          until: range.until,
+          projectPath: opts.project,
+          accountUuid: opts.account,
+        });
+        printContextCarry(result, process.stdout, t, { json: opts.json === true });
+      } catch (err) {
+        if (err instanceof RangeError) {
+          console.error(t("cli:errors.invalidDateRange", { message: err.message }));
+          process.exitCode = 1;
+          return;
+        }
+        throw err;
+      } finally {
+        store.close();
+      }
+    });
+
+  program
     .command("spending")
     .description(t("cli:commands.spending"))
     .option("--period <period>", t("cli:commands.spendingPeriod"), "day")

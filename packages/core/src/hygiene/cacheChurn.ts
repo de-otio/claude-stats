@@ -13,9 +13,9 @@
  * it. `minCacheCreationTokens` excludes trivial sessions where the ratio is
  * high only because everything is small.
  */
-import { estimateCost, type RateOverrides } from "../pricing.js";
+import { estimateCost, type CacheWriteSplit, type RateOverrides } from "../pricing.js";
 import type { HygieneFinding, HygieneThresholds } from "./types.js";
-import { groupBySession } from "./util.js";
+import { groupBySession, groupNum } from "./util.js";
 import type { HygieneMessageRow } from "./types.js";
 
 export function detectCacheChurn(
@@ -34,7 +34,17 @@ export function detectCacheChurn(
       creation += m.cacheCreationTokens;
       read += m.cacheReadTokens;
       if (m.model && m.cacheCreationTokens > 0) {
-        creationCost += estimateCost(m.model, 0, 0, 0, m.cacheCreationTokens, overrides).cost;
+        // This is the one detector that calls `estimateCost` directly instead
+        // of going through `messageCost` (cache-ttl-fit B3/#1) — its entire
+        // subject is cache-write cost, so it is the last place a missing TTL
+        // split would leave a detector silently priced on the old 5-minute-
+        // only basis inside a payload (`hygieneRatio`) that sums all six
+        // detectors together.
+        const ttlSplit: CacheWriteSplit = {
+          ephemeral5mCacheTokens: m.ephemeral5mCacheTokens,
+          ephemeral1hCacheTokens: m.ephemeral1hCacheTokens,
+        };
+        creationCost += estimateCost(m.model, 0, 0, 0, m.cacheCreationTokens, overrides, ttlSplit).cost;
       }
     }
     if (creation < thresholds.minCacheCreationTokens) continue;
@@ -52,9 +62,9 @@ export function detectCacheChurn(
       sessionIds: [group.sessionId],
       estimatedWaste,
       rule: "Cache-creation tokens are ≥ threshold and creation/(creation+read) ratio is at or above threshold across the session.",
-      threshold: `≥${thresholds.minCacheCreationTokens.toLocaleString()} cache-creation tokens, ≥${Math.round(thresholds.ratio * 100)}% creation ratio, ≥${thresholds.minMessages} messages`,
+      threshold: `≥${groupNum(thresholds.minCacheCreationTokens)} cache-creation tokens, ≥${Math.round(thresholds.ratio * 100)}% creation ratio, ≥${thresholds.minMessages} messages`,
       remedy: "Keep this session alive across turns instead of restarting it, and batch config edits that invalidate the prompt prefix.",
-      detail: `${creation.toLocaleString()} cache-creation tokens vs ${read.toLocaleString()} cache-read tokens (${Math.round(ratio * 100)}% creation) over ${group.messages.length} messages.`,
+      detail: `${groupNum(creation)} cache-creation tokens vs ${groupNum(read)} cache-read tokens (${Math.round(ratio * 100)}% creation) over ${group.messages.length} messages.`,
     });
   }
   return findings;

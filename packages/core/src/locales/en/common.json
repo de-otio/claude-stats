@@ -171,7 +171,8 @@
       "enablement": "Run a Claude Code session, then refresh — collection is automatic.",
       "thisPeriod": "{{money}} this period",
       "devTime": "≈ {{devTime}} at your configured rate",
-      "planMultiplier": "{{multiplier}}× your {{fee}}/mo plan"
+      "planMultiplier": "{{multiplier}}× your {{fee}}/mo plan",
+      "contextCarry": "{{percent}} of spend is cache reads — context carried forward at about a tenth the price of sending it fresh. The lever is carrying less, not caching less; what carrying less costs in rework is not measured here."
     },
     "bought": {
       "unavailable": "No spend attributed to work items yet.",
@@ -196,7 +197,10 @@
       "policyImpact_other": "Since the policy change on {{date}}, cost per successful task is up {{percent}} in {{count}} task classes.",
       "policyCaveat": "Evidence, not proof — compared within task classes across the boundary.",
       "verdictWithSaving": "{{verdict}} — switching to {{plan}} would save about {{saving}}/mo.",
-      "savingCaveat": "Estimated from your own usage replayed against plan limits."
+      "savingCaveat": "Estimated from your own usage replayed against plan limits.",
+      "ttlPrefer5m": "The 5-minute cache TTL would cost about {{money}} less over this window.",
+      "ttlPrefer1h": "The 1-hour cache TTL would cost about {{money}} less over this window.",
+      "ttlProjectionCaveat": "Projected from a window recorded at the other cache TTL — the second-order effect of actually switching is not modelled."
     },
     "change": {
       "nothing": "Nothing needs attention right now.",

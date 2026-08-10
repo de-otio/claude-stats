@@ -109,7 +109,8 @@
       "enablement": "运行一次 Claude Code 会话后刷新 — 数据采集是自动的。",
       "thisPeriod": "本期 {{money}}",
       "devTime": "按你配置的费率约合 {{devTime}}",
-      "planMultiplier": "为你 {{fee}}/月 套餐的 {{multiplier}} 倍"
+      "planMultiplier": "为你 {{fee}}/月 套餐的 {{multiplier}} 倍",
+      "contextCarry": "{{percent}} 的支出来自 cache 读取——上下文被继续沿用，其价格约为重新发送的十分之一。真正的着力点是少携带上下文，而不是少用 cache；少携带所带来的返工成本并未计入此处。"
     },
     "bought": {
       "unavailable": "尚无支出归因到工作项。",
@@ -134,7 +135,10 @@
       "policyImpact_other": "自 {{date}} 的策略变更以来，{{count}} 个任务类别中每个成功任务的成本上升了 {{percent}}。",
       "policyCaveat": "这是证据而非证明 — 比较在同一任务类别内跨越该分界点进行。",
       "verdictWithSaving": "{{verdict}} — 改用 {{plan}} 每月约可节省 {{saving}}。",
-      "savingCaveat": "根据你自己的用量对照各套餐额度推算得出。"
+      "savingCaveat": "根据你自己的用量对照各套餐额度推算得出。",
+      "ttlPrefer5m": "在此时间窗口内，使用 5 分钟的 cache TTL 大约可少花 {{money}}。",
+      "ttlPrefer1h": "在此时间窗口内，使用 1 小时的 cache TTL 大约可少花 {{money}}。",
+      "ttlProjectionCaveat": "该预测基于在另一种 cache TTL 下记录的时间窗口——未对实际切换产生的二阶影响进行建模。"
     },
     "change": {
       "nothing": "目前没有需要关注的问题。",

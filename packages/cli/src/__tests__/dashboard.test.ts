@@ -1022,20 +1022,30 @@ describe("buildDashboard — context analysis", () => {
   });
 
   it("detects compaction events (large input token drop)", () => {
+    // context-carry-cost B1/review C-4: the detector is now `detectResets`
+    // (shared with `computeContextCarryForWindow`'s reset ledger), which
+    // requires a >150K starting context before a >40% drop counts — not the
+    // old `prev > 10_000 && curr < prev * 0.6` rule. Fixture bumped from
+    // 80K/20K to 200K/50K (still a 75% drop) to clear the new floor and keep
+    // exercising the same "detects a real compaction" case, now via the
+    // shared detector.
+    // detectResets sums input+cacheRead+cacheCreation (`totalContext`), not
+    // input alone (unlike the old rule), so cache columns are zeroed here to
+    // keep the fixture's numbers exactly the plain input-token figures below.
     store.upsertSession(makeSession({ sessionId: "ctx-s2", promptCount: 4 }));
     store.upsertMessages([
-      makeMessage({ uuid: "ctx-m10", sessionId: "ctx-s2", inputTokens: 50_000, timestamp: 1_700_000_000_000 }),
-      makeMessage({ uuid: "ctx-m11", sessionId: "ctx-s2", inputTokens: 80_000, timestamp: 1_700_000_001_000 }),
-      // Compaction: drops from 80K to 20K (75% drop)
-      makeMessage({ uuid: "ctx-m12", sessionId: "ctx-s2", inputTokens: 20_000, timestamp: 1_700_000_002_000 }),
-      makeMessage({ uuid: "ctx-m13", sessionId: "ctx-s2", inputTokens: 30_000, timestamp: 1_700_000_003_000 }),
+      makeMessage({ uuid: "ctx-m10", sessionId: "ctx-s2", inputTokens: 50_000, cacheReadTokens: 0, cacheCreationTokens: 0, timestamp: 1_700_000_000_000 }),
+      makeMessage({ uuid: "ctx-m11", sessionId: "ctx-s2", inputTokens: 200_000, cacheReadTokens: 0, cacheCreationTokens: 0, timestamp: 1_700_000_001_000 }),
+      // Compaction: drops from 200K to 50K (75% drop)
+      makeMessage({ uuid: "ctx-m12", sessionId: "ctx-s2", inputTokens: 50_000, cacheReadTokens: 0, cacheCreationTokens: 0, timestamp: 1_700_000_002_000 }),
+      makeMessage({ uuid: "ctx-m13", sessionId: "ctx-s2", inputTokens: 30_000, cacheReadTokens: 0, cacheCreationTokens: 0, timestamp: 1_700_000_003_000 }),
     ]);
 
     const data = buildDashboard(store, { timezone: "UTC" });
     expect(data.contextAnalysis).not.toBeNull();
     expect(data.contextAnalysis!.compactionEvents.length).toBe(1);
-    expect(data.contextAnalysis!.compactionEvents[0]!.tokensBefore).toBe(80_000);
-    expect(data.contextAnalysis!.compactionEvents[0]!.tokensAfter).toBe(20_000);
+    expect(data.contextAnalysis!.compactionEvents[0]!.tokensBefore).toBe(200_000);
+    expect(data.contextAnalysis!.compactionEvents[0]!.tokensAfter).toBe(50_000);
     expect(data.contextAnalysis!.compactionEvents[0]!.reductionPercent).toBe(75);
     expect(data.contextAnalysis!.compactionRate).toBeGreaterThan(0);
   });
@@ -1061,6 +1071,10 @@ describe("buildDashboard — context analysis", () => {
   });
 
   it("keeps compactionRate ≤ 100% with CI sessions now in scope (regression: >100%)", () => {
+    // context-carry-cost B1/review C-4: fixture values bumped below to clear
+    // `detectResets`' >150K floor (see the "detects compaction events" test
+    // above) — the invariant under test (rate never exceeds 100%) is
+    // unchanged.
     // One interactive session in scope, with no compaction.
     store.upsertSession(makeSession({ sessionId: "ctx-int", promptCount: 5, isInteractive: true }));
     store.upsertMessages(
@@ -1084,9 +1098,9 @@ describe("buildDashboard — context analysis", () => {
     for (const s of ["ci-1", "ci-2"]) {
       store.upsertSession(makeSession({ sessionId: s, promptCount: 3, isInteractive: false }));
       store.upsertMessages([
-        makeMessage({ uuid: `${s}-m0`, sessionId: s, inputTokens: 80_000, timestamp: 1_700_000_000_000 }),
-        // 80K → 20K: a 75% drop, detected as compaction.
-        makeMessage({ uuid: `${s}-m1`, sessionId: s, inputTokens: 20_000, timestamp: 1_700_000_001_000 }),
+        makeMessage({ uuid: `${s}-m0`, sessionId: s, inputTokens: 200_000, timestamp: 1_700_000_000_000 }),
+        // 200K → 50K: a 75% drop above the >150K floor, detected as compaction.
+        makeMessage({ uuid: `${s}-m1`, sessionId: s, inputTokens: 50_000, timestamp: 1_700_000_001_000 }),
         makeMessage({ uuid: `${s}-m2`, sessionId: s, inputTokens: 30_000, timestamp: 1_700_000_002_000 }),
       ]);
     }

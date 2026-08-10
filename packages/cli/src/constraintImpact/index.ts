@@ -16,7 +16,7 @@ import {
   type ConstraintImpactReport,
 } from "@claude-stats/core/constraintImpact";
 import { groupBySession, sumCost, type HygieneMessageRow } from "@claude-stats/core/hygiene";
-import type { RateOverrides } from "@claude-stats/core/pricing";
+import { nonNegativeFiniteInt, type RateOverrides } from "@claude-stats/core/pricing";
 import { TASK_CLASS_VERSION } from "@claude-stats/core/taskClass";
 import type { PolicyEvent, TaskClass, CoarseTaskClass, Confidence } from "@claude-stats/core/types/insight";
 import type { HygieneMessageStoreRow, Store } from "../store/index.js";
@@ -71,6 +71,23 @@ export interface ConstraintImpactResult {
   coverage: ConstraintImpactCoverage;
 }
 
+// Same guarded parse every `toHygieneMessageRow` mapper carries (context-carry-
+// cost B1/review F11): `messages.tools` is a JSON array of `block.name` values
+// with no runtime check at write time (`ContentBlock.name` is `name?: string`),
+// so a hand-edited JSONL or a synced shard can carry a non-string element or
+// malformed JSON. Parsing at the store boundary — not inside the pure
+// `hygiene/`/`constraintImpact/` modules — means one bad row degrades to `[]`
+// rather than taking down the whole window's report.
+function parseTools(raw: string): readonly string[] {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((t): t is string => typeof t === "string");
+  } catch {
+    return [];
+  }
+}
+
 function toHygieneMessageRow(row: HygieneMessageStoreRow): HygieneMessageRow {
   return {
     sessionId: row.session_id,
@@ -78,11 +95,17 @@ function toHygieneMessageRow(row: HygieneMessageStoreRow): HygieneMessageRow {
     uuid: row.uuid,
     timestamp: row.timestamp,
     model: row.model,
-    inputTokens: row.input_tokens,
-    outputTokens: row.output_tokens,
-    cacheReadTokens: row.cache_read_tokens,
-    cacheCreationTokens: row.cache_creation_tokens,
+    // Coerced here (review F1) — this module's `tokensOf`/`sumCost` sum these
+    // across a session and feed a before/after cost delta, so an unvalidated
+    // negative or NaN would otherwise poison the comparison.
+    inputTokens: nonNegativeFiniteInt(row.input_tokens),
+    outputTokens: nonNegativeFiniteInt(row.output_tokens),
+    cacheReadTokens: nonNegativeFiniteInt(row.cache_read_tokens),
+    cacheCreationTokens: nonNegativeFiniteInt(row.cache_creation_tokens),
+    ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
+    ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
     toolErrorCount: row.tool_error_count,
+    tools: parseTools(row.tools),
   };
 }
 

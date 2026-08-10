@@ -210,11 +210,22 @@ so the tab's shape never changes with how much you've configured:
 | Q1 | **What did AI cost?** | Total estimated spend for the period, in the resolved cost vocabulary (`plan` — equivalent value against a flat fee — or `metered` — actual dollars, with reconciliation available). States the vocabulary basis when it's ambiguous (a `mixed` verdict across accounts with different billing). |
 | Q2 | **What did it buy?** | Completed tasks and, when ticket attribution is configured, the top ticket by cost — with its coverage denominator and confidence caveat, never asserting attribution beyond what's checked. |
 | Q3 | **Was it efficient?** | Self-audited recoverable waste as a share of spend (from `get_efficiency_hints`'s underlying detectors). |
-| Q4 | **Is the setup right?** | The plan verdict — good value / underusing / no plan — for the account(s) in scope. |
+| Q4 | **Is the setup right?** | The plan verdict — good value / underusing / no plan — for the account(s) in scope, composed with any declared policy-boundary effect and, when computed, the cache-TTL fit (below). |
 | Q5 | **What should change?** | The efficiency engine's top actionable recommendation, if any. |
 
 No card is ever a single composite score ("AI ROI: 87/100") — five honest,
 independently-checkable sentences, never one manufactured number.
+
+**The Q4 card's cache-TTL clause.** When enough data exists to compute a
+cache-TTL fit (see the `plan` tab evidence block below) and it recommends
+switching, Q4 adds one sentence naming the estimated saving — e.g. "the
+5-minute cache TTL would cost about $12 less over this window." Nothing
+renders when the fit is `too-close-to-call` or `insufficient-data`: an
+unactionable margin is not a recommendation. If the recommended TTL is the
+*other* one from what this window was actually recorded at, the card labels
+it a **projection** — computed from this window's own gap/write shape, not a
+measurement of what the other setting would actually have produced — rather
+than presenting it with the confidence of a same-TTL result.
 
 **The cost card's trend arrow** compares against the window of **equal length
 immediately preceding** the one you are looking at — not against the same
@@ -241,6 +252,45 @@ Every figure and caveat on this tab is produced by
 tab itself — the same formatters the CLI header, `report --ticket`, and the
 justification pack quote, so none of these surfaces can drift from what the
 others say about the same number.
+
+### Cache-TTL fit evidence block (Plan tab)
+
+The **Plan** section (inside the **Plan & Policy** view) renders the full
+cache-TTL-fit evidence whenever enough data exists to compute one — the same
+`get_cache_ttl_fit`/`ttl-fit` numbers, shown so the Insights card's one-line
+clause (above) is never asserted without its backing:
+
+- **Idle-gap distribution** — a bucketed table of requests, cache-read
+  tokens, cache-write tokens, and the share that show a rebuild, across four
+  bands (a near-boundary band just under the short TTL, the TTL-relevant
+  band between the two thresholds, and everything above the long TTL).
+- **Cache-write origin** — the same cache-creation volume split by
+  session-start / mid-work / resume-short / resume-long, with each origin's
+  share of total writes.
+- **Per-model net cost of the short TTL** — recovered reads (R), total writes
+  (W), writes actually recorded at the 1-hour TTL (W1h — the figure the cost
+  arithmetic uses, not W), the net cost of the 5-minute TTL, and the derived
+  break-even ratio. A model whose 1-hour rate could not be trusted (never
+  reported, or incoherent against its other rates) shows its token volume
+  with no dollar figures rather than a guessed one.
+- **Margin** — window cost, the three volume totals again, the net cost
+  total, and the near-boundary sensitivity band (how much the verdict would
+  move if idle gaps just under the short TTL also turned out to expire).
+
+The verdict itself never renders without this block beside it — spec
+language elsewhere in this project puts it as "no verdict without the
+margin," and this evidence block is that margin. When the recommended TTL is
+not the one the window was actually recorded at, both the Insights card and
+this block carry the same projection label, so the two surfaces cannot
+disagree with each other.
+
+**The pricing table's basis note.** Wherever the model rate table itself is
+shown (e.g. in a static HTML export), a note states that cache writes price
+at one of two rates depending on the ephemeral TTL recorded at write time —
+the 5-minute column or the 1-hour column — and that a jump between them on
+the same workload is this basis switching, not a pricing error. See
+[faq.md](faq.md#why-did-my-cost-figures-go-up) for the fuller version of that
+note, including which surfaces this basis switch has and has not reached yet.
 
 ### Summary bar
 
@@ -293,6 +343,192 @@ See the [`serve` command reference](commands.md#serve) for the full list of supp
 ### Auto-refresh
 
 The **Auto-refresh** button reloads the page every 30 seconds — useful for leaving the dashboard open during an active coding session. Auto-refresh is only available when running `claude-stats serve`; static HTML exports do not update after export.
+
+---
+
+## `context` command output
+
+`claude-stats context` (and the `get_context_carry` MCP tool) answer "how much
+of the bill is carrying context forward, and where does it concentrate?" — the
+same question as Claude Code's own `/context`, but summed **over a window of
+past sessions** rather than shown for the conversation open right now. Every
+number below is billed context: `input + cache-read + cache-creation` tokens,
+the same three columns `report` already shows, just re-sliced.
+
+**The one rule that governs every dollar figure on this screen: it is a lower
+bound, and it says so on the same line as the number.** Every carried token is
+priced at the cache-**read** rate — the cheapest form this cost can take. A
+carried token is periodically re-**written** at roughly 1.25–2× that rate at
+each cache-expiry boundary, and none of the figures below include that
+rewrite cost. Read "$X" here as "at least $X", never as the whole story.
+
+Figures in this section are illustrative, not a real run.
+
+### The volume line and the carried/new ratio
+
+```
+Carried tokens (billed): 4.8M. Estimated distinct (new) content: 210K tokens.
+
+On average, each of the 1,240 requests in this window carried about 3.9K
+tokens of context to produce about 170 tokens of new content — a ratio of
+about 23x, not a bound; see the note above.
+```
+
+- **Carried tokens** is what every request in the window was actually billed
+  for — the same total `report`'s Input/Cache lines already sum, just added
+  together.
+- **Estimated distinct content** is this tool's best guess at how much of that
+  was genuinely *new* text, as opposed to the same context being carried
+  forward turn after turn. It is an **estimate, not a bound** — the count is
+  biased in both directions at once: a turn that both drops old content and
+  adds new content in the same step is counted once (understating distinct
+  content), while a fresh baseline right after a compaction, and content that
+  gets dropped and later re-read, are each counted as new (overstating it).
+  Never read it as "at most" or "at least" — both directions of bias are
+  real, so no single-sided bound claim is true.
+- **The ratio** (carried ÷ distinct) is stated as an aggregate — "the average
+  request carried about 3.9K tokens to produce about 170 of new content" —
+  never as "every distinct token was re-sent 23 times." A mean-of-means ratio
+  like this one describes the window's overall traffic shape; it says nothing
+  about how many times any *particular* token was actually re-sent, which
+  would need a per-token trace this tool does not have.
+
+### Context size bands
+
+```
+Context size bands:
+  0-20K: 310 requests · 8% of carried volume · 6% of window cost · $0.04/request
+  20K-50K: 480 requests · 29% of carried volume · 24% of window cost · $0.09/request
+  50K-100K: 260 requests · 31% of carried volume · 33% of window cost · $0.19/request
+  100K-200K: 140 requests · 22% of carried volume · 25% of window cost · $0.34/request
+  200K-500K: 45 requests · 9% of carried volume · 11% of window cost · $0.42/request
+  500K+: 5 requests · 1% of carried volume · 1% of window cost · $0.58/request
+```
+
+Every request in the window falls into exactly one band, by its own total
+billed context. Read this table as "where does the traffic actually sit,"
+not as a recommendation — a band with a high request count and a low
+$/request is ordinary, everyday-sized traffic; a band with few requests and a
+high $/request is where the expensive outliers live. `$/request` is a plain
+average within the band (never a fabricated `$0` when a band has no
+requests — those rows show "no requests" instead of a zero cost).
+
+### Carried tokens above a cap
+
+```
+Carried tokens above a cap:
+  100K+ tokens: 1.1M tokens above the cap (23% of carried volume), priced
+    at $1.60 (lower bound — cache-read rate)
+  200K+ tokens: 420K tokens above the cap (9% of carried volume), priced
+    at $0.61 (lower bound — cache-read rate)
+  300K+ tokens: 90K tokens above the cap (2% of carried volume), priced
+    at $0.13 (lower bound — cache-read rate)
+  500K+ tokens: 0 tokens above the cap (0% of carried volume), priced at $0.00
+
+Tokens above a cap are priced at the cache-read rate — the cheapest form
+this cost can take, and a lower bound on it. This is not the cost of
+capping context at that level: capping means the same work gets done with
+less context in front of the model, and what that rework costs is not
+measured here.
+```
+
+This is the table to read before ever asking "what should I set my context
+limit to?" — and the caveat printed under it (always, whenever any cap row
+has tokens above it) is the reason this tool refuses to answer that question
+directly. See [faq.md](faq.md#why-doesnt-the-caps-table-tell-me-what-to-set-my-context-limit-to)
+for why "tokens above a cap" is not "the cost of capping there."
+
+A cap above every observed context in the window still prints its row, at
+`0` tokens above and `$0.00` — never omitted, so an empty table always means
+"no cap crossed," not "nothing was computed."
+
+### The sawtooth line
+
+```
+5 reset(s) detected in this window.
+Sawtooth shape across 5 resets: floor ~68K tokens, peak ~340K tokens,
+~62 requests per cycle.
+```
+
+A "reset" is a large drop in billed context between one request and the
+next within the same session — auto-compaction or an equivalent context
+clear. Context then grows again from the post-reset floor until the next
+reset, producing a repeating sawtooth: floor → peak → drop → floor again.
+
+**Fewer than 3 resets in the window and this line reads "not enough to
+describe a repeating shape" instead of a floor/peak/cycle-length figure** —
+one or two resets are individual events, not a pattern, and averaging them
+would dress a coincidence as a shape. This is a stated `null`, never a
+number quietly computed from too little data.
+
+### The session-start prelude
+
+```
+Session-start context: a median of 46.6K tokens across 112 session(s),
+priced at $2.10 re-sent across the window.
+That is about 4% of the window's carried volume.
+```
+
+Every fresh session starts by re-sending its system prompt and project
+context before you type a word — the "prelude." This line reports the
+**median** first-request size across sessions, not the mean: a single
+resumed (not fresh) session can show a very large first-request context
+because it's replaying a restored conversation rather than starting cold,
+and a mean lets one such session move the whole figure. The median doesn't.
+The dollar figure prices that median as if it were re-sent once per session
+in the window, at each session's own model's cache-read rate.
+
+### The total, and the honest-unavailable states
+
+```
+Total carry cost (a lower bound): $6.40. Every carried token here is priced
+at the cache-read rate — the cheapest form this cost can take; a carried
+token is periodically re-written at 1.25-2x that rate at each cache-expiry
+boundary, and this figure does not include that.
+```
+
+If nothing in the window had a priced model, this line reads "not available"
+instead of printing a fabricated `$0` — a real absence of pricing data must
+never look identical to a real zero-cost result. Two more lines can follow,
+each only when it applies:
+
+- **Unpriced rows** — messages with no priced model, whose tokens still count
+  toward every total above but contribute no dollar figure anywhere.
+- **Excluded rows** — messages with no usable timestamp, which can't be
+  placed in a size band, a cap check, or a cycle, but are still counted in
+  the carried-token total (they were still billed).
+
+### Sessions by carried volume (CLI and local dashboard only)
+
+The CLI text output and the local dashboard can additionally show a "top
+sessions by carried volume" list — which sessions concentrate the most
+carried context, with each one's request count, mean context, and share of
+the window. **The `get_context_carry` MCP tool omits this list entirely** (it
+carries session ids), along with the per-project prelude breakdown and the
+per-request attribution array — see [`get_context_carry`](commands.md#mcp)
+in the command reference for exactly what the MCP payload does and doesn't
+carry.
+
+### How this relates to the cache-TTL fit
+
+Both `context` and `ttl-fit` answer questions about what cached context
+costs, but from **different cost bases**, and the two are not directly
+comparable line-for-line:
+
+- `ttl-fit` compares the **write** side of the cache — what a cache-creation
+  token costs at the 5-minute TTL versus the 1-hour TTL — and its net figure
+  can be positive or negative depending on which TTL fits the workload.
+- `context`'s carry cost prices every carried token at the **read** rate
+  only, uniformly, regardless of which TTL wrote it — and states that as a
+  lower bound rather than netting TTL choice into it at all.
+
+A workload can show a favourable `ttl-fit` verdict and a large `context`
+carry cost at the same time — one is about which TTL to pick, the other is
+about how much context gets carried in the first place, and picking the
+right TTL does not by itself reduce how much is carried. See
+[faq.md](faq.md#why-is-the-carry-cost-a-lower-bound) and
+[faq.md](faq.md#why-did-my-cost-figures-go-up) for the two features' FAQ
+entries side by side.
 
 ---
 

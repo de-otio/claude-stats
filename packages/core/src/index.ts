@@ -2,6 +2,9 @@
 export * from "./types.js";
 export * from "./pricing.js";
 export * from "./planMechanics.js";
+export * from "./ttlFit.js";
+export * from "./contextCarry.js";
+export * from "./autoCompactFit.js";
 export { paths, decodeProjectPath, encodeProjectPath } from "./paths.js";
 export { sanitizePromptText } from "./sanitize.js";
 export { parseSessionFile, hashFirstKb, toEpochMs } from "./parser/session.js";

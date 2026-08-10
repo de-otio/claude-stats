@@ -1130,6 +1130,9 @@ describe("Store — message period filter (subquery seek parity)", () => {
         output_tokens: 10 + 30 + 50,
         cache_read_tokens: 5 + 7 + 9,
         cache_creation_tokens: 1 + 3 + 5,
+        // mA1 alone carries a TTL split (eph5m 2, eph1h 3); mB_early/mC1 are 0/0.
+        ephemeral_5m_cache_tokens: 2,
+        ephemeral_1h_cache_tokens: 3,
       });
       // sonnet: mA2(200) + mB_late(400)
       expect(byModel.get("claude-sonnet-4-6")).toEqual({
@@ -1138,6 +1141,9 @@ describe("Store — message period filter (subquery seek parity)", () => {
         output_tokens: 20 + 40,
         cache_read_tokens: 6 + 8,
         cache_creation_tokens: 2 + 4,
+        // mB_late alone carries a TTL split (eph5m 1, eph1h 1); mA2 is 0/0.
+        ephemeral_5m_cache_tokens: 1,
+        ephemeral_1h_cache_tokens: 1,
       });
       // null-model row aggregates under model = null
       expect(byModel.get("∅")).toEqual({
@@ -1146,6 +1152,8 @@ describe("Store — message period filter (subquery seek parity)", () => {
         output_tokens: 1,
         cache_read_tokens: 1,
         cache_creation_tokens: 0,
+        ephemeral_5m_cache_tokens: 0,
+        ephemeral_1h_cache_tokens: 0,
       });
       // orphan never appears
       expect(rows.reduce((s, r) => s + r.input_tokens, 0)).toBe(100 + 300 + 500 + 200 + 400 + 11);

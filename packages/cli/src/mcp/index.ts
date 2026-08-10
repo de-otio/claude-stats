@@ -214,7 +214,13 @@ export function createMcpServer(store: Store): McpServer {
       "`byAccount`, `byModel`, `byDay`, `byHour`, `byProject` — is scoped to the requested window and derived from the " +
       "same per-message data, so each breakdown sums exactly to the headline. Only `sessions` is session-scoped: a " +
       "session counts in every period it was active and is attributed to the day it STARTED, while its tokens are " +
-      "attributed to when they were actually sent.",
+      "attributed to when they were actually sent.\n\n" +
+      "PRICING-BASIS NOTE: cache-write cost now prices tokens recorded at the 1-hour cache TTL at their real 2x-input " +
+      "rate (previously every cache write was priced at the 5-minute 1.25x rate, understating any 1-hour-TTL " +
+      "workload) — a jump in reported cost is this correction, not new spend. This applies to any window with a " +
+      "`period`/`since`/`until`/`project`/`account` filter. The one exception: `period: \"all\"` with no other filter " +
+      "hits an internal fast path (a pre-aggregated rollup) that still prices every cache write at the 5-minute " +
+      "rate — use `get_cache_ttl_fit` to see the real 1h/5m split for that all-time view.",
     {
       ...dateRangeShape,
       account: z.string().optional()
@@ -492,7 +498,12 @@ export function createMcpServer(store: Store): McpServer {
       "READ-ONLY: this tool reports the metric but cannot set an outcome label. " +
       "Labelling is a human action (CLI `task-outcome` / the dashboard), keeping " +
       "the producer of the number separate from the judge of success. The " +
-      "response is numbers and model names only — no stored prompt text.",
+      "response is numbers and model names only — no stored prompt text.\n\n" +
+      "PRICING-BASIS NOTE: unlike `get_stats`/`get_efficiency_hints`/`get_cost_per_ticket`, this tool's per-task " +
+      "cost figures are NOT yet TTL-aware — every cache write is still priced at the flat 5-minute rate regardless " +
+      "of which TTL was actually recorded. So a workload on the 1-hour TTL will show a LOWER cost here than the " +
+      "corrected figure `get_stats`/`get_cache_ttl_fit` report for the same window — that gap is a known residual, " +
+      "not a reconciliation bug.",
     {
       ...dateRangeShape,
       project: z.string().optional()
@@ -545,7 +556,10 @@ export function createMcpServer(store: Store): McpServer {
       "tombstones a wrong automatic link so re-extraction cannot resurrect it, and " +
       "`claude-stats ticket <session> --list` shows a session's current links with " +
       "their source and confidence. If a linked key looks wrong, suggest the " +
-      "relevant command rather than telling the user nothing can be done.",
+      "relevant command rather than telling the user nothing can be done.\n\n" +
+      "PRICING-BASIS NOTE: cache-write cost here now prices tokens recorded at the 1-hour TTL at their real 2x-input " +
+      "rate (previously every cache write was priced at the 5-minute 1.25x rate) — a jump in a ticket's or the " +
+      "window's cost is this correction, not new spend or a mis-attribution.",
     {
       ...dateRangeShape,
       project: z.string().optional()
@@ -756,7 +770,11 @@ export function createMcpServer(store: Store): McpServer {
       "cost; `previousHygieneRatio` is the same ratio for the immediately " +
       "preceding window of equal length (null when the window has no `since`/" +
       "`until` or the prior window had no spend) — this pair is the trend line " +
-      "a justification pack cites (\"self-audited waste down from 14% to 6%\").",
+      "a justification pack cites (\"self-audited waste down from 14% to 6%\").\n\n" +
+      "PRICING-BASIS NOTE: every cost and waste figure here now prices a cache write recorded at the 1-hour TTL at " +
+      "its real 2x-input rate (previously priced at the 5-minute 1.25x rate regardless of which TTL was actually " +
+      "used) — on a workload using the 1-hour TTL, `totalCost`, `hygieneRatio` and every detector's `estimatedWaste` " +
+      "read higher than in earlier versions of this tool, with no behaviour change behind the jump.",
     {
       ...dateRangeShape,
       project: z.string().optional()
@@ -819,6 +837,82 @@ export function createMcpServer(store: Store): McpServer {
             detail: f.detail,
           })),
         })),
+      });
+    },
+  );
+
+  // ── get_cache_ttl_fit ──────────────────────────────────────────────────────
+  server.tool(
+    "get_cache_ttl_fit",
+    "Is this workload cheaper on the 5-minute or the 1-hour ephemeral cache " +
+      "TTL? Measures the idle-gap distribution between consecutive messages " +
+      "in a session, the cache-creation volume broken down by origin " +
+      "(session-start / mid-work / resume-short / resume-long), and a " +
+      "per-model net cost comparison between the two TTLs, from data this " +
+      "store already holds — no config change and no re-run required to see it.\n\n" +
+      "THE FORMULA, per model: `extra = R * (write5m - read)` — reads " +
+      "recovered by the 1-hour TTL (gaps of 5-60 min, recorded at 1h) become " +
+      "writes again under a 5-minute TTL; `saved = W1h * (write1h - write5m)` " +
+      "— the 1-hour premium no longer paid; `net = extra - saved`, negative " +
+      "meaning the 5-minute TTL would have been cheaper. **`saved` uses " +
+      "`W1h` — the cache-creation volume actually written at the 1-hour TTL " +
+      "— NOT total `W`.** The 1-hour premium is only ever PAID on tokens " +
+      "written at that TTL; using total creation volume overstates the " +
+      "5-minute saving on any mixed window. `writeTokens` (total) is still " +
+      "reported for the histogram/origin breakdown, `writeTokens1h` is the " +
+      "term the cost arithmetic uses — read `byModel[].writeTokens` vs " +
+      "`byModel[].writeTokens1h`, they are different numbers.\n\n" +
+      "`observedTtl` states which TTL this window was ACTUALLY recorded at. " +
+      "A verdict recommending the OTHER TTL (e.g. `prefer-5m` when " +
+      "`observedTtl` is `\"1h\"`) is a PROJECTION/counterfactual, not a " +
+      "measurement — state it as such, never with the confidence of a " +
+      "same-TTL result. `observedTtl: \"unknown\"` means these messages " +
+      "predate the TTL columns; the gap distribution still computes but " +
+      "every pricing field is `null` and the verdict is always " +
+      "`insufficient-data`.\n\n" +
+      "NOT MODELLED (stated, not hidden): under a 5-minute TTL, the reads " +
+      "this tool counts as \"recovered\" would themselves rebuild the cache, " +
+      "and that rebuild would itself be re-read later — a second-order " +
+      "effect this arithmetic does not simulate. Also: 1-hour TTL " +
+      "availability VARIES BY MODEL on Bedrock, so a `byModel` row with " +
+      "`netCostOfShortTtl: null` may reflect that unavailability rather " +
+      "than a bad rate.\n\n" +
+      "The answer is WORKLOAD-SPECIFIC, not a universal recommendation — a " +
+      "session-heavy, few-turn workload and a long-running, many-turn one " +
+      "can get opposite verdicts from the same rate table. Never quote this " +
+      "tool's verdict as advice for a workload it wasn't run against.\n\n" +
+      "Deliberately does not return session ids — unlike `get_efficiency_hints`, " +
+      "this tool has no per-finding drill-down that needs them, so it never " +
+      "carries them.",
+    {
+      ...dateRangeShape,
+      project: z.string().optional()
+        .describe("Filter to a specific project path"),
+      account: z.string().optional()
+        .describe("Filter to a specific account UUID (full or prefix match)"),
+    },
+    async ({ period, since, until, project, account }) => {
+      const resolved = resolveAccountFilter(store, account);
+      if (!resolved.ok) return formatResult({ error: resolved.error });
+      const effectivePeriod = period ?? "month";
+      const { periodRange } = await import("../reporter/index.js");
+      const { loadConfig } = await import("../config.js");
+      const { computeTtlFitForWindow } = await import("../ttlFit/index.js");
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const range = periodRange({ period: effectivePeriod, since, until }, tz);
+      const config = loadConfig();
+
+      const result = computeTtlFitForWindow(store, {
+        since: range.since > 0 ? range.since : undefined,
+        until: range.until,
+        projectPath: project,
+        accountUuid: resolved.accountUuid,
+        rateOverrides: config.pricing?.rates,
+      });
+
+      return formatResult({
+        window: { since: new Date(range.since).toISOString(), until: new Date(range.until).toISOString() },
+        ...result,
       });
     },
   );
@@ -1105,6 +1199,81 @@ export function createMcpServer(store: Store): McpServer {
         totalDevTimeCost: report.totalDevTimeCost,
         totalNetEffect: report.totalNetEffect,
         classes: report.classes,
+      });
+    },
+  );
+
+  // ── get_context_carry ──────────────────────────────────────────────────────
+  server.tool(
+    "get_context_carry",
+    "How much of the bill is carrying context forward, and where does it concentrate? Measures the " +
+      "same billed context every request pays for (input + cache-read + cache-creation), broken into " +
+      "context-size bands, tokens carried above a set of caps, reset (compaction) cycles and their " +
+      "sawtooth shape, and the session-start 'prelude' every fresh session repays across the window — " +
+      "from data this store already holds.\n\n" +
+      "`distinctTokensEstimate` and `amplificationEstimate` are ESTIMATES, NOT BOUNDS — the underlying " +
+      "count is biased in BOTH directions at once (a turn that drops and re-adds content in one step " +
+      "nets to a single count, understating; a post-reset baseline and content re-read after being " +
+      "dropped are each counted as new, overstating). Never read either as \"at most\" or \"at least\", " +
+      "and never quote the ratio as a per-token lifetime (\"every distinct token was re-sent N times\") — " +
+      "it is `mean carried context / mean new content per request`, an aggregate.\n\n" +
+      "`totalCarryCost` and every `aboveCap[].cost` figure are LOWER bounds: every carried token is " +
+      "priced at the cache-READ rate, the cheapest form this cost can take. A carried token is " +
+      "periodically re-WRITTEN at 1.25-2x that rate at each cache-expiry boundary, and this tool does " +
+      "not price that. The counterfactual to a cache read is not zero — it is a fresh input token " +
+      "(~10x) or a cache write (~12.5-20x). The lever this tool can point at is carrying LESS, not " +
+      "caching less; what carrying less would cost in rework is not measured here (see `capCaveat`).\n\n" +
+      "Deliberately OMITS `concentration` (which sessions carry the most volume — carries session ids), " +
+      "`preludeByProject` (per-project session-start baselines — carries absolute project paths), and " +
+      "`turns` (per-request attribution — carries session ids and message uuids); `resets`/`cycles` are " +
+      "returned WITHOUT their `sessionId` field for the same reason. Use the `context` CLI command or " +
+      "the local dashboard for the full breakdown.\n\n" +
+      "Answers the same question as Claude Code's own `/context`, but OVER TIME across a window rather " +
+      "than at a single instant — never a live breakdown of what is in context right now.",
+    {
+      ...dateRangeShape,
+      project: z.string().optional()
+        .describe("Filter to a specific project path"),
+      account: z.string().optional()
+        .describe("Filter to a specific account UUID (full or prefix match)"),
+    },
+    async ({ period, since, until, project, account }) => {
+      const resolved = resolveAccountFilter(store, account);
+      if (!resolved.ok) return formatResult({ error: resolved.error });
+      const effectivePeriod = period ?? "month";
+      const { periodRange } = await import("../reporter/index.js");
+      const { loadConfig } = await import("../config.js");
+      const { computeContextCarryForWindow } = await import("../contextCarry/index.js");
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const range = periodRange({ period: effectivePeriod, since, until }, tz);
+      const config = loadConfig();
+
+      const result = computeContextCarryForWindow(store, {
+        since: range.since > 0 ? range.since : undefined,
+        until: range.until,
+        projectPath: project,
+        accountUuid: resolved.accountUuid,
+        rateOverrides: config.pricing?.rates,
+      });
+
+      // D3 (extended, IMPLEMENTATION.md ambiguity default — see
+      // assumptions.md): `concentration` and `preludeByProject` are the two
+      // fields D3 names explicitly, but `resets[].sessionId`,
+      // `cycles[].sessionId`, and `turns[].sessionId`/`uuid` carry the exact
+      // same class of identifier and leave the machine just as surely. None
+      // of the four may cross this channel; `turns` is dropped entirely
+      // (per-request grain adds nothing here without it), `resets`/`cycles`
+      // keep every other field but strip `sessionId`.
+      const { concentration, preludeByProject, turns, resets, cycles, ...payload } = result;
+      void concentration;
+      void preludeByProject;
+      void turns;
+
+      return formatResult({
+        window: { since: new Date(range.since).toISOString(), until: new Date(range.until).toISOString() },
+        ...payload,
+        resets: resets.map(({ sessionId: _sessionId, ...rest }) => rest),
+        cycles: cycles.map(({ sessionId: _sessionId, ...rest }) => rest),
       });
     },
   );

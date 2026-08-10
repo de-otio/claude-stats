@@ -24,6 +24,7 @@ import {
   type HygieneThresholds,
   type TierMismatchClassification,
 } from "./types.js";
+import { observedTtlOf } from "./util.js";
 
 export type {
   HygieneDetectorId,
@@ -38,7 +39,19 @@ export { computeTierParity, detectTierMismatch, type TierParityComparison, type 
 // Shared row-grouping/costing helpers — re-exported so a sibling comparison
 // (constraint-impact) can build the same per-session shape from the same
 // message rows without a second implementation to drift from this one.
-export { groupBySession, messageCost, sumCost, type SessionGroup } from "./util.js";
+export { groupBySession, groupNum, messageCost, sumCost, observedTtlOf, type SessionGroup } from "./util.js";
+// context-carry-cost A1: shared increment/reset helpers, re-exported so
+// `contextCarry.ts` (B2) and `contextBloat.ts` (B3) build the same
+// per-session shape from the same rows without a second implementation.
+export {
+  totalContext,
+  contextIncrements,
+  detectResets,
+  firstRequestContext,
+  type ContextIncrement,
+  type ContextResetEvent,
+  type DetectResetsOptions,
+} from "./util.js";
 
 const TITLES: Record<HygieneDetectorId, string> = {
   "cache-churn": "Cache churn",
@@ -67,6 +80,62 @@ export interface RunHygieneDetectorsOptions {
   taskClassBySession?: ReadonlyMap<string, TierMismatchClassification>;
 }
 
+/**
+ * `reEntryBurn`'s threshold pair, TTL-aware (cache-ttl-fit B3/#2/#3).
+ *
+ * The DEFAULT `minGapMs` depends on `observedTtlOf(rows)` — the TTL a
+ * workload was actually recorded at: 5 minutes under `"5m"`, 60 minutes
+ * under `"1h"`, and the existing 30 minutes under `"mixed"`/`"unknown"`. An
+ * explicitly configured `minGapMs` always wins; only the OMITTED half is
+ * derived here — this changes the default, never the contract.
+ *
+ * Dropping the gap to 5 minutes without also raising `minCacheCreationTokens`
+ * would make almost every ordinary think-pause on a 5-minute-TTL workload
+ * qualify — that inflates `estimatedWaste`, then `digest.totalEstimatedWaste`,
+ * then `hygieneRatio`, which the MCP tool text describes as the trend line a
+ * justification pack cites. So the rebuild floor scales up in step with the
+ * shorter default gap, unless the caller explicitly configured its own
+ * `minCacheCreationTokens` — required guard, not optional (B3/#3).
+ */
+function resolveReEntryBurnThresholds(
+  rows: readonly HygieneMessageRow[],
+  explicit: Partial<HygieneThresholds["reEntryBurn"]> | undefined,
+): HygieneThresholds["reEntryBurn"] {
+  const observed = observedTtlOf(rows);
+  let defaultGapMs = DEFAULT_HYGIENE_THRESHOLDS.reEntryBurn.minGapMs; // 30 min, mixed/unknown
+  let defaultMinCreation = DEFAULT_HYGIENE_THRESHOLDS.reEntryBurn.minCacheCreationTokens;
+  if (observed === "5m") {
+    defaultGapMs = 5 * 60 * 1000;
+    defaultMinCreation = 150_000;
+  } else if (observed === "1h") {
+    defaultGapMs = 60 * 60 * 1000;
+  }
+  return {
+    minGapMs: explicit?.minGapMs ?? defaultGapMs,
+    minCacheCreationTokens: explicit?.minCacheCreationTokens ?? defaultMinCreation,
+  };
+}
+
+/**
+ * Overlay a caller's partial thresholds onto the defaults, per detector.
+ *
+ * **No migration path, deliberately** (context-carry-cost D1). `contextBloat`
+ * changed shape in that build — `minTurnInputTokens`/`maxOutputRatio` out,
+ * `minIncrementTokens` in — and nothing here translates the old keys, because
+ * there is nothing to translate FROM: `Config["hygiene"]` is
+ * `{ suppressions?: string[] }` and `validateHygieneConfig` reads only
+ * `suppressions`. Thresholds are a programmatic parameter, never a
+ * user-config surface, so no stored file can carry a stale key into this
+ * function. A caller that hands one in anyway gets the inert behaviour the
+ * spread already gives: the unknown key lands on the merged object where no
+ * detector reads it, and every REAL key keeps its default. That is the
+ * conservative outcome — a stale `minTurnInputTokens: 5_000` must not silently
+ * lower the new increment bar (`hygiene.test.ts` pins both halves of that).
+ *
+ * Nor does it warn: `packages/core/src/**` contains zero `console.*` calls by
+ * design (a pure module, loaded inside an MCP server whose stdout carries
+ * JSON-RPC — a stray write there corrupts the stream).
+ */
 function mergeThresholds(overrides: RunHygieneDetectorsOptions["thresholds"]): HygieneThresholds {
   if (!overrides) return DEFAULT_HYGIENE_THRESHOLDS;
   return {
@@ -90,6 +159,9 @@ export function runHygieneDetectors(
 ): HygieneDetectorResult[] {
   const t = mergeThresholds(opts.thresholds);
   const suppressed = new Set(opts.suppressions ?? []);
+  // Overrides `t.reEntryBurn` with the TTL-aware default (or the caller's
+  // explicit override, which always wins) — see `resolveReEntryBurnThresholds`.
+  const reEntryBurnThresholds = resolveReEntryBurnThresholds(rows, opts.thresholds?.reEntryBurn);
 
   // Tier-mismatch is the one detector with an input every other detector
   // doesn't need (the task classifier's output) — its `computed` flag is
@@ -103,7 +175,7 @@ export function runHygieneDetectors(
     ["retry-loop", detectRetryLoop(rows, t.retryLoop, opts.rateOverrides), true, undefined],
     ["abandoned-spend", detectAbandonedSpend(rows, t.abandonedSpend, opts.rateOverrides), true, undefined],
     ["context-bloat", detectContextBloat(rows, t.contextBloat, opts.rateOverrides), true, undefined],
-    ["re-entry-burn", detectReEntryBurn(rows, t.reEntryBurn, opts.rateOverrides), true, undefined],
+    ["re-entry-burn", detectReEntryBurn(rows, reEntryBurnThresholds, opts.rateOverrides), true, undefined],
     [
       "tier-mismatch",
       tierMismatchComputed ? detectTierMismatch(rows, opts.taskClassBySession!, t.tierMismatch, opts.rateOverrides) : [],

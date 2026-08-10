@@ -3,7 +3,7 @@
  * Produces a self-contained HTML page with Chart.js charts from DashboardData.
  * Charts are organized into tabs for easier navigation.
  */
-import type { DashboardData } from "../dashboard/index.js";
+import type { DashboardData, DashboardContextCarry } from "../dashboard/index.js";
 import { PRICING, PRICING_VERIFIED_DATE } from "@claude-stats/core/pricing";
 import { formatEnergy, formatCO2, REGIONS } from "@claude-stats/core/energy";
 import {
@@ -28,6 +28,8 @@ import { renderTicketAttributionCard, TICKET_CARD_CSS } from "./ticketCard.js";
 import { escapeHtml } from "./utils.js";
 import type { PolicyEvent } from "@claude-stats/core/types/insight";
 import { RECONCILIATION_CSS } from "./reconciliationPanel.js";
+import { formatMoney, formatCount, formatPercent } from "@claude-stats/core/insight";
+import type { TtlFitResult } from "@claude-stats/core/ttlFit";
 
 export { DashboardData };
 
@@ -59,6 +61,327 @@ function policyEventsHtml(events: readonly PolicyEvent[] | undefined, t: Transla
           <span style="text-transform:uppercase;letter-spacing:0.05em;color:#888;">${escapeHtml(t("dashboard:charts.policyEvents"))}</span>
           <ul style="margin:0.2rem 0 0 1rem;padding:0;">${rows}</ul>
         </div>`;
+}
+
+/** A `null`/D10-guarded pricing field renders as an em dash, never a fabricated
+ *  number — same honesty rule `formatPercent` already applies to a null
+ *  ratio elsewhere on this page. */
+function moneyOrDash(n: number | null, currency: string): string {
+  return n === null ? "—" : formatMoney(n, currency, { precise: true });
+}
+
+/**
+ * The `plan` tab's cache-TTL-fit evidence block (cache-ttl-fit C2, plan.md
+ * §5.3: "no verdict without the margin"). Renders the gap histogram, the
+ * writes-by-origin table, the per-model net table, and the margin figures
+ * (`R`, `W`, `W1h`, `breakEvenRatio` per model, `windowCost`, and the
+ * near-boundary band including `impliedSwing`) — everything a reader needs to
+ * check the card's one-sentence verdict rather than take it on trust.
+ *
+ * HTML-escaping rule for this whole function: `t()` returns RAW text
+ * (`i18n.ts` sets `interpolation: { escapeValue: false }`), so every `t()`
+ * result is escaped before insertion, and every number is formatted to a
+ * fixed string BEFORE it is interpolated into a `t()` call — never after.
+ * Model ids are caller data (an id like `<img src=x onerror=alert(1)>` is not
+ * hypothetical — it is exactly the kind of string a misconfigured
+ * `rateOverrides` key or a future provider id could carry) and are escaped
+ * like any other row value.
+ */
+function renderTtlFitEvidence(fit: TtlFitResult | null | undefined, t: TranslateFn, currency: string): string {
+  if (!fit) return "";
+
+  const verdict = fit.recommendation.verdict;
+  const magnitude = fit.totals.netCostOfShortTtl === null ? null : Math.abs(fit.totals.netCostOfShortTtl);
+  // `answerSetup`'s doc comment (insight.ts) applies here too: `reason` is an
+  // English source string composed by `computeTtlFit` for a CLI/log context,
+  // never rendered raw on a localized surface. This block owns its own
+  // sentence, one whole-sentence key per verdict, built from the SAME
+  // underlying numbers.
+  const verdictText =
+    verdict === "prefer-5m" && magnitude !== null
+      ? t("dashboard:ttlFit.verdict.prefer5m", { money: formatMoney(magnitude, currency, { precise: true }) })
+      : verdict === "prefer-1h" && magnitude !== null
+        ? t("dashboard:ttlFit.verdict.prefer1h", { money: formatMoney(magnitude, currency, { precise: true }) })
+        : verdict === "too-close-to-call" && magnitude !== null
+          ? t("dashboard:ttlFit.verdict.tooClose", { money: formatMoney(magnitude, currency, { precise: true }) })
+          : t("dashboard:ttlFit.verdict.insufficientData");
+
+  // A verdict computed from a window recorded at the OTHER TTL is a
+  // projection/counterfactual, not a same-TTL measurement (`observedTtl`'s
+  // doc comment, ttlFit.ts) — labelled here too, not only on the setup card
+  // (`insights.ts`'s `isTtlProjection`, deliberately re-derived rather than
+  // imported: this module owns no dependency on that one's internals).
+  const namedTtl = verdict === "prefer-5m" ? "5m" : verdict === "prefer-1h" ? "1h" : null;
+  const isProjection = namedTtl !== null && fit.observedTtl !== "unknown" && fit.observedTtl !== namedTtl;
+  const projectionNote = isProjection
+    ? `<p style="font-size:0.72rem;color:#f28e2b;margin:0 0 0.75rem 0;">${escapeHtml(t("common:insight.setup.ttlProjectionCaveat"))}</p>`
+    : "";
+
+  const gapRows = fit.gapHistogram
+    .map(
+      (b) => `
+          <tr>
+            <td style="padding:0.3rem 0.5rem;color:#ccc;">${escapeHtml(b.label)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${formatCount(b.requests)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${formatCount(b.readTokens)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${formatCount(b.creationTokens)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${formatPercent(b.pctRebuilt)}</td>
+          </tr>`,
+    )
+    .join("");
+
+  const ORIGIN_LABEL_KEY: Record<TtlFitResult["writesByOrigin"][number]["origin"], string> = {
+    "session-start": "dashboard:ttlFit.origin.sessionStart",
+    "mid-work": "dashboard:ttlFit.origin.midWork",
+    "resume-short": "dashboard:ttlFit.origin.resumeShort",
+    "resume-long": "dashboard:ttlFit.origin.resumeLong",
+  };
+  const originRows = fit.writesByOrigin
+    .map(
+      (o) => `
+          <tr>
+            <td style="padding:0.3rem 0.5rem;color:#ccc;">${escapeHtml(t(ORIGIN_LABEL_KEY[o.origin]))}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${formatCount(o.creationTokens)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${formatPercent(o.share)}</td>
+          </tr>`,
+    )
+    .join("");
+
+  const modelRows = fit.byModel
+    .map(
+      (m) => `
+          <tr>
+            <td style="padding:0.3rem 0.5rem;color:#e8e8e8;">${escapeHtml(m.model)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${formatCount(m.recoveredReadTokens)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${formatCount(m.writeTokens)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${formatCount(m.writeTokens1h)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${moneyOrDash(m.netCostOfShortTtl, currency)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${m.breakEvenRatio === null ? "—" : m.breakEvenRatio.toFixed(3)}</td>
+          </tr>`,
+    )
+    .join("");
+
+  const unpricedNote =
+    fit.unpricedRows > 0
+      ? `<div style="font-size:0.65rem;color:#888;margin-top:0.4rem;">${escapeHtml(
+          t("dashboard:ttlFit.byModel.unpriced", {
+            count: formatCount(fit.unpricedRows),
+            tokens: formatCount(fit.unpricedWriteTokens),
+          }),
+        )}</div>`
+      : "";
+
+  const nb = fit.nearBoundary;
+  const nearBoundaryMinutes = (nb.windowMs / 60000).toFixed(1);
+
+  return `
+    <div class="chart-card" style="grid-column: 1 / -1;">
+      <h2>${escapeHtml(t("dashboard:ttlFit.title"))}</h2>
+      <p style="font-size:0.8rem;color:#e8e8e8;margin:0 0 0.75rem 0;">${escapeHtml(verdictText)}</p>
+      ${projectionNote}
+
+      <div style="font-size:0.7rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin:0.5rem 0 0.3rem;">${escapeHtml(t("dashboard:ttlFit.gapHistogram.title"))}</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.72rem;">
+          <thead>
+            <tr style="border-bottom:1px solid #0f3460;">
+              <th style="text-align:left;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:ttlFit.gapHistogram.bucket"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:ttlFit.gapHistogram.requests"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:ttlFit.gapHistogram.readTokens"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:ttlFit.gapHistogram.creationTokens"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:ttlFit.gapHistogram.pctRebuilt"))}</th>
+            </tr>
+          </thead>
+          <tbody>${gapRows}</tbody>
+        </table>
+      </div>
+
+      <div style="font-size:0.7rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin:0.75rem 0 0.3rem;">${escapeHtml(t("dashboard:ttlFit.origin.title"))}</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.72rem;">
+          <thead>
+            <tr style="border-bottom:1px solid #0f3460;">
+              <th style="text-align:left;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:ttlFit.origin.column"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:ttlFit.gapHistogram.creationTokens"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:ttlFit.origin.share"))}</th>
+            </tr>
+          </thead>
+          <tbody>${originRows}</tbody>
+        </table>
+      </div>
+
+      <div style="font-size:0.7rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin:0.75rem 0 0.3rem;">${escapeHtml(t("dashboard:ttlFit.byModel.title"))}</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.72rem;">
+          <thead>
+            <tr style="border-bottom:1px solid #0f3460;">
+              <th style="text-align:left;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:ttlFit.byModel.model"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:ttlFit.byModel.recovered"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:ttlFit.byModel.writes"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:ttlFit.byModel.writes1h"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:ttlFit.byModel.net"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:ttlFit.byModel.breakEven"))}</th>
+            </tr>
+          </thead>
+          <tbody>${modelRows}</tbody>
+        </table>
+      </div>
+      ${unpricedNote}
+
+      <div style="font-size:0.7rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin:0.75rem 0 0.3rem;">${escapeHtml(t("dashboard:ttlFit.margin.title"))}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:0.5rem;font-size:0.75rem;color:#ccc;">
+        <div>${escapeHtml(t("dashboard:ttlFit.margin.windowCost"))}: <strong style="color:#e8e8e8;">${escapeHtml(moneyOrDash(fit.windowCost, currency))}</strong></div>
+        <div>${escapeHtml(t("dashboard:ttlFit.margin.recovered"))}: <strong style="color:#e8e8e8;">${formatCount(fit.totals.recoveredReadTokens)}</strong></div>
+        <div>${escapeHtml(t("dashboard:ttlFit.margin.writes"))}: <strong style="color:#e8e8e8;">${formatCount(fit.totals.writeTokens)}</strong></div>
+        <div>${escapeHtml(t("dashboard:ttlFit.margin.writes1h"))}: <strong style="color:#e8e8e8;">${formatCount(fit.totals.writeTokens1h)}</strong></div>
+        <div>${escapeHtml(t("dashboard:ttlFit.margin.net"))}: <strong style="color:#e8e8e8;">${moneyOrDash(fit.totals.netCostOfShortTtl, currency)}</strong></div>
+      </div>
+      <div style="font-size:0.7rem;color:#888;margin-top:0.4rem;">
+        ${escapeHtml(
+          t("dashboard:ttlFit.margin.nearBoundary", {
+            minutes: nearBoundaryMinutes,
+            requests: formatCount(nb.requests),
+            readTokens: formatCount(nb.readTokens),
+          }),
+        )} — ${escapeHtml(t("dashboard:ttlFit.margin.impliedSwing"))}: <strong style="color:#e8e8e8;">${escapeHtml(formatMoney(nb.impliedSwing, currency, { precise: true }))}</strong>
+      </div>
+    </div>`;
+}
+
+/**
+ * The Spending tab's context-carry evidence (context-carry-cost C2): the
+ * size-band table, the reset sawtooth, and the tokens-above-cap table — the
+ * numbers the cost card's D11 clause and this tab's own honesty caveats rest
+ * on. Reads `data.contextCarry` (B1's `concentration`/`preludeByProject`-
+ * STRIPPED projection) and recomputes nothing.
+ *
+ * Same escaping rule as `renderTtlFitEvidence`: `t()` returns RAW text, every
+ * number is formatted to a fixed string BEFORE it is interpolated into a
+ * `t()` call, and no `t()` result is emitted without `escapeHtml`.
+ *
+ * `capCaveat` (and any other English string `computeContextCarry` composes,
+ * e.g. a future `rule`/`reason` field) is ENGLISH SOURCE TEXT for a CLI/log
+ * context, not a localized string — `insight.ts`'s doc comment on `ttlFit`'s
+ * `reason` field states the same rule and this function follows it: it is
+ * never rendered raw here. `dashboard:contextCarry.aboveCap.caveat` carries
+ * the same honesty content through the translator instead.
+ */
+function renderContextCarryEvidence(
+  cc: DashboardContextCarry | null | undefined,
+  t: TranslateFn,
+  currency: string,
+): string {
+  if (!cc) return "";
+
+  // D12: state the arithmetic as two means sharing one denominator, never as
+  // "every distinct token was re-sent N times" (a per-token lifetime claim
+  // the aggregate ratio cannot support). `turns.length` is the request count
+  // the two means share — the SAME population `carriedTokens` and
+  // `distinctTokensEstimate` are summed over (excluding null-timestamp rows,
+  // which have no cycle to sit in; see `contextCarry.ts`'s `excludedRows`).
+  const requests = cc.turns.length;
+  const meanCarried = requests > 0 ? cc.carriedTokens / requests : null;
+  const meanDistinct =
+    requests > 0 && cc.amplificationEstimate !== null ? cc.distinctTokensEstimate / requests : null;
+  const distinctClause =
+    meanCarried !== null && meanDistinct !== null
+      ? `<p style="font-size:0.78rem;color:#e8e8e8;margin:0 0 0.3rem 0;">${escapeHtml(
+          t("dashboard:contextCarry.distinctClause", {
+            carried: formatCount(meanCarried),
+            distinct: formatCount(meanDistinct),
+          }),
+        )}</p>`
+      : `<p style="font-size:0.78rem;color:#888;margin:0 0 0.3rem 0;">${escapeHtml(t("dashboard:contextCarry.distinctUnavailable"))}</p>`;
+  const biasNote = `<p style="font-size:0.65rem;color:#888;margin:0 0 0.75rem 0;">${escapeHtml(t("dashboard:contextCarry.biasNote"))}</p>`;
+
+  // `totalCarryCost` is a LOWER bound (D2/A-3 — priced at the cache-READ
+  // rate, ignoring the ~50% understatement against actual re-write cost) and
+  // `null` when no priced model appears anywhere in the window; the label
+  // says "lower bound" on the same line rather than in a footnote, and a
+  // `null` renders as an honest dash, never a fabricated $0.
+  const carryCostLine = `<p style="font-size:0.75rem;color:#ccc;margin:0 0 0.75rem 0;">${escapeHtml(
+    t("dashboard:contextCarry.carryCostLabel"),
+  )}: <strong style="color:#e8e8e8;">${escapeHtml(moneyOrDash(cc.totalCarryCost, currency))}</strong></p>`;
+
+  const bandRows = cc.sizeBands
+    .map(
+      (b) => `
+          <tr>
+            <td style="padding:0.3rem 0.5rem;color:#ccc;">${escapeHtml(b.label)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${formatCount(b.requests)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${formatPercent(b.shareOfVolume)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${formatPercent(b.shareOfCost)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${escapeHtml(moneyOrDash(b.costPerRequest, currency))}</td>
+          </tr>`,
+    )
+    .join("");
+
+  // `sawtooth` is `null` on fewer than 3 resets (spec §4.6) — rendered as the
+  // honest "not enough data" sentence, never an average of one or two events.
+  const sawtoothBlock = cc.sawtooth
+    ? `<p style="font-size:0.75rem;color:#ccc;margin:0.5rem 0 0;">${escapeHtml(
+        t("dashboard:contextCarry.sawtooth.line", {
+          floor: formatCount(cc.sawtooth.floorTokens),
+          peak: formatCount(cc.sawtooth.peakTokens),
+          cycle: formatCount(cc.sawtooth.requestsPerCycle),
+        }),
+      )}</p>`
+    : `<p style="font-size:0.75rem;color:#888;margin:0.5rem 0 0;">${escapeHtml(t("dashboard:contextCarry.sawtooth.insufficientData"))}</p>`;
+
+  const capRows = cc.aboveCap
+    .map(
+      (c) => `
+          <tr>
+            <td style="padding:0.3rem 0.5rem;color:#ccc;">${formatCount(c.capTokens)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${formatCount(c.tokensAbove)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${formatPercent(c.share)}</td>
+            <td style="padding:0.3rem 0.5rem;text-align:right;color:#e8e8e8;">${escapeHtml(formatMoney(c.cost, currency, { precise: true }))}</td>
+          </tr>`,
+    )
+    .join("");
+
+  return `
+    <div class="chart-card" style="grid-column: 1 / -1; margin-top:1rem;">
+      <h2>${escapeHtml(t("dashboard:contextCarry.title"))}</h2>
+      ${distinctClause}
+      ${biasNote}
+      ${carryCostLine}
+
+      <div style="font-size:0.7rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin:0.5rem 0 0.3rem;">${escapeHtml(t("dashboard:contextCarry.sizeBands.title"))}</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.72rem;">
+          <thead>
+            <tr style="border-bottom:1px solid #0f3460;">
+              <th style="text-align:left;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:contextCarry.sizeBands.band"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:contextCarry.sizeBands.requests"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:contextCarry.sizeBands.shareVolume"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:contextCarry.sizeBands.shareCost"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:contextCarry.sizeBands.perRequest"))}</th>
+            </tr>
+          </thead>
+          <tbody>${bandRows}</tbody>
+        </table>
+      </div>
+
+      <div style="font-size:0.7rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin:0.75rem 0 0.3rem;">${escapeHtml(t("dashboard:contextCarry.sawtooth.title"))}</div>
+      ${sawtoothBlock}
+
+      <div style="font-size:0.7rem;color:#a0c4ff;text-transform:uppercase;letter-spacing:0.05em;margin:0.75rem 0 0.3rem;">${escapeHtml(t("dashboard:contextCarry.aboveCap.title"))}</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.72rem;">
+          <thead>
+            <tr style="border-bottom:1px solid #0f3460;">
+              <th style="text-align:left;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:contextCarry.aboveCap.cap"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:contextCarry.aboveCap.tokensAbove"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:contextCarry.aboveCap.share"))}</th>
+              <th style="text-align:right;padding:0.3rem 0.5rem;color:#888;">${escapeHtml(t("dashboard:contextCarry.aboveCap.cost"))}</th>
+            </tr>
+          </thead>
+          <tbody>${capRows}</tbody>
+        </table>
+      </div>
+      <div style="font-size:0.65rem;color:#888;margin-top:0.4rem;">${escapeHtml(t("dashboard:contextCarry.aboveCap.caveat"))}</div>
+    </div>`;
 }
 
 /**
@@ -272,10 +595,14 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       <div style="font-size:0.6rem;color:#666;margin-top:0.5rem;">${t("dashboard:costEfficiency.basisNote")}</div>
     </div>` : "";
 
-  // Build pricing info rows for the cost-related panel
+  // Build pricing info rows for the cost-related panel. `model` is a table
+  // key from the shipped/fetched rate table, not user input, but it is
+  // escaped like any other row value rather than trusted as an exception —
+  // the same rule applies uniformly rather than each site having to remember
+  // whether its particular string is "safe enough" to skip (cache-ttl-fit C2).
   const pricingRows = Object.entries(PRICING)
     .map(([model, p]) =>
-      `<tr><td>${model}</td><td>$${p.inputPerMillion}</td><td>$${p.outputPerMillion}</td><td>$${p.cacheReadPerMillion}</td><td>$${p.cacheWritePerMillion}</td></tr>`)
+      `<tr><td>${escapeHtml(model)}</td><td>$${p.inputPerMillion}</td><td>$${p.outputPerMillion}</td><td>$${p.cacheReadPerMillion}</td><td>$${p.cacheWritePerMillion}</td><td>$${p.cacheWrite1hPerMillion}</td></tr>`)
     .join("\n            ");
 
   const periods = ["day", "week", "month", "all"] as const;
@@ -573,7 +900,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     currency: data.insights?.currency ?? "USD",
     verdictSentence: planVerdictSentence,
   });
-  const insightsHtml = renderInsightsTab(insightAnswers, buildAlerts(data, t), t, {
+  const insightsHtml = renderInsightsTab(insightAnswers, buildAlerts(data, t, data.insights?.currency ?? "USD"), t, {
     reconciliation: data.insights?.reconciliation ?? null,
     // The SAME currency the answers above were formatted with, read from the
     // same field — a panel formatting the residual in a different currency to
@@ -1089,6 +1416,11 @@ ${TICKET_CARD_CSS}
       </div>
     </div>
     `}
+    ${data.ttlFit ? `
+    <div class="charts-grid">
+      ${renderTtlFitEvidence(data.ttlFit, t, data.insights?.currency ?? "USD")}
+    </div>
+    ` : ''}
   </div>
 
   <!-- ═══════════════ TAB: Context ═══════════════ -->
@@ -1326,6 +1658,11 @@ ${TICKET_CARD_CSS}
         </table>
       </div>
     </div>` : ""}
+    ${data.contextCarry ? `
+    <div class="charts-grid">
+      ${renderContextCarryEvidence(data.contextCarry, t, data.insights?.currency ?? "USD")}
+    </div>
+    ` : ""}
   </div>
   ` : ""}
 
@@ -1649,13 +1986,14 @@ CO₂_grams = total_kWh × grid_intensity</div>
     <h3>${t("dashboard:pricing.title")}</h3>
     <table>
       <thead>
-        <tr><th>${t("dashboard:pricing.model")}</th><th>${t("dashboard:pricing.input")}</th><th>${t("dashboard:pricing.output")}</th><th>${t("dashboard:pricing.cacheRead")}</th><th>${t("dashboard:pricing.cacheWrite")}</th></tr>
+        <tr><th>${t("dashboard:pricing.model")}</th><th>${t("dashboard:pricing.input")}</th><th>${t("dashboard:pricing.output")}</th><th>${t("dashboard:pricing.cacheRead")}</th><th>${t("dashboard:pricing.cacheWrite")}</th><th>${t("dashboard:pricing.cacheWrite1h")}</th></tr>
       </thead>
       <tbody>
         ${pricingRows}
       </tbody>
     </table>
-    <div class="pricing-source">${t("dashboard:pricing.source", { date: PRICING_VERIFIED_DATE })}</div>
+    <div class="pricing-source">${escapeHtml(t("dashboard:pricing.source", { date: PRICING_VERIFIED_DATE }))}</div>
+    <div class="pricing-source" style="margin-top:0.35rem;">${escapeHtml(t("dashboard:pricing.ttlBasisNote"))}</div>
   </div>
 
   <div class="footer">${t("dashboard:footer.generated", { timestamp: data.generated, timezone: data.timezone })}</div>

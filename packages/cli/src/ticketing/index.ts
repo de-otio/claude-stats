@@ -269,6 +269,11 @@ export function getTicketCostReport(store: Store, filters: TicketReportFilters =
       row.output_tokens,
       row.cache_read_tokens,
       row.cache_creation_tokens,
+      undefined,
+      {
+        ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
+        ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
+      },
     );
     if (priced.rateBasis === "first_party_fallback") anyFallbackRates = true;
     if (priced.known) {

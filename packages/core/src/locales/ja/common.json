@@ -109,7 +109,8 @@
       "enablement": "Claude Code のセッションを実行してから更新してください — 収集は自動で行われます。",
       "thisPeriod": "この期間で {{money}}",
       "devTime": "設定したレートで約 {{devTime}}",
-      "planMultiplier": "月額 {{fee}} のプランの {{multiplier}} 倍"
+      "planMultiplier": "月額 {{fee}} のプランの {{multiplier}} 倍",
+      "contextCarry": "支出の {{percent}} はキャッシュ読み取りです — コンテキストを新規送信する場合の約10分の1の価格で引き継いでいます。効くレバーはキャッシュを減らすことではなく、引き継ぐ量を減らすことです。ただし引き継ぎを減らした分の手戻りコストは、ここでは計測されていません。"
     },
     "bought": {
       "unavailable": "作業項目に割り当てられた支出はまだありません。",
@@ -134,7 +135,10 @@
       "policyImpact_other": "{{date}} のポリシー変更以降、{{count}} 件のタスク分類で成功タスクあたりのコストが {{percent}} 上昇しています。",
       "policyCaveat": "根拠であって証明ではありません — 境界をまたいで同一のタスク分類内で比較しています。",
       "verdictWithSaving": "{{verdict}} — {{plan}} に切り替えると月あたり約 {{saving}} 節約できます。",
-      "savingCaveat": "ご自身の利用実績を各プランの上限に当てはめて推定した値です。"
+      "savingCaveat": "ご自身の利用実績を各プランの上限に当てはめて推定した値です。",
+      "ttlPrefer5m": "5分のキャッシュ TTL なら、この期間のコストが約 {{money}} 少なくなります。",
+      "ttlPrefer1h": "1時間のキャッシュ TTL なら、この期間のコストが約 {{money}} 少なくなります。",
+      "ttlProjectionCaveat": "別のキャッシュ TTL で記録された期間からの推定値です。実際に切り替えた場合の二次的な影響はモデル化されていません。"
     },
     "change": {
       "nothing": "今のところ対応が必要な項目はありません。",

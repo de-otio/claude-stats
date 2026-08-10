@@ -377,7 +377,9 @@
     "output": "Sortie",
     "cacheRead": "Lecture cache",
     "cacheWrite": "Écriture cache",
-    "source": "Source : tarification API Anthropic — dernière mise à jour {{date}} (actualisée automatiquement chaque semaine). Les coûts affichés sont des taux API équivalents, pas des frais d'abonnement."
+    "source": "Source : tarification API Anthropic — dernière mise à jour {{date}} (actualisée automatiquement chaque semaine). Les coûts affichés sont des taux API équivalents, pas des frais d'abonnement.",
+    "cacheWrite1h": "Écriture cache (1 h)",
+    "ttlBasisNote": "Les écritures de cache sont facturées à l'un de deux tarifs selon le TTL éphémère enregistré au moment de l'écriture — la colonne Écriture cache (5 minutes) ou Écriture cache (1 h) (1 heure). Un écart entre les deux pour une même charge de travail correspond à ce changement de base, et non à une erreur de tarification — voir l'adéquation du TTL de cache sous le panneau Plan."
   },
   "footer": {
     "generated": "Généré le {{timestamp}} • Fuseau horaire : {{timezone}}"
@@ -483,7 +485,10 @@
     "alerts": {
       "fallbackRates": "Une partie de l'usage a été tarifée aux tarifs first-party sur une plateforme partenaire (Bedrock ou Vertex). Tous les montants indiqués ici sont des estimations tant que les tarifs partenaires ne sont pas configurés.",
       "action": "Examiner",
-      "reconciliationDrift": "Le coût calculé de bas en haut ne concorde pas avec le total de facture configuré — le panneau de rapprochement ci-dessous indique l'écart résiduel et ses causes possibles."
+      "reconciliationDrift": "Le coût calculé de bas en haut ne concorde pas avec le total de facture configuré — le panneau de rapprochement ci-dessous indique l'écart résiduel et ses causes possibles.",
+      "ttlPrefer5m": "Cette charge de travail coûterait environ {{money}} de moins avec un TTL de cache de 5 minutes qu'avec le TTL de 1 heure actuellement enregistré — voir l'onglet Plan pour la marge.",
+      "ttlPrefer1h": "Cette charge de travail coûterait environ {{money}} de moins avec un TTL de cache de 1 heure qu'avec le TTL de 5 minutes actuellement enregistré — voir l'onglet Plan pour la marge.",
+      "contextStepChange": "Le contexte initial par session de {{project}} a augmenté d'environ {{percent}} et s'y est maintenu — voir l'onglet Dépenses pour les données."
     },
     "verdict": {
       "goodValue": "Votre abonnement est rentable au vu de votre usage",
@@ -598,6 +603,80 @@
     "goodCompaction": {
       "title": "Bonne hygiène du contexte",
       "body": "{{percent}} % de vos sessions montrent une activité de compactage, et peu de sessions longues sont restées non compactées. Vous maîtrisez bien la taille des contextes."
+    }
+  },
+  "ttlFit": {
+    "title": "Adéquation du TTL de cache — 5 minutes vs 1 heure",
+    "verdict": {
+      "prefer5m": "Le TTL de cache de 5 minutes coûterait environ {{money}} de moins sur cette période.",
+      "prefer1h": "Le TTL de cache de 1 heure coûterait environ {{money}} de moins sur cette période.",
+      "tooClose": "Les deux TTL de cache coûtent à peu près la même chose sur cette période (différence : {{money}}) — le changement n'en vaut pas la peine.",
+      "insufficientData": "Pas encore assez de données de TTL de cache sur cette période pour recommander un réglage."
+    },
+    "gapHistogram": {
+      "title": "Distribution des intervalles d'inactivité",
+      "bucket": "Écart depuis le message précédent",
+      "requests": "Requêtes",
+      "readTokens": "Tokens de lecture cache",
+      "creationTokens": "Tokens d'écriture cache",
+      "pctRebuilt": "% reconstruit"
+    },
+    "origin": {
+      "title": "Origine des écritures cache",
+      "column": "Origine",
+      "share": "Part des écritures",
+      "sessionStart": "Début de session",
+      "midWork": "En cours de travail",
+      "resumeShort": "Reprise (écart court)",
+      "resumeLong": "Reprise (écart long)"
+    },
+    "byModel": {
+      "title": "Coût net du TTL court par modèle",
+      "model": "Modèle",
+      "recovered": "Lectures récupérées (R)",
+      "writes": "Écritures (W)",
+      "writes1h": "Écritures @ 1 h (W1h)",
+      "net": "Coût net du TTL de 5 minutes",
+      "breakEven": "Ratio d'équilibre",
+      "unpriced": "Exclut {{count}} lignes sans tarif ({{tokens}} tokens d'écriture cache) — modèle absent, ou aucun tarif pour ce modèle."
+    },
+    "margin": {
+      "title": "Marge",
+      "windowCost": "Coût de la période",
+      "recovered": "Lectures récupérées (R)",
+      "writes": "Tokens d'écriture cache (W)",
+      "writes1h": "Écrits avec le TTL de 1 heure (W1h)",
+      "net": "Coût net du TTL de 5 minutes",
+      "nearBoundary": "Plage proche de la limite ({{minutes}} min juste sous le TTL court) : {{requests}} requêtes, {{readTokens}} tokens de lecture cache",
+      "impliedSwing": "Écart implicite si cette plage expirait aussi"
+    }
+  },
+  "contextCarry": {
+    "title": "Report de contexte",
+    "distinctClause": "En moyenne, une requête a transporté environ {{carried}} tokens de contexte pour produire environ {{distinct}} tokens de nouveau contenu.",
+    "distinctUnavailable": "Pas assez de données sur cette période pour estimer quelle part du contexte de chaque requête était nouvelle plutôt que reportée.",
+    "biasNote": "Cette estimation est biaisée dans les deux sens : le contenu supprimé puis relu plus tard est compté une seconde fois comme nouveau, tandis qu'un contexte de base après réinitialisation est compté comme nouveau alors qu'il ne s'agit peut-être que d'un résumé de ce qui a été supprimé.",
+    "carryCostLabel": "Coût du report (borne inférieure — facturé au tarif de lecture du cache)",
+    "sizeBands": {
+      "title": "Requêtes par taille de contexte",
+      "band": "Taille du contexte",
+      "requests": "Requêtes",
+      "shareVolume": "Part du volume reporté",
+      "shareCost": "Part du coût",
+      "perRequest": "$/requête"
+    },
+    "sawtooth": {
+      "title": "Profil des réinitialisations",
+      "line": "Le contexte redescend à environ {{floor}} tokens, puis remonte jusqu'à environ {{peak}} avant la réinitialisation suivante, sur environ {{cycle}} requêtes par cycle.",
+      "insufficientData": "Moins de 3 réinitialisations sur cette période — trop peu pour en décrire le profil."
+    },
+    "aboveCap": {
+      "title": "Tokens reportés au-delà d'un plafond",
+      "cap": "Plafond",
+      "tokensAbove": "Tokens au-delà du plafond",
+      "share": "Part du volume reporté",
+      "cost": "Coût (borne inférieure)",
+      "caveat": "Les tokens au-delà d'un plafond sont facturés au tarif de lecture du cache — la forme la moins chère que ce coût puisse prendre, et donc une borne inférieure. Ce n'est pas le coût d'un plafonnement du contexte à ce niveau : plafonner signifie que le même travail est réalisé avec moins de contexte devant le modèle, et le coût de ce travail refait n'est pas mesuré ici."
     }
   }
 }

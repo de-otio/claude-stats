@@ -1741,7 +1741,10 @@ export class Store {
     const sessionCostMap = new Map<string, { cost: number; tokensByModel: Record<string, number> }>();
     for (const row of msgTotals) {
       const entry = sessionCostMap.get(row.session_id) ?? { cost: 0, tokensByModel: {} };
-      const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens);
+      const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens, undefined, {
+        ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
+        ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
+      });
       entry.cost += cost;
       entry.tokensByModel[row.model] = (entry.tokensByModel[row.model] ?? 0) + row.input_tokens + row.output_tokens;
       sessionCostMap.set(row.session_id, entry);
@@ -1846,7 +1849,13 @@ export class Store {
         SUM(input_tokens) AS input_tokens,
         SUM(output_tokens) AS output_tokens,
         SUM(cache_read_tokens) AS cache_read_tokens,
-        SUM(cache_creation_tokens) AS cache_creation_tokens
+        SUM(cache_creation_tokens) AS cache_creation_tokens,
+        -- message_hourly (the fully-unbounded rollup) does not carry a TTL
+        -- split (cache-ttl-fit B1) — 0/0 here is mathematically identical to
+        -- omitting the split (estimateCost's byte-identical rule), i.e. no
+        -- worse than pre-change behaviour. See fallback-sites.md.
+        0 AS ephemeral_5m_cache_tokens,
+        0 AS ephemeral_1h_cache_tokens
       FROM message_hourly
       GROUP BY model
     `);
@@ -1998,6 +2007,8 @@ export class Store {
         SUM(m.output_tokens) AS output_tokens,
         SUM(m.cache_read_tokens) AS cache_read_tokens,
         SUM(m.cache_creation_tokens) AS cache_creation_tokens,
+        SUM(m.ephemeral_5m_cache_tokens) AS ephemeral_5m_cache_tokens,
+        SUM(m.ephemeral_1h_cache_tokens) AS ephemeral_1h_cache_tokens,
         COUNT(*) AS msg_count,
         SUM(m.is_turn_start) AS prompt_count
       FROM messages m
@@ -2028,6 +2039,8 @@ export class Store {
         SUM(m.output_tokens) AS output_tokens,
         SUM(m.cache_read_tokens) AS cache_read_tokens,
         SUM(m.cache_creation_tokens) AS cache_creation_tokens,
+        SUM(m.ephemeral_5m_cache_tokens) AS ephemeral_5m_cache_tokens,
+        SUM(m.ephemeral_1h_cache_tokens) AS ephemeral_1h_cache_tokens,
         COUNT(*) AS msg_count,
         SUM(m.is_turn_start) AS prompt_count
       FROM messages m
@@ -2054,7 +2067,9 @@ export class Store {
         SUM(m.input_tokens) AS input_tokens,
         SUM(m.output_tokens) AS output_tokens,
         SUM(m.cache_read_tokens) AS cache_read_tokens,
-        SUM(m.cache_creation_tokens) AS cache_creation_tokens
+        SUM(m.cache_creation_tokens) AS cache_creation_tokens,
+        SUM(m.ephemeral_5m_cache_tokens) AS ephemeral_5m_cache_tokens,
+        SUM(m.ephemeral_1h_cache_tokens) AS ephemeral_1h_cache_tokens
       FROM messages m
       WHERE ${this.messageWhereExists(f)}
       GROUP BY m.model
@@ -2092,7 +2107,9 @@ export class Store {
         SUM(m.input_tokens) AS input_tokens,
         SUM(m.output_tokens) AS output_tokens,
         SUM(m.cache_read_tokens) AS cache_read_tokens,
-        SUM(m.cache_creation_tokens) AS cache_creation_tokens
+        SUM(m.cache_creation_tokens) AS cache_creation_tokens,
+        SUM(m.ephemeral_5m_cache_tokens) AS ephemeral_5m_cache_tokens,
+        SUM(m.ephemeral_1h_cache_tokens) AS ephemeral_1h_cache_tokens
       FROM messages m
       JOIN sessions s ON s.session_id = m.session_id
       WHERE ${this.messageWhereJoin(f)}
@@ -2924,7 +2941,9 @@ export class Store {
           SUM(input_tokens) AS input_tokens,
           SUM(output_tokens) AS output_tokens,
           SUM(cache_read_tokens) AS cache_read_tokens,
-          SUM(cache_creation_tokens) AS cache_creation_tokens
+          SUM(cache_creation_tokens) AS cache_creation_tokens,
+          SUM(ephemeral_5m_cache_tokens) AS ephemeral_5m_cache_tokens,
+          SUM(ephemeral_1h_cache_tokens) AS ephemeral_1h_cache_tokens
         FROM messages
         WHERE session_id IN (${placeholders})${boundAnd}
         GROUP BY session_id, model
@@ -3076,7 +3095,8 @@ export class Store {
       SELECT m.session_id, s.project_path, m.uuid, m.timestamp, m.model,
              m.input_tokens, m.output_tokens,
              m.cache_read_tokens, m.cache_creation_tokens,
-             m.tool_error_count
+             m.ephemeral_5m_cache_tokens, m.ephemeral_1h_cache_tokens,
+             m.tool_error_count, m.tools
       FROM messages m
       JOIN sessions s ON s.session_id = m.session_id
       WHERE ${this.messageWhereJoin(f)}
@@ -3840,6 +3860,11 @@ export class Store {
         row.output_tokens,
         row.cache_read_tokens,
         row.cache_creation_tokens,
+        undefined,
+        {
+          ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
+          ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
+        },
       );
       costMap.set(row.session_id, current + cost);
     }
@@ -4002,6 +4027,9 @@ export interface SessionMessageTotalRow {
   output_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+  /** TTL breakdown of `cache_creation_tokens` (cache-ttl-fit B1). */
+  ephemeral_5m_cache_tokens: number;
+  ephemeral_1h_cache_tokens: number;
 }
 
 /**
@@ -4046,6 +4074,13 @@ export interface MessageTotalRow {
   output_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+  /** TTL breakdown of `cache_creation_tokens` (cache-ttl-fit B1). The
+   *  fully-unbounded rollup fast path (`getMessageTotalsFromRollup`) does not
+   *  carry these per-model — its rows report `0`/`0`, which is mathematically
+   *  identical to omitting the split (see `estimateCost`'s byte-identical
+   *  rule), not a regression. See `plans/cache-ttl-fit/fallback-sites.md`. */
+  ephemeral_5m_cache_tokens: number;
+  ephemeral_1h_cache_tokens: number;
 }
 
 /** One 15-minute time bucket × model of in-window message totals. */
@@ -4072,6 +4107,8 @@ export interface AccountModelTotalRow {
   output_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+  ephemeral_5m_cache_tokens: number;
+  ephemeral_1h_cache_tokens: number;
 }
 
 export interface MessageCostInputRow {
@@ -4116,7 +4153,16 @@ export interface HygieneMessageStoreRow {
   output_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+  /** TTL breakdown of `cache_creation_tokens` (cache-ttl-fit A2/B1). Pre-column
+   *  rows read back as `0`/`0`, which `observedTtlOf` reports as `"unknown"`. */
+  ephemeral_5m_cache_tokens: number;
+  ephemeral_1h_cache_tokens: number;
   tool_error_count: number;
+  /** Raw JSON array of tool names invoked by this message (`messages.tools`),
+   *  UNPARSED — context-carry-cost B1: parsing (with the guarded try/catch a
+   *  hand-edited JSONL or synced shard's non-string element needs) happens at
+   *  each `toHygieneMessageRow` mapper, not here. */
+  tools: string;
 }
 
 export interface EnergyMessageRow {

@@ -377,7 +377,9 @@
     "output": "Wyjście",
     "cacheRead": "Odczyt cache",
     "cacheWrite": "Zapis cache",
-    "source": "Źródło: cennik API Anthropic — ostatnia aktualizacja {{date}} (auto-odświeżane co tydzień). Pokazane koszty to ekwiwalent stawek API, nie opłaty subskrypcji."
+    "source": "Źródło: cennik API Anthropic — ostatnia aktualizacja {{date}} (auto-odświeżane co tydzień). Pokazane koszty to ekwiwalent stawek API, nie opłaty subskrypcji.",
+    "cacheWrite1h": "Zapis cache (1 h)",
+    "ttlBasisNote": "Zapisy do cache są wyceniane według jednej z dwóch stawek, zależnie od efemerycznego TTL zapisanego w momencie zapisu — kolumna Zapis cache (5 minut) albo Zapis cache (1 h) (1 godzina). Skok między nimi przy tym samym obciążeniu to zmiana tej podstawy, a nie błąd wyceny — zobacz Dopasowanie TTL cache poniżej panelu planu."
   },
   "footer": {
     "generated": "Wygenerowano {{timestamp}} • Strefa czasowa: {{timezone}}"
@@ -483,7 +485,10 @@
     "alerts": {
       "fallbackRates": "Część użycia wyceniono stawkami first-party na platformie partnerskiej (Bedrock lub Vertex). Wszystkie kwoty tutaj są szacunkami, dopóki nie skonfigurujesz stawek partnera.",
       "action": "Sprawdź",
-      "reconciliationDrift": "Koszt liczony oddolnie nie zgadza się ze skonfigurowaną sumą na fakturze — panel uzgodnienia poniżej pokazuje różnicę i jej możliwe przyczyny."
+      "reconciliationDrift": "Koszt liczony oddolnie nie zgadza się ze skonfigurowaną sumą na fakturze — panel uzgodnienia poniżej pokazuje różnicę i jej możliwe przyczyny.",
+      "ttlPrefer5m": "To obciążenie kosztowałoby o około {{money}} mniej przy 5-minutowym TTL cache niż przy 1-godzinnym, pod którym jest obecnie rejestrowane — margines znajdziesz na karcie Plan.",
+      "ttlPrefer1h": "To obciążenie kosztowałoby o około {{money}} mniej przy 1-godzinnym TTL cache niż przy 5-minutowym, pod którym jest obecnie rejestrowane — margines znajdziesz na karcie Plan.",
+      "contextStepChange": "Początkowy kontekst na sesję w projekcie {{project}} wzrósł o około {{percent}} i pozostał na tym poziomie — dowody znajdziesz na karcie Wydatki."
     },
     "verdict": {
       "goodValue": "Twój plan jest opłacalny przy tym poziomie użycia",
@@ -599,6 +604,80 @@
     "goodCompaction": {
       "title": "Dobra higiena kontekstu",
       "body": "{{percent}}% Twoich sesji wykazuje aktywność kompaktowania, a niewiele długich sesji pozostało nieskompaktowanych. Utrzymujesz rozmiar kontekstu pod kontrolą."
+    }
+  },
+  "ttlFit": {
+    "title": "Dopasowanie TTL cache — 5 minut vs. 1 godzina",
+    "verdict": {
+      "prefer5m": "5-minutowy TTL cache kosztowałby w tym okresie o około {{money}} mniej.",
+      "prefer1h": "1-godzinny TTL cache kosztowałby w tym okresie o około {{money}} mniej.",
+      "tooClose": "Oba TTL cache kosztują w tym okresie mniej więcej tyle samo (różnica: {{money}}) — zmiana nie ma sensu.",
+      "insufficientData": "Za mało danych o TTL cache w tym okresie, aby zalecić ustawienie."
+    },
+    "gapHistogram": {
+      "title": "Rozkład przerw bezczynności",
+      "bucket": "Przerwa od poprzedniej wiadomości",
+      "requests": "Żądania",
+      "readTokens": "Tokeny odczytu z cache",
+      "creationTokens": "Tokeny zapisu do cache",
+      "pctRebuilt": "% odbudowanych"
+    },
+    "origin": {
+      "title": "Źródło zapisu do cache",
+      "column": "Źródło",
+      "share": "Udział zapisów",
+      "sessionStart": "Początek sesji",
+      "midWork": "W trakcie pracy",
+      "resumeShort": "Wznowienie (krótka przerwa)",
+      "resumeLong": "Wznowienie (długa przerwa)"
+    },
+    "byModel": {
+      "title": "Koszt netto krótkiego TTL według modelu",
+      "model": "Model",
+      "recovered": "Odzyskane odczyty (R)",
+      "writes": "Zapisy (W)",
+      "writes1h": "Zapisy przy 1 h (W1h)",
+      "net": "Koszt netto 5-minutowego TTL",
+      "breakEven": "Współczynnik progu opłacalności",
+      "unpriced": "Pomija {{count}} wierszy bez wyceny ({{tokens}} tokenów zapisu do cache) — brak modelu lub brak stawki dla tego modelu."
+    },
+    "margin": {
+      "title": "Margines",
+      "windowCost": "Koszt okresu",
+      "recovered": "Odzyskane odczyty (R)",
+      "writes": "Tokeny zapisu do cache (W)",
+      "writes1h": "Zapisane z 1-godzinnym TTL (W1h)",
+      "net": "Koszt netto 5-minutowego TTL",
+      "nearBoundary": "Pasmo przy granicy ({{minutes}} min tuż poniżej krótkiego TTL): {{requests}} żądań, {{readTokens}} tokenów odczytu z cache",
+      "impliedSwing": "Wynikowa zmiana, gdyby to pasmo również wygasło"
+    }
+  },
+  "contextCarry": {
+    "title": "Przenoszenie kontekstu",
+    "distinctClause": "Średnie żądanie przeniosło około {{carried}} tokenów kontekstu, aby wygenerować około {{distinct}} tokenów nowej treści.",
+    "distinctUnavailable": "Za mało danych w tym okresie, aby oszacować, jaka część kontekstu każdego żądania była nowa, a jaka przeniesiona.",
+    "biasNote": "To oszacowanie jest obciążone w obie strony: treść usunięta z kontekstu i odczytana ponownie później jest liczona jako nowa po raz drugi, natomiast kontekst bazowy po resecie jest liczony jako nowy, choć może być tylko podsumowaniem tego, co zostało usunięte.",
+    "carryCostLabel": "Koszt przenoszenia (dolna granica — wyceniony według stawki odczytu z cache)",
+    "sizeBands": {
+      "title": "Żądania według rozmiaru kontekstu",
+      "band": "Rozmiar kontekstu",
+      "requests": "Żądania",
+      "shareVolume": "Udział w przeniesionym wolumenie",
+      "shareCost": "Udział w koszcie",
+      "perRequest": "$/żądanie"
+    },
+    "sawtooth": {
+      "title": "Kształt resetów",
+      "line": "Kontekst resetuje się do około {{floor}} tokenów, a następnie rośnie do około {{peak}} przed kolejnym resetem, w cyklu liczącym około {{cycle}} żądań.",
+      "insufficientData": "Mniej niż 3 resety w tym okresie — za mało, aby opisać kształt."
+    },
+    "aboveCap": {
+      "title": "Tokeny przeniesione powyżej limitu",
+      "cap": "Limit",
+      "tokensAbove": "Tokeny powyżej limitu",
+      "share": "Udział w przeniesionym wolumenie",
+      "cost": "Koszt (dolna granica)",
+      "caveat": "Tokeny powyżej limitu są wyceniane według stawki odczytu z cache — najtańszej postaci, jaką ten koszt może przyjąć, i jego dolnej granicy. Nie jest to koszt ograniczenia kontekstu do tego poziomu: ograniczenie oznacza, że ta sama praca zostanie wykonana z mniejszym kontekstem przed modelem, a koszt wynikającej z tego powtórnej pracy nie jest tu mierzony."
     }
   }
 }

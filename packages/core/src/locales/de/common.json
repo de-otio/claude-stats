@@ -109,7 +109,8 @@
       "enablement": "Führen Sie eine Claude-Code-Sitzung aus und aktualisieren Sie dann — die Erfassung läuft automatisch.",
       "thisPeriod": "{{money}} in diesem Zeitraum",
       "devTime": "≈ {{devTime}} zu Ihrem konfigurierten Satz",
-      "planMultiplier": "{{multiplier}}× Ihres Abos von {{fee}}/Monat"
+      "planMultiplier": "{{multiplier}}× Ihres Abos von {{fee}}/Monat",
+      "contextCarry": "{{percent}} der Ausgaben entfallen auf Cache-Reads — mitgeführter Kontext zu etwa einem Zehntel des Preises, ihn neu zu senden. Der Hebel ist, weniger mitzuführen, nicht weniger zu cachen; was weniger Mitführen an Nacharbeit kostet, wird hier nicht gemessen."
     },
     "bought": {
       "unavailable": "Bisher wurden keine Ausgaben Arbeitsvorgängen zugeordnet.",
@@ -134,7 +135,10 @@
       "policyImpact_other": "Seit der Richtlinienänderung am {{date}} sind die Kosten pro erfolgreicher Aufgabe in {{count}} Aufgabenklassen um {{percent}} gestiegen.",
       "policyCaveat": "Ein Hinweis, kein Beweis — verglichen innerhalb der Aufgabenklassen über die Grenze hinweg.",
       "verdictWithSaving": "{{verdict}} — ein Wechsel zu {{plan}} würde etwa {{saving}}/Monat sparen.",
-      "savingCaveat": "Geschätzt aus Ihrer eigenen Nutzung, angewandt auf die Abo-Grenzen."
+      "savingCaveat": "Geschätzt aus Ihrer eigenen Nutzung, angewandt auf die Abo-Grenzen.",
+      "ttlPrefer5m": "Die 5-Minuten-Cache-TTL würde in diesem Zeitraum etwa {{money}} weniger kosten.",
+      "ttlPrefer1h": "Die 1-Stunden-Cache-TTL würde in diesem Zeitraum etwa {{money}} weniger kosten.",
+      "ttlProjectionCaveat": "Hochgerechnet aus einem Zeitraum, der mit der anderen Cache-TTL aufgezeichnet wurde – der Effekt zweiter Ordnung eines tatsächlichen Wechsels ist nicht modelliert."
     },
     "change": {
       "nothing": "Derzeit erfordert nichts Ihre Aufmerksamkeit.",

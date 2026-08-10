@@ -595,6 +595,45 @@ export interface CostAnswerInput {
    *  reconcile" rather than defaulting to silence (see `costCaveat`). */
   reconciledWithinTolerance?: boolean;
   anyFallbackRates?: boolean;
+  /**
+   * Context-carry cost for this window (context-carry-cost C2), read
+   * STRAIGHT from `DashboardData.contextCarry` — the caller never recomputes
+   * `computeContextCarry` to build this. `totalCarryCost` is `null` when no
+   * priced model appears anywhere in the window (see
+   * `ContextCarryResult.totalCarryCost`'s doc) — that renders no clause at
+   * all, never a fabricated 0%. Absent/`null` altogether (no context-carry
+   * fit was computed) is the same: no clause.
+   */
+  contextCarry?: { totalCarryCost: number | null } | null;
+}
+
+/**
+ * D11's clause (context-carry-cost review E-1): `contextCarry.totalCarryCost`
+ * prices exactly the tokens carried forward through this window at the
+ * cache-READ rate — i.e. the share of `cost` that IS a cache read — against
+ * this card's own `cost`. Rejected as written in the spec ("58% of the bill
+ * is re-reading context that was already there"): a cache read is 0.1× input,
+ * the CHEAPEST form this cost can take, and its counterfactual is a fresh
+ * input token at 10× or a cache write at 12.5–20×, never $0. So this clause
+ * NEVER states the percentage without that counterfactual on the same line,
+ * and never implies carrying less is free — the rework cost of carrying less
+ * is explicitly stated as unmeasured (D11, and `ContextAboveCapRow`'s
+ * `capCaveat` sibling in `contextCarry.ts`).
+ *
+ * `null`/absent `contextCarry`, a `null` `totalCarryCost` (no priced model in
+ * the window), or a non-finite/non-positive share renders no clause at all —
+ * never a fabricated 0%.
+ */
+function contextCarryClause(
+  t: InsightT,
+  contextCarry: CostAnswerInput["contextCarry"],
+  cost: number,
+): string | null {
+  if (!contextCarry || contextCarry.totalCarryCost === null) return null;
+  if (!Number.isFinite(contextCarry.totalCarryCost) || !Number.isFinite(cost) || cost <= 0) return null;
+  const share = contextCarry.totalCarryCost / cost;
+  if (!Number.isFinite(share) || share <= 0) return null;
+  return t("common:insight.cost.contextCarry", { percent: formatPercent(share) });
 }
 
 export function answerCost(t: InsightT, input: CostAnswerInput): InsightAnswer {
@@ -626,6 +665,8 @@ export function answerCost(t: InsightT, input: CostAnswerInput): InsightAnswer {
       }),
     );
   }
+  const carryClause = contextCarryClause(t, input.contextCarry, input.cost);
+  if (carryClause) clauses.push(carryClause);
 
   return {
     question: "cost",
@@ -766,6 +807,63 @@ export function answerEfficiency(t: InsightT, input: EfficiencyAnswerInput): Ins
   };
 }
 
+/**
+ * Cache-TTL-fit verdicts, mirrored from `TtlFitResult["recommendation"]["verdict"]`
+ * (`ttlFit.ts`, Phase A2/B2) rather than imported: this module must not take a
+ * hard dependency on that file's shape, and the union is a closed, stable
+ * vocabulary either way.
+ */
+export type TtlFitVerdict = "prefer-1h" | "prefer-5m" | "too-close-to-call" | "insufficient-data";
+
+/**
+ * What the setup card needs from a computed cache-TTL fit. The caller
+ * (`buildInsightAnswers`) reads `data.ttlFit` and reduces it to exactly this —
+ * this module never recomputes `computeTtlFit` itself.
+ */
+export interface SetupTtlInput {
+  verdict: TtlFitVerdict;
+  /** `totals.netCostOfShortTtl` from the fit — the signed margin the clause's
+   *  money figure comes from. `null` under the D10 rate-coherence guard or an
+   *  `"unknown"`-TTL window; the clause is withheld in that case even for a
+   *  `"prefer-*"` verdict (defensive — `computeTtlFit` never actually pairs
+   *  the two by construction, but a caller must not have to trust that). */
+  netCostOfShortTtl: number | null;
+  /** Whether this verdict was computed from a window recorded at the OTHER
+   *  TTL — a projection/counterfactual rather than a same-TTL measurement
+   *  (plan.md §5.3, `TtlFitResult.observedTtl`'s doc comment). The caller
+   *  derives this by comparing `observedTtl` to the verdict's implied TTL;
+   *  this module only renders the flag, it does not compute it. */
+  isProjection: boolean;
+}
+
+/** One clause for the setup card's cache-TTL finding, or `null` when there is
+ *  nothing to say — `"too-close-to-call"` and `"insufficient-data"` render no
+ *  clause at all (an unactionable margin is not a recommendation), matching
+ *  `buildAlerts`' identical precision-over-recall rule for the alerts strip. */
+function ttlSetupClause(
+  t: InsightT,
+  ttl: SetupTtlInput | null | undefined,
+  currency: string,
+): { text: string; value: string; caveat: string | null } | null {
+  if (!ttl) return null;
+  if (ttl.verdict !== "prefer-5m" && ttl.verdict !== "prefer-1h") return null;
+  if (ttl.netCostOfShortTtl === null) return null;
+  const money = formatMoney(Math.abs(ttl.netCostOfShortTtl), currency);
+  const text = t(
+    ttl.verdict === "prefer-5m" ? "common:insight.setup.ttlPrefer5m" : "common:insight.setup.ttlPrefer1h",
+    { money },
+  );
+  return {
+    text,
+    value: money,
+    // The projection label WINS over `savingCaveat` below: it qualifies the
+    // claim's BASIS (this verdict was computed at the other TTL), where
+    // `savingCaveat` only qualifies its precision. Both cannot be shown — one
+    // `caveat` slot — so the more fundamental qualifier takes it.
+    caveat: ttl.isProjection ? t("common:insight.setup.ttlProjectionCaveat") : null,
+  };
+}
+
 /** Inputs for Q4 — "Is the setup right?" */
 export interface SetupAnswerInput {
   planVerdict: string | null;
@@ -774,47 +872,102 @@ export interface SetupAnswerInput {
   currency?: string;
   /** Set when a declared policy boundary has a measured effect. */
   policyImpact?: { date: string; classes: number; costPerTaskDelta: number } | null;
+  /** The cache-TTL fit's contribution to this card, or `null`/absent when no
+   *  fit was computed (too little store data, or the caller never attached
+   *  one). Composes with the two inputs above rather than gating them —
+   *  see the restructure note below. */
+  ttl?: SetupTtlInput | null;
 }
 
+/**
+ * `policyImpact`, the plan verdict, and the cache-TTL fit are three
+ * INDEPENDENT sources of evidence for "is the setup right?", and they must
+ * COMPOSE: a typical install has no policy boundary declared and Lane E's
+ * plan-comparison saving not yet wired (`recommendedPlan`/`projectedSaving`
+ * arrive `null` pending that lane), so gating the whole card on
+ * `planVerdict` — as an earlier version of this function did, returning its
+ * `unavailable` branch whenever `planVerdict` was falsy — would mean the
+ * cache-TTL finding, the entire point of the phase that added it, could
+ * never render on that install. A `policyImpact` early-return had the same
+ * defect from the other direction. So: each input contributes at most one
+ * clause (and, for `policyImpact`/the plan verdict, at most one caveat
+ * candidate) to a list; the card is `unavailable` only when the list ends up
+ * empty, never because one particular input was missing.
+ */
 export function answerSetup(t: InsightT, input: SetupAnswerInput): InsightAnswer {
   const currency = input.currency ?? "USD";
+
+  const clauses: string[] = [];
+  let value: string | null = null;
+  let trend: InsightAnswer["trend"] = "unknown";
+  // Precedence among the (at most one shown) caveat: the TTL clause's
+  // projection label, when present, wins outright (see `ttlSetupClause`);
+  // otherwise the plan verdict's `savingCaveat` when there is a saving to
+  // qualify; otherwise the policy-impact caveat. Each is independently real
+  // — this is only about which ONE the single `caveat` slot carries when more
+  // than one candidate is in play, which today's callers never actually
+  // trigger at once.
+  let savingCaveat: string | null = null;
+  let policyCaveat: string | null = null;
+  let ttlCaveat: string | null = null;
+
   if (input.policyImpact) {
     const pct = formatPercent(input.policyImpact.costPerTaskDelta);
-    return {
-      question: "setup",
-      answer: t("common:insight.setup.policyImpact", {
+    clauses.push(
+      t("common:insight.setup.policyImpact", {
         date: input.policyImpact.date,
         percent: pct,
         count: input.policyImpact.classes,
       }),
-      value: pct,
-      trend: "up",
-      caveat: t("common:insight.setup.policyCaveat"),
-      evidenceLink: "plan-and-policy",
-    };
+    );
+    value = pct;
+    trend = "up";
+    policyCaveat = t("common:insight.setup.policyCaveat");
   }
-  if (!input.planVerdict) {
+
+  if (input.planVerdict) {
+    // `planVerdict` arrives already localized — the caller owns it because
+    // the verdict vocabulary is the plan surface's, not this module's.
+    const hasSaving = Boolean(input.projectedSaving && input.recommendedPlan);
+    clauses.push(
+      hasSaving
+        ? tLiteral(
+            t,
+            "common:insight.setup.verdictWithSaving",
+            { saving: formatMoney(input.projectedSaving!, currency) },
+            { verdict: input.planVerdict, plan: input.recommendedPlan! },
+          )
+        : sentence(t, input.planVerdict),
+    );
+    if (value === null) value = input.recommendedPlan;
+    if (hasSaving) savingCaveat = t("common:insight.setup.savingCaveat");
+  }
+
+  const ttlClause = ttlSetupClause(t, input.ttl, currency);
+  if (ttlClause) {
+    clauses.push(ttlClause.text);
+    if (value === null) value = ttlClause.value;
+    ttlCaveat = ttlClause.caveat;
+  }
+
+  if (clauses.length === 0) {
     return unavailable("setup", t("common:insight.setup.unavailable"), {
       reason: "no-data",
       enablement: t("common:insight.setup.enablement"),
     });
   }
-  // `planVerdict` arrives already localized — the caller owns it because the
-  // verdict vocabulary is the plan surface's, not this module's.
-  const hasSaving = Boolean(input.projectedSaving && input.recommendedPlan);
+
   return {
     question: "setup",
-    answer: hasSaving
-      ? tLiteral(
-          t,
-          "common:insight.setup.verdictWithSaving",
-          { saving: formatMoney(input.projectedSaving!, currency) },
-          { verdict: input.planVerdict, plan: input.recommendedPlan! },
-        )
-      : sentence(t, input.planVerdict),
-    value: input.recommendedPlan,
-    trend: "unknown",
-    caveat: hasSaving ? t("common:insight.setup.savingCaveat") : null,
+    // Each clause above is already a complete, terminated sentence (the
+    // `policyImpact`/`ttlPrefer*` keys end in a period, `verdictWithSaving`
+    // ditto, and the plain-verdict branch is wrapped by `sentence()`), so
+    // they are joined with the locale's SENTENCE separator, not re-wrapped —
+    // wrapping the join in `sentence()` again would double the final period.
+    answer: clauses.join(t("common:insight.punctuation.caveatJoin")),
+    value,
+    trend,
+    caveat: ttlCaveat ?? savingCaveat ?? policyCaveat,
     evidenceLink: "plan-and-policy",
   };
 }

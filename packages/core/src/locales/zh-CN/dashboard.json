@@ -377,7 +377,9 @@
     "output": "输出",
     "cacheRead": "缓存读取",
     "cacheWrite": "缓存写入",
-    "source": "来源: Anthropic API 定价 — 最后更新 {{date}}（每周自动刷新）。显示的费用为等价 API 费率，非订阅费用。"
+    "source": "来源: Anthropic API 定价 — 最后更新 {{date}}（每周自动刷新）。显示的费用为等价 API 费率，非订阅费用。",
+    "cacheWrite1h": "缓存写入（1 小时）",
+    "ttlBasisNote": "缓存写入按两种价格之一计费，取决于写入时记录的 ephemeral TTL——“缓存写入”列（5 分钟）或“缓存写入（1 小时）”列（1 小时）。同一工作负载在两者之间出现跳变，是计费基准发生了切换，而非定价错误——请参见计划面板下方的缓存 TTL 匹配度。"
   },
   "footer": {
     "generated": "生成于 {{timestamp}} • 时区: {{timezone}}"
@@ -483,7 +485,10 @@
     "alerts": {
       "fallbackRates": "部分用量在合作伙伴平台（Bedrock 或 Vertex）上按第一方费率计价。在配置合作伙伴费率之前，此处所有金额均为估算值。",
       "action": "查看",
-      "reconciliationDrift": "自下而上统计的成本与配置的发票总额无法对账 — 下方的核对面板显示差额及其可能原因。"
+      "reconciliationDrift": "自下而上统计的成本与配置的发票总额无法对账 — 下方的核对面板显示差额及其可能原因。",
+      "ttlPrefer5m": "此工作负载在 5 分钟缓存 TTL 下的成本，比当前记录所用的 1 小时 TTL 大约低 {{money}}——余量详见“计划”选项卡。",
+      "ttlPrefer1h": "此工作负载在 1 小时缓存 TTL 下的成本，比当前记录所用的 5 分钟 TTL 大约低 {{money}}——余量详见“计划”选项卡。",
+      "contextStepChange": "{{project}} 每个 session 的起始上下文跃升了约 {{percent}}，并一直维持在该水平——请查看“支出”选项卡了解具体数据。"
     },
     "verdict": {
       "goodValue": "按你的用量，当前套餐物有所值",
@@ -597,6 +602,80 @@
     "goodCompaction": {
       "title": "良好的上下文管理习惯",
       "body": "{{percent}}% 的 session 有压缩记录，且很少有长 session 未经压缩。您很好地控制了上下文规模。"
+    }
+  },
+  "ttlFit": {
+    "title": "缓存 TTL 匹配度 — 5 分钟与 1 小时对比",
+    "verdict": {
+      "prefer5m": "在此时间窗内，使用 5 分钟缓存 TTL 大约可少花 {{money}}。",
+      "prefer1h": "在此时间窗内，使用 1 小时缓存 TTL 大约可少花 {{money}}。",
+      "tooClose": "在此时间窗内，两种缓存 TTL 的成本大致相同（差异：{{money}}）——不值得切换。",
+      "insufficientData": "此时间窗内的缓存 TTL 数据尚不足，无法给出设置建议。"
+    },
+    "gapHistogram": {
+      "title": "空闲间隔分布",
+      "bucket": "距上一条消息的间隔",
+      "requests": "请求数",
+      "readTokens": "缓存读取 token",
+      "creationTokens": "缓存写入 token",
+      "pctRebuilt": "重建占比"
+    },
+    "origin": {
+      "title": "缓存写入来源",
+      "column": "来源",
+      "share": "写入占比",
+      "sessionStart": "session 开始",
+      "midWork": "工作进行中",
+      "resumeShort": "恢复（短间隔）",
+      "resumeLong": "恢复（长间隔）"
+    },
+    "byModel": {
+      "title": "各模型下短 TTL 的净成本",
+      "model": "模型",
+      "recovered": "已收回的读取 (R)",
+      "writes": "写入 (W)",
+      "writes1h": "1 小时 TTL 写入 (W1h)",
+      "net": "5 分钟 TTL 的净成本",
+      "breakEven": "盈亏平衡比",
+      "unpriced": "不含 {{count}} 行无定价数据（{{tokens}} 缓存写入 token）——无模型，或该模型无价格。"
+    },
+    "margin": {
+      "title": "余量",
+      "windowCost": "时间窗成本",
+      "recovered": "已收回的读取 (R)",
+      "writes": "缓存写入 token (W)",
+      "writes1h": "按 1 小时 TTL 写入 (W1h)",
+      "net": "5 分钟 TTL 的净成本",
+      "nearBoundary": "临界区间（略低于短 TTL 的 {{minutes}} 分钟内）：{{requests}} 个请求，{{readTokens}} 缓存读取 token",
+      "impliedSwing": "若该区间也过期，预计成本变动"
+    }
+  },
+  "contextCarry": {
+    "title": "上下文携带",
+    "distinctClause": "平均每次请求携带约 {{carried}} 个 token 的上下文，用于生成约 {{distinct}} 个 token 的新内容。",
+    "distinctUnavailable": "本时间窗内数据不足，无法估算每次请求的上下文中有多少是新增的、多少是从之前携带而来的。",
+    "biasNote": "此估算在两个方向上都存在偏差：被丢弃后又重新读取的内容会被第二次计为新增，而重置后的基线即使可能只是被丢弃内容的摘要，也会被计为新增。",
+    "carryCostLabel": "携带成本（下限——按 cache 读取费率计价）",
+    "sizeBands": {
+      "title": "按上下文大小统计的请求",
+      "band": "上下文大小",
+      "requests": "请求数",
+      "shareVolume": "携带量占比",
+      "shareCost": "成本占比",
+      "perRequest": "$/请求"
+    },
+    "sawtooth": {
+      "title": "重置形态",
+      "line": "上下文重置到约 {{floor}} 个 token，随后在下次重置前攀升至约 {{peak}}，每个周期约 {{cycle}} 次请求。",
+      "insufficientData": "本时间窗内重置次数少于 3 次——不足以描述其形态。"
+    },
+    "aboveCap": {
+      "title": "超出上限携带的 token",
+      "cap": "上限",
+      "tokensAbove": "超出上限的 token",
+      "share": "携带量占比",
+      "cost": "成本（下限）",
+      "caveat": "超出上限的 token 按 cache 读取费率计价——这是该成本可能的最低形式，也是其下限。这并不是将上下文限制在该水平的成本：设置上限意味着同样的工作要在模型面前用更少的上下文完成，而由此产生的重做成本未计入此处。"
     }
   }
 }
