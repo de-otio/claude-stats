@@ -7,7 +7,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import type { PlanType, PlanConfig } from "@claude-stats/core/types";
 import type { AccountMode, PolicyEvent } from "@claude-stats/core/types/insight";
-import { lookupPlanFee, type RateOverrides } from "@claude-stats/core/pricing";
+import { lookupPlanFee, type ModelPricing, type RateOverrides } from "@claude-stats/core/pricing";
 import { parseTicketKey } from "@claude-stats/core/tickets";
 import { createHttpJudgeProvider } from "./cost-per-task/judge-http.js";
 import type { JudgeProvider } from "./cost-per-task/judge.js";
@@ -380,28 +380,52 @@ export function validateRateConfig(input: unknown): NonNullable<Config["rate"]> 
   return out;
 }
 
-/** Validate `pricing` (cost-basis mode + partner rate overrides). */
+/**
+ * Validate `pricing` (cost-basis mode + partner rate overrides).
+ *
+ * `cacheWrite1hPerMillion` is OPTIONAL, and the two ways it can be missing are
+ * not the same thing:
+ *
+ *   - **absent** — the user wrote this table before the 1-hour rate existed.
+ *     Synthesize `2 × inputPerMillion` and mark the row `"synthesized"`, so the
+ *     TTL analysis knows to null its pricing half rather than report a signed
+ *     dollar figure derived from a guess.
+ *   - **present but invalid** (`NaN` / `Infinity` / negative / non-number) —
+ *     reject the WHOLE row, exactly as the four required fields behave.
+ *     Substituting a default for a value the user explicitly supplied is the
+ *     silently-wrong-cost-figure failure this whole change exists to prevent.
+ *
+ * Accumulators are null-prototype: model ids and source keys are attacker-
+ * controlled through a config write, so a `__proto__` key must land as an
+ * ordinary own property (visible to `Object.keys`, droppable) rather than
+ * reaching the prototype chain.
+ */
 export function validatePricingConfig(input: unknown): NonNullable<Config["pricing"]> {
   const out: NonNullable<Config["pricing"]> = {};
   if (!input || typeof input !== "object") return out;
   const r = input as Record<string, unknown>;
   if (r.mode === "plan" || r.mode === "metered") out.mode = r.mode as AccountMode;
   if (r.rates && typeof r.rates === "object") {
-    const rates: RateOverrides = {};
+    const rates: RateOverrides = Object.create(null) as RateOverrides;
     for (const src of ["first_party", "bedrock", "vertex"] as const) {
       const table = (r.rates as Record<string, unknown>)[src];
       if (!table || typeof table !== "object") continue;
-      const clean: Record<string, { inputPerMillion: number; outputPerMillion: number; cacheReadPerMillion: number; cacheWritePerMillion: number }> = {};
+      const clean: Record<string, ModelPricing> = Object.create(null) as Record<string, ModelPricing>;
       for (const [model, p] of Object.entries(table as Record<string, unknown>)) {
         if (!p || typeof p !== "object") continue;
         const pp = p as Record<string, unknown>;
         const nums = ["inputPerMillion", "outputPerMillion", "cacheReadPerMillion", "cacheWritePerMillion"] as const;
         if (!nums.every((n) => typeof pp[n] === "number" && Number.isFinite(pp[n]) && (pp[n] as number) >= 0)) continue;
+        const raw1h = pp.cacheWrite1hPerMillion;
+        const supplied = raw1h !== undefined;
+        if (supplied && !(typeof raw1h === "number" && Number.isFinite(raw1h) && raw1h >= 0)) continue;
         clean[model] = {
           inputPerMillion: pp.inputPerMillion as number,
           outputPerMillion: pp.outputPerMillion as number,
           cacheReadPerMillion: pp.cacheReadPerMillion as number,
           cacheWritePerMillion: pp.cacheWritePerMillion as number,
+          cacheWrite1hPerMillion: supplied ? (raw1h as number) : (pp.inputPerMillion as number) * 2,
+          ttlRateBasis: supplied ? "parsed" : "synthesized",
         };
       }
       if (Object.keys(clean).length > 0) rates[src] = clean;

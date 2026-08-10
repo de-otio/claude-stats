@@ -36,7 +36,10 @@ function row(overrides: Partial<HygieneMessageRow> & { sessionId: string; uuid: 
     outputTokens: 200,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
+    ephemeral5mCacheTokens: 0,
+    ephemeral1hCacheTokens: 0,
     toolErrorCount: 0,
+    tools: [],
     ...overrides,
   };
 }

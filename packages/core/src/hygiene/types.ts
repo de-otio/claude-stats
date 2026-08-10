@@ -46,8 +46,38 @@ export interface HygieneMessageRow {
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  /**
+   * TTL breakdown of `cacheCreationTokens`, when the source reported it.
+   * REQUIRED, not optional (cache-ttl-fit D4): an optional pair defaulted with
+   * `?? 0` at the call site would let a forgotten store mapper ship
+   * silently-zeroed TTL data that reads as `observedTtlOf(rows) === "unknown"`
+   * rather than surfacing as a compile error. Older rows genuinely have no TTL
+   * split (pre-column schema) — those are `0`/`0`, which is what makes
+   * `"unknown"` the correct, honest read for them.
+   */
+  ephemeral5mCacheTokens: number;
+  ephemeral1hCacheTokens: number;
   /** Failed tool calls in this message (schema v11+; older rows are 0). */
   toolErrorCount: number;
+  /**
+   * Tool names invoked BY this message (`block.name` off each tool-use
+   * content block; call arguments live in the separate `file_paths` column,
+   * never here). `[]` when none. REQUIRED, not optional, for the same reason
+   * `ephemeral5mCacheTokens`/`ephemeral1hCacheTokens` are required above: an
+   * optional field defaulted with `?? []` at a call site would let a
+   * forgotten store mapper ship silently-empty tool data that reads as "no
+   * tool call happened" rather than surfacing as a compile error.
+   *
+   * PARSED, not a raw JSON string (context-carry-cost review F11): the store
+   * boundary (`packages/cli/src/store/index.ts` and its three
+   * `toHygieneMessageRow` mappers) is responsible for a guarded
+   * `JSON.parse` of the stored `messages.tools` column, filtering to
+   * `typeof t === "string"` elements — `ContentBlock.name` is `name?:
+   * string` and never runtime-checked, so a non-string element is reachable
+   * on a hand-edited JSONL or a synced shard. A pure detector in this module
+   * must never see a malformed value; it only ever sees `readonly string[]`.
+   */
+  tools: readonly string[];
 }
 
 /**
@@ -142,12 +172,22 @@ export interface HygieneThresholds {
     minRunLength: number;
   };
   contextBloat: {
-    /** Total input tokens fed to the model in one turn (input + both cache
-     *  columns) above which a turn counts as oversized. */
-    minTurnInputTokens: number;
-    /** output / totalInput at/below which the turn counts as low-yield. */
-    maxOutputRatio: number;
-    /** Oversized+low-yield turns needed in a session to call it "sustained". */
+    /**
+     * Context INCREMENT (this turn's total input minus the previous turn's,
+     * within the session — `contextIncrements()` in `./util.ts`, filtered to
+     * `kind === "growth"`) at/above which a turn counts as a large addition.
+     * Replaces the old level-based `minTurnInputTokens`/`maxOutputRatio`
+     * pair (context-carry-cost D1): flagging the LEVEL fired on 72.3% of
+     * requests and 50% of sessions on a real 30-day window — on a
+     * million-token context window, a large total is the ordinary case, not
+     * a signal. Flagging the increment instead — the decision someone
+     * actually made this turn — fires on 79 turns (0.25% of requests) on the
+     * same window.
+     */
+    minIncrementTokens: number;
+    /** Qualifying (growth) increments needed in a session to call it
+     *  "sustained" — the precision guard: one large read is often
+     *  legitimate, a repeated pattern is not. */
     minOccurrences: number;
   };
   reEntryBurn: {
@@ -189,7 +229,7 @@ export interface HygieneThresholds {
 export const DEFAULT_HYGIENE_THRESHOLDS: HygieneThresholds = {
   cacheChurn: { minCacheCreationTokens: 200_000, minMessages: 3, ratio: 0.85 },
   retryLoop: { minRunLength: 3 },
-  contextBloat: { minTurnInputTokens: 150_000, maxOutputRatio: 0.02, minOccurrences: 3 },
+  contextBloat: { minIncrementTokens: 20_000, minOccurrences: 3 },
   reEntryBurn: { minGapMs: 30 * 60 * 1000, minCacheCreationTokens: 20_000 },
   abandonedSpend: { minCost: 1, graceMs: 2 * 60 * 60 * 1000 },
   tierMismatch: { minSessionsPerTier: 8, maxRelativeGap: 0.15 },

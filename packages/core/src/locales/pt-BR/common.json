@@ -111,7 +111,8 @@
       "enablement": "Rode uma sessão do Claude Code e atualize — a coleta é automática.",
       "thisPeriod": "{{money}} neste período",
       "devTime": "≈ {{devTime}} pela taxa que você configurou",
-      "planMultiplier": "{{multiplier}}× o seu plano de {{fee}}/mês"
+      "planMultiplier": "{{multiplier}}× o seu plano de {{fee}}/mês",
+      "contextCarry": "{{percent}} do gasto são leituras de cache — contexto carregado adiante por cerca de um décimo do preço de enviá-lo do zero. A alavanca é carregar menos contexto, não usar menos cache; o que carregar menos custa em retrabalho não é medido aqui."
     },
     "bought": {
       "unavailable": "Ainda não há gasto atribuído a itens de trabalho.",
@@ -138,7 +139,12 @@
       "policyImpact_other": "Desde a mudança de política em {{date}}, o custo por tarefa bem-sucedida subiu {{percent}} em {{count}} classes de tarefas.",
       "policyCaveat": "Indício, não prova — comparado dentro das classes de tarefas, dos dois lados do limite.",
       "verdictWithSaving": "{{verdict}} — mudar para {{plan}} economizaria cerca de {{saving}}/mês.",
-      "savingCaveat": "Estimado a partir do seu próprio uso aplicado aos limites de cada plano."
+      "savingCaveat": "Estimado a partir do seu próprio uso aplicado aos limites de cada plano.",
+      "ttlPrefer5m": "O TTL de cache de 5 minutos custaria cerca de {{money}} menos neste período.",
+      "ttlPrefer1h": "O TTL de cache de 1 hora custaria cerca de {{money}} menos neste período.",
+      "ttlProjectionCaveat": "Projetado a partir de um período registrado com o outro TTL de cache — o efeito de segunda ordem da troca em si não é modelado.",
+      "autoCompactRecommend": "Considere definir a janela de auto-compact em {{tokens}} tokens — os ciclos executariam cerca de {{medianCycleRequests}} requisições em vez de {{observedMedianCycleRequests}}, com economia estimada de {{money}}.",
+      "autoCompactRecommendNoSaving": "Considere definir a janela de auto-compact em {{tokens}} tokens — os ciclos executariam cerca de {{medianCycleRequests}} requisições em vez de {{observedMedianCycleRequests}}. Economia estimada: indisponível."
     },
     "change": {
       "nothing": "No momento, nada precisa de atenção.",

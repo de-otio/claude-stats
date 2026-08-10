@@ -406,7 +406,86 @@
     "output": "Output",
     "cacheRead": "Cache Read",
     "cacheWrite": "Cache Write",
-    "source": "Source: Anthropic API pricing — last updated {{date}} (auto-refreshed weekly). Costs shown are equivalent API rates, not subscription charges."
+    "cacheWrite1h": "Cache Write (1h)",
+    "source": "Source: Anthropic API pricing — last updated {{date}} (auto-refreshed weekly). Costs shown are equivalent API rates, not subscription charges.",
+    "ttlBasisNote": "Cache writes are priced at one of two rates depending on the ephemeral TTL recorded at write time — the Cache Write column (5-minute) or Cache Write (1h) (1-hour). A jump between them on the same workload is this basis switching, not a pricing error — see the Cache TTL fit below the plan panel."
+  },
+  "ttlFit": {
+    "title": "Cache TTL fit — 5-minute vs. 1-hour",
+    "verdict": {
+      "prefer5m": "The 5-minute cache TTL would cost about {{money}} less over this window.",
+      "prefer1h": "The 1-hour cache TTL would cost about {{money}} less over this window.",
+      "tooClose": "The two cache TTLs cost about the same over this window (difference: {{money}}) — not worth switching.",
+      "insufficientData": "Not enough cache-TTL data yet in this window to recommend a setting."
+    },
+    "gapHistogram": {
+      "title": "Idle-gap distribution",
+      "bucket": "Gap since previous message",
+      "requests": "Requests",
+      "readTokens": "Cache-read tokens",
+      "creationTokens": "Cache-write tokens",
+      "pctRebuilt": "% rebuilt"
+    },
+    "origin": {
+      "title": "Cache-write origin",
+      "column": "Origin",
+      "share": "Share of writes",
+      "sessionStart": "Session start",
+      "midWork": "Mid-work",
+      "resumeShort": "Resume (short gap)",
+      "resumeLong": "Resume (long gap)"
+    },
+    "byModel": {
+      "title": "Per-model net cost of the short TTL",
+      "model": "Model",
+      "recovered": "Recovered reads (R)",
+      "writes": "Writes (W)",
+      "writes1h": "Writes @ 1h (W1h)",
+      "net": "Net cost of 5-minute TTL",
+      "breakEven": "Break-even ratio",
+      "unpriced": "Excludes {{count}} unpriced rows ({{tokens}} cache-write tokens) — no model, or no rate for this model."
+    },
+    "margin": {
+      "title": "Margin",
+      "windowCost": "Window cost",
+      "recovered": "Recovered reads (R)",
+      "writes": "Cache-write tokens (W)",
+      "writes1h": "Written at the 1-hour TTL (W1h)",
+      "net": "Net cost of the 5-minute TTL",
+      "nearBoundary": "Near-boundary band ({{minutes}} min just under the short TTL): {{requests}} requests, {{readTokens}} cache-read tokens",
+      "impliedSwing": "Implied swing if this band also expired"
+    }
+  },
+  "contextCarry": {
+    "title": "Context carry",
+    "distinctClause": "The average request carried about {{carried}} tokens of context to produce about {{distinct}} tokens of new content.",
+    "distinctUnavailable": "Not enough data this window to estimate how much of each request's context was new versus carried forward.",
+    "biasNote": "This estimate is biased in both directions: content that is dropped and re-read later is counted as new a second time, while a post-reset baseline is counted as new even though it may only be a summary of what was dropped.",
+    "carryCostLabel": "Carry cost (lower bound — priced at the cache-read rate)",
+    "sizeBands": {
+      "title": "Requests by context size",
+      "band": "Context size",
+      "requests": "Requests",
+      "shareVolume": "Share of carried volume",
+      "shareCost": "Share of cost",
+      "perRequest": "$/request"
+    },
+    "sawtooth": {
+      "title": "Reset shape",
+      "line": "Context resets to about {{floor}} tokens, then climbs to about {{peak}} before the next reset, over about {{cycle}} requests per cycle.",
+      "insufficientData": "Fewer than 3 resets in this window — not enough to describe a shape."
+    },
+    "aboveCap": {
+      "title": "Tokens carried above a cap",
+      "cap": "Cap",
+      "tokensAbove": "Tokens above cap",
+      "share": "Share of carried volume",
+      "cost": "Cost (lower bound)",
+      "caveat": "Tokens above a cap are priced at the cache-read rate — the cheapest form this cost can take, and a lower bound on it. This is not the cost of capping context at that level: capping means the same work gets done with less context in front of the model, and what that rework costs is not measured here."
+    }
+  },
+  "autoCompactFit": {
+    "caveat": "Upper bound: assumes the same work happens with less context and does not price the cost of any extra rework, and the token savings themselves are a lower bound too. The margin behind this recommendation is measured against a cost figure that is itself a lower bound, biasing it toward recommending a change. This is the default auto-compact window — the launch flag can still override it — and this tool cannot tell whether Claude Code is already clamping the window to the model's own context size."
   },
   "footer": {
     "generated": "Generated {{timestamp}} • Timezone: {{timezone}}"
@@ -493,6 +572,9 @@
     "alerts": {
       "fallbackRates": "Some usage was priced at first-party rates on a partner platform (Bedrock or Vertex). Every cost figure here is an estimate until partner rates are configured.",
       "reconciliationDrift": "Bottom-up cost does not reconcile with the configured invoice total — the reconciliation panel below shows the residual and its candidate causes.",
+      "ttlPrefer5m": "This workload would cost about {{money}} less on a 5-minute cache TTL than the 1-hour TTL it is currently recording under — see the Plan tab for the margin.",
+      "ttlPrefer1h": "This workload would cost about {{money}} less on a 1-hour cache TTL than the 5-minute TTL it is currently recording under — see the Plan tab for the margin.",
+      "contextStepChange": "{{project}}'s starting context per session jumped about {{percent}} and has stayed there — see the Spending tab for the evidence.",
       "action": "Review"
     },
     "verdict": {

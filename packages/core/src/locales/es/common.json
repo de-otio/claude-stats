@@ -111,7 +111,8 @@
       "enablement": "Ejecuta una sesión de Claude Code y actualiza — la recopilación es automática.",
       "thisPeriod": "{{money}} en este periodo",
       "devTime": "≈ {{devTime}} según la tarifa que configuraste",
-      "planMultiplier": "{{multiplier}}× tu plan de {{fee}}/mes"
+      "planMultiplier": "{{multiplier}}× tu plan de {{fee}}/mes",
+      "contextCarry": "{{percent}} del gasto son lecturas de caché: contexto arrastrado hacia adelante a cerca de una décima parte del precio de enviarlo de nuevo. La palanca es arrastrar menos, no cachear menos; lo que arrastrar menos cuesta en retrabajo no se mide aquí."
     },
     "bought": {
       "unavailable": "Todavía no hay gasto atribuido a elementos de trabajo.",
@@ -138,7 +139,12 @@
       "policyImpact_other": "Desde el cambio de política del {{date}}, el coste por tarea exitosa ha subido un {{percent}} en {{count}} clases de tareas.",
       "policyCaveat": "Indicio, no prueba — comparado dentro de cada clase de tareas a ambos lados del límite.",
       "verdictWithSaving": "{{verdict}} — cambiar a {{plan}} ahorraría unos {{saving}}/mes.",
-      "savingCaveat": "Estimado a partir de tu propio uso aplicado a los límites de cada plan."
+      "savingCaveat": "Estimado a partir de tu propio uso aplicado a los límites de cada plan.",
+      "ttlPrefer5m": "El TTL de cache de 5 minutos costaría unos {{money}} menos en este periodo.",
+      "ttlPrefer1h": "El TTL de cache de 1 hora costaría unos {{money}} menos en este periodo.",
+      "ttlProjectionCaveat": "Proyectado a partir de un periodo registrado con el otro TTL de cache: no se modela el efecto de segundo orden de cambiarlo realmente.",
+      "autoCompactRecommend": "Considere establecer la ventana de auto-compact en {{tokens}} tokens: los ciclos ejecutarían unas {{medianCycleRequests}} solicitudes en lugar de {{observedMedianCycleRequests}}, con un ahorro estimado de {{money}}.",
+      "autoCompactRecommendNoSaving": "Considere establecer la ventana de auto-compact en {{tokens}} tokens: los ciclos ejecutarían unas {{medianCycleRequests}} solicitudes en lugar de {{observedMedianCycleRequests}}. Ahorro estimado: no disponible."
     },
     "change": {
       "nothing": "Ahora mismo nada requiere atención.",

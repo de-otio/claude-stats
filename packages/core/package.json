@@ -136,6 +136,18 @@
       "types": "./dist/hygiene/index.d.ts",
       "default": "./dist/hygiene/index.js"
     },
+    "./ttlFit": {
+      "types": "./dist/ttlFit.d.ts",
+      "default": "./dist/ttlFit.js"
+    },
+    "./contextCarry": {
+      "types": "./dist/contextCarry.d.ts",
+      "default": "./dist/contextCarry.js"
+    },
+    "./autoCompactFit": {
+      "types": "./dist/autoCompactFit.d.ts",
+      "default": "./dist/autoCompactFit.js"
+    },
     "./constraintImpact": {
       "types": "./dist/constraintImpact/index.d.ts",
       "default": "./dist/constraintImpact/index.js"

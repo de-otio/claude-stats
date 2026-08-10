@@ -544,6 +544,11 @@ export function printSummary(store: Store, opts: ReportOptions = {}): void {
       mt.output_tokens,
       mt.cache_read_tokens,
       mt.cache_creation_tokens,
+      undefined,
+      {
+        ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
+        ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
+      },
     );
     if (result.known) {
       totalCost += result.cost;
@@ -729,7 +734,10 @@ export function printSpendingReport(store: Store, opts: SpendingOptions = {}): v
   const modelCosts: Array<{ model: string; cost: number; input: number; output: number }> = [];
   for (const row of report.byModel) {
     if (opts.model && !row.model.startsWith(opts.model)) continue;
-    const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens);
+    const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens, undefined, {
+      ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
+      ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
+    });
     grandTotal += cost;
     modelCosts.push({ model: row.model, cost, input: row.input_tokens, output: row.output_tokens });
   }
@@ -747,7 +755,10 @@ export function printSpendingReport(store: Store, opts: SpendingOptions = {}): v
   const sessionMsgTotals = store.getMessageTotalsBySession(report.topSessions.map(s => s.session_id));
   const sessionCostMap = new Map<string, number>();
   for (const mt of sessionMsgTotals) {
-    const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens);
+    const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens, undefined, {
+      ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
+      ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
+    });
     sessionCostMap.set(mt.session_id, (sessionCostMap.get(mt.session_id) ?? 0) + cost);
   }
 
@@ -1129,7 +1140,10 @@ export function printSessionList(store: Store, opts: ReportOptions = {}): void {
   const sessionCostMap = new Map<string, number>();
   for (const mt of messageTotalsBySession) {
     const prev = sessionCostMap.get(mt.session_id) ?? 0;
-    const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens);
+    const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens, undefined, {
+      ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
+      ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
+    });
     sessionCostMap.set(mt.session_id, prev + cost);
   }
 

@@ -448,7 +448,10 @@ function computeAndUpsertWindows(store: Store, since: number): void {
   const sessionCostMap = new Map<string, { cost: number; tokensByModel: Record<string, number> }>();
   for (const row of msgTotals) {
     const entry = sessionCostMap.get(row.session_id) ?? { cost: 0, tokensByModel: {} };
-    const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens);
+    const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens, undefined, {
+      ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
+      ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
+    });
     entry.cost += cost;
     entry.tokensByModel[row.model] = (entry.tokensByModel[row.model] ?? 0) + row.input_tokens + row.output_tokens;
     sessionCostMap.set(row.session_id, entry);

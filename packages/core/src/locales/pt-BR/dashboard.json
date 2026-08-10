@@ -377,7 +377,9 @@
     "output": "Saída",
     "cacheRead": "Leitura de cache",
     "cacheWrite": "Escrita de cache",
-    "source": "Fonte: preços da API da Anthropic — última atualização em {{date}} (atualizado automaticamente a cada semana). Os custos exibidos são taxas equivalentes da API, não cobranças de assinatura."
+    "source": "Fonte: preços da API da Anthropic — última atualização em {{date}} (atualizado automaticamente a cada semana). Os custos exibidos são taxas equivalentes da API, não cobranças de assinatura.",
+    "cacheWrite1h": "Gravação de cache (1h)",
+    "ttlBasisNote": "As gravações de cache são cobradas em uma de duas tarifas, dependendo do TTL efêmero registrado no momento da gravação — a coluna Gravação de cache (5 minutos) ou Gravação de cache (1h) (1 hora). Um salto entre elas na mesma carga de trabalho é essa troca de base, não um erro de preço — veja o Ajuste de TTL de cache abaixo do painel do plano."
   },
   "footer": {
     "generated": "Gerado em {{timestamp}} • Fuso horário: {{timezone}}"
@@ -483,7 +485,10 @@
     "alerts": {
       "fallbackRates": "Parte do uso foi precificada com tarifas first-party em uma plataforma parceira (Bedrock ou Vertex). Todos os valores aqui são estimativas até que as tarifas do parceiro sejam configuradas.",
       "action": "Revisar",
-      "reconciliationDrift": "O custo calculado de baixo para cima não concilia com o total da fatura configurado — o painel de conciliação abaixo mostra o resíduo e suas possíveis causas."
+      "reconciliationDrift": "O custo calculado de baixo para cima não concilia com o total da fatura configurado — o painel de conciliação abaixo mostra o resíduo e suas possíveis causas.",
+      "ttlPrefer5m": "Esta carga de trabalho custaria cerca de {{money}} menos com um TTL de cache de 5 minutos do que com o TTL de 1 hora sob o qual está sendo registrada atualmente — veja a margem na guia Plano.",
+      "ttlPrefer1h": "Esta carga de trabalho custaria cerca de {{money}} menos com um TTL de cache de 1 hora do que com o TTL de 5 minutos sob o qual está sendo registrada atualmente — veja a margem na guia Plano.",
+      "contextStepChange": "O contexto inicial por sessão de {{project}} aumentou cerca de {{percent}} e permaneceu nesse nível — veja as evidências na guia Gastos."
     },
     "verdict": {
       "goodValue": "Seu plano vale a pena para o quanto você usa",
@@ -599,5 +604,82 @@
       "title": "Boa higiene de contexto",
       "body": "{{percent}}% das suas sessões apresentam atividade de compactação, e poucas sessões longas ficaram sem compactar. Você está mantendo o tamanho do contexto sob controle."
     }
+  },
+  "ttlFit": {
+    "title": "Ajuste de TTL de cache — 5 minutos vs. 1 hora",
+    "verdict": {
+      "prefer5m": "O TTL de cache de 5 minutos custaria cerca de {{money}} menos nesta janela.",
+      "prefer1h": "O TTL de cache de 1 hora custaria cerca de {{money}} menos nesta janela.",
+      "tooClose": "Os dois TTLs de cache custam praticamente o mesmo nesta janela (diferença: {{money}}) — não vale a pena trocar.",
+      "insufficientData": "Ainda não há dados de TTL de cache suficientes nesta janela para recomendar uma configuração."
+    },
+    "gapHistogram": {
+      "title": "Distribuição de intervalos de inatividade",
+      "bucket": "Intervalo desde a mensagem anterior",
+      "requests": "Requisições",
+      "readTokens": "Tokens de leitura de cache",
+      "creationTokens": "Tokens de gravação de cache",
+      "pctRebuilt": "% reconstruído"
+    },
+    "origin": {
+      "title": "Origem da gravação de cache",
+      "column": "Origem",
+      "share": "Parcela das gravações",
+      "sessionStart": "Início da sessão",
+      "midWork": "Durante o trabalho",
+      "resumeShort": "Retomada (intervalo curto)",
+      "resumeLong": "Retomada (intervalo longo)"
+    },
+    "byModel": {
+      "title": "Custo líquido do TTL curto por modelo",
+      "model": "Modelo",
+      "recovered": "Leituras recuperadas (R)",
+      "writes": "Gravações (W)",
+      "writes1h": "Gravações @ 1h (W1h)",
+      "net": "Custo líquido do TTL de 5 minutos",
+      "breakEven": "Razão de equilíbrio",
+      "unpriced": "Exclui {{count}} linhas sem preço ({{tokens}} tokens de gravação de cache) — sem modelo ou sem tarifa para este modelo."
+    },
+    "margin": {
+      "title": "Margem",
+      "windowCost": "Custo da janela",
+      "recovered": "Leituras recuperadas (R)",
+      "writes": "Tokens de gravação de cache (W)",
+      "writes1h": "Gravados com o TTL de 1 hora (W1h)",
+      "net": "Custo líquido do TTL de 5 minutos",
+      "nearBoundary": "Faixa próxima ao limite ({{minutes}} min pouco abaixo do TTL curto): {{requests}} requisições, {{readTokens}} tokens de leitura de cache",
+      "impliedSwing": "Variação implícita se essa faixa também expirasse"
+    }
+  },
+  "contextCarry": {
+    "title": "Contexto carregado",
+    "distinctClause": "Em média, cada solicitação carregou cerca de {{carried}} tokens de contexto para produzir cerca de {{distinct}} tokens de conteúdo novo.",
+    "distinctUnavailable": "Dados insuficientes nesta janela para estimar quanto do contexto de cada solicitação era novo e quanto foi carregado adiante.",
+    "biasNote": "Esta estimativa é enviesada nos dois sentidos: conteúdo que é descartado e relido depois é contado como novo uma segunda vez, enquanto uma linha de base pós-reset é contada como nova mesmo podendo ser apenas um resumo do que foi descartado.",
+    "carryCostLabel": "Custo do carregamento (limite inferior — precificado pela taxa de leitura de cache)",
+    "sizeBands": {
+      "title": "Solicitações por tamanho de contexto",
+      "band": "Tamanho do contexto",
+      "requests": "Solicitações",
+      "shareVolume": "Parcela do volume carregado",
+      "shareCost": "Parcela do custo",
+      "perRequest": "$/solicitação"
+    },
+    "sawtooth": {
+      "title": "Formato do reset",
+      "line": "O contexto é reiniciado para cerca de {{floor}} tokens e depois sobe até cerca de {{peak}} antes do próximo reset, ao longo de cerca de {{cycle}} solicitações por ciclo.",
+      "insufficientData": "Menos de 3 resets nesta janela — insuficiente para descrever um formato."
+    },
+    "aboveCap": {
+      "title": "Tokens carregados acima de um limite",
+      "cap": "Limite",
+      "tokensAbove": "Tokens acima do limite",
+      "share": "Parcela do volume carregado",
+      "cost": "Custo (limite inferior)",
+      "caveat": "Tokens acima de um limite são precificados pela taxa de leitura de cache — a forma mais barata que esse custo pode assumir e um limite inferior dele. Este não é o custo de limitar o contexto nesse nível: limitar significa que o mesmo trabalho é feito com menos contexto diante do modelo, e o custo desse retrabalho não é medido aqui."
+    }
+  },
+  "autoCompactFit": {
+    "caveat": "Limite superior: pressupõe que o mesmo trabalho seja feito com menos contexto e não contabiliza o custo de eventual retrabalho, e a própria economia de tokens também é um limite inferior. A margem por trás desta recomendação é medida em relação a um valor de custo que já é, ele mesmo, um limite inferior, o que a inclina a recomendar uma mudança. Esta é a janela padrão de auto-compact — a flag de inicialização ainda pode sobrescrevê-la — e esta ferramenta não tem como saber se o Claude Code já está limitando a janela ao tamanho de contexto do próprio modelo."
   }
 }

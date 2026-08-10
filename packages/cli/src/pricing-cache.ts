@@ -167,8 +167,9 @@ export function parsePricingTable(html: string): Record<string, ModelPricing> {
       const output = parseDollarAmount(cells[colMap.output]!);
       if (input === null || output === null) continue;
 
-      const cacheRead = colMap.cacheRead >= 0 ? parseDollarAmount(cells[colMap.cacheRead]!) : null;
-      const cacheWrite = colMap.cacheWrite5m >= 0 ? parseDollarAmount(cells[colMap.cacheWrite5m]!) : null;
+      const cacheRead = cellAmount(cells, colMap.cacheRead);
+      const cacheWrite = cellAmount(cells, colMap.cacheWrite5m);
+      const cacheWrite1h = cellAmount(cells, colMap.cacheWrite1h);
 
       const prefix = displayNameToApiPrefix(modelName);
       models[prefix] = {
@@ -176,6 +177,11 @@ export function parsePricingTable(html: string): Record<string, ModelPricing> {
         outputPerMillion: output,
         cacheReadPerMillion: cacheRead ?? input * 0.1,
         cacheWritePerMillion: cacheWrite ?? input * 1.25,
+        // Only fall back to the published 2× multiplier when the page genuinely
+        // has no 1-hour column — and say so, so the TTL analysis can refuse to
+        // price a model whose premium was guessed rather than read.
+        cacheWrite1hPerMillion: cacheWrite1h ?? input * 2,
+        ttlRateBasis: cacheWrite1h === null ? "synthesized" : "parsed",
       };
     }
 
@@ -200,23 +206,47 @@ function stripHtml(s: string): string {
   return s.replace(/<[^>]*>/g, "").trim();
 }
 
+/**
+ * Map header text to column indices.
+ *
+ * The two cache-write columns are matched on an EXPLICIT TTL marker, never on a
+ * bare "cache write". The previous rule accepted the first unclaimed
+ * `cache write` header as the 5-minute column, so a page that rendered the
+ * 1-hour column first would have landed the 1-hour rate in
+ * `cacheWritePerMillion` — which collapses the derived write premium to zero,
+ * pins the TTL verdict to "always prefer 1h", and reports no error anywhere.
+ * An unmarked column is left unmatched and the rate is synthesized instead,
+ * which is at least labelled as such.
+ */
 function mapColumns(headers: string[]): {
   model: number;
   input: number;
   output: number;
   cacheRead: number;
   cacheWrite5m: number;
+  cacheWrite1h: number;
 } {
-  let model = -1, input = -1, output = -1, cacheRead = -1, cacheWrite5m = -1;
+  let model = -1, input = -1, output = -1, cacheRead = -1, cacheWrite5m = -1, cacheWrite1h = -1;
   for (let i = 0; i < headers.length; i++) {
     const h = stripHtml(headers[i]!).toLowerCase();
     if (h.includes("model")) model = i;
     else if (h.includes("base input") || (h.includes("input") && !h.includes("cache"))) input = i;
     else if (h.includes("output")) output = i;
     else if (h.includes("cache hit") || h.includes("cache read") || h.includes("refresh")) cacheRead = i;
-    else if (h.includes("5m") || h.includes("5 min") || (h.includes("cache write") && cacheWrite5m < 0)) cacheWrite5m = i;
+    else if (h.includes("5m") || h.includes("5 min") || h.includes("5-min")) cacheWrite5m = i;
+    else if (h.includes("1h") || h.includes("1 hour") || h.includes("1-hour")) cacheWrite1h = i;
   }
-  return { model, input, output, cacheRead, cacheWrite5m };
+  return { model, input, output, cacheRead, cacheWrite5m, cacheWrite1h };
+}
+
+/**
+ * Parse an optional column out of a data row. Returns null when the column was
+ * not found in the header OR the row is short — a ragged table must degrade to
+ * the synthesized rate, not throw mid-parse and lose every remaining model.
+ */
+function cellAmount(cells: string[], index: number): number | null {
+  if (index < 0 || index >= cells.length) return null;
+  return parseDollarAmount(cells[index]!);
 }
 
 function parseDollarAmount(cell: string): number | null {

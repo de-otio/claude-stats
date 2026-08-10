@@ -111,7 +111,8 @@
       "enablement": "Lancez une session Claude Code, puis actualisez — la collecte est automatique.",
       "thisPeriod": "{{money}} sur cette période",
       "devTime": "≈ {{devTime}} au taux que vous avez configuré",
-      "planMultiplier": "{{multiplier}}× votre abonnement à {{fee}}/mois"
+      "planMultiplier": "{{multiplier}}× votre abonnement à {{fee}}/mois",
+      "contextCarry": "{{percent}} des dépenses provient de lectures de cache — du contexte reporté à environ un dixième du prix d'un envoi à neuf. Le levier est de reporter moins de contexte, pas de moins mettre en cache ; le coût en reprises d'un report réduit n'est pas mesuré ici."
     },
     "bought": {
       "unavailable": "Aucune dépense encore attribuée à des éléments de travail.",
@@ -138,7 +139,12 @@
       "policyImpact_other": "Depuis le changement de politique du {{date}}, le coût par tâche réussie a augmenté de {{percent}} dans {{count}} classes de tâches.",
       "policyCaveat": "Un indice, pas une preuve — comparaison faite au sein des classes de tâches, de part et d'autre de la limite.",
       "verdictWithSaving": "{{verdict}} — passer à {{plan}} économiserait environ {{saving}}/mois.",
-      "savingCaveat": "Estimé à partir de votre propre usage rejoué face aux limites des abonnements."
+      "savingCaveat": "Estimé à partir de votre propre usage rejoué face aux limites des abonnements.",
+      "ttlPrefer5m": "Le TTL de cache de 5 minutes coûterait environ {{money}} de moins sur cette période.",
+      "ttlPrefer1h": "Le TTL de cache d'une heure coûterait environ {{money}} de moins sur cette période.",
+      "ttlProjectionCaveat": "Projection basée sur une période enregistrée avec l'autre TTL de cache — l'effet de second ordre d'un changement réel n'est pas modélisé.",
+      "autoCompactRecommend": "Envisagez de définir la fenêtre d'auto-compact à {{tokens}} tokens — les cycles exécuteraient environ {{medianCycleRequests}} requêtes au lieu de {{observedMedianCycleRequests}}, avec une économie estimée de {{money}}.",
+      "autoCompactRecommendNoSaving": "Envisagez de définir la fenêtre d'auto-compact à {{tokens}} tokens — les cycles exécuteraient environ {{medianCycleRequests}} requêtes au lieu de {{observedMedianCycleRequests}}. Économie estimée : non disponible."
     },
     "change": {
       "nothing": "Rien ne requiert votre attention pour le moment.",

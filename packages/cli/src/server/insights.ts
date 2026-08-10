@@ -30,14 +30,20 @@
  * `DashboardData` in, exact rendered figures out — instead of a DOM snapshot.
  */
 import type { InsightAnswer, Reconciliation, TicketCoverage } from "@claude-stats/core/types/insight";
-import type { CostVocabulary } from "@claude-stats/core/insight";
+import type { CostVocabulary, SetupAutoCompactInput, SetupTtlInput } from "@claude-stats/core/insight";
 import {
   answerBought,
   answerChange,
   answerCost,
   answerEfficiency,
   answerSetup,
+  formatMoney,
+  formatPercent,
+  tLiteral,
 } from "@claude-stats/core/insight";
+import type { TtlFitResult } from "@claude-stats/core/ttlFit";
+import type { ContextCarryResult } from "@claude-stats/core/contextCarry";
+import type { AutoCompactFitResult } from "@claude-stats/core/autoCompactFit";
 import { outcomeCalibrationFrom } from "../calibration/index.js";
 import type { DashboardData } from "../dashboard/index.js";
 import type { Config } from "../config.js";
@@ -154,6 +160,93 @@ export function resolveDashboardCostVocabulary(data: DashboardData, config: Conf
   };
 }
 
+// ─── Cache-TTL fit → the setup card / the alerts strip ────────────────────────
+
+/**
+ * Which TTL a `"prefer-*"` verdict names, so a caller can compare it against
+ * `observedTtl` (the TTL the window was ACTUALLY recorded at) to tell a
+ * same-TTL measurement from a projection/counterfactual. `null` for the two
+ * verdicts that name no TTL (`"too-close-to-call"`, `"insufficient-data"`).
+ */
+function verdictTtl(verdict: TtlFitResult["recommendation"]["verdict"]): "5m" | "1h" | null {
+  if (verdict === "prefer-5m") return "5m";
+  if (verdict === "prefer-1h") return "1h";
+  return null;
+}
+
+/**
+ * A verdict is a PROJECTION — computed from a window recorded at the other
+ * TTL, per `TtlFitResult.observedTtl`'s doc comment (plan.md §5.3) — when the
+ * window's `observedTtl` is unambiguously the OTHER single TTL from the one
+ * the verdict names. A `"mixed"` window (both TTLs actually recorded) counts
+ * as a projection too: neither half alone is what the verdict describes.
+ * `"unknown"` never reaches here — that observedTtl always forces
+ * `"insufficient-data"` (`ttlFit.ts`), which `verdictTtl` maps to `null`.
+ */
+function isTtlProjection(fit: TtlFitResult): boolean {
+  const named = verdictTtl(fit.recommendation.verdict);
+  if (named === null) return false;
+  return fit.observedTtl !== named;
+}
+
+/** Reduce a computed fit to exactly what `answerSetup` needs — this module
+ *  reads `data.ttlFit`, it never recomputes `computeTtlFit` (plan.md C2). */
+function ttlSetupInput(fit: TtlFitResult | null | undefined): SetupTtlInput | null {
+  if (!fit) return null;
+  return {
+    verdict: fit.recommendation.verdict,
+    netCostOfShortTtl: fit.totals.netCostOfShortTtl,
+    isProjection: isTtlProjection(fit),
+  };
+}
+
+// ─── Auto-compact-window fit → the setup card (autocompact-window-fit B2) ─────
+
+/**
+ * Narrow, structural view of `data.contextCarry.autoCompactFit`.
+ *
+ * B1 (`cli/src/dashboard/index.ts`) owns widening `DashboardContextCarry` to
+ * carry `AutoCompactFitResult` in the TYPE, and this module does not touch
+ * that file (sibling lane, mid-flight — see the task handoff). Reading the
+ * field through this local, structurally-typed accessor rather than through
+ * `DashboardContextCarry` itself means this module compiles against B1's
+ * eventual widened type without depending on the edit landing first: once B1
+ * lands, `data.contextCarry.autoCompactFit` is exactly this shape (it IS
+ * `AutoCompactFitResult`), so the cast below stays sound.
+ */
+type ContextCarryWithFit = { autoCompactFit?: AutoCompactFitResult | null };
+
+/**
+ * Reduce the already-computed fit to exactly what `answerSetup` needs — this
+ * module reads `data.contextCarry.autoCompactFit`, it never recomputes
+ * `computeAutoCompactFit` (autocompact-window-fit B2 deliverable 1).
+ *
+ * The `netSaving`/`medianCycleRequests` pair comes off the RECOMMENDED
+ * candidate specifically (the one at `recommendation.recommendedTokens`),
+ * never the aggressive end's — `candidates[]` is ascending by
+ * `windowTokens` and un-keyed by token count, so it is looked up by value.
+ *
+ * SR-7 (pre-existing, not this lane's to fix): `data.contextCarry` — and so
+ * this fit's `candidates[]`/`droppedCandidates[]` — reaches the embedded
+ * `window.__DASHBOARD__` payload (`server/template.ts`) regardless of what
+ * this function reduces to, because the whole object is serialised there.
+ * Nothing here widens or narrows that condition.
+ */
+function autoCompactSetupInput(contextCarry: ContextCarryWithFit | null | undefined): SetupAutoCompactInput | null {
+  const fit = contextCarry?.autoCompactFit;
+  if (!fit) return null;
+  const { verdict, recommendedTokens } = fit.recommendation;
+  const recommended =
+    recommendedTokens === null ? null : (fit.candidates.find((c) => c.windowTokens === recommendedTokens) ?? null);
+  return {
+    verdict,
+    recommendedTokens,
+    netSaving: recommended?.netSaving ?? null,
+    medianCycleRequests: recommended?.medianCycleRequests ?? null,
+    observedMedianCycleRequests: fit.observedMedianCycleRequests,
+  };
+}
+
 // ─── Building the five answers ────────────────────────────────────────────────
 
 /** Everything the answers need that does not live on `DashboardData`. */
@@ -223,6 +316,10 @@ export function buildInsightAnswers(data: DashboardData, opts: InsightBuildOptio
     // metered-only and null on a period with no local spend (Lane R).
     reconciledRatio: ins?.reconciliation?.ratio ?? null,
     reconciledWithinTolerance: ins?.reconciliation?.withinTolerance,
+    // Read straight from the STRIPPED `DashboardData.contextCarry` projection
+    // (context-carry-cost B1/C2) — `totalCarryCost` is the one field
+    // `answerCost`'s D11 clause needs, and it is never recomputed here.
+    contextCarry: data.contextCarry ? { totalCarryCost: data.contextCarry.totalCarryCost } : null,
   });
 
   // Calibration for exactly the mechanisms this card quotes, and only when the
@@ -275,6 +372,24 @@ export function buildInsightAnswers(data: DashboardData, opts: InsightBuildOptio
     recommendedPlan: null,
     projectedSaving: null,
     currency: opts.currency,
+    // A TTL verdict alone must be able to make this card available — see
+    // `answerSetup`'s doc comment. `data.ttlFit` is already computed
+    // (`cli/src/ttlFit/`, populated by `attachInsights`); this module never
+    // recomputes it.
+    ttl: ttlSetupInput(data.ttlFit),
+    // Same rule for the auto-compact-window fit: `data.contextCarry
+    // .autoCompactFit` is already computed by the glue's second
+    // `computeContextCarry` pass (D13); this module only reduces it.
+    autoCompact: autoCompactSetupInput(data.contextCarry),
+    // Pre-translated from the `dashboard` namespace this module's translator
+    // has loaded — NEVER `AutoCompactFitResult.savingCaveat`, which is
+    // English source text composed in core for a CLI/log context
+    // (autocompact-window-fit D5; see `SetupAnswerInput.autoCompactCaveat`'s
+    // doc comment in `@claude-stats/core/insight`). `answerSetup` renders it
+    // only when the clause actually has a dollar figure to qualify, so
+    // translating it unconditionally here costs nothing on the common path
+    // where the card has nothing to say.
+    autoCompactCaveat: opts.t("dashboard:autoCompactFit.caveat"),
   });
 
   const change = answerChange(opts.t, {
@@ -340,8 +455,140 @@ export interface InsightAlert {
  * band was crossed — never on a fresh install with nothing configured, so it
  * meets the same "fact or thresholded dollar figure" bar every other rule
  * here does.
+ *
+ * The cache-TTL mismatch (cache-ttl-fit C2) is the same shape again: it fires
+ * only when `computeTtlFit` reached a `"prefer-*"` verdict — which, by
+ * `ttlFit.ts`'s own construction, already cleared BOTH margins (5% of window
+ * cost AND the near-boundary sensitivity band) before it stopped saying
+ * `"too-close-to-call"` — AND the window's OWN recorded TTL is the one the
+ * verdict says is the more expensive of the two. `"too-close-to-call"` and
+ * `"insufficient-data"` are excluded by construction (neither is a
+ * `"prefer-*"` verdict), and a window already on the cheaper TTL never
+ * matches the mismatch condition — nothing here is a heuristic that a fresh
+ * install (no ephemeral-TTL columns yet, hence `observedTtl: "unknown"`,
+ * hence always `"insufficient-data"`) could trip.
  */
-export function buildAlerts(data: DashboardData, t: TranslateFn): InsightAlert[] {
+// ─── Phase 3: the per-project session-start baseline step-change (D6) ────────
+
+/** The session-start baseline series this module consumes. Structurally the
+ *  intersection of `ContextCarryResult.preludeByProject`'s row (keyed by an
+ *  absolute `projectPath`) and `DashboardProjectPrelude`'s (keyed by an
+ *  already-shortened `projectLabel`): the detector needs only the series and
+ *  SOME stable identifier, so it accepts either and never learns which it got.
+ *  `shortProjectLabel` is idempotent, which is what makes that safe. */
+type ProjectPrelude = {
+  projectPath?: string;
+  projectLabel?: string;
+  sessions: ContextCarryResult["preludeByProject"][number]["sessions"];
+};
+
+/** One project whose session-start baseline shifted, and by how much. */
+export interface ProjectContextStepChange {
+  projectPath: string;
+  beforeMedianTokens: number;
+  afterMedianTokens: number;
+  /** `(after - before) / before`, always `>= STEP_CHANGE_MIN_SHIFT` here. */
+  shift: number;
+}
+
+/** D6: never below 10 sessions for the project. */
+const STEP_CHANGE_MIN_SESSIONS = 10;
+/** D6: at least 5 sessions on each side of the step. */
+const STEP_CHANGE_MIN_SIDE = 5;
+/** D6: at least a 25% jump. */
+const STEP_CHANGE_MIN_SHIFT = 0.25;
+
+function medianOf(values: readonly number[]): number | null {
+  const sorted = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
+/**
+ * D6's sustained-shift detector, per project: the median session-start
+ * (first-request) context on the FIRST half of the window's sessions for
+ * that project against the SECOND half, ordered by `startedAt` (the order
+ * `preludeByProject` is already sorted in). Fires ONLY when both halves have
+ * at least `STEP_CHANGE_MIN_SIDE` sessions — which by construction requires
+ * at least `STEP_CHANGE_MIN_SESSIONS` total for the project — and the shift
+ * clears `STEP_CHANGE_MIN_SHIFT`.
+ *
+ * Splits at the MIDPOINT rather than searching every candidate split point
+ * for the largest jump: a search finds the single most dramatic-looking
+ * point in the series, which is exactly the one-outlier shape D6 excludes by
+ * construction (the measured max first-request context, 175.9K, was a
+ * legitimately RESUMED session — a restored conversation, not a prelude). A
+ * fixed midpoint treats "before" and "after" symmetrically instead of
+ * hunting for the biggest single reset.
+ *
+ * A MEDIAN, not a mean, on each side — same reason `ContextCarryResult.
+ * prelude.medianFirstRequestTokens` uses one (review A-8): one resumed
+ * session among nine fresh ones must not move either half's figure enough to
+ * manufacture a step that is not there.
+ *
+ * **Wiring note (context-carry-cost C2 / F8 follow-up):** the series reaches
+ * `buildAlerts` off `data.contextCarry.preludeByProject`, which
+ * `attachInsights` re-keys to a SHORTENED `projectLabel` at attach time — the
+ * absolute path never enters the embedded HTML payload at all, which is a
+ * stronger guarantee than F8's original strip (that removed the alert's input
+ * while leaving absolute paths on `data.projects[]` regardless). `opts
+ * .contextPreludeByProject` remains an explicit override so a caller holding
+ * the FULL `ContextCarryResult` — the CLI, a test — can pass it directly;
+ * either keying works, because `shortProjectLabel` is idempotent.
+ */
+export function detectContextStepChanges(
+  projects: readonly ProjectPrelude[],
+): ProjectContextStepChange[] {
+  const out: ProjectContextStepChange[] = [];
+  for (const project of projects) {
+    const n = project.sessions.length;
+    if (n < STEP_CHANGE_MIN_SESSIONS) continue;
+    const mid = Math.floor(n / 2);
+    const before = project.sessions.slice(0, mid);
+    const after = project.sessions.slice(mid);
+    if (before.length < STEP_CHANGE_MIN_SIDE || after.length < STEP_CHANGE_MIN_SIDE) continue;
+    const beforeMedian = medianOf(before.map((s) => s.firstRequestTokens));
+    const afterMedian = medianOf(after.map((s) => s.firstRequestTokens));
+    if (beforeMedian === null || afterMedian === null || beforeMedian <= 0) continue;
+    const shift = (afterMedian - beforeMedian) / beforeMedian;
+    if (shift >= STEP_CHANGE_MIN_SHIFT) {
+      out.push({
+        projectPath: project.projectPath ?? project.projectLabel ?? "",
+        beforeMedianTokens: beforeMedian,
+        afterMedianTokens: afterMedian,
+        shift,
+      });
+    }
+  }
+  return out.sort((a, b) => b.shift - a.shift);
+}
+
+/**
+ * Last-two-segments project label — mirrors `template.ts`'s own `projShort`
+ * exactly (a separate copy rather than an import: `template.ts` imports FROM
+ * this module, so importing back would cycle). Project identifiers here are
+ * ABSOLUTE FILESYSTEM PATHS, and escaping does not help — `escapeHtml("/Users/
+ * alice/repos/client-x")` is still the path. The alerts strip is the most
+ * screenshot-and-paste-prone element on the page (review F5), so the alert
+ * text carries only this, never the raw path.
+ */
+function shortProjectLabel(projectPath: string): string {
+  const parts = projectPath.replace(/\\/g, "/").split("/").filter(Boolean);
+  return parts.length >= 2 ? parts.slice(-2).join("/") : (parts[parts.length - 1] ?? projectPath);
+}
+
+export function buildAlerts(
+  data: DashboardData,
+  t: TranslateFn,
+  currency = "USD",
+  opts: {
+    /** Override for the series read off `data.contextCarry.preludeByProject`.
+     *  See `detectContextStepChanges`' wiring note: a caller holding the full
+     *  `ContextCarryResult` may pass its absolute-path-keyed rows here. */
+    contextPreludeByProject?: readonly ProjectPrelude[];
+  } = {},
+): InsightAlert[] {
   const alerts: InsightAlert[] = [];
 
   // A partner platform (Bedrock/Vertex) priced at first-party rates because no
@@ -372,6 +619,52 @@ export function buildAlerts(data: DashboardData, t: TranslateFn): InsightAlert[]
       text: t("dashboard:insights.alerts.reconciliationDrift"),
       tab: "insights",
       anchor: RECONCILIATION_ANCHOR,
+    });
+  }
+
+  // Cache-TTL mismatch: the fit recommends the OTHER TTL from the one this
+  // window was actually recorded at, by a margin `computeTtlFit` already
+  // proved clears both its own thresholds (see the doc comment above).
+  if (data.ttlFit) {
+    const verdict = data.ttlFit.recommendation.verdict;
+    const named = verdictTtl(verdict);
+    if (named !== null && data.ttlFit.observedTtl !== "unknown" && data.ttlFit.observedTtl !== named) {
+      const money = formatMoney(Math.abs(data.ttlFit.totals.netCostOfShortTtl ?? 0), currency);
+      alerts.push({
+        id: "ttl-mismatch",
+        severity: "warning",
+        text: t(
+          verdict === "prefer-5m"
+            ? "dashboard:insights.alerts.ttlPrefer5m"
+            : "dashboard:insights.alerts.ttlPrefer1h",
+          { money },
+        ),
+        tab: "plan",
+      });
+    }
+  }
+
+  // Phase 3 (context-carry-cost, D6): a per-project session-start baseline
+  // that shifted and STAYED shifted — never a single session (see
+  // `detectContextStepChanges`' doc for why a resumed session's 175.9K must
+  // not read as a defect). Only the largest sustained shift is promoted, same
+  // "lead item, not one row per finding" rule the recommendation strip below
+  // follows — the alert names the SHORTENED project label only (review F5).
+  const stepChanges = detectContextStepChanges(
+    opts.contextPreludeByProject ?? data.contextCarry?.preludeByProject ?? [],
+  );
+  if (stepChanges.length > 0) {
+    const top = stepChanges[0]!;
+    alerts.push({
+      id: "context-step-change",
+      severity: "warning",
+      text: tLiteral(
+        t,
+        "dashboard:insights.alerts.contextStepChange",
+        { percent: formatPercent(top.shift) },
+        { project: shortProjectLabel(top.projectPath) },
+      ),
+      tab: "spending",
     });
   }
 

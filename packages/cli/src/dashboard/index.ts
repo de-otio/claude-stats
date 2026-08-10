@@ -11,6 +11,12 @@ import { classifyUsageIntensity } from "@claude-stats/core/planMechanics";
 import { readClaudeAccount } from "../account.js";
 import { resolveAccountFee, type Config } from "../config.js";
 import { getTicketCostReport } from "../ticketing/index.js";
+import { computeTtlFitForWindow } from "../ttlFit/index.js";
+import type { TtlFitResult } from "@claude-stats/core/ttlFit";
+import { computeContextCarryForWindow } from "../contextCarry/index.js";
+import type { ContextCarryResult } from "@claude-stats/core/contextCarry";
+import type { AutoCompactFitResult } from "@claude-stats/core/autoCompactFit";
+import { detectResets, type HygieneMessageRow } from "@claude-stats/core/hygiene";
 import { resolveDashboardCostVocabulary, type VocabularyResolution } from "../server/insights.js";
 import type { Reconciliation, TicketCoverage, PolicyEvent } from "@claude-stats/core/types/insight";
 import { computeReconciliation } from "@claude-stats/core/reconciliation";
@@ -364,6 +370,77 @@ export interface DashboardData {
    * annotation, not the comparison.
    */
   policyEvents?: readonly PolicyEvent[];
+  /**
+   * Cache-TTL fit over the current period/filters (cache-ttl-fit B1/C2) —
+   * "would this workload be cheaper on the 5-minute or the 1-hour ephemeral
+   * cache TTL". `null` until {@link attachInsights} runs (matching {@link
+   * insights}'s precedent) or when the fit could not be computed (an empty
+   * store, a pre-column schema). C2 only READS this field; the computation
+   * lives in `cli/src/ttlFit/`.
+   */
+  ttlFit?: TtlFitResult | null;
+  /**
+   * Context-carry cost over the current period/filters (context-carry-cost
+   * B1/C2) — "how much of the bill is carrying context forward, and where does
+   * it concentrate". `null` until {@link attachInsights} runs (matching
+   * {@link ttlFit}'s precedent) or when the fit could not be computed.
+   *
+   * A **PROJECTION** of `ContextCarryResult`, not the full result (review F8):
+   * the rendered HTML embeds this WHOLE `DashboardData` payload verbatim into
+   * every generated report file, including any the user forwards, so anything
+   * kept here must earn its place.
+   *
+   * - `concentration[]` is **dropped**. It is a per-session ranking with no
+   *   renderer on this page, so it would be pure payload weight.
+   * - `preludeByProject[]` is **kept but re-keyed**: `projectPath` (an ABSOLUTE
+   *   filesystem path) is replaced by `projectLabel`, the last two segments.
+   *   The step-change alert (`buildAlerts`) is the only consumer and only ever
+   *   renders the short label, so the path has no reason to be serialised.
+   *   Shortening at ATTACH time rather than at render time is what makes that
+   *   a property of the payload instead of a promise about the renderer.
+   *
+   * C2 only READS this field; the computation lives in `cli/src/contextCarry/`.
+   */
+  contextCarry?: DashboardContextCarry | null;
+}
+
+/** One project's session-start baseline series, as {@link DashboardData.contextCarry}
+ *  carries it — see that field's doc for why this is keyed by a shortened
+ *  `projectLabel` and not by `ContextCarryResult`'s absolute `projectPath`. */
+export interface DashboardProjectPrelude {
+  projectLabel: string;
+  sessions: Array<{ startedAt: number; firstRequestTokens: number }>;
+}
+
+/** {@link DashboardData.contextCarry}'s shape — see that field's doc for why
+ *  `concentration` is dropped and `preludeByProject` is re-keyed.
+ *
+ * `autoCompactFit` is declared explicitly here (autocompact-window-fit CR-15,
+ * §4/B1) rather than inherited implicitly through `ContextCarryResult`: the
+ * glue (`contextCarry/index.ts#ContextCarryWithFit`) attaches the fit onto
+ * the object this type projects from, so it DOES reach `data.contextCarry` at
+ * runtime via the `...rest` spread in `buildDashboardData` below — but
+ * `ContextCarryResult` itself (the core interface, which the plan forbids
+ * adding fields to) has no such field, so without this line the fit would be
+ * invisible in the type and unreadable by whatever renders the dashboard
+ * card. Declared OPTIONAL, not required: `buildDashboardData` always attaches
+ * it at runtime (the glue always returns a fit-bearing result), but B2 owns
+ * `insights.test.ts`'s fixtures and this build must not force every existing
+ * `DashboardContextCarry` literal across the codebase — including files this
+ * phase does not own — to specify a field it did not have yesterday. */
+export type DashboardContextCarry = Omit<
+  ContextCarryResult,
+  "concentration" | "preludeByProject"
+> & { preludeByProject: DashboardProjectPrelude[]; autoCompactFit?: AutoCompactFitResult };
+
+/** Last-two-segments project label. Mirrors `template.ts`'s `projShort` and
+ *  `insights.ts`'s `shortProjectLabel`; kept as a third local copy because
+ *  both of those modules import FROM this one and an import back would cycle.
+ *  Idempotent — re-shortening an already-short label is a no-op, which is what
+ *  lets `buildAlerts` apply it again without caring which form it received. */
+function shortProjectLabel(projectPath: string): string {
+  const parts = projectPath.replace(/\\/g, "/").split("/").filter(Boolean);
+  return parts.length >= 2 ? parts.slice(-2).join("/") : (parts[parts.length - 1] ?? projectPath);
 }
 
 /** One row of {@link DashboardData.currentSessionTicket}'s `links` list. */
@@ -781,7 +858,10 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   // with the same Intl formatters used above is exact.
   const wantHourly = opts.period === "day" || (until - since) <= 86_400_000;
   for (const b of store.getMessageTotalsByBucket(msgFilter)) {
-    const { cost } = estimateCost(b.model, b.input_tokens, b.output_tokens, b.cache_read_tokens, b.cache_creation_tokens);
+    const { cost } = estimateCost(b.model, b.input_tokens, b.output_tokens, b.cache_read_tokens, b.cache_creation_tokens, undefined, {
+      ephemeral5mCacheTokens: b.ephemeral_5m_cache_tokens,
+      ephemeral1hCacheTokens: b.ephemeral_1h_cache_tokens,
+    });
     const dateStr = b.bucket_start != null ? dayFmt.format(new Date(b.bucket_start)) : "unknown";
     const dayEntry = dayMap.get(dateStr) ?? { sessions: 0, prompts: 0, ...emptyTokens() };
     dayEntry.inputTokens += b.input_tokens;
@@ -807,7 +887,10 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
 
   // ── Per-project tokens + cost, message-scoped ────────────────────────────
   for (const p of store.getMessageTotalsByProject(msgFilter)) {
-    const { cost } = estimateCost(p.model, p.input_tokens, p.output_tokens, p.cache_read_tokens, p.cache_creation_tokens);
+    const { cost } = estimateCost(p.model, p.input_tokens, p.output_tokens, p.cache_read_tokens, p.cache_creation_tokens, undefined, {
+      ephemeral5mCacheTokens: p.ephemeral_5m_cache_tokens,
+      ephemeral1hCacheTokens: p.ephemeral_1h_cache_tokens,
+    });
     const entry = projectMap.get(p.project_path) ?? {
       sessions: 0, prompts: 0, thinkingBlocks: 0,
       workProfile: { exploring: 0, editing: 0, running: 0, researching: 0, planning: 0 },
@@ -845,6 +928,11 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       mt.output_tokens,
       mt.cache_read_tokens,
       mt.cache_creation_tokens,
+      undefined,
+      {
+        ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
+        ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
+      },
     );
     if (result.rateBasis === "first_party_fallback") anyFallbackRates = true;
     totalCost += result.cost;
@@ -1040,7 +1128,10 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   const sessionCostMap = new Map<string, { cost: number; topModel: string; topModelTokens: number }>();
   for (const mt of msgTotalsBySession) {
     const entry = sessionCostMap.get(mt.session_id) ?? { cost: 0, topModel: mt.model ?? "", topModelTokens: 0 };
-    const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens);
+    const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens, undefined, {
+      ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
+      ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
+    });
     entry.cost += cost;
     const tokens = mt.input_tokens + mt.output_tokens;
     if (tokens > entry.topModelTokens) {
@@ -1194,7 +1285,10 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       entry.outputTokens += mt.output_tokens;
       entry.cacheReadTokens += mt.cache_read_tokens;
       entry.cacheCreationTokens += mt.cache_creation_tokens;
-      const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens);
+      const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens, undefined, {
+        ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
+        ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
+      });
       entry.cost += cost;
       // Use mt.model as-is (matching the top-level byModel grouping key) so the
       // per-account split reconciles model-for-model with the headline split.
@@ -1662,6 +1756,11 @@ export function attachInsights(
           mt.output_tokens,
           mt.cache_read_tokens,
           mt.cache_creation_tokens,
+          undefined,
+          {
+            ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
+            ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
+          },
         ).cost;
       }
       // Zero means the preceding window had no recorded spend, which is not a
@@ -1683,6 +1782,59 @@ export function attachInsights(
     previousCost,
     reconciliation,
   };
+
+  // Gathered in its OWN try, same isolation reasoning as attributionCalibration
+  // above: a `computeTtlFit` failure (including "not implemented yet" during
+  // the Phase B2 handoff, or a pre-column store with no ephemeral data) must
+  // not blank the ticket/calibration state, and vice versa.
+  try {
+    const { since, until } = periodRange(opts, tz);
+    const isCustomRange = Boolean(opts.since && opts.until);
+    data.ttlFit = computeTtlFitForWindow(store, {
+      since: since > 0 ? since : undefined,
+      until: isCustomRange ? until : undefined,
+      projectPath: opts.projectPath,
+      repoUrl: opts.repoUrl,
+      accountUuid: opts.accountUuid,
+      includeCI: opts.includeCI ?? true,
+      includeDeleted: opts.includeDeleted ?? true,
+    });
+  } catch {
+    data.ttlFit = null;
+  }
+
+  // Gathered in its OWN try, same isolation reasoning as `ttlFit` above: a
+  // `computeContextCarry` failure (including "not implemented yet" during the
+  // Phase B2 handoff) must not blank the ticket/calibration/TTL state, and
+  // vice versa.
+  try {
+    const { since, until } = periodRange(opts, tz);
+    const isCustomRange = Boolean(opts.since && opts.until);
+    const fullResult = computeContextCarryForWindow(store, {
+      since: since > 0 ? since : undefined,
+      until: isCustomRange ? until : undefined,
+      projectPath: opts.projectPath,
+      repoUrl: opts.repoUrl,
+      accountUuid: opts.accountUuid,
+      includeCI: opts.includeCI ?? true,
+      includeDeleted: opts.includeDeleted ?? true,
+    });
+    // DROP `concentration` and RE-KEY `preludeByProject` before either reaches
+    // `data` — see `DashboardContextCarry`'s doc. Destructuring them out (never
+    // spreading `fullResult` wholesale) so a later edit cannot silently widen
+    // this back to the full shape: adding a field to `ContextCarryResult` will
+    // land in the projection, but these two cannot come back by accident.
+    const { concentration: _concentration, preludeByProject, ...rest } = fullResult;
+    data.contextCarry = {
+      ...rest,
+      preludeByProject: preludeByProject.map((p) => ({
+        projectLabel: shortProjectLabel(p.projectPath),
+        sessions: p.sessions,
+      })),
+    };
+  } catch {
+    data.contextCarry = null;
+  }
   // Passive timeline annotation, not a comparison — `constraint-impact`/
   // `get_constraint_impact` is where the before/after analysis lives. Every
   // declared event, unfiltered by the displayed window: the list is small
@@ -2179,7 +2331,10 @@ function buildSpendingSection(
   let grandTotal = 0;
   const modelCosts: Array<{ model: string; cost: number; input: number; output: number }> = [];
   for (const row of report.byModel) {
-    const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens);
+    const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens, undefined, {
+      ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
+      ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
+    });
     grandTotal += cost;
     modelCosts.push({ model: row.model, cost, input: row.input_tokens, output: row.output_tokens });
   }
@@ -2523,27 +2678,58 @@ function buildContextAnalysis(
     bySession.set(msg.session_id, arr);
   }
 
-  // ── Detect compaction events (>40% input token drop between consecutive messages)
-  const compactionEvents: ContextAnalysis["compactionEvents"] = [];
-  const sessionsWithCompaction = new Set<string>();
-
-  for (const [sessionId, msgs] of bySession) {
-    for (let i = 1; i < msgs.length; i++) {
-      const prev = msgs[i - 1]!.inputTokens;
-      const curr = msgs[i]!.inputTokens;
-      if (prev > 10_000 && curr < prev * 0.6) {
-        const reduction = Math.round(((prev - curr) / prev) * 100);
-        compactionEvents.push({
-          sessionId,
-          promptPosition: i + 1,
-          tokensBefore: prev,
-          tokensAfter: curr,
-          reductionPercent: reduction,
-        });
-        sessionsWithCompaction.add(sessionId);
-      }
+  // ── Detect compaction events via the shared `detectResets` (context-carry-
+  // cost B1/review C-4). This REPLACES the former hand-rolled
+  // `prev > 10_000 && curr < prev * 0.6` rule on `input_tokens` alone — left
+  // alone, the dashboard would show two mutually inconsistent compaction
+  // counts for the same window against the context-carry-cost feature's own
+  // reset ledger. `detectResets` uses `totalContext` (input + cacheRead +
+  // cacheCreation, not input alone) with a `prev > 150,000` floor before a
+  // >40% drop counts — see that function's doc for why the floor exists.
+  //
+  // `detectResets` needs `HygieneMessageRow`-shaped rows; only `sessionId`,
+  // `timestamp`, and the three token fields feeding `totalContext` are read
+  // (via `groupBySession`/`walkSessionChains`), so the fields this lighter
+  // `getMessagesForContext` query never carried (`model`, `tools`, `uuid`,
+  // the ephemeral TTL split, `toolErrorCount`) are filled with honest
+  // placeholders rather than re-querying `getMessagesForHygiene` here.
+  const carryRows: HygieneMessageRow[] = [];
+  const promptPositionOf = new Map<HygieneMessageRow, number>();
+  {
+    const perSessionCount = new Map<string, number>();
+    for (const msg of contextMsgs) {
+      if (!rowSessionIds.has(msg.session_id)) continue;
+      const row: HygieneMessageRow = {
+        sessionId: msg.session_id,
+        projectPath: "",
+        uuid: "",
+        timestamp: msg.timestamp,
+        model: null,
+        inputTokens: msg.input_tokens,
+        outputTokens: 0,
+        cacheReadTokens: msg.cache_read_tokens,
+        cacheCreationTokens: msg.cache_creation_tokens,
+        ephemeral5mCacheTokens: 0,
+        ephemeral1hCacheTokens: 0,
+        toolErrorCount: 0,
+        tools: [],
+      };
+      const position = (perSessionCount.get(msg.session_id) ?? 0) + 1;
+      perSessionCount.set(msg.session_id, position);
+      promptPositionOf.set(row, position);
+      carryRows.push(row);
     }
   }
+
+  const resetEvents = detectResets(carryRows);
+  const compactionEvents: ContextAnalysis["compactionEvents"] = resetEvents.map((r) => ({
+    sessionId: r.sessionId,
+    promptPosition: promptPositionOf.get(r.afterRow) ?? 0,
+    tokensBefore: r.beforeTokens,
+    tokensAfter: r.afterTokens,
+    reductionPercent: r.beforeTokens > 0 ? Math.round(((r.beforeTokens - r.afterTokens) / r.beforeTokens) * 100) : 0,
+  }));
+  const sessionsWithCompaction = new Set<string>(resetEvents.map((r) => r.sessionId));
 
   // ── Conversation length distribution
   const promptCounts = rows.map(r => r.prompt_count).sort((a, b) => a - b);

@@ -81,6 +81,8 @@ describe("pricing across served platforms", () => {
           outputPerMillion: 30,
           cacheReadPerMillion: 0.6,
           cacheWritePerMillion: 7.5,
+          cacheWrite1hPerMillion: 12,
+          ttlRateBasis: "parsed",
         },
       },
     };
@@ -110,7 +112,7 @@ describe("pricing across served platforms", () => {
   it("ignores an override table that has no entry for the model", () => {
     const overrides: RateOverrides = {
       bedrock: {
-        "claude-sonnet-5": { inputPerMillion: 9, outputPerMillion: 9, cacheReadPerMillion: 9, cacheWritePerMillion: 9 },
+        "claude-sonnet-5": { inputPerMillion: 9, outputPerMillion: 9, cacheReadPerMillion: 9, cacheWritePerMillion: 9, cacheWrite1hPerMillion: 9, ttlRateBasis: "parsed" },
       },
     };
     // Opus on Bedrock has no configured row → falls back, and says so.

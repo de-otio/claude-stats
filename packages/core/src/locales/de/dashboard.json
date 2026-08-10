@@ -377,7 +377,9 @@
     "output": "Ausgabe",
     "cacheRead": "Cache-Lesen",
     "cacheWrite": "Cache-Schreiben",
-    "source": "Quelle: Anthropic API-Preise — zuletzt aktualisiert am {{date}} (wöchentlich automatisch aktualisiert). Angezeigte Kosten sind äquivalente API-Tarife, keine Abonnementgebühren."
+    "source": "Quelle: Anthropic API-Preise — zuletzt aktualisiert am {{date}} (wöchentlich automatisch aktualisiert). Angezeigte Kosten sind äquivalente API-Tarife, keine Abonnementgebühren.",
+    "cacheWrite1h": "Cache Write (1 Std.)",
+    "ttlBasisNote": "Cache-Writes werden je nach der beim Schreiben erfassten ephemeren TTL zu einem von zwei Tarifen abgerechnet — Spalte „Cache Write\" (5 Minuten) oder „Cache Write (1 Std.)\" (1 Stunde). Ein Sprung zwischen beiden bei gleicher Auslastung ist dieser Basiswechsel und kein Preisfehler — siehe „Cache-TTL-Eignung\" unter dem Plan-Panel."
   },
   "footer": {
     "generated": "Generiert {{timestamp}} • Zeitzone: {{timezone}}"
@@ -483,7 +485,10 @@
     "alerts": {
       "fallbackRates": "Ein Teil der Nutzung wurde auf einer Partner-Plattform (Bedrock oder Vertex) zu Erstanbieter-Preisen berechnet. Alle Kostenangaben hier sind Schätzungen, bis Partner-Preise konfiguriert sind.",
       "action": "Prüfen",
-      "reconciliationDrift": "Die Bottom-up-Kosten stimmen nicht mit der konfigurierten Rechnungssumme überein – die Abgleichstafel weiter unten zeigt die Restdifferenz und deren mögliche Ursachen."
+      "reconciliationDrift": "Die Bottom-up-Kosten stimmen nicht mit der konfigurierten Rechnungssumme überein – die Abgleichstafel weiter unten zeigt die Restdifferenz und deren mögliche Ursachen.",
+      "ttlPrefer5m": "Diese Auslastung wäre mit einer 5-Minuten-Cache-TTL rund {{money}} günstiger als mit der 1-Stunden-TTL, unter der sie derzeit erfasst wird — die Marge zeigt die Registerkarte „Plan\".",
+      "ttlPrefer1h": "Diese Auslastung wäre mit einer 1-Stunden-Cache-TTL rund {{money}} günstiger als mit der 5-Minuten-TTL, unter der sie derzeit erfasst wird — die Marge zeigt die Registerkarte „Plan\".",
+      "contextStepChange": "Der Startkontext pro Session in {{project}} ist um etwa {{percent}} gestiegen und bleibt dort – die Belege dazu finden Sie auf der Registerkarte „Ausgaben“."
     },
     "verdict": {
       "goodValue": "Ihr Abo ist bei dieser Nutzung ein gutes Preis-Leistungs-Verhältnis",
@@ -598,5 +603,82 @@
       "title": "Gute Kontexthygiene",
       "body": "{{percent}}% Ihrer Sessions zeigen Compaction-Aktivität, und nur wenige lange Sessions blieben unkomprimiert. Sie halten die Kontextgrößen im Griff."
     }
+  },
+  "ttlFit": {
+    "title": "Cache-TTL-Eignung — 5 Minuten vs. 1 Stunde",
+    "verdict": {
+      "prefer5m": "Mit der 5-Minuten-Cache-TTL wäre dieser Zeitraum rund {{money}} günstiger.",
+      "prefer1h": "Mit der 1-Stunden-Cache-TTL wäre dieser Zeitraum rund {{money}} günstiger.",
+      "tooClose": "Beide Cache-TTLs kosten in diesem Zeitraum etwa gleich viel (Differenz: {{money}}) — ein Wechsel lohnt sich nicht.",
+      "insufficientData": "Noch nicht genügend Cache-TTL-Daten in diesem Zeitraum für eine Empfehlung."
+    },
+    "gapHistogram": {
+      "title": "Verteilung der Leerlaufpausen",
+      "bucket": "Pause seit vorheriger Nachricht",
+      "requests": "Anfragen",
+      "readTokens": "Cache-Read-Token",
+      "creationTokens": "Cache-Write-Token",
+      "pctRebuilt": "% neu aufgebaut"
+    },
+    "origin": {
+      "title": "Herkunft der Cache-Writes",
+      "column": "Herkunft",
+      "share": "Anteil der Writes",
+      "sessionStart": "Session-Start",
+      "midWork": "Während der Arbeit",
+      "resumeShort": "Fortsetzung (kurze Pause)",
+      "resumeLong": "Fortsetzung (lange Pause)"
+    },
+    "byModel": {
+      "title": "Nettokosten der kurzen TTL pro Modell",
+      "model": "Modell",
+      "recovered": "Zurückgewonnene Reads (R)",
+      "writes": "Writes (W)",
+      "writes1h": "Writes @ 1 Std. (W1h)",
+      "net": "Nettokosten der 5-Minuten-TTL",
+      "breakEven": "Break-even-Verhältnis",
+      "unpriced": "Ohne {{count}} Zeilen ohne Preis ({{tokens}} Cache-Write-Token) — kein Modell oder kein Tarif für dieses Modell."
+    },
+    "margin": {
+      "title": "Marge",
+      "windowCost": "Kosten im Zeitraum",
+      "recovered": "Zurückgewonnene Reads (R)",
+      "writes": "Cache-Write-Token (W)",
+      "writes1h": "Mit 1-Stunden-TTL geschrieben (W1h)",
+      "net": "Nettokosten der 5-Minuten-TTL",
+      "nearBoundary": "Grenznaher Bereich ({{minutes}} Min. knapp unter der kurzen TTL): {{requests}} Anfragen, {{readTokens}} Cache-Read-Token",
+      "impliedSwing": "Rechnerische Auswirkung, wenn auch dieser Bereich abliefe"
+    }
+  },
+  "contextCarry": {
+    "title": "Kontextübertrag",
+    "distinctClause": "Die durchschnittliche Anfrage übertrug etwa {{carried}} Token Kontext, um etwa {{distinct}} Token neuen Inhalt zu erzeugen.",
+    "distinctUnavailable": "In diesem Zeitraum liegen nicht genügend Daten vor, um abzuschätzen, wie viel des Kontexts jeder Anfrage neu und wie viel übertragen war.",
+    "biasNote": "Diese Schätzung ist in beide Richtungen verzerrt: Inhalte, die verworfen und später erneut gelesen werden, zählen ein zweites Mal als neu, während eine Baseline nach einem Reset als neu zählt, obwohl sie nur eine Zusammenfassung des Verworfenen sein kann.",
+    "carryCostLabel": "Übertragskosten (Untergrenze – zum cache-read-Tarif berechnet)",
+    "sizeBands": {
+      "title": "Anfragen nach Kontextgröße",
+      "band": "Kontextgröße",
+      "requests": "Anfragen",
+      "shareVolume": "Anteil am übertragenen Volumen",
+      "shareCost": "Anteil an den Kosten",
+      "perRequest": "$/Anfrage"
+    },
+    "sawtooth": {
+      "title": "Reset-Muster",
+      "line": "Der Kontext fällt bei einem Reset auf etwa {{floor}} Token zurück und steigt dann bis zum nächsten Reset auf etwa {{peak}} – über etwa {{cycle}} Anfragen pro Zyklus.",
+      "insufficientData": "Weniger als 3 Resets in diesem Zeitraum – zu wenige, um ein Muster zu beschreiben."
+    },
+    "aboveCap": {
+      "title": "Über einer Obergrenze übertragene Token",
+      "cap": "Obergrenze",
+      "tokensAbove": "Token über der Obergrenze",
+      "share": "Anteil am übertragenen Volumen",
+      "cost": "Kosten (Untergrenze)",
+      "caveat": "Token über einer Obergrenze werden zum cache-read-Tarif berechnet – die günstigste Form, die diese Kosten annehmen können, und damit deren Untergrenze. Das sind nicht die Kosten einer Begrenzung des Kontexts auf dieses Niveau: Eine Begrenzung bedeutet, dass die gleiche Arbeit mit weniger Kontext vor dem Modell erledigt wird, und was diese Nacharbeit kostet, wird hier nicht gemessen."
+    }
+  },
+  "autoCompactFit": {
+    "caveat": "Obergrenze: Es wird angenommen, dass dieselbe Arbeit mit weniger Kontext erledigt wird; die Kosten möglicher zusätzlicher Nacharbeit werden nicht eingerechnet, und die Token-Einsparungen selbst sind ebenfalls nur eine Untergrenze. Die Marge hinter dieser Empfehlung wird an einem Kostenwert gemessen, der selbst eine Untergrenze ist, was sie zugunsten einer Änderung verzerrt. Dies ist das standardmäßige Auto-Compact-Fenster – das Start-Flag kann es weiterhin überschreiben – und dieses Tool kann nicht erkennen, ob Claude Code das Fenster bereits auf die Kontextgröße des Modells begrenzt."
   }
 }

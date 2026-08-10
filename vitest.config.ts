@@ -39,6 +39,18 @@ export default defineConfig({
       "@claude-stats/core/crypto/sign": path.resolve(__dirname, "packages/core/src/crypto/sign.ts"),
       "@claude-stats/core/crypto/keystore": path.resolve(__dirname, "packages/core/src/crypto/keystore.ts"),
       "@claude-stats/core/crypto/random": path.resolve(__dirname, "packages/core/src/crypto/random.ts"),
+      // NOTE: like `@claude-stats/core/types/*` above, this subpath alias MUST
+      // precede the bare `@claude-stats/core` below for the same reason — the
+      // bare alias is a prefix of this one and would otherwise shadow it.
+      "@claude-stats/core/ttlFit": path.resolve(__dirname, "packages/core/src/ttlFit.ts"),
+      // NOTE: like `@claude-stats/core/ttlFit` above, this subpath alias MUST
+      // precede the bare `@claude-stats/core` below for the same reason — the
+      // bare alias is a prefix of this one and would otherwise shadow it.
+      "@claude-stats/core/contextCarry": path.resolve(__dirname, "packages/core/src/contextCarry.ts"),
+      // NOTE: like `@claude-stats/core/contextCarry` above, this subpath alias
+      // MUST precede the bare `@claude-stats/core` below for the same reason —
+      // the bare alias is a prefix of this one and would otherwise shadow it.
+      "@claude-stats/core/autoCompactFit": path.resolve(__dirname, "packages/core/src/autoCompactFit.ts"),
       "@claude-stats/core": path.resolve(__dirname, "packages/core/src/index.ts"),
     },
   },

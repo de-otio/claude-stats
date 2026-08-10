@@ -2,6 +2,141 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## Unreleased
+
+### Added
+
+- **`claude-stats context`** (and the equivalent `get_context_carry` MCP
+  tool): how much of the bill is carrying context forward, and where does it
+  concentrate? Reports context-size bands, tokens carried above a set of
+  caps, reset (compaction) cycles and their sawtooth shape, and the
+  session-start "prelude" every fresh session repays across the window — the
+  same billed context every request already pays for (input + cache-read +
+  cache-creation tokens), not a new measurement. Answers the same question as
+  Claude Code's own `/context`, but over time across a window rather than at
+  a single instant. Every estimate carries its own honesty caveat on the same
+  line it renders: the distinct-content and amplification figures are stated
+  as biased in *both* directions at once, never as "at most"/"at least"; the
+  carry-cost and above-cap dollar figures are labelled a lower bound (priced
+  at the cache-read rate, the cheapest form the cost can take — a carried
+  token is periodically re-written at 1.25–2× that rate); and a reset count
+  under 3 renders as "not enough data," never an averaged sawtooth. The MCP
+  tool omits `concentration`, `preludeByProject`, and `turns` entirely, and
+  strips session ids from `resets`/`cycles` — the CLI and local dashboard may
+  render the full breakdown. See
+  [commands.md](../doc/user-doc/commands.md#context).
+- **A cost-and-controlling clause on the dashboard's cost answer**: what
+  share of spend is a cache read, carrying forward context that was already
+  there. Framed with its counterfactual on the same line — a cache read is
+  already the *cheapest* form this cost can take (a tenth of a fresh input
+  token), so the clause reads "the lever is carrying less, not caching less;
+  what carrying less costs in rework is not measured here," never a bare
+  percentage that could be misread as free money left on the table.
+- **A context-carry evidence block on the Spending tab**: the size-band
+  table, the sawtooth (reset floor/peak/cycle length), and tokens carried
+  above each configured cap, each with its own lower-bound caveat attached.
+  Renders only alongside the existing Spending section.
+- **A per-project step-change alert**: fires when a project's session-start
+  ("prelude") context has shifted to a sustained new level — at least 5
+  sessions on each side of the shift, at least a 25% jump, never a single
+  session (the largest first-request context observed while building this
+  was a legitimately *resumed* session, not evidence of drift). Names only
+  the shortened project label (its last two path segments), never the
+  absolute project path.
+
+### Changed
+
+- **The `context-bloat` hygiene detector was rewritten from a context-LEVEL
+  rule to a context-INCREMENT rule — a behaviour change that moves a number
+  you may have been tracking.** The detector kept its id (`context-bloat`,
+  so existing suppressions still apply) and its 3-occurrence precision
+  guard, but it used to fire on how much context a turn carried in total; it
+  now fires on how much a turn *added* to that context in one step, ignoring
+  the increment immediately preceding a reset (a compaction drop, never
+  growth) and attributing the addition to the tool call that produced it
+  when one preceded it. On the workload this was measured against, that
+  narrowed the detector from firing on about half of all sessions to firing
+  on roughly one in sixteen — the same shape of finding, on far fewer
+  sessions, because a session can legitimately run with a large context the
+  whole time without ever adding a large chunk in one turn. `estimatedWaste`
+  is also repriced onto the same carry-cost basis the new `context` command
+  uses, rather than the flagged turn's own full cost (most of which was
+  history the turn did not add) — so the hygiene ratio this detector feeds
+  into steps down sharply too, with no other change to the underlying spend.
+  See [faq.md](../doc/user-doc/faq.md#why-does-context-bloat-report-something-different-now).
+
+- **Cache-write cost pricing basis corrected — reported cost goes up for any
+  workload using the 1-hour ephemeral cache TTL.** Cache-write tokens
+  recorded at the 1-hour TTL are now priced at their real rate (2× the input
+  rate) instead of the 5-minute TTL's 1.25× rate every cache write was priced
+  at before, regardless of which TTL actually wrote it. This is a
+  pricing-basis correction, not new spend or a behaviour change — historical
+  figures for past windows move too. The correction has reached the headline
+  cost, every date-bounded/filtered breakdown, the efficiency-hygiene digest,
+  per-session and per-ticket cost, and the constraint-impact comparison. It
+  has **not** yet reached several per-message cost breakdowns (`spending`,
+  cost alerts, `recap`'s per-task costing, the dashboard's expensive-prompts
+  card, the model-efficiency tier comparison, `get_session_detail`'s
+  per-message figures), the fully-unfiltered "all time" dashboard/report fast
+  path, or the org/team sync plane — see
+  [faq.md](../doc/user-doc/faq.md#why-did-my-cost-figures-go-up) for the full
+  list and why the team-plane gap doesn't close with a follow-up patch. The
+  existing `get_stats`, `get_efficiency_hints`, `get_cost_per_task`, and
+  `get_cost_per_ticket` MCP tool descriptions now state this basis change
+  wherever the figure surfaces to an agent.
+
+### Added
+
+- **`claude-stats ttl-fit`** (and the equivalent `get_cache_ttl_fit` MCP
+  tool): is this workload cheaper on the 5-minute or the 1-hour cache TTL?
+  Reports the idle-gap distribution between messages, cache-write volume by
+  origin, and a per-model net-cost comparison between the two TTLs, always
+  shown beside the margin that decided the verdict — and labelled a
+  projection, not a measurement, whenever the recommended TTL is not the one
+  the window was actually recorded at. See
+  [commands.md](../doc/user-doc/commands.md#ttl-fit).
+- **The dashboard's setup card and Plan & Policy tab** now surface this same
+  cache-TTL fit: a one-line recommendation on the Insights tab's "Is the
+  setup right?" card when switching would help, and the full evidence
+  (gap histogram, write origin, per-model breakdown, and margin) on the
+  Plan & Policy tab. See
+  [output-guide.md](../doc/user-doc/output-guide.md#cache-ttl-fit-evidence-block-plan-tab).
+- A dashboard alert fires when the fit recommends switching away from the
+  TTL the window was actually recorded at, by a margin the fit itself has
+  already confirmed clears its own thresholds.
+- **A recommendation for `/autocompact`'s window size**, on `claude-stats
+  context` (and `--json`), on the equivalent `get_context_carry` MCP tool,
+  and as a row on the dashboard setup card beside the existing cache-TTL
+  recommendation. This is **not** the largest possible saving — a smaller
+  window carries less context, but resets more often, and resetting costs
+  a compaction while carrying costs cache reads; on any real workload the
+  arithmetic optimum sits at the smallest settable window (100K), which
+  is arithmetically right and practically useless. The tool instead
+  simulates each candidate window against your own recorded conversation
+  shape and returns a **range**, defaulting to its conservative end — the
+  largest window that still keeps most of the aggressive end's saving.
+  Every dollar figure is labelled an upper bound on the realisable saving
+  (it assumes the same work gets done with less context in front of the
+  model; what re-deriving dropped context would cost is not measured) and
+  is simultaneously computed against a lower-bound cost baseline — both
+  caveats render on the same line as any dollar figure, never one alone.
+  The tool cannot see your current `autoCompactWindow` setting (transcripts
+  record context sizes, not configuration) and cannot detect Claude Code's
+  own clamp of that window to the model's context window, so no surface
+  claims either. `/autocompact auto` — a revert to the model-tuned window,
+  never framed as "disable compaction" — may be mentioned as an option.
+  **The reset count in this block will not match the reset count the same
+  screen shows just above it**, whenever the recommendation reaches down to
+  a window that would otherwise report "not enough data": below 150K
+  observed context, the standard reset detector stops firing, so this
+  block runs its own simulation at a floor computed from your own recorded
+  context sizes instead, purely to keep the fit from degrading to
+  "insufficient data" the moment it succeeds at recommending a smaller
+  window. Every surface showing both blocks states the two floors so the
+  mismatch is self-explanatory rather than silently inconsistent. See
+  [commands.md](../doc/user-doc/commands.md#context) and
+  [doc/analysis/autocompact-window-fit/](../doc/analysis/autocompact-window-fit/README.md).
+
 ## 0.20.0 — 2026-08-10
 
 ### Added

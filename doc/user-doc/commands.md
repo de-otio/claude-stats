@@ -666,6 +666,167 @@ claude-stats dashboard --period week | jq '.summary'
 
 ---
 
+## `ttl-fit`
+
+Is this workload cheaper on the 5-minute or the 1-hour ephemeral cache TTL?
+Measures the idle-gap distribution between consecutive messages in a session,
+the cache-creation volume broken down by origin (session-start / mid-work /
+resume-short / resume-long), and a per-model net-cost comparison between the
+two TTLs — from data the local store already holds. No config change and no
+re-run of your sessions is needed to see it.
+
+```
+claude-stats ttl-fit [options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--period <period>` | `month` | `day`, `week`, `month`, or `all` |
+| `--since <date>` | — | Explicit lower bound (`YYYY-MM-DD`, inclusive). Must be paired with `--until`; overrides `--period` when both are set |
+| `--until <date>` | — | Explicit upper bound (`YYYY-MM-DD`, inclusive). Must be paired with `--since` |
+| `--project <path>` | _(all projects)_ | Filter to one project |
+| `--account <uuid>` | _(all accounts)_ | Filter to a specific Anthropic account UUID |
+| `--json` | _(off)_ | Print the full result as JSON instead of formatted text |
+
+**The arithmetic, per model:**
+
+```
+extra = R    × (write5m − read)     # reads recovered by the 1-hour TTL become writes again under 5 minutes
+saved = W1h  × (write1h − write5m)  # the 1-hour premium no longer paid
+net   = extra − saved               # negative ⇒ the 5-minute TTL would have been cheaper
+```
+
+`R` counts cache-read tokens on requests whose preceding same-session idle gap
+falls between the two TTLs (5–60 minutes by default) **and** which were
+actually recorded at the 1-hour TTL — a gap in that band under a 5-minute TTL
+had already rebuilt, so its reads were never "recovered." `W1h` is the
+cache-creation volume actually **written** at the 1-hour TTL, not total
+cache-creation volume `W` — the 1-hour premium is only ever paid on tokens
+written at that TTL, so using the total would overstate the saving from
+switching to 5 minutes on any window that mixes both TTLs. The command prints
+both `W` (for the histogram/origin breakdown) and `W1h` (the term the cost
+arithmetic uses) so the two are never confused.
+
+**How to read the verdict — never separately from its margin.** Before any
+verdict-like line, the command always prints: the window's total estimated
+cost, the recovered-read/write/write-at-1h totals, the dominant model's
+break-even ratio (the `R`/`W` ratio above which the 1-hour TTL pays off for
+its resolved rates — derived from the pricing table, not a hardcoded
+constant), and the near-boundary sensitivity band (idle gaps just under the
+short TTL, and how much the verdict would move if that band also turned out
+to expire). The verdict itself is one of:
+
+- **`prefer-5m`** / **`prefer-1h`** — the net cost difference clears both a
+  5%-of-window-cost margin and the near-boundary sensitivity band.
+- **`too-close-to-call`** — the difference exists but doesn't clear one of
+  those two margins; switching isn't worth it either way.
+- **`insufficient-data`** — fewer than 50 timestamped messages, fewer than 5
+  MTok of TTL-attributed cache-creation volume, every model's 1-hour rate is
+  synthesized rather than reported, or the window predates the TTL-breakdown
+  columns entirely (`observedTtl: unknown`) — the gap distribution still
+  prints, but no dollar verdict is ever guessed at.
+
+**Projection vs. measurement.** `observedTtl` states which TTL this window's
+messages were actually recorded at — `1h`, `5m`, `mixed`, or `unknown`. A
+verdict that recommends the *other* TTL from the one actually observed (e.g.
+`prefer-5m` printed for a window recorded at `1h`) is a **projection**: a
+counterfactual computed from this window's own gap/write shape, not a
+measurement of what that other setting would actually have produced (the
+tool does not simulate the TTL's own second-order effect — see
+Limitations below). The command labels this explicitly rather than printing
+it with the same confidence as a same-TTL result. Never quote a projected
+verdict as advice for a workload it wasn't computed from — this answer is
+workload-specific, and a few-turn session-heavy workload and a long-running,
+many-turn one can get opposite verdicts from the same rate table.
+
+**Limitations, always in the output, not only here:**
+
+- Idle gaps are a **proxy** for cache expiry, not an observation of it.
+- The second-order effect — under a 5-minute TTL, the reads this tool counts
+  as "recovered" would themselves rebuild the cache, and that rebuild would
+  itself be re-read later — is **not modelled**.
+- Subagent traffic is recorded at the 5-minute TTL regardless of the parent
+  session's setting; if it isn't separable in your data, `R` is overstated
+  for a workload with heavy subagent use.
+- 1-hour TTL availability varies by model on Bedrock — a model row with a
+  blank net-cost figure may reflect that unavailability rather than a bad
+  rate (see the `--json` output's per-model `netCostOfShortTtl: null`).
+
+**Examples:**
+
+```sh
+# This month's TTL fit
+claude-stats ttl-fit
+
+# Last 7 days, one project
+claude-stats ttl-fit --period week --project ~/repos/myproject
+
+# Full JSON result for scripting
+claude-stats ttl-fit --period all --json
+```
+
+---
+
+## `context`
+
+Answers the same question as Claude Code's own `/context` — but **over
+time**, across a window of past sessions, rather than a live snapshot of
+what's in context right now.
+
+Measures the same billed context every request pays for (input +
+cache-read + cache-creation), broken into context-size bands, tokens
+carried above a set of caps, reset (compaction) cycles and their sawtooth
+shape, and the session-start "prelude" every fresh session repays across
+the window — from data the local store already holds.
+
+```
+claude-stats context [options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--period <period>` | `month` | `day`, `week`, `month`, or `all` |
+| `--since <date>` | — | Explicit lower bound (`YYYY-MM-DD`, inclusive). Must be paired with `--until`; overrides `--period` when both are set |
+| `--until <date>` | — | Explicit upper bound (`YYYY-MM-DD`, inclusive). Must be paired with `--since` |
+| `--project <path>` | _(all projects)_ | Filter to one project |
+| `--account <uuid>` | _(all accounts)_ | Filter to a specific Anthropic account UUID |
+| `--json` | _(off)_ | Print the full result as JSON instead of formatted text |
+
+See [output-guide.md](output-guide.md#context-command-output) for how to
+read every field — in particular, why the amplification ratio is not a
+bound and why every dollar figure printed here is a **lower bound**, not
+the cost of doing anything differently.
+
+**Auto-compact window fit.** Whenever the window has enough resets to
+describe a sawtooth shape, the output ends with a recommendation for
+`autoCompactWindow` — the per-cycle context ceiling Claude Code compacts
+against — computed by simulating each candidate window size against the
+window's own observed context growth, not by reading the caps table above it
+out loud. This ships as part of the same `context` output (text and
+`--json`) and the same `get_context_carry` MCP payload; there is no new flag
+to turn it on or off, and no flag exists to change the candidate grid it
+tries. See [output-guide.md](output-guide.md#auto-compact-window-fit) for how
+to read the candidate table — in particular, why the median cycle length
+column, not the dollar figure, is the one to make a decision from — and
+[faq.md](faq.md#why-does-it-give-me-a-range-instead-of-a-number) for why the
+tool hands you a range instead of a single number, and what it can and
+cannot know about your current setting.
+
+**Examples:**
+
+```sh
+# This month's context-carry breakdown
+claude-stats context
+
+# Last 7 days, one project
+claude-stats context --period week --project /Users/you/repos/myproject
+
+# Full JSON result for scripting
+claude-stats context --period all --json
+```
+
+---
+
 ## `spending`
 
 Show a detailed cost breakdown for a period: total cost by model, top sessions, top tools by estimated token cost, MCP server costs, anomalous prompts, and cache efficiency.
@@ -1067,7 +1228,7 @@ claude-stats mcp
 
 No options. The server is intended to be launched by a Claude Code client (not run manually in a terminal). It reads the local database and exposes read-only tools — no network access or authentication required.
 
-**Available tools** — 16 total, all read-only. Enumerated from
+**Available tools** — 18 total, all read-only. Enumerated from
 [`packages/cli/src/mcp/index.ts`](../../packages/cli/src/mcp/index.ts); the
 exhaustive tool-count assertion in `mcp.test.ts` is what keeps this true.
 
@@ -1084,6 +1245,8 @@ exhaustive tool-count assertion in `mcp.test.ts` is what keeps this true.
 | `get_cost_per_ticket` | Cost attributed to work-item ticket keys from local evidence (git branch, commits, prompt mentions), with a coverage denominator and per-figure confidence tier. Pass `ticket` to drill into one key's evidence |
 | `get_calibration` | Whether ticket-attribution and task-outcome confidence tiers have been checked against your corrections — an agreement rate on the reviewed subset (never "accuracy"), `state: "uncalibrated"` below the minimum sample |
 | `get_efficiency_hints` | Self-audit: your own wasted spend across six local patterns (cache churn, retry loops, abandoned spend, context bloat, re-entry burn, tier mismatch). Every finding names its rule, threshold, and the specific sessions it fired on |
+| `get_cache_ttl_fit` | Is this workload cheaper on the 5-minute or the 1-hour cache TTL? Idle-gap distribution, cache-write origin, per-model net cost, and one verdict always shown beside its margin. Equivalent to `claude-stats ttl-fit`; see [`ttl-fit`](#ttl-fit) above for how to read the verdict |
+| `get_context_carry` | How much of the bill is carrying context forward, and where does it concentrate? Size bands, tokens above a set of caps, reset/sawtooth shape, and the session-start prelude — every dollar figure a stated lower bound. Answers the same question as Claude Code's own `/context`, but over time. Equivalent to `claude-stats context`; see [`context`](#context) above. Omits `concentration`, `preludeByProject`, and `turns` (session ids / project paths / message uuids), and strips `sessionId` from `resets`/`cycles` — use the CLI or local dashboard for those. Also carries an allowlisted `autoCompactFit` block — the same `autoCompactWindow` recommendation `context` prints, with raw model ids stripped down to a `uniform`/`unknownModels` summary — see [output-guide.md](output-guide.md#auto-compact-window-fit) |
 | `generate_justification_pack` | Write the justification pack (HTML + CSV) for one month to local disk. Equivalent to `claude-stats pack --period <YYYY-MM>` |
 | `get_constraint_impact` | What a *declared* policy boundary (`config.policyEvents`) measurably cost or saved, per task class, on both sides |
 | `get_account_info` | Current login's seat/billing/org fields, plus every account this machine has observed. Never returns a raw email — only `emailPresent`/`emailHash` |
@@ -1092,7 +1255,7 @@ exhaustive tool-count assertion in `mcp.test.ts` is what keeps this true.
 
 **Per-account filtering:** `get_stats`, `list_sessions`, `list_projects`,
 `get_cost_per_task`, `get_cost_per_ticket`, `get_efficiency_hints`,
-`get_constraint_impact`, and `generate_justification_pack` all accept an
+`get_cache_ttl_fit`, `get_context_carry`, `get_constraint_impact`, and `generate_justification_pack` all accept an
 optional `account` param — a full account UUID or an unambiguous prefix
 (e.g. `<uuid-prefix>`). An empty string, a prefix matching no account, or a
 prefix matching more than one account returns an error rather than silently
