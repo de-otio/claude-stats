@@ -68,6 +68,26 @@ export async function initCliI18n(locale?: string): Promise<void> {
 }
 
 /**
+ * Whether `initCliI18n()` has already run in this process.
+ *
+ * Exists so a SECOND entry point can initialize i18n without clobbering an
+ * initialization that already happened. `startMcpServer()` is reached two
+ * ways: straight from the bin (`claude-stats mcp` — `src/index.ts`
+ * short-circuits on `argv[2] === "mcp"` before `buildCli()` ever runs, so
+ * nothing has initialized) and through Commander's `mcp` subcommand
+ * (`claude-stats --locale de mcp`, where `buildCli()` already initialized with
+ * the user's `--locale`). Re-initializing unconditionally would silently reset
+ * that second case to the environment locale.
+ *
+ * Deliberately a boolean predicate rather than an exported `_t`: callers get
+ * the one fact they need in order to decide, and the translator stays private
+ * so nothing can route around the `t()` guard below.
+ */
+export function isCliI18nInitialized(): boolean {
+  return _t !== undefined;
+}
+
+/**
  * Translation function — delegates to the i18next instance created by
  * `initCliI18n()`. Throws if called before initialization.
  */

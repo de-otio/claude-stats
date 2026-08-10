@@ -1117,10 +1117,38 @@ export function createMcpServer(store: Store): McpServer {
  * and connect over stdio.
  */
 export async function startMcpServer(): Promise<void> {
+  const { initCliI18n, isCliI18nInitialized } = await import("../i18n.js");
   const { Store } = await import("../store/index.js");
   const { collect } = await import("../aggregator/index.js");
   const { initPricingCache } = await import("../pricing-cache.js");
   const { loadConfig, ticketProjectKeys } = await import("../config.js");
+
+  // THIS function owns i18n initialization, not just `buildCli()`.
+  //
+  // `createMcpServer` closes over the module-level `t`, which throws until
+  // some entry point has awaited `initCliI18n()`. There are three ways into
+  // this process and only one of them ever went through `buildCli()`:
+  //
+  //   1. `claude-stats mcp` — `src/index.ts` short-circuits on
+  //      `argv[2] === "mcp"` and calls this function DIRECTLY, deliberately,
+  //      so nothing writes to stdout before the JSON-RPC channel opens. That
+  //      also means `buildCli()` never runs.
+  //   2. `require("<ext>/dist/mcp.js").startMcpServer()` — how the VS Code
+  //      extension registers the server in ~/.claude.json (see
+  //      `extension/mcp-register.ts`). The esbuild bundle's entry point is
+  //      this module; there is no CLI in that process at all.
+  //   3. `claude-stats --locale de mcp` — the only path that DOES reach
+  //      Commander's `mcp` subcommand, because argv[2] is the flag, not "mcp".
+  //      Here `buildCli()` has already initialized, with the user's --locale.
+  //
+  // Paths 1 and 2 shipped broken: every unconditional `t()` in a tool handler
+  // (`get_calibration`) and every zero-cost branch (`get_cost_per_ticket`,
+  // `get_efficiency_hints`, `generate_justification_pack`) came back as
+  // "i18n not initialized — call initCliI18n() first". The guard rather than
+  // an unconditional re-init is for path 3: `initCliI18n()` with no argument
+  // re-detects the locale from the environment, which would throw away the
+  // `--locale` the user just passed.
+  if (!isCliI18nInitialized()) await initCliI18n();
 
   // Load the fetched pricing cache before serving any tool calls — otherwise
   // this long-lived process runs its whole lifetime on DEFAULT_PRICING alone
