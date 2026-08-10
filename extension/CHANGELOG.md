@@ -2,7 +2,7 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
-## Unreleased
+## 0.20.0 — 2026-08-10
 
 ### Added
 
@@ -35,6 +35,18 @@ All notable changes to the Claude Stats VS Code extension are documented here.
 
 ### Fixed
 
+- **Four MCP tools answered `i18n not initialized` instead of answering.**
+  `get_calibration` failed on every call; `get_cost_per_ticket`,
+  `get_efficiency_hints` and `generate_justification_pack` failed whenever they
+  took a zero-cost branch. Translation was only ever initialized by the CLI
+  builder, and neither route into the MCP server passes through it:
+  `claude-stats mcp` short-circuits before the CLI is built precisely so
+  nothing writes to stdout ahead of the JSON-RPC channel, and the VS Code
+  extension launches a bundle whose entry point *is* the server. The server now
+  initializes translation itself, and leaves an already-initialized one alone so
+  an explicit `--locale` survives. Covered by a test that drives the real
+  binary over stdio — the defect lives in process startup, so nothing running
+  in-process could observe it.
 - **`claude-stats dashboard` emitted invalid JSON.** i18next 26 prints a
   promotional banner through `console.info` on startup, and `console.info`
   writes to stdout — which this CLI uses as a protocol channel: `dashboard`
