@@ -138,7 +138,9 @@
       "savingCaveat": "ご自身の利用実績を各プランの上限に当てはめて推定した値です。",
       "ttlPrefer5m": "5分のキャッシュ TTL なら、この期間のコストが約 {{money}} 少なくなります。",
       "ttlPrefer1h": "1時間のキャッシュ TTL なら、この期間のコストが約 {{money}} 少なくなります。",
-      "ttlProjectionCaveat": "別のキャッシュ TTL で記録された期間からの推定値です。実際に切り替えた場合の二次的な影響はモデル化されていません。"
+      "ttlProjectionCaveat": "別のキャッシュ TTL で記録された期間からの推定値です。実際に切り替えた場合の二次的な影響はモデル化されていません。",
+      "autoCompactRecommend": "auto-compact ウィンドウを {{tokens}} トークンに設定することを検討してください。1 サイクルあたりのリクエスト数が {{observedMedianCycleRequests}} から約 {{medianCycleRequests}} になり、推定 {{money}} の削減が見込まれます。",
+      "autoCompactRecommendNoSaving": "auto-compact ウィンドウを {{tokens}} トークンに設定することを検討してください。1 サイクルあたりのリクエスト数が {{observedMedianCycleRequests}} から約 {{medianCycleRequests}} になります。推定削減額: 利用できません。"
     },
     "change": {
       "nothing": "今のところ対応が必要な項目はありません。",

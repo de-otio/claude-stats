@@ -544,6 +544,18 @@
     "unpricedNote": "{{unpricedRows}} 件のメッセージ ({{unpricedTokens}} トークン) は価格情報のあるモデルがないため、上記のすべての金額から除外されています。",
     "excludedNote": "{{excludedRows}} 件のメッセージは (使用可能なタイムスタンプがないため) 並び順から除外されましたが、引き継ぎトークンの合計には含まれています。",
     "concentrationTitle": "引き継ぎ量順の session (上位 {{count}} 件):",
-    "concentrationRow": "{{sessionId}}: {{requests}} 件のリクエスト、平均コンテキスト {{meanContext}}、このウィンドウの引き継ぎ量の {{share}}"
+    "concentrationRow": "{{sessionId}}: {{requests}} 件のリクエスト、平均コンテキスト {{meanContext}}、このウィンドウの引き継ぎ量の {{share}}",
+    "autoCompactFit": {
+      "title": "自動コンパクトウィンドウの適合 — autoCompactWindow に設定できる値:",
+      "notAvailable": "利用不可",
+      "observedMedianLine": "本日観測されたサイクル長の中央値: {{observedMedianCycleRequests}} リクエスト。",
+      "candidateTableTitle": "候補ウィンドウ (ウィンドウ · 節約トークン · 追加リセット · 正味の節約 · サイクル長の中央値):",
+      "candidateRow": "{{windowTokens}} トークン: {{savedTokens}} トークン節約、追加リセット {{extraResets}} 回、正味の節約 {{netSaving}}、サイクル長の中央値 {{medianCycleRequests}} リクエスト",
+      "verdictInsufficientData": "この期間には、自動コンパクトウィンドウの推奨値を算出するのに十分なデータがありません。",
+      "verdictAlreadyTuned": "このワークロードで観測されたピークコンテキスト (約 {{maxPeakTokens}} トークン) は、すでに候補ウィンドウに近い値です — 変更は推奨されません。",
+      "verdictTooCloseToCall": "判断が困難です: 最良候補の正味の節約 ({{bestNetSaving}}) は、この期間の総キャリーコスト ({{totalCarryCost}}) に対する {{marginPercent}} のマージンを超えていません — しかも totalCarryCost は下限値であるため、そのマージン自体が変更を推奨する方向に偏っています。",
+      "verdictRecommend": "推奨: autoCompactWindow の既定値を {{recommendedTokens}} トークンに設定してください (起動フラグや管理された設定で上書きすることもできます)。検討した範囲: {{conservativeTokens}} トークン (保守的、推奨) から {{aggressiveTokens}} トークン (積極的、節約は大きいがリセットも増加) まで。",
+      "divergenceNote": "このブロックは、上に表示されているリセット数 (既定の {{resetFloorDefault}} トークンで検出) よりも低いリセット検出しきい値 ({{resetFloorUsed}} トークン) で計算されています — そのため、リセット数/サイクル数はこの画面の主要な数値と一致しません。"
+    }
   }
 }

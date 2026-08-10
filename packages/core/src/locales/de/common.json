@@ -138,7 +138,9 @@
       "savingCaveat": "Geschätzt aus Ihrer eigenen Nutzung, angewandt auf die Abo-Grenzen.",
       "ttlPrefer5m": "Die 5-Minuten-Cache-TTL würde in diesem Zeitraum etwa {{money}} weniger kosten.",
       "ttlPrefer1h": "Die 1-Stunden-Cache-TTL würde in diesem Zeitraum etwa {{money}} weniger kosten.",
-      "ttlProjectionCaveat": "Hochgerechnet aus einem Zeitraum, der mit der anderen Cache-TTL aufgezeichnet wurde – der Effekt zweiter Ordnung eines tatsächlichen Wechsels ist nicht modelliert."
+      "ttlProjectionCaveat": "Hochgerechnet aus einem Zeitraum, der mit der anderen Cache-TTL aufgezeichnet wurde – der Effekt zweiter Ordnung eines tatsächlichen Wechsels ist nicht modelliert.",
+      "autoCompactRecommend": "Erwägen Sie, das Auto-Compact-Fenster auf {{tokens}} Token zu setzen — Zyklen würden dann etwa {{medianCycleRequests}} statt {{observedMedianCycleRequests}} Anfragen umfassen, bei einer geschätzten Ersparnis von {{money}}.",
+      "autoCompactRecommendNoSaving": "Erwägen Sie, das Auto-Compact-Fenster auf {{tokens}} Token zu setzen — Zyklen würden dann etwa {{medianCycleRequests}} statt {{observedMedianCycleRequests}} Anfragen umfassen. Geschätzte Ersparnis: nicht verfügbar."
     },
     "change": {
       "nothing": "Derzeit erfordert nichts Ihre Aufmerksamkeit.",

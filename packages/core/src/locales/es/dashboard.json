@@ -678,5 +678,8 @@
       "cost": "Coste (cota inferior)",
       "caveat": "Los tokens por encima de un límite se tarifican al precio de lectura de cache: la forma más económica que puede adoptar este coste y una cota inferior del mismo. Esto no es el coste de limitar el contexto a ese nivel: limitarlo significa que el mismo trabajo se hace con menos contexto ante el modelo, y lo que cuesta ese retrabajo no se mide aquí."
     }
+  },
+  "autoCompactFit": {
+    "caveat": "Límite superior: supone que el mismo trabajo se realiza con menos contexto y no contabiliza el coste de posibles retrabajos adicionales, y el propio ahorro de tokens es también un límite inferior. El margen que respalda esta recomendación se mide frente a una cifra de coste que es en sí misma un límite inferior, lo que la sesga hacia recomendar un cambio. Esta es la ventana de auto-compactación predeterminada — el flag de inicio aún puede anularla — y esta herramienta no puede saber si Claude Code ya está limitando la ventana al tamaño de contexto del propio modelo."
   }
 }

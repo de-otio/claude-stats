@@ -677,5 +677,8 @@
       "cost": "Kosten (Untergrenze)",
       "caveat": "Token über einer Obergrenze werden zum cache-read-Tarif berechnet – die günstigste Form, die diese Kosten annehmen können, und damit deren Untergrenze. Das sind nicht die Kosten einer Begrenzung des Kontexts auf dieses Niveau: Eine Begrenzung bedeutet, dass die gleiche Arbeit mit weniger Kontext vor dem Modell erledigt wird, und was diese Nacharbeit kostet, wird hier nicht gemessen."
     }
+  },
+  "autoCompactFit": {
+    "caveat": "Obergrenze: Es wird angenommen, dass dieselbe Arbeit mit weniger Kontext erledigt wird; die Kosten möglicher zusätzlicher Nacharbeit werden nicht eingerechnet, und die Token-Einsparungen selbst sind ebenfalls nur eine Untergrenze. Die Marge hinter dieser Empfehlung wird an einem Kostenwert gemessen, der selbst eine Untergrenze ist, was sie zugunsten einer Änderung verzerrt. Dies ist das standardmäßige Auto-Compact-Fenster – das Start-Flag kann es weiterhin überschreiben – und dieses Tool kann nicht erkennen, ob Claude Code das Fenster bereits auf die Kontextgröße des Modells begrenzt."
   }
 }

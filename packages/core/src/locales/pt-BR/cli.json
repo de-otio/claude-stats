@@ -547,6 +547,18 @@
     "unpricedNote": "{{unpricedRows}} mensagens ({{unpricedTokens}} tokens) não têm modelo precificado e são excluídas de todos os valores em dólar acima.",
     "excludedNote": "{{excludedRows}} mensagens foram excluídas da ordenação (sem timestamp utilizável), mas ainda são contabilizadas no total de tokens carregados.",
     "concentrationTitle": "Sessões por volume carregado (top {{count}}):",
-    "concentrationRow": "{{sessionId}}: {{requests}} requisições, contexto médio {{meanContext}}, {{share}} do volume carregado da janela"
+    "concentrationRow": "{{sessionId}}: {{requests}} requisições, contexto médio {{meanContext}}, {{share}} do volume carregado da janela",
+    "autoCompactFit": {
+      "title": "Ajuste da janela de auto-compactação — valores possíveis para autoCompactWindow:",
+      "notAvailable": "não disponível",
+      "observedMedianLine": "Duração mediana de ciclo observada hoje: {{observedMedianCycleRequests}} requisições.",
+      "candidateTableTitle": "Janelas candidatas (janela · tokens economizados · resets extras · economia líquida · duração mediana do ciclo):",
+      "candidateRow": "{{windowTokens}} tokens: economiza {{savedTokens}} tokens, {{extraResets}} reset(s) extra(s), economia líquida {{netSaving}}, ciclo mediano de {{medianCycleRequests}} requisições",
+      "verdictInsufficientData": "Dados insuficientes nesta janela para calcular uma recomendação de janela de auto-compactação.",
+      "verdictAlreadyTuned": "O pico de contexto observado desta carga de trabalho (~{{maxPeakTokens}} tokens) já está próximo de uma janela candidata — nenhuma alteração recomendada.",
+      "verdictTooCloseToCall": "Diferença pequena demais para decidir: a economia líquida da melhor candidata ({{bestNetSaving}}) não supera uma margem de {{marginPercent}} em relação ao custo total de carry desta janela ({{totalCarryCost}}) — e essa margem já tende a favorecer a recomendação de mudança, pois totalCarryCost é um limite inferior.",
+      "verdictRecommend": "Recomendação: defina autoCompactWindow como {{recommendedTokens}} tokens no padrão (um flag de inicialização ou configurações gerenciadas ainda podem sobrepor esse valor). Faixa considerada: de {{conservativeTokens}} tokens (conservador, recomendado) até {{aggressiveTokens}} tokens (agressivo, mais economia, porém mais resets).",
+      "divergenceNote": "Este bloco foi calculado com um limite de detecção de reset menor ({{resetFloorUsed}} tokens) do que a contagem de resets exibida acima (detectada no padrão de {{resetFloorDefault}} tokens) — portanto suas contagens de reset/ciclo não coincidirão com os números principais desta tela."
+    }
   }
 }

@@ -104,6 +104,38 @@ All notable changes to the Claude Stats VS Code extension are documented here.
 - A dashboard alert fires when the fit recommends switching away from the
   TTL the window was actually recorded at, by a margin the fit itself has
   already confirmed clears its own thresholds.
+- **A recommendation for `/autocompact`'s window size**, on `claude-stats
+  context` (and `--json`), on the equivalent `get_context_carry` MCP tool,
+  and as a row on the dashboard setup card beside the existing cache-TTL
+  recommendation. This is **not** the largest possible saving — a smaller
+  window carries less context, but resets more often, and resetting costs
+  a compaction while carrying costs cache reads; on any real workload the
+  arithmetic optimum sits at the smallest settable window (100K), which
+  is arithmetically right and practically useless. The tool instead
+  simulates each candidate window against your own recorded conversation
+  shape and returns a **range**, defaulting to its conservative end — the
+  largest window that still keeps most of the aggressive end's saving.
+  Every dollar figure is labelled an upper bound on the realisable saving
+  (it assumes the same work gets done with less context in front of the
+  model; what re-deriving dropped context would cost is not measured) and
+  is simultaneously computed against a lower-bound cost baseline — both
+  caveats render on the same line as any dollar figure, never one alone.
+  The tool cannot see your current `autoCompactWindow` setting (transcripts
+  record context sizes, not configuration) and cannot detect Claude Code's
+  own clamp of that window to the model's context window, so no surface
+  claims either. `/autocompact auto` — a revert to the model-tuned window,
+  never framed as "disable compaction" — may be mentioned as an option.
+  **The reset count in this block will not match the reset count the same
+  screen shows just above it**, whenever the recommendation reaches down to
+  a window that would otherwise report "not enough data": below 150K
+  observed context, the standard reset detector stops firing, so this
+  block runs its own simulation at a floor computed from your own recorded
+  context sizes instead, purely to keep the fit from degrading to
+  "insufficient data" the moment it succeeds at recommending a smaller
+  window. Every surface showing both blocks states the two floors so the
+  mismatch is self-explanatory rather than silently inconsistent. See
+  [commands.md](../doc/user-doc/commands.md#context) and
+  [doc/analysis/autocompact-window-fit/](../doc/analysis/autocompact-window-fit/README.md).
 
 ## 0.20.0 — 2026-08-10
 

@@ -544,6 +544,18 @@
     "unpricedNote": "{{unpricedRows}} Nachrichten ({{unpricedTokens}} Token) haben kein bepreistes Modell und sind in allen Geldbeträgen oben nicht enthalten.",
     "excludedNote": "{{excludedRows}} Nachrichten wurden von der Sortierung ausgeschlossen (kein verwertbarer Zeitstempel), zählen aber weiterhin in die Summe der mitgeführten Token.",
     "concentrationTitle": "Sessions nach mitgeführtem Volumen (Top {{count}}):",
-    "concentrationRow": "{{sessionId}}: {{requests}} Anfragen, mittlerer Kontext {{meanContext}}, {{share}} des mitgeführten Volumens im Zeitraum"
+    "concentrationRow": "{{sessionId}}: {{requests}} Anfragen, mittlerer Kontext {{meanContext}}, {{share}} des mitgeführten Volumens im Zeitraum",
+    "autoCompactFit": {
+      "title": "Passung des Auto-Compact-Fensters — mögliche Werte für autoCompactWindow:",
+      "notAvailable": "nicht verfügbar",
+      "observedMedianLine": "Beobachtete mittlere Zykluslänge heute: {{observedMedianCycleRequests}} Anfragen.",
+      "candidateTableTitle": "Kandidatenfenster (Fenster · gesparte Token · zusätzliche Resets · Nettoersparnis · mittlere Zykluslänge):",
+      "candidateRow": "{{windowTokens}} Token: spart {{savedTokens}} Token, {{extraResets}} zusätzliche(r) Reset(s), Nettoersparnis {{netSaving}}, mittlerer Zyklus {{medianCycleRequests}} Anfragen",
+      "verdictInsufficientData": "Nicht genügend Daten in diesem Zeitraum, um eine Empfehlung für das Auto-Compact-Fenster zu berechnen.",
+      "verdictAlreadyTuned": "Der beobachtete Spitzenkontext dieser Auslastung (~{{maxPeakTokens}} Token) liegt bereits nahe an einem Kandidatenfenster — keine Änderung empfohlen.",
+      "verdictTooCloseToCall": "Zu knapp für eine Aussage: Die Nettoersparnis des besten Kandidaten ({{bestNetSaving}}) erreicht keinen Abstand von {{marginPercent}} gegenüber den gesamten Carry-Kosten dieses Zeitraums ({{totalCarryCost}}) — und dieser Abstand ist selbst zugunsten einer Änderungsempfehlung verzerrt, da totalCarryCost eine Untergrenze ist.",
+      "verdictRecommend": "Empfehlung: autoCompactWindow standardmäßig auf {{recommendedTokens}} Token setzen (ein Start-Flag oder verwaltete Einstellungen können dies weiterhin überschreiben). Betrachteter Bereich: {{conservativeTokens}} Token (konservativ, empfohlen) bis hinunter zu {{aggressiveTokens}} Token (aggressiv, mehr Ersparnis, aber mehr Resets).",
+      "divergenceNote": "Dieser Block wurde mit einer niedrigeren Erkennungsschwelle für Resets ({{resetFloorUsed}} Token) berechnet als die oben gezeigte Reset-Anzahl (erkannt mit dem Standardwert von {{resetFloorDefault}} Token) — daher stimmen seine Reset-/Zykluszahlen nicht mit den primären Werten auf diesem Bildschirm überein."
+    }
   }
 }

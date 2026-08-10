@@ -142,7 +142,9 @@
       "savingCaveat": "Estimado a partir do seu próprio uso aplicado aos limites de cada plano.",
       "ttlPrefer5m": "O TTL de cache de 5 minutos custaria cerca de {{money}} menos neste período.",
       "ttlPrefer1h": "O TTL de cache de 1 hora custaria cerca de {{money}} menos neste período.",
-      "ttlProjectionCaveat": "Projetado a partir de um período registrado com o outro TTL de cache — o efeito de segunda ordem da troca em si não é modelado."
+      "ttlProjectionCaveat": "Projetado a partir de um período registrado com o outro TTL de cache — o efeito de segunda ordem da troca em si não é modelado.",
+      "autoCompactRecommend": "Considere definir a janela de auto-compact em {{tokens}} tokens — os ciclos executariam cerca de {{medianCycleRequests}} requisições em vez de {{observedMedianCycleRequests}}, com economia estimada de {{money}}.",
+      "autoCompactRecommendNoSaving": "Considere definir a janela de auto-compact em {{tokens}} tokens — os ciclos executariam cerca de {{medianCycleRequests}} requisições em vez de {{observedMedianCycleRequests}}. Economia estimada: indisponível."
     },
     "change": {
       "nothing": "No momento, nada precisa de atenção.",

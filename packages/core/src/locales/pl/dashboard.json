@@ -679,5 +679,8 @@
       "cost": "Koszt (dolna granica)",
       "caveat": "Tokeny powyżej limitu są wyceniane według stawki odczytu z cache — najtańszej postaci, jaką ten koszt może przyjąć, i jego dolnej granicy. Nie jest to koszt ograniczenia kontekstu do tego poziomu: ograniczenie oznacza, że ta sama praca zostanie wykonana z mniejszym kontekstem przed modelem, a koszt wynikającej z tego powtórnej pracy nie jest tu mierzony."
     }
+  },
+  "autoCompactFit": {
+    "caveat": "Górne ograniczenie: zakłada, że ta sama praca zostanie wykonana przy mniejszym kontekście, i nie wycenia kosztu ewentualnych dodatkowych poprawek, a same oszczędności tokenów są również dolnym ograniczeniem. Margines stojący za tą rekomendacją jest mierzony względem wartości kosztu, która sama jest dolnym ograniczeniem, co przechyla ją w stronę rekomendowania zmiany. To jest domyślne okno auto-compact — flaga uruchomieniowa nadal może je nadpisać — a to narzędzie nie potrafi stwierdzić, czy Claude Code już nie ogranicza tego okna do rozmiaru kontekstu samego modelu."
   }
 }

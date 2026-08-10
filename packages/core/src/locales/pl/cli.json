@@ -550,6 +550,18 @@
     "unpricedNote": "{{unpricedRows}} wiadomości ({{unpricedTokens}} tokenów) nie ma wycenionego modelu i jest wyłączonych ze wszystkich kwot powyżej.",
     "excludedNote": "{{excludedRows}} wiadomości zostało wyłączonych z ustalania kolejności (brak użytecznego znacznika czasu), ale nadal są liczone w sumie przeniesionych tokenów.",
     "concentrationTitle": "Sesje według przeniesionej objętości (pierwszych {{count}}):",
-    "concentrationRow": "{{sessionId}}: {{requests}} żądań, średni kontekst {{meanContext}}, {{share}} przeniesionej objętości w tym okresie"
+    "concentrationRow": "{{sessionId}}: {{requests}} żądań, średni kontekst {{meanContext}}, {{share}} przeniesionej objętości w tym okresie",
+    "autoCompactFit": {
+      "title": "Dopasowanie okna auto-compact — na jaką wartość można ustawić autoCompactWindow:",
+      "notAvailable": "niedostępne",
+      "observedMedianLine": "Zaobserwowana dzisiaj mediana długości cyklu: {{observedMedianCycleRequests}} żądań.",
+      "candidateTableTitle": "Kandydujące okna (okno · zaoszczędzone tokeny · dodatkowe resety · oszczędność netto · mediana długości cyklu):",
+      "candidateRow": "{{windowTokens}} tokenów: oszczędza {{savedTokens}} tokenów, dodatkowe resety: {{extraResets}}, oszczędność netto {{netSaving}}, mediana cyklu {{medianCycleRequests}} żądań",
+      "verdictInsufficientData": "Za mało danych w tym oknie, aby obliczyć rekomendację okna auto-compact.",
+      "verdictAlreadyTuned": "Zaobserwowany szczyt kontekstu tego obciążenia (~{{maxPeakTokens}} tokenów) jest już blisko jednego z kandydujących okien — zmiana nie jest zalecana.",
+      "verdictTooCloseToCall": "Zbyt niejednoznaczne: oszczędność netto najlepszego kandydata ({{bestNetSaving}}) nie przekracza marginesu {{marginPercent}} względem całkowitego kosztu przenoszenia kontekstu w tym oknie ({{totalCarryCost}}) — a sam ten margines jest przechylony w stronę rekomendowania zmiany, ponieważ totalCarryCost jest wartością dolną.",
+      "verdictRecommend": "Rekomendacja: ustaw autoCompactWindow na {{recommendedTokens}} tokenów jako wartość domyślną (flaga uruchomieniowa lub ustawienia zarządzane nadal mogą ją zastąpić). Rozważany zakres: od {{conservativeTokens}} tokenów (zachowawczo, zalecane) do {{aggressiveTokens}} tokenów (agresywnie, większa oszczędność, ale więcej resetów).",
+      "divergenceNote": "Ten blok obliczono przy niższym progu wykrywania resetów ({{resetFloorUsed}} tokenów) niż liczba resetów pokazana powyżej (wykryta przy domyślnym progu {{resetFloorDefault}} tokenów) — dlatego jego liczby resetów/cykli nie będą zgodne z głównymi wartościami na tym ekranie."
+    }
   }
 }

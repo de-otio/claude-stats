@@ -509,6 +509,110 @@ per-request attribution array — see [`get_context_carry`](commands.md#mcp)
 in the command reference for exactly what the MCP payload does and doesn't
 carry.
 
+### Auto-compact window fit
+
+Whenever the window has enough resets to describe a sawtooth shape (see
+[The sawtooth line](#the-sawtooth-line) above), `claude-stats context` ends
+with a recommendation for `autoCompactWindow` — the per-cycle context
+ceiling Claude Code compacts against. `get_context_carry` carries the same
+block, and the dashboard's Plan/Setup card shows a one-line version of it
+beside the cache-TTL recommendation. Figures below are illustrative, not a
+real run.
+
+```
+Auto-compact window fit — what autoCompactWindow could be set to:
+Observed median cycle length today: 118 requests.
+Candidate windows (window · saved tokens · extra resets · net saving · median cycle length):
+  150K tokens: saves 410K tokens, 6 extra reset(s), net saving $1.10, median cycle 40 requests
+  200K tokens: saves 260K tokens, 3 extra reset(s), net saving $0.70, median cycle 58 requests
+  250K tokens: saves 140K tokens, 1 extra reset(s), net saving $0.40, median cycle 82 requests
+Recommendation: set autoCompactWindow to 200K tokens as your default (a
+launch flag or managed settings can still override it). Range considered:
+200K tokens (conservative, recommended) down to 150K tokens (aggressive,
+more saving but more resets).
+Upper bound. This assumes the same work gets done with less context in
+front of the model; what that rework costs is not measured here. [...]
+```
+
+**Read the median cycle length column, not the dollar figure — that is the
+whole design of this table.** Nobody can look at "150K tokens" and judge
+whether that's a workable window; token counts in the abstract don't mean
+anything to a human reader. But everybody can judge whether working in
+40-request stretches between compactions is workable, versus the 118 the
+window is actually seeing today. The candidate table's last column —
+`medianCycleRequests` — is the simulated version of the same
+`observedMedianCycleRequests` line printed just above it: pick a candidate
+row, and that row's median cycle length is what a session would feel like
+under that window. The dollar figure is the prize this tool is chasing; the
+cycle length is what you actually have to live with day to day, and it's the
+number this doc wants you to read first.
+
+**What each candidate column means, simulated per window size:**
+
+- **saved tokens** — how much less carried volume this window would produce
+  across the window's closed compaction cycles, replayed turn by turn
+  against this candidate ceiling. Real tokens, always — this half never
+  degrades to "not available," even when the dollar figure does.
+- **extra resets** — how many *additional* compaction events this candidate
+  would trigger, beyond what actually happened. A smaller window does not
+  make the same conversation happen with less total work; it makes the
+  *same* work happen across **more, shorter cycles** — capping doesn't clip
+  the sawtooth, it wraps it, folding the same climb into more, smaller
+  saw-teeth. That's why this tool simulates the whole increment sequence
+  candidate-by-candidate rather than just reading "tokens above 200K" off
+  the caps table above it: tokens-above-a-cap is not the cost of capping
+  there, for exactly the same reason the [caps table FAQ
+  entry](faq.md#why-doesnt-the-caps-table-tell-me-what-to-set-my-context-limit-to)
+  gives.
+- **net saving** — saved tokens priced at the cache-read rate, minus
+  `extra resets × the window's own mean priced reset cost`. `null`
+  ("not available") when nothing in the window has a priced model, or when
+  the candidate has resets to price and none of the window's own resets
+  were ever priced — never a `$0.00` standing in for either.
+- **median cycle length** — see above; the decision column.
+
+**The verdict is a range, and the range is printed largest-first.** The
+sentence names a `recommendedTokens` value plus the range it was chosen
+from, and that range is `conservative — aggressive`, in that order — the
+recommended value is always the **larger, more conservative** end, never
+the smaller one that happens to save the most. See
+[faq.md](faq.md#why-does-it-give-me-a-range-instead-of-a-number) for why the
+conservative end is the default and not the top-saving one.
+
+**The verdict can also be `already-tuned` or `too-close-to-call` instead of
+a recommendation** — read those as "no change suggested" for two different
+reasons: `already-tuned` means the workload's own observed peak already
+sits close to a window on the grid, so shrinking further wouldn't change
+much about where compaction happens; `too-close-to-call` means a candidate
+does show a saving, but it doesn't clear the margin this tool requires
+before it will name a number. Neither one is a bug and neither one means
+"insufficient data" — that's a separate, fourth state for when there isn't
+enough of a sawtooth to simulate against at all.
+
+**A caveat renders on the same line as every dollar figure here**, the same
+convention the caps table above it uses: the saving is an **upper bound**
+(it assumes the same work gets done with less context in front of the
+model — what the resulting rework costs is not measured anywhere in this
+tool) resting on a **lower-bound** token baseline underneath it (the
+replay restarts each simulated cut from the observed post-reset floor,
+which an earlier, shorter-conversation compaction would plausibly beat).
+Both directions apply at once — read "$X" here as neither a promise nor a
+ceiling.
+
+**This block cannot see what your `autoCompactWindow` is currently set to,
+and cannot detect Claude Code's own clamp of that window to the active
+model's context window.** See
+[faq.md](faq.md#can-it-see-what-my-auto-compact-window-is-currently-set-to)
+for why, and never read "you are on the default" into anything this tool
+prints — it has no way to know that.
+
+**The reset count in this block can differ from the `resets` figure printed
+a few lines above it, on the same screen, for the same window.** This is
+expected, not a bug — see
+[faq.md](faq.md#why-does-this-block-report-a-different-number-of-resets-than-the-section-above-it)
+for why, and look for the divergence note (printed whenever the two floors
+actually differ) rather than treating the mismatch as unexplained.
+
 ### How this relates to the cache-TTL fit
 
 Both `context` and `ttl-fit` answer questions about what cached context

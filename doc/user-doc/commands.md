@@ -797,6 +797,21 @@ read every field — in particular, why the amplification ratio is not a
 bound and why every dollar figure printed here is a **lower bound**, not
 the cost of doing anything differently.
 
+**Auto-compact window fit.** Whenever the window has enough resets to
+describe a sawtooth shape, the output ends with a recommendation for
+`autoCompactWindow` — the per-cycle context ceiling Claude Code compacts
+against — computed by simulating each candidate window size against the
+window's own observed context growth, not by reading the caps table above it
+out loud. This ships as part of the same `context` output (text and
+`--json`) and the same `get_context_carry` MCP payload; there is no new flag
+to turn it on or off, and no flag exists to change the candidate grid it
+tries. See [output-guide.md](output-guide.md#auto-compact-window-fit) for how
+to read the candidate table — in particular, why the median cycle length
+column, not the dollar figure, is the one to make a decision from — and
+[faq.md](faq.md#why-does-it-give-me-a-range-instead-of-a-number) for why the
+tool hands you a range instead of a single number, and what it can and
+cannot know about your current setting.
+
 **Examples:**
 
 ```sh
@@ -1231,7 +1246,7 @@ exhaustive tool-count assertion in `mcp.test.ts` is what keeps this true.
 | `get_calibration` | Whether ticket-attribution and task-outcome confidence tiers have been checked against your corrections — an agreement rate on the reviewed subset (never "accuracy"), `state: "uncalibrated"` below the minimum sample |
 | `get_efficiency_hints` | Self-audit: your own wasted spend across six local patterns (cache churn, retry loops, abandoned spend, context bloat, re-entry burn, tier mismatch). Every finding names its rule, threshold, and the specific sessions it fired on |
 | `get_cache_ttl_fit` | Is this workload cheaper on the 5-minute or the 1-hour cache TTL? Idle-gap distribution, cache-write origin, per-model net cost, and one verdict always shown beside its margin. Equivalent to `claude-stats ttl-fit`; see [`ttl-fit`](#ttl-fit) above for how to read the verdict |
-| `get_context_carry` | How much of the bill is carrying context forward, and where does it concentrate? Size bands, tokens above a set of caps, reset/sawtooth shape, and the session-start prelude — every dollar figure a stated lower bound. Answers the same question as Claude Code's own `/context`, but over time. Equivalent to `claude-stats context`; see [`context`](#context) above. Omits `concentration`, `preludeByProject`, and `turns` (session ids / project paths / message uuids), and strips `sessionId` from `resets`/`cycles` — use the CLI or local dashboard for those |
+| `get_context_carry` | How much of the bill is carrying context forward, and where does it concentrate? Size bands, tokens above a set of caps, reset/sawtooth shape, and the session-start prelude — every dollar figure a stated lower bound. Answers the same question as Claude Code's own `/context`, but over time. Equivalent to `claude-stats context`; see [`context`](#context) above. Omits `concentration`, `preludeByProject`, and `turns` (session ids / project paths / message uuids), and strips `sessionId` from `resets`/`cycles` — use the CLI or local dashboard for those. Also carries an allowlisted `autoCompactFit` block — the same `autoCompactWindow` recommendation `context` prints, with raw model ids stripped down to a `uniform`/`unknownModels` summary — see [output-guide.md](output-guide.md#auto-compact-window-fit) |
 | `generate_justification_pack` | Write the justification pack (HTML + CSV) for one month to local disk. Equivalent to `claude-stats pack --period <YYYY-MM>` |
 | `get_constraint_impact` | What a *declared* policy boundary (`config.policyEvents`) measurably cost or saved, per task class, on both sides |
 | `get_account_info` | Current login's seat/billing/org fields, plus every account this machine has observed. Never returns a raw email — only `emailPresent`/`emailHash` |

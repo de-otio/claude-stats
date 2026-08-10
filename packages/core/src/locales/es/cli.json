@@ -547,6 +547,18 @@
     "unpricedNote": "{{unpricedRows}} mensajes ({{unpricedTokens}} tokens) no tienen modelo con precio y se excluyen de todas las cifras en dólares anteriores.",
     "excludedNote": "{{excludedRows}} mensajes se excluyeron de la ordenación (sin marca de tiempo utilizable), pero siguen contándose en el total de tokens arrastrados.",
     "concentrationTitle": "Sesiones por volumen arrastrado (las {{count}} primeras):",
-    "concentrationRow": "{{sessionId}}: {{requests}} solicitudes, contexto medio {{meanContext}}, {{share}} del volumen arrastrado de la ventana"
+    "concentrationRow": "{{sessionId}}: {{requests}} solicitudes, contexto medio {{meanContext}}, {{share}} del volumen arrastrado de la ventana",
+    "autoCompactFit": {
+      "title": "Ajuste de la ventana de auto-compactación: qué valor podría tener autoCompactWindow:",
+      "notAvailable": "no disponible",
+      "observedMedianLine": "Duración mediana del ciclo observada hoy: {{observedMedianCycleRequests}} solicitudes.",
+      "candidateTableTitle": "Ventanas candidatas (ventana · tokens ahorrados · reinicios adicionales · ahorro neto · duración mediana del ciclo):",
+      "candidateRow": "{{windowTokens}} tokens: ahorra {{savedTokens}} tokens, {{extraResets}} reinicio(s) adicional(es), ahorro neto {{netSaving}}, ciclo mediano {{medianCycleRequests}} solicitudes",
+      "verdictInsufficientData": "No hay datos suficientes en esta ventana para calcular una recomendación de ventana de auto-compactación.",
+      "verdictAlreadyTuned": "El contexto máximo observado de esta carga de trabajo (~{{maxPeakTokens}} tokens) ya está cerca de una ventana candidata: no se recomienda ningún cambio.",
+      "verdictTooCloseToCall": "Demasiado ajustado para decidir: el ahorro neto del mejor candidato ({{bestNetSaving}}) no supera un margen de {{marginPercent}} frente al coste total de arrastre de esta ventana ({{totalCarryCost}}), y ese margen ya está sesgado a favor de recomendar un cambio, puesto que totalCarryCost es una cota inferior.",
+      "verdictRecommend": "Recomendación: establece autoCompactWindow en {{recommendedTokens}} tokens como valor predeterminado (una marca de inicio o la configuración administrada aún pueden anularlo). Rango considerado: desde {{conservativeTokens}} tokens (conservador, recomendado) hasta {{aggressiveTokens}} tokens (agresivo, más ahorro pero más reinicios).",
+      "divergenceNote": "Este bloque se calculó con un umbral de detección de reinicios más bajo ({{resetFloorUsed}} tokens) que el recuento de reinicios mostrado arriba (detectado con el valor predeterminado de {{resetFloorDefault}} tokens), por lo que sus recuentos de reinicios/ciclos no coincidirán con las cifras principales de esta pantalla."
+    }
   }
 }

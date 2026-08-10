@@ -142,7 +142,9 @@
       "savingCaveat": "Estimé à partir de votre propre usage rejoué face aux limites des abonnements.",
       "ttlPrefer5m": "Le TTL de cache de 5 minutes coûterait environ {{money}} de moins sur cette période.",
       "ttlPrefer1h": "Le TTL de cache d'une heure coûterait environ {{money}} de moins sur cette période.",
-      "ttlProjectionCaveat": "Projection basée sur une période enregistrée avec l'autre TTL de cache — l'effet de second ordre d'un changement réel n'est pas modélisé."
+      "ttlProjectionCaveat": "Projection basée sur une période enregistrée avec l'autre TTL de cache — l'effet de second ordre d'un changement réel n'est pas modélisé.",
+      "autoCompactRecommend": "Envisagez de définir la fenêtre d'auto-compact à {{tokens}} tokens — les cycles exécuteraient environ {{medianCycleRequests}} requêtes au lieu de {{observedMedianCycleRequests}}, avec une économie estimée de {{money}}.",
+      "autoCompactRecommendNoSaving": "Envisagez de définir la fenêtre d'auto-compact à {{tokens}} tokens — les cycles exécuteraient environ {{medianCycleRequests}} requêtes au lieu de {{observedMedianCycleRequests}}. Économie estimée : non disponible."
     },
     "change": {
       "nothing": "Rien ne requiert votre attention pour le moment.",

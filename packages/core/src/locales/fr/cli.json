@@ -547,6 +547,18 @@
     "unpricedNote": "{{unpricedRows}} messages ({{unpricedTokens}} tokens) n'ont pas de modèle tarifé et sont exclus de tous les montants ci-dessus.",
     "excludedNote": "{{excludedRows}} messages ont été exclus du classement chronologique (horodatage inutilisable) mais restent comptés dans le total des tokens reportés.",
     "concentrationTitle": "Sessions par volume reporté (top {{count}}) :",
-    "concentrationRow": "{{sessionId}} : {{requests}} requêtes, contexte moyen {{meanContext}}, {{share}} du volume reporté de la fenêtre"
+    "concentrationRow": "{{sessionId}} : {{requests}} requêtes, contexte moyen {{meanContext}}, {{share}} du volume reporté de la fenêtre",
+    "autoCompactFit": {
+      "title": "Ajustement de la fenêtre d'auto-compactage — valeurs possibles pour autoCompactWindow :",
+      "notAvailable": "non disponible",
+      "observedMedianLine": "Longueur médiane de cycle observée aujourd'hui : {{observedMedianCycleRequests}} requêtes.",
+      "candidateTableTitle": "Fenêtres candidates (fenêtre · tokens économisés · réinitialisations supplémentaires · économie nette · longueur médiane de cycle) :",
+      "candidateRow": "{{windowTokens}} tokens : économise {{savedTokens}} tokens, {{extraResets}} réinitialisation(s) supplémentaire(s), économie nette {{netSaving}}, cycle médian {{medianCycleRequests}} requêtes",
+      "verdictInsufficientData": "Données insuffisantes dans cette fenêtre pour calculer une recommandation de fenêtre d'auto-compactage.",
+      "verdictAlreadyTuned": "Le pic de contexte observé pour cette charge de travail (~{{maxPeakTokens}} tokens) est déjà proche d'une fenêtre candidate — aucun changement recommandé.",
+      "verdictTooCloseToCall": "Trop serré pour trancher : l'économie nette de la meilleure candidate ({{bestNetSaving}}) n'atteint pas une marge de {{marginPercent}} par rapport au coût total de report de cette fenêtre ({{totalCarryCost}}) — et cette marge est elle-même biaisée en faveur d'un changement, puisque totalCarryCost est une borne inférieure.",
+      "verdictRecommend": "Recommandation : définissez autoCompactWindow sur {{recommendedTokens}} tokens par défaut (un indicateur de lancement ou des paramètres gérés peuvent toujours le remplacer). Plage envisagée : de {{conservativeTokens}} tokens (conservateur, recommandé) à {{aggressiveTokens}} tokens (agressif, plus d'économies mais plus de réinitialisations).",
+      "divergenceNote": "Ce bloc a été calculé avec un seuil de détection des réinitialisations plus bas ({{resetFloorUsed}} tokens) que le nombre de réinitialisations affiché ci-dessus (détecté au seuil par défaut de {{resetFloorDefault}} tokens) — ses décomptes de réinitialisations/cycles ne correspondront donc pas aux chiffres principaux de cet écran."
+    }
   }
 }

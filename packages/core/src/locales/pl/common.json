@@ -146,7 +146,9 @@
       "savingCaveat": "Oszacowane na podstawie Twojego własnego użycia odtworzonego wobec limitów planów.",
       "ttlPrefer5m": "5-minutowy TTL cache kosztowałby o około {{money}} mniej w tym oknie czasowym.",
       "ttlPrefer1h": "1-godzinny TTL cache kosztowałby o około {{money}} mniej w tym oknie czasowym.",
-      "ttlProjectionCaveat": "Oszacowane na podstawie okna zarejestrowanego przy innym TTL cache — efekt drugiego rzędu wynikający z faktycznej zmiany nie został uwzględniony w modelu."
+      "ttlProjectionCaveat": "Oszacowane na podstawie okna zarejestrowanego przy innym TTL cache — efekt drugiego rzędu wynikający z faktycznej zmiany nie został uwzględniony w modelu.",
+      "autoCompactRecommend": "Rozważ ustawienie okna auto-compact na {{tokens}} tokenów — cykle obejmowałyby wtedy około {{medianCycleRequests}} żądań zamiast {{observedMedianCycleRequests}}, przy szacowanej oszczędności {{money}}.",
+      "autoCompactRecommendNoSaving": "Rozważ ustawienie okna auto-compact na {{tokens}} tokenów — cykle obejmowałyby wtedy około {{medianCycleRequests}} żądań zamiast {{observedMedianCycleRequests}}. Szacowana oszczędność: niedostępna."
     },
     "change": {
       "nothing": "Na razie nic nie wymaga uwagi.",

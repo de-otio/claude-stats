@@ -109,6 +109,142 @@ there. Treat the table as "here's where your traffic already runs large," not
 as tuning advice, and read the caveat line under it every time — it's
 printed on purpose, not a footnote to skip.
 
+### Why does the auto-compact window fit give me a range instead of a number?
+
+Because a single number would hide the tradeoff it's built on, and the
+range is how this tool shows its work instead of hiding it.
+
+The fit simulates a grid of candidate `autoCompactWindow` sizes against your
+window's own observed context growth and reports the **aggressive end** —
+the smallest window that still clears a real saving — and the
+**conservative end** — the largest window that still captures at least half
+of that saving. `recommendedTokens` is always the conservative end, not the
+aggressive one. Diminishing returns are steep on this curve: stepping up
+from the aggressive end to the conservative one usually gives away a small
+share of the saving in exchange for meaningfully fewer, longer compaction
+cycles (see [the median cycle length
+column](output-guide.md#auto-compact-window-fit) for why that tradeoff is
+the one to look at). A tool that recommends the number that saves the most
+tokens and costs someone a day of rework from constant mid-task compaction
+doesn't get trusted the next time it prints a number — so the default sits
+on the side that gives away a little saving for a lot more headroom, and
+the full range is printed so you can see what was traded away and pick the
+aggressive end yourself if you want it.
+
+### Why doesn't it just recommend the smallest window?
+
+Because the smallest window is *always* what a pure cost-optimiser would
+recommend, on every real workload — and that's a sign the optimisation is
+missing a term, not a useful answer.
+
+Resetting (compacting) costs a fixed amount of new prompt volume, and it's
+cheap. Carrying context forward costs a running toll — a little more on
+every single request, for every request until the next reset. Stack enough
+requests between resets and the running toll always outweighs the reset's
+fixed cost, no matter which of the two is cheaper per-token — that's just
+arithmetic on a sum that keeps growing versus a cost that's paid once. So
+an argmax over this tool's own numbers always points at the smallest
+settable window, **100K**, regardless of what your workload actually looks
+like. That's arithmetically correct and practically useless: it's not
+measuring whether 100K is a *workable* window, only that carrying is
+expensive per-token compared to resetting. The term it's missing is
+**rework** — what it costs when the model has less context in front of it
+and needs an extra turn, a re-read, or a redone step to get back to where
+it would have been with more room. This tool has no way to observe rework
+that didn't happen, so it can't put a number on the thing that actually
+bounds how small a window should go. That's why the recommendation isn't an
+argmax at all — it stops at a candidate that clears a real saving margin
+and gives away the rest of the curve, and leans on the median-cycle-length
+column (a number you *can* judge) rather than pretending the missing term
+doesn't matter.
+
+### Why does this block report a different number of resets than the section above it?
+
+Because it's computed at a different, lower reset-detection threshold on
+purpose — the alternative was a tool that goes blind the moment you follow
+its own advice.
+
+The sawtooth line and reset count printed earlier in the same output are
+detected against a **150,000-token** floor: a context drop only counts as a
+"reset" if the context beforehand was above that floor. That default exists
+so ordinary per-turn noise doesn't get misread as a compaction event. But
+the auto-compact fit's whole job is to simulate *smaller* windows — and a
+workload actually running at, say, a 120K window never produces a
+before-context above 150K in the first place. Detected against the default
+floor, such a window would show **zero resets**, no sawtooth, and the fit
+would report `insufficient-data` — the exact moment someone follows this
+tool's advice to a small window is the moment the tool would stop being
+able to see anything. So the block you're reading is computed on a
+**second pass** over the same rows, at a **lower, adaptively-computed reset
+floor** derived from this window's own context sizes (roughly half the
+window's 95th-percentile context, floored at a small minimum so it can
+never reach zero) — just low enough to keep detecting resets at the window
+sizes this tool is actually evaluating. Everything else on the screen —
+the caps table, the sawtooth line above this block, the hygiene ratio, the
+dashboard's compaction-events timeline — is untouched and still computed
+at the 150K default; only this block runs the second, lower-floor pass.
+Whenever the two floors actually differ, a line names both of them so the
+mismatch is self-explanatory rather than something you have to notice and
+puzzle out on your own; when they don't differ (a workload whose contexts
+already stay well above 150K), there's nothing to disclose and the note
+doesn't print.
+
+### Can it see what my auto-compact window is currently set to?
+
+No — and it never claims to, on any surface.
+
+`autoCompactWindow` is a setting; what this tool has is transcripts. A
+session transcript records the context size of each request that actually
+happened, never the configuration that produced it, so there's no field
+anywhere in the data this tool reads that says what your ceiling currently
+is. That also means it can't tell you "you're on the default" or "you're
+already at the recommended value" — it can only compare your observed peak
+context against the candidate grid and say whether that peak sits close to
+one of them (the `already-tuned` verdict). It's a proximity guess from
+outcomes, not a read of your configuration.
+
+It's also worth knowing that even a tool that *could* read
+`~/.claude/settings.json` still wouldn't have the full picture: Claude Code
+resolves `autoCompactWindow` through a precedence chain — an environment
+variable, then a `--autocompact` launch flag, then managed settings, then
+user settings — and the launch flag is **not** overridden by managed
+settings. A per-invocation flag is invisible to anything that only reads
+settings files. That's why every surface here says "default," never
+"control" or "enforce": even a hypothetical future version that reads your
+settings file couldn't promise the number it read is the one actually in
+effect for a given run.
+
+### Is the auto-compact fit's saving figure real money?
+
+It's a real number, computed honestly from what the tool can measure — but
+read it as a **ceiling** resting on a **floor**, not a promise.
+
+**Ceiling:** the saving assumes the same work gets done with less context in
+front of the model. That's the best-case outcome, not a guarantee — a
+smaller window can mean more turns, more re-reads of things that got
+dropped, or an answer that needs a follow-up prompt to fix, and none of
+that rework cost is measured anywhere in this tool (same reasoning as [the
+caps table](#why-doesnt-the-caps-table-tell-me-what-to-set-my-context-limit-to)).
+So the figure is an **upper bound** on what you'd actually realise.
+
+**Floor:** underneath that ceiling, the token arithmetic the dollar figure
+is built from is itself a **lower bound**. Every simulated cut restarts
+from the observed post-reset floor, and an earlier, shorter-conversation
+compaction would plausibly land lower than that — so the simulation likely
+understates how much volume a smaller window would actually remove.
+
+And the margin that decides whether the tool will name a `recommend-window`
+verdict at all is measured against `totalCarryCost` — which is *itself* a
+lower bound (every carried token priced at the cheapest rate it can ever
+take, the cache-read rate). A smaller true denominator makes a given saving
+look like a bigger percentage of it, so this margin is **easier to clear**
+than one measured against the window's true cost — biased toward
+recommending a change, not against one. All three of these — upper-bound
+saving, lower-bound token baseline, lower-bound margin denominator — are
+named together, on the same line as the dollar figure, everywhere it's
+printed. None of them cancel each other out; read all three, not just the
+one that's convenient.
+
 ### Why did my hygiene ratio drop when I upgraded?
 
 Because the `context-bloat` detector was rewritten to measure a different,

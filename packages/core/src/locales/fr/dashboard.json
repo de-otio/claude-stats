@@ -678,5 +678,8 @@
       "cost": "Coût (borne inférieure)",
       "caveat": "Les tokens au-delà d'un plafond sont facturés au tarif de lecture du cache — la forme la moins chère que ce coût puisse prendre, et donc une borne inférieure. Ce n'est pas le coût d'un plafonnement du contexte à ce niveau : plafonner signifie que le même travail est réalisé avec moins de contexte devant le modèle, et le coût de ce travail refait n'est pas mesuré ici."
     }
+  },
+  "autoCompactFit": {
+    "caveat": "Borne supérieure : suppose que le même travail est effectué avec moins de contexte et ne chiffre pas le coût d'éventuelles reprises supplémentaires ; les économies de tokens sont elles aussi une borne inférieure. La marge qui sous-tend cette recommandation est mesurée par rapport à un coût qui constitue lui-même une borne inférieure, ce qui la biaise en faveur d'un changement. Il s'agit de la fenêtre d'auto-compactage par défaut — l'indicateur de lancement peut toujours la remplacer — et cet outil ne peut pas déterminer si Claude Code limite déjà la fenêtre à la taille de contexte du modèle."
   }
 }

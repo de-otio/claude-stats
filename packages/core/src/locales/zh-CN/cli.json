@@ -544,6 +544,18 @@
     "unpricedNote": "{{unpricedRows}} 条消息({{unpricedTokens}} 个 token)没有已定价的模型,已从上面所有金额中排除。",
     "excludedNote": "{{excludedRows}} 条消息因缺少可用时间戳而被排除在排序之外,但仍计入携带 token 总量。",
     "concentrationTitle": "按携带量排列的 session(前 {{count}} 个):",
-    "concentrationRow": "{{sessionId}}:{{requests}} 个请求,平均上下文 {{meanContext}},占本窗口携带量的 {{share}}"
+    "concentrationRow": "{{sessionId}}:{{requests}} 个请求,平均上下文 {{meanContext}},占本窗口携带量的 {{share}}",
+    "autoCompactFit": {
+      "title": "自动压缩窗口适配 — autoCompactWindow 可设置的值：",
+      "notAvailable": "不可用",
+      "observedMedianLine": "今日观测到的周期长度中位数：{{observedMedianCycleRequests}} 次请求。",
+      "candidateTableTitle": "候选窗口（窗口 · 节省 token · 额外重置 · 净节省 · 周期长度中位数）：",
+      "candidateRow": "{{windowTokens}} token：节省 {{savedTokens}} token，额外重置 {{extraResets}} 次，净节省 {{netSaving}}，周期中位数 {{medianCycleRequests}} 次请求",
+      "verdictInsufficientData": "此窗口内的数据不足，无法计算自动压缩窗口建议。",
+      "verdictAlreadyTuned": "此工作负载观测到的峰值上下文（约 {{maxPeakTokens}} token）已接近某个候选窗口 — 无需更改。",
+      "verdictTooCloseToCall": "难以判定：最佳候选的净节省（{{bestNetSaving}}）未超过此窗口总携带成本（{{totalCarryCost}}）的 {{marginPercent}} 余量 — 而该余量本身就偏向于建议更改，因为 totalCarryCost 只是一个下界。",
+      "verdictRecommend": "建议：将 autoCompactWindow 默认设为 {{recommendedTokens}} token（启动标志或托管设置仍可覆盖）。考虑范围：从 {{conservativeTokens}} token（保守，推荐）到 {{aggressiveTokens}} token（激进，节省更多但重置更多）。",
+      "divergenceNote": "此区块采用的重置检测下限（{{resetFloorUsed}} token）低于上方所示重置计数所用的下限（按 {{resetFloorDefault}} token 的默认值检测）— 因此其重置/周期计数与本页面的主要数据不一致。"
+    }
   }
 }
