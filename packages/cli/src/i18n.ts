@@ -2,7 +2,7 @@
  * CLI i18n singleton — initialized once by buildCli(), then importable
  * everywhere via `import { t } from "../i18n.js"`.
  */
-import { initI18n, detectLocaleFromEnv } from "@claude-stats/core/i18n";
+import { initI18n, detectLocaleFromEnv, normalizeLocale } from "@claude-stats/core/i18n";
 import type { TFunction, I18nInstance } from "@claude-stats/core/i18n";
 import { createRequire } from "node:module";
 
@@ -47,7 +47,10 @@ let _instance: I18nInstance;
  * any code calls `t()`.
  */
 export async function initCliI18n(locale?: string): Promise<void> {
-  const lng = locale ?? detectLocaleFromEnv();
+  // An explicit `--locale` goes through the same normalizer as the environment,
+  // so `--locale pt_BR`, `--locale pt-br` and `--locale pt-BR` all land on the
+  // same bundle instead of only the exactly-cased form working.
+  const lng = locale !== undefined ? normalizeLocale(locale) : detectLocaleFromEnv();
   _instance = await initI18n({
     lng,
     ns: ["cli", "dashboard"],

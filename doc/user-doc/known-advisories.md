@@ -8,7 +8,13 @@ This file exists so that "we know, and here is the reasoning" is checkable
 rather than assumed. An advisory that is genuinely unreachable is still shipped
 code, and a reader deserves to see the argument rather than a reassurance.
 
-**Last reviewed:** 2026-08-10, for extension release 0.21.0.
+**Last reviewed:** 2026-08-11, for extension release 0.21.0.
+
+GitHub currently reports **2 high** on the default branch, which are the two
+shipped-but-unreachable entries below; both upstream pins were re-checked on
+this review and neither has moved. `npm audit` surfaces a third that GitHub
+does not, in the dev-only tree — recorded below so the difference between the
+two counts is explained rather than puzzling.
 
 ---
 
@@ -67,6 +73,45 @@ not the weakest link.
 
 ---
 
+## Open — dev-only, never shipped
+
+### `brace-expansion` — DoS via unbounded intermediate arrays (high)
+
+| | |
+|---|---|
+| Advisory | [GHSA-rgw5-rvv9-x895](https://github.com/advisories/GHSA-rgw5-rvv9-x895) (bypasses the CVE-2026-14257 mitigation) |
+| Affected | `brace-expansion 4.0.0 – 5.0.8` (the tree resolves 5.0.8) |
+| Reached via | `packages/infra` → `aws-cdk-lib` → `minimatch` → **bundled** `brace-expansion` |
+| Upstream | None. `aws-cdk-lib@2.264.0` (latest) still bundles 5.0.8, though 5.0.9 is published |
+
+**Why it is not shipped.** `aws-cdk-lib` is a `devDependencies` entry of
+`packages/infra`, the CDK app that deploys the optional team backend. The
+lockfile marks the whole path `"dev": true`. `prepare-vsix.mjs` installs with
+`npm ci --omit=dev --omit=peer`, so none of it reaches the VSIX, and it is not
+a dependency of the CLI or core packages either. The exposure is to whoever
+runs `cdk synth` locally or in CI, on glob patterns written in this repo's own
+infrastructure code — not to a user of the extension.
+
+**Two traps worth recording**, because both cost time on this review:
+
+1. **The `overrides` block cannot fix it.** `package.json` already declares
+   `"brace-expansion": "^5.0.9"`, and it has no effect here: the copy in
+   question is a *bundled* dependency (`"inBundle": true` in the lockfile),
+   shipped inside the `aws-cdk-lib` tarball rather than resolved from the
+   registry. npm overrides do not rewrite the contents of a bundle. Do not
+   "fix" this by editing that override again — it is already there and already
+   ineffective for this path.
+2. **`npm audit` claims a fix that does not exist.** It reports "fix available
+   via `npm audit fix`" for the same reason — it assumes the override applies.
+   `npm audit fix --dry-run` changes nothing, and bumping `aws-cdk-lib` to the
+   latest release does not help, because that release bundles the same 5.0.8.
+   Verified by unpacking the tarball (command below).
+
+The honest state is therefore: no action available, no shipped exposure, and it
+clears itself whenever AWS refreshes the bundle.
+
+---
+
 ## What would change this assessment
 
 Any of the following should prompt a re-review of this file:
@@ -80,6 +125,11 @@ Any of the following should prompt a re-review of this file:
   justification for waiting, not a preference for staying behind.
 - **A new advisory lands on a package that IS on an executed path.** The
   argument above is specific to these two; it does not generalise.
+- **`packages/infra` stops being dev-only.** If CDK code is ever imported by
+  the CLI, core, or the extension, the `brace-expansion` reasoning becomes a
+  shipped-code question rather than a local-tooling one.
+- **AWS refreshes the `aws-cdk-lib` bundle.** Then a plain version bump clears
+  the third entry with no override needed.
 
 ---
 
@@ -99,3 +149,25 @@ npm view onnxruntime-node@latest dependencies.adm-zip
 
 The last two are the load-bearing checks: they are what establishes that no
 upstream fix exists yet, rather than that we have not looked.
+
+> The `gh` call needs a token with the `security_events` scope; a default
+> `gh auth login` token returns `403` on that endpoint. Without it, audit the
+> two lockfiles directly — the trees are the same data Dependabot reads:
+>
+> ```bash
+> npm audit --audit-level=high                    # root (dev tree included)
+> npm audit --audit-level=high --prefix extension # the shipped tree
+> ```
+
+For the dev-only entry, these are the checks that establish "no fix exists"
+against `npm audit`'s claim that one does:
+
+```bash
+npm ls brace-expansion            # look for "inBundle": true on the lock entry
+npm audit fix --dry-run --package-lock-only   # confirm it changes nothing
+
+# Confirm the latest aws-cdk-lib still bundles the vulnerable version:
+npm pack aws-cdk-lib@latest
+tar -xzf aws-cdk-lib-*.tgz package/node_modules/brace-expansion/package.json
+node -e "console.log(require('./package/node_modules/brace-expansion/package.json').version)"
+```

@@ -2,6 +2,26 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## Unreleased
+
+### Fixed
+
+- **Brazilian Portuguese and Simplified Chinese now resolve from the
+  environment.** Locale detection read only the primary subtag, and `pt`/`zh`
+  are not themselves bundle codes — so `LANG=pt_BR.UTF-8` and
+  `LANG=zh_CN.UTF-8` fell back to English, making the two regional
+  translations that ship the two a CLI user could not reach without passing
+  `--locale` explicitly. Tag resolution now lives in one shared
+  `normalizeLocale` (`packages/core/src/i18n.ts`) used by the CLI's `--locale`
+  option, the CLI's environment detection, and the extension's
+  `vscode.env.language` — replacing a hand-rolled mapping that existed only on
+  the extension side, so the three surfaces can no longer disagree about what a
+  tag means. It accepts the POSIX (`pt_BR.UTF-8`) and BCP 47 (`pt-br`) forms in
+  any casing, and resolves a language whose only bundle is regional (`zh`,
+  `zh_TW` → `zh-CN`) rather than dropping to English. Unrecognised input still
+  falls back to English. See
+  [commands.md](../doc/user-doc/commands.md#language-and-locale).
+
 ## 0.21.0 — 2026-08-10
 
 ### Added

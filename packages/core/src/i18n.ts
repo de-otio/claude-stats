@@ -106,13 +106,73 @@ export async function initI18n(options: I18nOptions): Promise<I18nInstance> {
 }
 
 /**
- * Detect locale from environment variables (for CLI / Node.js contexts).
- * Checks LC_ALL -> LC_MESSAGES -> LANG -> fallback "en".
+ * Every locale with a bundled translation, in the exact casing the resource
+ * keys use. `en` is both the default and the fallback.
  */
-export function detectLocaleFromEnv(): string {
-  const envLang =
-    process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || "";
-  const match = envLang.match(/^([a-z]{2})/i);
-  if (match) return match[1]!.toLowerCase();
-  return "en";
+export const SUPPORTED_LOCALES = [
+  "en",
+  "de",
+  "es",
+  "fr",
+  "ja",
+  "pl",
+  "pt-BR",
+  "ru",
+  "uk",
+  "zh-CN",
+] as const;
+
+export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
+
+/** The bundles whose code carries a region, keyed by lowercased tag. */
+const REGIONAL_BY_TAG = new Map<string, SupportedLocale>(
+  SUPPORTED_LOCALES.filter((l) => l.includes("-")).map((l) => [l.toLowerCase(), l]),
+);
+
+/**
+ * Normalize a raw locale tag to a bundled locale code.
+ *
+ * Accepts both the POSIX environment form (`pt_BR.UTF-8`) and the BCP 47 form
+ * VS Code reports (`pt-br`), in any casing. Resolution order:
+ *
+ *   1. Exact regional match — `pt_BR` / `pt-br` → `pt-BR`.
+ *   2. Primary subtag — `de_DE.UTF-8` → `de`.
+ *   3. Sole regional variant of that primary subtag — `zh`, `zh_TW` → `zh-CN`,
+ *      because Simplified Chinese is the only Chinese bundle that exists.
+ *      Serving a near-miss beats serving English to a reader who told us their
+ *      language; if a second variant is ever added this step stops applying to
+ *      that language and an exact match becomes required.
+ *   4. Anything else (including `C`, `POSIX`, and the empty string) → `en`.
+ *
+ * Step 1 is the load-bearing one: without it a regional tag fell through to its
+ * primary subtag, and `pt`/`zh` are not themselves bundle codes, so Brazilian
+ * Portuguese and Simplified Chinese users silently got English.
+ */
+export function normalizeLocale(raw: string): SupportedLocale {
+  // Strip the POSIX charset/modifier suffix (`.UTF-8`, `@euro`) and unify the
+  // separator so both `pt_BR` and `pt-br` reduce to the same tag.
+  const tag = raw.split(/[.@]/)[0]!.replace(/_/g, "-").toLowerCase();
+  if (tag === "") return "en";
+
+  const regional = REGIONAL_BY_TAG.get(tag);
+  if (regional) return regional;
+
+  const primary = tag.split("-")[0]!;
+  const exact = SUPPORTED_LOCALES.find((l) => l === primary);
+  if (exact) return exact;
+
+  const variants = SUPPORTED_LOCALES.filter(
+    (l) => l.toLowerCase().split("-")[0] === primary,
+  );
+  return variants.length === 1 ? variants[0]! : "en";
+}
+
+/**
+ * Detect locale from environment variables (for CLI / Node.js contexts).
+ * Checks LC_ALL -> LC_MESSAGES -> LANG, then normalizes; falls back to "en".
+ */
+export function detectLocaleFromEnv(): SupportedLocale {
+  return normalizeLocale(
+    process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || "",
+  );
 }

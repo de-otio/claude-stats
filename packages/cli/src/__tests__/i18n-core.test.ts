@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { detectLocaleFromEnv } from "@claude-stats/core/i18n";
+import { detectLocaleFromEnv, normalizeLocale, SUPPORTED_LOCALES } from "@claude-stats/core/i18n";
 import { initCliI18n, t } from "../i18n.js";
 
 describe("detectLocaleFromEnv", () => {
@@ -46,6 +46,59 @@ describe("detectLocaleFromEnv", () => {
     delete process.env.LC_MESSAGES;
     process.env.LANG = "";
     expect(detectLocaleFromEnv()).toBe("en");
+  });
+
+  // Regression: these two used to resolve to "en". The primary subtag was all
+  // that was read, and "pt"/"zh" are not bundle codes, so the two regional
+  // languages that DO ship were the two a user could not get from the
+  // environment. See `normalizeLocale`.
+  it.each([
+    ["pt_BR.UTF-8", "pt-BR"],
+    ["zh_CN.UTF-8", "zh-CN"],
+  ])("resolves the regional locale %s to %s, not 'en'", (lang, expected) => {
+    delete process.env.LC_ALL;
+    delete process.env.LC_MESSAGES;
+    process.env.LANG = lang;
+    expect(detectLocaleFromEnv()).toBe(expected);
+  });
+});
+
+describe("normalizeLocale", () => {
+  it.each([
+    // Exact regional match, both separators and any casing.
+    ["pt_BR", "pt-BR"],
+    ["pt-br", "pt-BR"],
+    ["PT-BR", "pt-BR"],
+    ["zh_CN.UTF-8", "zh-CN"],
+    ["zh-cn", "zh-CN"],
+    // Primary subtag.
+    ["de_DE.UTF-8", "de"],
+    ["en_US.UTF-8", "en"],
+    ["ja", "ja"],
+    ["uk_UA.UTF-8", "uk"],
+    // Sole regional variant of a primary subtag with no exact bundle.
+    ["pt", "pt-BR"],
+    ["pt_PT", "pt-BR"],
+    ["zh", "zh-CN"],
+    ["zh_TW", "zh-CN"],
+    // POSIX modifier suffix is stripped alongside the charset.
+    ["de_DE@euro", "de"],
+    // Unsupported and degenerate inputs.
+    ["C", "en"],
+    ["POSIX", "en"],
+    ["", "en"],
+    ["it_IT.UTF-8", "en"],
+    ["klingon", "en"],
+  ])("normalizes %s to %s", (raw, expected) => {
+    expect(normalizeLocale(raw)).toBe(expected);
+  });
+
+  it("returns a bundled code for every supported locale, unchanged", () => {
+    // Guards the round trip: every code we claim to support must normalize to
+    // itself, so SUPPORTED_LOCALES can never list a code the resolver rejects.
+    for (const locale of SUPPORTED_LOCALES) {
+      expect(normalizeLocale(locale)).toBe(locale);
+    }
   });
 });
 

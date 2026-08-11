@@ -11,7 +11,7 @@ import { SidebarProvider } from "./sidebar.js";
 import { StatusBarManager } from "./statusBar.js";
 import { AutoCollector } from "./collector.js";
 import { initPricingCache } from "../pricing-cache.js";
-import { initI18n } from "@claude-stats/core/i18n";
+import { initI18n, normalizeLocale } from "@claude-stats/core/i18n";
 import { setT, t } from "./i18n.js";
 import { ensureMcpServer } from "./mcp-register.js";
 import { verifyBundledModel } from "./integrity-check.js";
@@ -54,15 +54,11 @@ export function activate(context: vscode.ExtensionContext): void {
   const ruExt = _require("@claude-stats/core/locales/ru/extension.json") as Record<string, unknown>;
   const ruDash = _require("@claude-stats/core/locales/ru/dashboard.json") as Record<string, unknown>;
 
-  // VS Code returns lowercase locale codes (e.g. "zh-cn", "pt-br"). Normalize
-  // the regionalized ones to match our resource keys (BCP 47 casing). All
-  // other codes collapse to their primary subtag.
-  const rawLang = vscode.env.language.toLowerCase();
-  const lng = rawLang.startsWith("zh-cn")
-    ? "zh-CN"
-    : rawLang.startsWith("pt-br")
-      ? "pt-BR"
-      : rawLang.split("-")[0];
+  // VS Code returns lowercase locale codes (e.g. "zh-cn", "pt-br").
+  // `normalizeLocale` maps them to our resource keys — the same function the
+  // CLI uses for `--locale` and for LANG, so the three surfaces cannot drift
+  // on what a given tag resolves to.
+  const lng = normalizeLocale(vscode.env.language);
 
   void initI18n({
     lng,

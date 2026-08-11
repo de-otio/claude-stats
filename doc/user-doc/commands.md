@@ -35,22 +35,32 @@ claude-stats --locale ja report --period week
 ```
 
 **Automatic detection.** Without `--locale`, the language comes from the
-environment: `LC_ALL`, then `LC_MESSAGES`, then `LANG`. Anything unrecognised
-falls back to English, so output is never half-translated.
+environment: `LC_ALL`, then `LC_MESSAGES`, then `LANG`.
 
-> **Detection reads only the primary subtag.** A regional locale in the
-> environment collapses to its two-letter prefix, and `pt` / `zh` are not
-> themselves bundle codes — so `LANG=pt_BR.UTF-8` and `LANG=zh_CN.UTF-8`
-> resolve to **English**, not Portuguese or Chinese. Those two languages
-> currently need the explicit flag (`--locale pt-BR`, `--locale zh-CN`). The
-> other eight resolve from the environment as you would expect
-> (`LANG=de_DE.UTF-8` → German).
+Tags are accepted in both the POSIX form (`pt_BR.UTF-8`) and the BCP 47 form
+(`pt-br`), in any casing, and resolve in this order:
+
+| Step | Example | Result |
+|---|---|---|
+| Exact regional match | `pt_BR.UTF-8`, `pt-br` | `pt-BR` |
+| Primary subtag | `de_DE.UTF-8` | `de` |
+| Sole regional variant of that subtag | `zh`, `zh_TW` | `zh-CN` |
+| No match | `C`, `POSIX`, `it_IT.UTF-8` | `en` |
+
+The third step exists because Simplified Chinese and Brazilian Portuguese are
+the only Chinese and Portuguese bundles that ship: a near-miss serves a reader
+who told us their language better than English does. If a second variant of
+either is ever added, that language stops matching loosely and needs its exact
+code. Anything unrecognised falls back to English, so output is never
+half-translated.
+
+`--locale` runs through the same resolution, so `--locale pt_BR`,
+`--locale pt-br` and `--locale pt-BR` are equivalent.
 
 **VS Code extension.** The extension ignores the shell environment and follows
-VS Code's own display language (`vscode.env.language`), mapping `zh-cn` and
-`pt-br` to their full bundle codes — so those two *do* work automatically
-there. Change it with the **Configure Display Language** command; there is no
-`--locale` equivalent and no extension setting for it.
+VS Code's own display language (`vscode.env.language`), resolved by the same
+rules above — change it with the **Configure Display Language** command. There
+is no `--locale` equivalent and no extension setting for it.
 
 **What `--locale` does not change: number and currency formatting.** Money and
 token counts render in a fixed format on every surface regardless of the
