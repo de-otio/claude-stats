@@ -40,6 +40,7 @@ Read in order for full context, or jump to 07 and 02 to start implementing.
 | [constraint-impact/](constraint-impact/) | What withholding capability costs — budget caps, model-tier removal ("no Opus"), throttling/quotas — measured as cost-per-outcome and dev-time deltas across a policy boundary; two-sided by construction, outputs a costed tiered-access proposal; the mirror of ticket-attribution/ |
 | [efficiency-hygiene/](efficiency-hygiene/) | Local, deterministic waste detectors (cache churn, retry loops, abandoned spend, context bloat, tier mismatch) — the clean-hands half that makes justification reports credible; strictly local, only the trend is shareable |
 | [gui-redesign/](gui-redesign/) | Answer-first dashboard IA: an Insights default layer (five business-question cards + alerts) with the full guru surface re-homed under Explore; how ticket/constraint/hygiene data surfaces without new tabs; migration without a rewrite |
+| [context-metaphor/](context-metaphor/) | How to *talk* about context cost — which metaphors teach the billing mechanics correctly (backpack for the one-liner, amnesiac consultant for caching/TTL/compaction) and which install the wrong model (anything storage-shaped, especially "context is RAM") |
 
 ## Architecture Summary
 
