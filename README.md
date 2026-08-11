@@ -122,10 +122,17 @@ as choices rather than resolving them silently. See
 
 ## Commandline Usage
 
+After [building](#build), install the CLI. The `claude-stats` binary belongs to
+the `@claude-stats/cli` workspace — the repo root is a private package with no
+`bin`, so install or link that workspace rather than the root:
+
 ```sh
-npm link           # link claude-stats globally, OR
-npm install -g .   # install globally from the repo root
+npm link -w @claude-stats/cli    # link claude-stats globally, OR
+npm install -g ./packages/cli    # install the built CLI globally
 ```
+
+Or run it without installing: `node --experimental-sqlite packages/cli/dist/index.js <command>`
+(equivalently, `npm start -- <command>`).
 
 ### Quick start
 
@@ -169,6 +176,21 @@ claude-stats report --html        # export a standalone HTML dashboard file
 | `purge`        | Delete local claude-stats data (dry run by default; `--yes` to apply) |
 
 Every command and option: [doc/user-doc/commands.md](doc/user-doc/commands.md).
+
+### Language
+
+The CLI and dashboard ship in 10 languages — English, German, Spanish, French,
+Japanese, Polish, Brazilian Portuguese, Russian, Ukrainian, and Simplified
+Chinese. The language is taken from your shell locale (`LC_ALL`, `LC_MESSAGES`,
+or `LANG`) and can be overridden per run with the global `--locale <lang>`
+option:
+
+```sh
+claude-stats report --locale de
+```
+
+See [Language and locale](doc/user-doc/commands.md#language-and-locale) for
+fallback behaviour and the VS Code extension's handling.
 
 ## Build
 

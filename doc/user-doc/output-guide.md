@@ -147,7 +147,12 @@ alerts strip, and (if configured) the reconciliation panel, described below.
 **Overview** — summary bar, cost-per-successful-task card, chart panels; the
 token-mechanics view the rest of this document covers. **Spending** — the same
 breakdown as the `spending` command (by model, top sessions, top tools, MCP
-servers, anomalies). **Projects** — per-project usage. **Classify** —
+servers, anomalies), followed by the context-carry evidence block: the
+size-band table, the sawtooth (reset floor/peak/cycle length), and tokens
+carried above each configured cap, each with its own lower-bound caveat
+attached — the dashboard rendering of what [`context`](#context-command-output)
+reports, and present only alongside the spending breakdown itself.
+**Projects** — per-project usage. **Classify** —
 project-cluster classification (`account classify`). **Context** —
 prompt/context size analysis. **Efficiency** — model-choice recommendations.
 **Plan** — plan verdict and seat sizing. **Sessions** — session list and
@@ -200,6 +205,14 @@ figure crossing its reconciliation tolerance band, or a critical-severity
 efficiency recommendation (model-tier waste at or above a real dollar floor).
 Each alert links straight to the tab and, where applicable, the exact panel
 that has the evidence.
+
+Two alerts come from the context/TTL analyses and link into the sections that
+hold their evidence:
+
+| Alert | Fires when | Links to |
+|---|---|---|
+| `ttl-mismatch` | The cache-TTL fit names a preferred TTL *and* the window was recorded at the other one — so the figure is a projection, not a measurement | Plan |
+| `context-step-change` | A project's session-start ("prelude") context has shifted to a sustained new level — at least 5 sessions on each side and at least a 25% jump, never a single session, since the largest first-request context is often a legitimately *resumed* session rather than drift. Names only the shortened project label, never the absolute path | Spending |
 
 **2. Five cards, always five, in this order** — a card with no data still
 renders, in its own honest "unavailable, and here's how to enable it" form,

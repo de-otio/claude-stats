@@ -16,16 +16,19 @@ npm install
 npm run build
 ```
 
-To use the `claude-stats` command globally, link it:
+To use the `claude-stats` command globally, link it. The `bin` lives in the
+`@claude-stats/cli` workspace, not in the repo root (the root package is
+private and has no `bin`), so the workspace has to be named:
 
 ```sh
-npm link
+npm link -w @claude-stats/cli   # OR
+npm install -g ./packages/cli
 ```
 
 Or run it directly without linking:
 
 ```sh
-node --experimental-sqlite dist/index.js <command>
+node --experimental-sqlite packages/cli/dist/index.js <command>
 ```
 
 The `npm start` script also works as an alias:
@@ -35,6 +38,10 @@ npm start -- <command>
 ```
 
 > **Node warning:** You will see `ExperimentalWarning: SQLite is an experimental feature`. This is expected and harmless — it comes from Node itself, not from this tool.
+
+> **Language:** output follows your shell's locale, so on a non-English system
+> the CLI and dashboard come up translated. Pass `--locale en` on any command to
+> force a language — see [Language and locale](commands.md#language-and-locale).
 
 ## First run
 
@@ -107,5 +114,5 @@ To collect on a schedule, add a cron job:
 
 ```sh
 # Collect every 15 minutes
-*/15 * * * * node --experimental-sqlite /path/to/dist/index.js collect
+*/15 * * * * node --experimental-sqlite /path/to/claude-stats/packages/cli/dist/index.js collect
 ```

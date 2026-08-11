@@ -10,6 +10,59 @@ Run `claude-stats --help` or `claude-stats <command> --help` for inline help.
 
 ---
 
+## Language and locale
+
+Every command, and the dashboard it serves, is translated into 10 languages:
+
+| Code | Language | Code | Language |
+|---|---|---|---|
+| `en` | English (default and fallback) | `pl` | Polish |
+| `de` | German | `pt-BR` | Portuguese (Brazil) |
+| `es` | Spanish | `ru` | Russian |
+| `fr` | French | `uk` | Ukrainian |
+| `ja` | Japanese | `zh-CN` | Chinese (Simplified) |
+
+| Global option | Description |
+|---|---|
+| `--locale <lang>` | Force the display language for this run. Accepts any code from the table above |
+
+The option is global — it applies to every command, and it is parsed before
+command dispatch so `--locale` also translates `--help` output:
+
+```sh
+claude-stats report --locale de
+claude-stats --locale ja report --period week
+```
+
+**Automatic detection.** Without `--locale`, the language comes from the
+environment: `LC_ALL`, then `LC_MESSAGES`, then `LANG`. Anything unrecognised
+falls back to English, so output is never half-translated.
+
+> **Detection reads only the primary subtag.** A regional locale in the
+> environment collapses to its two-letter prefix, and `pt` / `zh` are not
+> themselves bundle codes — so `LANG=pt_BR.UTF-8` and `LANG=zh_CN.UTF-8`
+> resolve to **English**, not Portuguese or Chinese. Those two languages
+> currently need the explicit flag (`--locale pt-BR`, `--locale zh-CN`). The
+> other eight resolve from the environment as you would expect
+> (`LANG=de_DE.UTF-8` → German).
+
+**VS Code extension.** The extension ignores the shell environment and follows
+VS Code's own display language (`vscode.env.language`), mapping `zh-cn` and
+`pt-br` to their full bundle codes — so those two *do* work automatically
+there. Change it with the **Configure Display Language** command; there is no
+`--locale` equivalent and no extension setting for it.
+
+**What `--locale` does not change: number and currency formatting.** Money and
+token counts render in a fixed format on every surface regardless of the
+selected language — deliberately, so a report or justification pack does not
+change shape with the machine that produced it (see `formatMoney` in
+`packages/core/src/insight.ts`). `--locale de` translates the labels around a
+figure, not the figure itself. A few incidental timestamps and counts use the
+host system's default formatting, which is independent of both `--locale` and
+the detected language.
+
+---
+
 ## `collect`
 
 Scan `~/.claude/projects/` and write new session data to the local database.
@@ -141,6 +194,7 @@ claude-stats account [subcommand] [options]
 | `reattribute [--dry-run] [--force]` | Recompute account attribution across all stored sessions |
 | `own [options]` | Manage cost-ownership rules (assign a path or remote glob to an account) |
 | `classify` | Show project clusters ranked by estimated cost, to help identify ownership |
+| `otel ingest --file <path>` | Apply authoritative per-account attribution from a Claude Code OpenTelemetry (OTLP) export. See [account-otel.md](account-otel.md) for enabling telemetry and what gets read |
 
 **`account` (no subcommand)** prints, when a Claude login is present: account UUID, organization type, rate-limit tier, seat tier, billing type, extra-usage status, plus (when local usage data exists) a suggested plan, a verdict on the current plan (good value / underusing / no plan), and a usage-intensity tier (light / typical / power) benchmarked against Anthropic's per-seat usage tiers. It never recommends a company-wide seat count — see `plan-advisor` for that.
 
@@ -178,6 +232,9 @@ claude-stats account own --clear 3
 
 # Show project clusters ranked by cost
 claude-stats account classify
+
+# Apply authoritative attribution from an OTLP export
+claude-stats account otel ingest --file /path/to/claude-otlp.jsonl
 ```
 
 ---
