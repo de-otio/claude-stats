@@ -376,6 +376,17 @@
       "doneHeader": "Reparo de caminho do projeto concluído:",
       "backupWritten": "Backup gravado em {{path}}",
       "summary": "{{total}} sessões verificadas, {{changed}} corrigidas, {{unfixable}} não corrigíveis (arquivo de origem não mais disponível)."
+    },
+    "ticketLinks": {
+      "description": "Descartar todos os vínculos de ticket automáticos e derivá-los novamente com a lista tickets.projectKeys atual. Vínculos manuais e negações são mantidos.",
+      "dryRunOption": "Executar a reextração e revertê-la, relatando o que ela faria.",
+      "allowlist": "Lista em vigor: {{keys}}",
+      "noAllowlist": "Nenhuma lista tickets.projectKeys configurada — a extração vai casar com toda cadeia com forma de chave e ficar limitada a confiança média.",
+      "dryRunHeader": "Reextração de vínculos de ticket (simulação) — nada foi gravado:",
+      "doneHeader": "Reextração de vínculos de ticket concluída:",
+      "backupWritten": "Backup gravado em {{path}}",
+      "summary": "{{sessions}} sessões reanalisadas, {{removed}} vínculos automáticos removidos, {{created}} derivados novamente, {{manual}} vínculos manuais preservados.",
+      "keys": "Chaves de ticket distintas: {{before}} → {{after}}"
     }
   },
   "archive": {

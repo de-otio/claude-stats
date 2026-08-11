@@ -272,6 +272,27 @@
           "body": "Se muestra solo cuando algo requiere atención de verdad, y es deliberadamente discreta: un aviso que salta con ruido te enseña a ignorar la franja."
         }
       ]
+    },
+    "tickets": {
+      "title": "Tickets",
+      "sections": [
+        {
+          "heading": "Coste por ticket",
+          "body": "Coste atribuido a claves de trabajo (PROJ-123), encontradas en nombres de ramas git, asuntos de commits y texto de prompts. No se contacta con ningún sistema de tickets: la clave es toda la interfaz. Las filas se ordenan por coste descendente; despliegue una para ver las sesiones subyacentes y qué señal coincidió."
+        },
+        {
+          "heading": "Cobertura",
+          "body": "Qué fracción del gasto del periodo está atribuida a algún ticket. Normalmente queda muy por debajo del 100 %, porque el trabajo sin una clave en su rama, sus commits o sus prompts no puede atribuirse. Lea la tabla como una vista de la parte atribuida, nunca como la factura completa."
+        },
+        {
+          "heading": "Niveles de confianza",
+          "body": "Alta: coincidió un nombre de rama con una lista blanca de claves de proyecto configurada. Media: coincidió un asunto de commit, o una rama sin lista blanca que filtre el ruido. Baja: solo el texto de un prompt mencionó la clave. Dos señales independientes que concuerdan suben el nivel un paso."
+        },
+        {
+          "heading": "Atribución de tickets",
+          "body": "Vincule la sesión actual a una clave, o anule un vínculo automático incorrecto. Un vínculo anulado no puede resucitar en una nueva extracción. Los botones solo actúan en el panel de VS Code: en la página servida se muestran inertes, ya que un visitante de la red local no debe poder escribir en su base de datos."
+        }
+      ]
     }
   },
   "panel": {
@@ -279,6 +300,7 @@
     "errors": {
       "failedToLoadConfig": "No se pudo cargar la configuración",
       "failedToSaveConfig": "No se pudo guardar la configuración",
+      "failedToReextract": "No se pudieron reextraer los enlaces de ticket",
       "failedToLoadClusters": "No se pudieron cargar los proyectos para la clasificación.",
       "classifyFailed": "No se pudo aplicar la clasificación: {{message}}"
     }

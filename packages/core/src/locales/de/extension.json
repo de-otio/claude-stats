@@ -256,6 +256,27 @@
           "body": "Wird nur angezeigt, wenn wirklich etwas Aufmerksamkeit braucht — bewusst zurückhaltend: Ein Hinweis, der bei Rauschen auslöst, bringt Ihnen bei, die Leiste zu ignorieren."
         }
       ]
+    },
+    "tickets": {
+      "title": "Tickets",
+      "sections": [
+        {
+          "heading": "Kosten pro Ticket",
+          "body": "Kosten, die Arbeitseinheiten-Schlüsseln (PROJ-123) zugeordnet sind – gefunden in Git-Branch-Namen, Commit-Betreffzeilen und Prompt-Text. Es wird kein Ticketsystem kontaktiert; der Schlüssel selbst ist die gesamte Schnittstelle. Zeilen sind nach Kosten absteigend sortiert; aufklappen zeigt die zugrunde liegenden Sessions und das jeweils passende Signal."
+        },
+        {
+          "heading": "Abdeckung",
+          "body": "Welcher Anteil der Kosten des Zeitraums überhaupt einem Ticket zugeordnet ist. Dieser Wert liegt normalerweise deutlich unter 100 %, da Arbeit ohne Schlüssel in Branch, Commits oder Prompts nicht zugeordnet werden kann. Lesen Sie die Tabelle als Sicht auf den zugeordneten Teil, nie als Gesamtrechnung."
+        },
+        {
+          "heading": "Konfidenzstufen",
+          "body": "Hoch bedeutet, ein Branch-Name passte und eine Projektschlüssel-Positivliste war konfiguriert. Mittel bedeutet, ein Commit-Betreff passte oder ein Branch passte ohne Positivliste zur Rauschfilterung. Niedrig bedeutet, nur der Prompt-Text nannte den Schlüssel. Zwei übereinstimmende unabhängige Signale erhöhen die Stufe um einen Schritt."
+        },
+        {
+          "heading": "Ticket-Zuordnung",
+          "body": "Verknüpfen Sie die aktuelle Session mit einem Schlüssel oder heben Sie eine falsche automatische Verknüpfung auf. Eine aufgehobene Verknüpfung kann durch erneute Extraktion nicht zurückkehren. Die Schaltflächen wirken nur im VS-Code-Panel – auf der ausgelieferten Seite bleiben sie ohne Funktion, da ein Besucher im LAN nicht in Ihre Datenbank schreiben darf."
+        }
+      ]
     }
   },
   "panel": {
@@ -263,6 +284,7 @@
     "errors": {
       "failedToLoadConfig": "Konfiguration konnte nicht geladen werden",
       "failedToSaveConfig": "Konfiguration konnte nicht gespeichert werden",
+      "failedToReextract": "Ticket-Verknüpfungen konnten nicht neu extrahiert werden",
       "failedToLoadClusters": "Projekte konnten nicht zur Klassifizierung geladen werden.",
       "classifyFailed": "Klassifizierung konnte nicht angewendet werden: {{message}}"
     }

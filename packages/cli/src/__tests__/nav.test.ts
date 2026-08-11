@@ -125,6 +125,7 @@ describe("nav — single tab definition for both hosts", () => {
       "insights",
       "overview",
       "spending",
+      "tickets",
       "projects",
       "sessions",
       "plan",

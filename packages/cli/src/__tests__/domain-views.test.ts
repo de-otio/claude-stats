@@ -106,8 +106,12 @@ describe("nav: sections group into domain views", () => {
     }
   });
 
-  it("collapses eleven data-shaped tabs to eight navigation entries, four of them domain views", () => {
-    expect(NAV_TAB_IDS).toHaveLength(11);
+  it("collapses twelve data-shaped tabs to eight navigation entries, four of them domain views", () => {
+    // Twelve since the `tickets` section landed. The section count is NOT the
+    // metric 03 §3.5 guards — a section is a panel inside a view, and adding one
+    // is how a new analysis is meant to surface. The nav-entry count is the
+    // metric, and it is unchanged at eight.
+    expect(NAV_TAB_IDS).toHaveLength(12);
     expect(NAV_VIEW_IDS).toHaveLength(8);
     // The regression metric 03 §3.5 asks for: the nav must not grow back.
     expect(NAV_VIEW_IDS.length).toBeLessThan(NAV_TAB_IDS.length);
@@ -123,6 +127,7 @@ describe("nav: sections group into domain views", () => {
     const byId = new Map(NAV_VIEWS.map((v) => [v.id, v.sections as readonly string[]]));
     expect(byId.get("cost-and-controlling")).toContain("spending");
     expect(byId.get("cost-and-controlling")).toContain("overview");
+    expect(byId.get("tickets-and-value")).toContain("tickets");
     expect(byId.get("tickets-and-value")).toContain("projects");
     expect(byId.get("tickets-and-value")).toContain("classify");
     expect(byId.get("efficiency-and-hygiene")).toContain("efficiency");
@@ -239,7 +244,7 @@ describe("served page: views in the nav bar, sections in the panels", () => {
       expect(html).toContain(`data-tab="${id}"`);
     }
     // The data-shaped ids that are NOT also view ids must have lost their button.
-    for (const id of ["overview", "spending", "projects", "classify", "context", "efficiency", "plan"]) {
+    for (const id of ["overview", "spending", "tickets", "projects", "classify", "context", "efficiency", "plan"]) {
       expect(html, `"${id}" still has a nav button`).not.toContain(`data-tab="${id}"`);
     }
   });

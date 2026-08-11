@@ -20,7 +20,8 @@ import type { Store } from "../store/index.js";
 import { buildDashboard } from "../dashboard/index.js";
 import type { DashboardData } from "../dashboard/index.js";
 import type { ReportOptions } from "../reporter/index.js";
-import { loadConfig, saveConfig, mergeConfig, buildAccountsForConfig, redactConfigForHttp } from "../config.js";
+import { loadConfig, saveConfig, mergeConfig, buildAccountsForConfig, redactConfigForHttp, ticketProjectKeys } from "../config.js";
+import { reextractTicketLinks } from "../repair/ticket-links.js";
 import { readClaudeAccount } from "../account.js";
 import {
   BackupActionError,
@@ -431,6 +432,39 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
           const merged = mergeConfig(loadConfig(), JSON.parse(body));
           saveConfig(merged);
           sendJson(res, 200, { ok: true, config: redactConfigForHttp(merged) });
+          return;
+        }
+
+        if (req.method === "POST" && pathname === "/api/tickets/reextract") {
+          // Token-gated like POST /api/config, and for a stronger reason: this
+          // one DELETES rows. The same origin/cookie rules apply — see the
+          // security model at the top of this file.
+          const supplied = extractToken(req);
+          if (supplied === null || !safeEqual(supplied, token)) {
+            sendJson(res, 401, { error: "unauthorized" });
+            return;
+          }
+          let dryRun = false;
+          try {
+            const body = await readBody(req);
+            // An unparseable or absent body means "no options", not "run the
+            // destructive variant" — the default has to be the safe one.
+            dryRun = body.length > 0 ? JSON.parse(body).dryRun === true : false;
+          } catch {
+            sendJson(res, 400, { error: "bad request" });
+            return;
+          }
+          // Reads the allowlist at call time rather than taking it from the
+          // request: the client just saved it through POST /api/config, and the
+          // config file is the authority on what is configured. A key sent in
+          // this body would let the two disagree — and would let an attacker who
+          // got past the token rewrite attribution without touching the config.
+          const summary = reextractTicketLinks(
+            store,
+            { dryRun, allowlist: ticketProjectKeys(loadConfig()) },
+            Date.now,
+          );
+          sendJson(res, 200, summary);
           return;
         }
 

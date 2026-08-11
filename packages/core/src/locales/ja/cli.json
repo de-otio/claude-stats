@@ -373,6 +373,17 @@
       "doneHeader": "プロジェクトパスの修復が完了しました:",
       "backupWritten": "バックアップを {{path}} に書き込みました",
       "summary": "{{total}} 件の session を確認し、{{changed}} 件を修正、{{unfixable}} 件は修正不可（ソースファイルが利用できません）。"
+    },
+    "ticketLinks": {
+      "description": "自動のチケットリンクをすべて破棄し、現在の tickets.projectKeys 許可リストで再導出します。手動リンクと無効化は保持されます。",
+      "dryRunOption": "再抽出を実行してロールバックし、実行内容だけを報告します。",
+      "allowlist": "適用中の許可リスト: {{keys}}",
+      "noAllowlist": "tickets.projectKeys の許可リストが未設定です — 抽出はキーらしい文字列すべてに一致し、中信頼度が上限になります。",
+      "dryRunHeader": "チケットリンクの再抽出（ドライラン） — 何も書き込まれていません:",
+      "doneHeader": "チケットリンクの再抽出が完了しました:",
+      "backupWritten": "バックアップを {{path}} に書き込みました",
+      "summary": "{{sessions}} 件のセッションを再スキャン、自動リンク {{removed}} 件を削除、{{created}} 件を再導出、手動リンク {{manual}} 件を保持。",
+      "keys": "個別のチケットキー: {{before}} → {{after}}"
     }
   },
   "archive": {

@@ -13,7 +13,8 @@ import { getNonce, escapeHtml } from "./utils.js";
 import { buildDashboard, attachCostPerTask, attachCalibration, attachInsights, attachTicketAttribution } from "../dashboard/index.js";
 import { renderDashboard } from "../server/template.js";
 import { DEFAULT_NAV_TAB } from "../server/nav.js";
-import { loadConfig, saveConfig, mergeConfig, buildAccountsForConfig, type Config } from "../config.js";
+import { loadConfig, saveConfig, mergeConfig, buildAccountsForConfig, ticketProjectKeys, type Config } from "../config.js";
+import { reextractTicketLinks } from "../repair/ticket-links.js";
 import { readClaudeAccount } from "../account.js";
 import { openCorrections, type CorrectionSignature, type OutcomeValue } from "../recap/corrections.js";
 import { clusterProjects, enrichClusters, planApply, reattribute } from "../attribution/index.js";
@@ -181,7 +182,7 @@ export class DashboardPanel {
     }
   }
 
-  private handleMessage(msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean; assignments?: unknown; action?: string; payload?: unknown; sessionId?: string; key?: string; project?: string; ticket?: string; taskClass?: string }): void {
+  private handleMessage(msg: { command: string; period?: string; since?: string; until?: string; accountUuid?: string; tab?: string; config?: Config; callbackId?: number; signature?: unknown; value?: string; enabled?: boolean; assignments?: unknown; action?: string; payload?: unknown; sessionId?: string; key?: string; project?: string; ticket?: string; taskClass?: string; dryRun?: boolean }): void {
     if (msg.command === "changePeriod" && msg.period) {
       this.period = msg.period as ReportOptions["period"];
       // Mutual exclusivity per the toolbar contract: a preset pick clears any
@@ -265,6 +266,28 @@ export class DashboardPanel {
         void this.refresh();
       } catch {
         void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, error: t("extension:panel.errors.failedToSaveConfig") });
+      }
+    } else if (msg.command === "reextractTickets" && msg.callbackId) {
+      // The webview twin of POST /api/tickets/reextract. Shares the repair
+      // function, so the two hosts cannot drift on what "re-extract" means —
+      // including which links it is allowed to delete.
+      try {
+        const store = new Store();
+        try {
+          const summary = reextractTicketLinks(
+            store,
+            { dryRun: msg.dryRun === true, allowlist: ticketProjectKeys(loadConfig()) },
+            Date.now,
+          );
+          void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, data: summary });
+          // A dry run changed nothing, so re-rendering would only cost the user
+          // their scroll position.
+          if (!summary.dryRun) void this.refresh();
+        } finally {
+          store.close();
+        }
+      } catch {
+        void this.panel.webview.postMessage({ command: "configResult", callbackId: msg.callbackId, error: t("extension:panel.errors.failedToReextract") });
       }
     } else if (msg.command === "backupAction" && typeof msg.action === "string" && msg.callbackId) {
       // Backup & Sync section (Settings tab) — same actions the served

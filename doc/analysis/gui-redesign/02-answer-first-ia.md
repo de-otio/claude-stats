@@ -68,10 +68,28 @@ analyses as **sections, not tabs**:
 
 | View | Absorbs (today) | Gains (new) |
 |---|---|---|
-| **Cost & Controlling** | Spending tab's cost charts/tables, fee attribution from Projects, expensive prompts/sessions | Reconciliation panel; per-ticket cost table with confidence tiers; justification-pack generator ([ticket-attribution/05](../ticket-attribution/05-justification-pack.md)) |
-| **Tickets & Value** | cost-per-task card + outcome labelling, Nature of Work | Ticket links per session (link/negate UI, [ticket-attribution/02 §2.6](../ticket-attribution/02-local-data-model.md)); coverage trend; the value-tag surface value-per-cost calls for |
+| **Cost & Controlling** | Spending tab's cost charts/tables, fee attribution from Projects, expensive prompts/sessions | Reconciliation panel; ~~per-ticket cost table with confidence tiers~~ (moved — see below); justification-pack generator ([ticket-attribution/05](../ticket-attribution/05-justification-pack.md)) |
+| **Tickets & Value** | cost-per-task card + outcome labelling, Nature of Work | Ticket links per session (link/negate UI, [ticket-attribution/02 §2.6](../ticket-attribution/02-local-data-model.md)); **the per-ticket cost table** (see the correction below); coverage trend; the value-tag surface value-per-cost calls for |
 | **Efficiency & Hygiene** | efficiency frontier + calibration cards, cache/context analysis (Context tab), model-tier analysis (Efficiency tab) | Hygiene digest cards with dismissals ([efficiency-hygiene/](../efficiency-hygiene/README.md)) |
 | **Plan & Policy** | Plan tab, usage windows (Sessions tab) | Policy-event timeline with annotated before/after ([constraint-impact/03 §3.3](../constraint-impact/03-measurement-mechanics.md)); pricing-model scenario table; metered-mode quota/429 view |
+
+**Correction (the per-ticket cost table lives in Tickets & Value).** The table
+above originally assigned that table to Cost & Controlling and left Tickets &
+Value the link/negate UI alone. Built literally, that produced a view LABELLED
+"Tickets & Value" that grouped only `projects` and `classify` and rendered no
+ticket anywhere on screen — the per-ticket figures existed solely behind MCP's
+`get_cost_per_ticket` and `report --ticket <KEY>` (a single-key drill-down, so
+not even the CLI had a whole-window table). A reader who opened the view its
+label invites them to open reasonably concluded the feature was broken.
+
+The table therefore ships as a `tickets` **section, first in Tickets & Value**,
+carrying the coverage header, a confidence tier per row and a `<details>`
+session drill-down with the matched branch/commit evidence; the link/negate card
+moves there from the Insights panel, so the correction UI sits beside the
+evidence it corrects. Insights keeps the coverage FIGURE (Q2's card) and its
+`EVIDENCE_TAB` entry now points at `tickets` rather than at `projects`. A view's
+name is a promise about what it contains, and that constraint outranks this
+table's original allocation.
 
 Remaining surfaces: **Sessions** (top conversations, entrypoints) survives
 as the guru's raw-material view inside Explore; **Energy** stays as an

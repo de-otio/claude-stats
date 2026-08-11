@@ -379,6 +379,17 @@
       "doneHeader": "Naprawa ścieżek projektów zakończona:",
       "backupWritten": "Kopię zapasową zapisano w {{path}}",
       "summary": "Sprawdzono sesji: {{total}}, poprawiono: {{changed}}, nie do naprawienia: {{unfixable}} (plik źródłowy już niedostępny)."
+    },
+    "ticketLinks": {
+      "description": "Usuń wszystkie automatyczne powiązania zgłoszeń i wyprowadź je ponownie według bieżącej listy tickets.projectKeys. Powiązania ręczne i negacje zostają zachowane.",
+      "dryRunOption": "Wykonaj ponowną ekstrakcję i wycofaj ją, raportując, co by zrobiła.",
+      "allowlist": "Obowiązująca lista: {{keys}}",
+      "noAllowlist": "Brak skonfigurowanej listy tickets.projectKeys — ekstrakcja dopasuje każdy ciąg wyglądający jak klucz i ograniczy się do średniej pewności.",
+      "dryRunHeader": "Ponowna ekstrakcja powiązań zgłoszeń (próba) — nic nie zapisano:",
+      "doneHeader": "Ponowna ekstrakcja powiązań zgłoszeń zakończona:",
+      "backupWritten": "Kopia zapasowa zapisana w {{path}}",
+      "summary": "Ponownie przeskanowano {{sessions}} sesji, usunięto {{removed}} powiązań automatycznych, wyprowadzono ponownie {{created}}, zachowano {{manual}} powiązań ręcznych.",
+      "keys": "Różne klucze zgłoszeń: {{before}} → {{after}}"
     }
   },
   "archive": {

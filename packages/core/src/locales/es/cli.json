@@ -376,6 +376,17 @@
       "doneHeader": "Reparación de rutas de proyecto completada:",
       "backupWritten": "Copia de seguridad escrita en {{path}}",
       "summary": "{{total}} sesiones comprobadas, {{changed}} corregidas, {{unfixable}} irreparables (el archivo de origen ya no está disponible)."
+    },
+    "ticketLinks": {
+      "description": "Descartar todos los enlaces de ticket automáticos y volver a derivarlos con la lista tickets.projectKeys actual. Los enlaces manuales y las anulaciones se conservan.",
+      "dryRunOption": "Ejecutar la reextracción y revertirla, informando de lo que haría.",
+      "allowlist": "Lista en vigor: {{keys}}",
+      "noAllowlist": "No hay lista tickets.projectKeys configurada — la extracción coincidirá con toda cadena con forma de clave y se limitará a confianza media.",
+      "dryRunHeader": "Reextracción de enlaces de ticket (simulación) — no se escribió nada:",
+      "doneHeader": "Reextracción de enlaces de ticket completada:",
+      "backupWritten": "Copia de seguridad escrita en {{path}}",
+      "summary": "{{sessions}} sesiones reanalizadas, {{removed}} enlaces automáticos eliminados, {{created}} vueltos a derivar, {{manual}} enlaces manuales conservados.",
+      "keys": "Claves de ticket distintas: {{before}} → {{after}}"
     }
   },
   "archive": {

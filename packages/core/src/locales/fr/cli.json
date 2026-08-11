@@ -376,6 +376,17 @@
       "doneHeader": "Réparation des chemins de projet terminée :",
       "backupWritten": "Sauvegarde écrite dans {{path}}",
       "summary": "{{total}} sessions vérifiées, {{changed}} corrigées, {{unfixable}} non réparables (fichier source non disponible)."
+    },
+    "ticketLinks": {
+      "description": "Supprimer tous les liens de ticket automatiques et les redériver avec la liste tickets.projectKeys actuelle. Les liens manuels et les invalidations sont conservés.",
+      "dryRunOption": "Exécuter la ré-extraction puis l'annuler, en indiquant ce qu'elle ferait.",
+      "allowlist": "Liste en vigueur : {{keys}}",
+      "noAllowlist": "Aucune liste tickets.projectKeys configurée — l'extraction correspondra à toute chaîne ayant la forme d'une clé et sera plafonnée à une confiance moyenne.",
+      "dryRunHeader": "Ré-extraction des liens de ticket (simulation) — rien n'a été écrit :",
+      "doneHeader": "Ré-extraction des liens de ticket terminée :",
+      "backupWritten": "Sauvegarde écrite dans {{path}}",
+      "summary": "{{sessions}} sessions ré-analysées, {{removed}} liens automatiques supprimés, {{created}} redérivés, {{manual}} liens manuels conservés.",
+      "keys": "Clés de ticket distinctes : {{before}} → {{after}}"
     }
   },
   "archive": {

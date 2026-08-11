@@ -272,6 +272,27 @@
           "body": "Affiché uniquement quand quelque chose mérite vraiment votre attention, et volontairement discret : une alerte qui se déclenche sur du bruit vous apprend à ignorer le bandeau."
         }
       ]
+    },
+    "tickets": {
+      "title": "Tickets",
+      "sections": [
+        {
+          "heading": "Coût par ticket",
+          "body": "Coût attribué à des clés de tâche (PROJ-123), repérées dans les noms de branches git, les objets de commits et le texte des prompts. Aucun système de tickets n'est contacté : la clé constitue toute l'interface. Les lignes sont triées par coût décroissant ; dépliez-en une pour voir les sessions concernées et le signal qui a correspondu."
+        },
+        {
+          "heading": "Couverture",
+          "body": "Quelle part de la dépense de la période est attribuée à un ticket. Elle est normalement bien inférieure à 100 %, car un travail sans clé dans sa branche, ses commits ou ses prompts ne peut pas être attribué. Lisez le tableau comme une vue de la partie attribuée, jamais comme la facture entière."
+        },
+        {
+          "heading": "Niveaux de confiance",
+          "body": "Élevé : un nom de branche a correspondu alors qu'une liste blanche de clés de projet était configurée. Moyen : un objet de commit a correspondu, ou une branche a correspondu sans liste blanche pour filtrer le bruit. Faible : seul le texte d'un prompt mentionnait la clé. Deux signaux indépendants concordants font monter le niveau d'un cran."
+        },
+        {
+          "heading": "Attribution de ticket",
+          "body": "Liez la session courante à une clé, ou annulez un lien automatique erroné. Un lien annulé ne peut pas être recréé par une nouvelle extraction. Les boutons n'agissent que dans le panneau VS Code : sur la page servie ils restent inertes, car un visiteur du réseau local ne doit pas pouvoir écrire dans votre base."
+        }
+      ]
     }
   },
   "panel": {
@@ -279,6 +300,7 @@
     "errors": {
       "failedToLoadConfig": "Échec du chargement de la configuration",
       "failedToSaveConfig": "Échec de l'enregistrement de la configuration",
+      "failedToReextract": "Échec de la ré-extraction des liens de ticket",
       "failedToLoadClusters": "Échec du chargement des projets pour la classification.",
       "classifyFailed": "Impossible d'appliquer la classification : {{message}}"
     }

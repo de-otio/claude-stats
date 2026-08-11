@@ -272,6 +272,27 @@
           "body": "Pokazywany tylko wtedy, gdy coś naprawdę wymaga uwagi, i celowo oszczędny: alert wyzwalany przez szum uczy cię ignorować cały pasek."
         }
       ]
+    },
+    "tickets": {
+      "title": "Zgłoszenia",
+      "sections": [
+        {
+          "heading": "Koszt na zgłoszenie",
+          "body": "Koszt przypisany do numerów zadań (PROJ-123), znajdowanych w nazwach gałęzi git, tematach commitów i treści promptów. Żaden system zgłoszeń nie jest odpytywany — sam numer jest całym interfejsem. Wiersze są uporządkowane malejąco po koszcie; rozwinięcie pokazuje sesje za nim stojące i dopasowany sygnał."
+        },
+        {
+          "heading": "Pokrycie",
+          "body": "Jaka część kosztów okresu jest w ogóle przypisana do jakiegoś zgłoszenia. Zwykle jest to znacznie mniej niż 100%, bo pracy bez numeru w gałęzi, commitach czy promptach nie da się przypisać. Czytaj tabelę jako widok części przypisanej, nigdy jako cały rachunek."
+        },
+        {
+          "heading": "Poziomy pewności",
+          "body": "Wysoki: nazwa gałęzi dopasowana przy skonfigurowanej liście numerów projektów. Średni: dopasowany temat commita albo gałąź bez listy filtrującej szum. Niski: numer pojawił się tylko w treści promptu. Dwa niezależne, zgodne sygnały podnoszą poziom o jeden stopień."
+        },
+        {
+          "heading": "Przypisanie zgłoszeń",
+          "body": "Powiąż bieżącą sesję z numerem lub unieważnij błędne powiązanie automatyczne. Unieważnione powiązanie nie wróci przy ponownej ekstrakcji. Przyciski działają tylko w panelu VS Code — na stronie serwowanej są nieaktywne, bo odwiedzający z sieci lokalnej nie może pisać do Twojej bazy."
+        }
+      ]
     }
   },
   "panel": {
@@ -279,6 +300,7 @@
     "errors": {
       "failedToLoadConfig": "Nie udało się załadować konfiguracji",
       "failedToSaveConfig": "Nie udało się zapisać konfiguracji",
+      "failedToReextract": "Nie udało się ponownie wyodrębnić powiązań zgłoszeń",
       "failedToLoadClusters": "Nie udało się załadować projektów do klasyfikacji.",
       "classifyFailed": "Nie można zastosować klasyfikacji: {{message}}"
     }

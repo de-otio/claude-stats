@@ -69,8 +69,21 @@ function taskClassPredicate(col: string, field: "task_class" | "coarse_class"): 
 export class Store {
   private db: DatabaseSync;
 
+  /**
+   * The file this store is open on.
+   *
+   * Kept because one caller has to act on the DATABASE rather than on its
+   * contents: `repair/ticket-links.ts` copies it before a destructive pass.
+   * Defaulting that copy to `paths.statsDb` instead would back up the live
+   * database whenever the store was opened on some other path — a test store, a
+   * disposable exercise DB — i.e. it would back up a file it is not about to
+   * modify, and leave the one it IS modifying unprotected.
+   */
+  readonly dbPath: string;
+
   constructor(dbPath: string = paths.statsDb) {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true, mode: 0o700 });
+    this.dbPath = dbPath;
     this.db = new DatabaseSync(dbPath);
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec("PRAGMA busy_timeout = 5000");
@@ -2575,6 +2588,40 @@ export class Store {
       .run(sessionId, key, Date.now());
   }
 
+  /**
+   * Drop every AUTOMATIC link, leaving manual (`source = 'tag'`) rows — both
+   * assignments and negation tombstones — untouched. Returns the row count
+   * deleted.
+   *
+   * The `source != 'tag'` predicate IS the safety property of the re-extraction
+   * repair (`repair/ticket-links.ts`), and is the reason that repair can exist
+   * at all. An automatic row is a DERIVED claim: this store can rebuild it from
+   * the session's own branch, commits and prompts at any time, so deleting one
+   * costs nothing that cannot be recomputed. A `tag` row is a statement the user
+   * made — "this session IS PROJ-9", or the tombstone saying it is NOT — which
+   * nothing in the data can reproduce. Widening this to a bare `DELETE FROM
+   * ticket_links` would silently destroy the only copy of those corrections.
+   */
+  deleteAutomaticTicketLinks(): number {
+    const result = this.db.prepare("DELETE FROM ticket_links WHERE source != 'tag'").run();
+    return Number(result.changes);
+  }
+
+  /** Row counts by origin — what a re-extraction removed, and what it left
+   *  alone. Reported rather than assumed: "manual links preserved: 4" is the
+   *  claim a destructive repair owes its user. */
+  getTicketLinkCounts(): { automatic: number; manual: number } {
+    const row = this.db
+      .prepare(
+        `SELECT
+           SUM(CASE WHEN source = 'tag' THEN 0 ELSE 1 END) AS automatic,
+           SUM(CASE WHEN source = 'tag' THEN 1 ELSE 0 END) AS manual
+         FROM ticket_links`,
+      )
+      .get() as { automatic: number | null; manual: number | null } | undefined;
+    return { automatic: Number(row?.automatic ?? 0), manual: Number(row?.manual ?? 0) };
+  }
+
   /** All links for one session, tombstones included (callers decide). */
   getTicketLinksForSession(sessionId: string): TicketLinkRow[] {
     const stmt = this.db.prepare(
@@ -2650,6 +2697,76 @@ export class Store {
           ORDER BY tl.session_id, tl.ticket_key, tl.source`,
       )
       .all() as Array<{ session_id: string; ticket_key: string; source: string; confidence: string }>;
+  }
+
+  /**
+   * ACTIVE links for a bounded set of sessions, **with their evidence text and
+   * the session's project path** — the ticket-table drill-down's input
+   * (`gui-redesign/02 §2.5`: "ticket → sessions → messages" in ≤2 clicks).
+   *
+   * Deliberately NOT a widening of `getActiveTicketLinks`: that method is the
+   * aggregation building block and is called for the WHOLE store on every
+   * dashboard refresh, so adding `evidence` (free-form branch names and commit
+   * subjects, the widest column on the table) to it would pull that text back
+   * for every link in the store just to discard all but the handful a rendered
+   * drill-down shows. This one takes the session ids the caller has already
+   * decided to render, so the text read is bounded by what is displayed.
+   *
+   * Same two-clause tombstone rule as `getActiveTicketLinks` — a negated pair
+   * must not reappear here, or the drill-down would show evidence for a link
+   * the user explicitly rejected.
+   *
+   * Batched ≤500 ids like `getMessageTotalsBySession`, for the same SQLite
+   * variable-limit reason. Ordering is a deterministic total order over the
+   * table's own PRIMARY KEY, so a caller that truncates the list truncates the
+   * same way on every refresh instead of picking a different arbitrary subset.
+   */
+  getActiveTicketLinkDetails(sessionIds: readonly string[]): Array<{
+    session_id: string;
+    ticket_key: string;
+    source: string;
+    confidence: string;
+    evidence: string | null;
+    project_path: string | null;
+  }> {
+    if (sessionIds.length === 0) return [];
+    const results: Array<{
+      session_id: string;
+      ticket_key: string;
+      source: string;
+      confidence: string;
+      evidence: string | null;
+      project_path: string | null;
+    }> = [];
+    for (let i = 0; i < sessionIds.length; i += 500) {
+      const batch = sessionIds.slice(i, i + 500);
+      const placeholders = batch.map(() => "?").join(",");
+      const stmt = this.db.prepare(
+        `SELECT tl.session_id, tl.ticket_key, tl.source, tl.confidence, tl.evidence,
+                (SELECT s.project_path FROM sessions s WHERE s.session_id = tl.session_id) AS project_path
+           FROM ticket_links tl
+          WHERE tl.session_id IN (${placeholders})
+            AND tl.negated = 0
+            AND NOT EXISTS (
+              SELECT 1 FROM ticket_links tn
+               WHERE tn.session_id = tl.session_id
+                 AND tn.ticket_key = tl.ticket_key
+                 AND tn.negated = 1
+            )
+          ORDER BY tl.session_id, tl.ticket_key, tl.source`,
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows = (stmt.all as (...args: any[]) => unknown[])(...batch) as Array<{
+        session_id: string;
+        ticket_key: string;
+        source: string;
+        confidence: string;
+        evidence: string | null;
+        project_path: string | null;
+      }>;
+      results.push(...rows);
+    }
+    return results;
   }
 
   /**

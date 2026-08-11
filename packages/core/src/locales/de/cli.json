@@ -373,6 +373,17 @@
       "doneHeader": "Projektpfad-Reparatur abgeschlossen:",
       "backupWritten": "Backup geschrieben nach {{path}}",
       "summary": "{{total}} Sessions geprüft, {{changed}} korrigiert, {{unfixable}} nicht behebbar (Quelldatei nicht mehr verfügbar)."
+    },
+    "ticketLinks": {
+      "description": "Alle automatischen Ticket-Verknüpfungen verwerfen und mit der aktuellen tickets.projectKeys-Positivliste neu ableiten. Manuelle Verknüpfungen und Negierungen bleiben erhalten.",
+      "dryRunOption": "Die Neu-Extraktion ausführen und zurückrollen; nur berichten, was sie tun würde.",
+      "allowlist": "Aktive Positivliste: {{keys}}",
+      "noAllowlist": "Keine tickets.projectKeys-Positivliste konfiguriert — die Extraktion trifft jede schlüsselartige Zeichenfolge und ist auf mittlere Konfidenz begrenzt.",
+      "dryRunHeader": "Neu-Extraktion der Ticket-Verknüpfungen (Probelauf) — nichts geschrieben:",
+      "doneHeader": "Neu-Extraktion der Ticket-Verknüpfungen abgeschlossen:",
+      "backupWritten": "Sicherung geschrieben nach {{path}}",
+      "summary": "{{sessions}} Sitzungen neu geprüft, {{removed}} automatische Verknüpfungen entfernt, {{created}} neu abgeleitet, {{manual}} manuelle Verknüpfungen erhalten.",
+      "keys": "Verschiedene Ticket-Schlüssel: {{before}} → {{after}}"
     }
   },
   "archive": {

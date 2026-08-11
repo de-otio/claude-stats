@@ -11,7 +11,8 @@
     "settings": "设置",
     "classify": "分类",
     "spending": "支出",
-    "insights": "洞察"
+    "insights": "洞察",
+    "tickets": "工单"
   },
   "toolbar": {
     "period": "时间段:",
@@ -308,6 +309,27 @@
     "labelPlaceholder": "标签（例如 工作、个人）",
     "autoRefreshInterval": "自动刷新间隔（秒）",
     "autoRefreshHint": "最少 60 秒。当从工具栏启用自动刷新时生效。",
+    "ticketKeys": "工单项目键",
+    "ticketKeysPlaceholder": "PROJ, OPS",
+    "ticketKeysHint": "归因用于匹配分支名、提交标题和提示词文本的项目前缀 —— 以逗号分隔，每个为一个字母后跟 1–9 个字母或数字。未设置时提取仍会运行，但由于无法区分形似键的字符串与真实键，所有归因的置信度上限为中。",
+    "ticketKeysRetroHint": "对此后采集的会话生效。若要应用到已存储的全部内容，请使用下方的“重新提取”（或 `claude-stats repair ticket-links`）—— 它会按这些键重建所有自动关联，并保留你的手动关联与否定记录。",
+    "ticketKeysRejected": "未保存（项目键为一个字母后跟 1–9 个字母或数字 —— PROJ，而非 PROJ-123）：",
+    "reextract": {
+      "title": "重新提取工单关联",
+      "intro": "将“已保存”的键应用到已采集的会话 —— 如果刚刚修改过，请先点击“保存”。自动关联会被删除并重新推导；手动关联与否定记录会保留，并会先备份数据库。",
+      "preview": "预览",
+      "run": "重新提取",
+      "working": "处理中…",
+      "previewHeader": "预览 —— 未写入任何内容：",
+      "doneHeader": "重新提取完成。重新加载即可看到结果。",
+      "sessions": "重新扫描的会话",
+      "removed": "移除的自动关联",
+      "created": "重新推导",
+      "manual": "保留的手动关联",
+      "keys": "不同的工单键",
+      "failed": "重新提取失败。",
+      "unsaved": "请先保存键 —— 重新提取使用的是已保存的列表，而非上方的文本。"
+    },
     "backup": {
       "loading": "加载中…",
       "title": "备份与同步",
@@ -680,5 +702,32 @@
   },
   "autoCompactFit": {
     "caveat": "上限估计：假设在更少的上下文下完成相同的工作，且未计入任何额外返工的成本，而 token 节省量本身也只是一个下限。此建议背后的余量，是以一个本身即为下限的成本数字为基准衡量的，因而偏向于推荐做出更改。这是默认的自动压缩窗口——启动标志仍可将其覆盖——并且本工具无法判断 Claude Code 是否已将该窗口限制为模型自身的上下文大小。"
+  },
+  "tickets": {
+    "title": "各工单成本",
+    "coverage": "已归因 {{attributed}}／共 {{total}}（{{ratio}}）",
+    "noSpend": "此期间没有记录任何支出 — 无可归因内容。",
+    "unavailable": "各工单表格不可用：此数据库早于工单归因架构。请运行 `claude-stats collect` 以创建。",
+    "empty": "此期间没有归因到任何工单编号。",
+    "colTicket": "工单",
+    "colCost": "成本",
+    "colSessions": "会话数",
+    "colConfidence": "置信度",
+    "colSources": "来源",
+    "colSession": "会话",
+    "colProject": "项目",
+    "colSource": "来源",
+    "colEvidence": "依据",
+    "drillDown_one": "{{count}} 个会话",
+    "drillDown_other": "{{count}} 个会话",
+    "noSessions": "此工单没有可用的会话明细。",
+    "noEvidence": "未保存（提示词匹配）",
+    "sessionsOmitted_one": "另有 {{count}} 个会话未显示",
+    "sessionsOmitted_other": "另有 {{count}} 个会话未显示",
+    "rowsOmitted_one": "另有 {{count}} 个工单未显示（{{cost}}）",
+    "rowsOmitted_other": "另有 {{count}} 个工单未显示（{{cost}}）",
+    "ambiguityNote": "关联到多个工单的会话，会把全额成本计入每一个工单，因此各工单成本相加可能超过已归因总额。",
+    "tuneHint": "归因会读取分支名、提交标题和提示词文本。没有项目键白名单时，形似的字符串也会匹配，置信度上限为中。",
+    "tuneHintLink": "设置工单项目键 →"
   }
 }

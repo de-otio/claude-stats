@@ -11,7 +11,8 @@
     "settings": "Configuración",
     "classify": "Clasificar",
     "spending": "Gasto",
-    "insights": "Perspectivas"
+    "insights": "Perspectivas",
+    "tickets": "Tickets"
   },
   "toolbar": {
     "period": "Periodo:",
@@ -308,6 +309,27 @@
     "labelPlaceholder": "Etiqueta (p. ej. Trabajo, Personal)",
     "autoRefreshInterval": "Intervalo de actualización automática (segundos)",
     "autoRefreshHint": "Mínimo 60 segundos. Se aplica cuando la actualización automática se activa desde la barra de herramientas.",
+    "ticketKeys": "Claves de proyecto de tickets",
+    "ticketKeysPlaceholder": "PROJ, OPS",
+    "ticketKeysHint": "Los prefijos de proyecto con los que la atribución compara nombres de rama, asuntos de commit y texto de los prompts — separados por comas, cada uno una letra seguida de 1 a 9 letras o dígitos. Sin ellos la extracción sigue funcionando, pero toda atribución queda limitada a confianza media, porque no se puede distinguir una cadena con forma de clave de una clave real.",
+    "ticketKeysRetroHint": "Se aplica a las sesiones recopiladas de ahora en adelante. Para aplicarlo a todo lo ya almacenado, usa Reextraer más abajo (o `claude-stats repair ticket-links`): reconstruye cada enlace automático con estas claves y conserva tus enlaces manuales y anulaciones.",
+    "ticketKeysRejected": "No se guardó (una clave de proyecto es una letra seguida de 1 a 9 letras o dígitos: PROJ, no PROJ-123):",
+    "reextract": {
+      "title": "Reextraer enlaces de ticket",
+      "intro": "Aplica las claves GUARDADAS a las sesiones ya recopiladas: si acabas de cambiarlas, pulsa Guardar primero. Los enlaces automáticos se descartan y se vuelven a derivar; los enlaces manuales y las anulaciones se conservan, y antes se hace una copia de seguridad de la base de datos.",
+      "preview": "Vista previa",
+      "run": "Reextraer",
+      "working": "Trabajando…",
+      "previewHeader": "Vista previa — no se escribió nada:",
+      "doneHeader": "Reextracción completada. Recarga para verla.",
+      "sessions": "Sesiones reanalizadas",
+      "removed": "Enlaces automáticos eliminados",
+      "created": "Vueltos a derivar",
+      "manual": "Enlaces manuales conservados",
+      "keys": "Claves de ticket distintas",
+      "failed": "La reextracción falló.",
+      "unsaved": "Guarda primero tus claves: la reextracción usa la lista guardada, no el texto de arriba."
+    },
     "backup": {
       "loading": "Cargando…",
       "title": "Copia de seguridad y sincronización",
@@ -681,5 +703,35 @@
   },
   "autoCompactFit": {
     "caveat": "Límite superior: supone que el mismo trabajo se realiza con menos contexto y no contabiliza el coste de posibles retrabajos adicionales, y el propio ahorro de tokens es también un límite inferior. El margen que respalda esta recomendación se mide frente a una cifra de coste que es en sí misma un límite inferior, lo que la sesga hacia recomendar un cambio. Esta es la ventana de auto-compactación predeterminada — el flag de inicio aún puede anularla — y esta herramienta no puede saber si Claude Code ya está limitando la ventana al tamaño de contexto del propio modelo."
+  },
+  "tickets": {
+    "title": "Coste por ticket",
+    "coverage": "{{attributed}} de {{total}} atribuido ({{ratio}})",
+    "noSpend": "No hay gasto registrado en este periodo: nada que atribuir.",
+    "unavailable": "La tabla por ticket no está disponible: esta base de datos es anterior al esquema de atribución de tickets. Ejecute `claude-stats collect` para crearlo.",
+    "empty": "No se atribuyó ninguna clave de ticket en este periodo.",
+    "colTicket": "Ticket",
+    "colCost": "Coste",
+    "colSessions": "Sesiones",
+    "colConfidence": "Confianza",
+    "colSources": "Fuentes",
+    "colSession": "Sesión",
+    "colProject": "Proyecto",
+    "colSource": "Fuente",
+    "colEvidence": "Evidencia",
+    "drillDown_one": "{{count}} sesión",
+    "drillDown_other": "{{count}} sesiones",
+    "drillDown_many": "{{count}} sesiones",
+    "noSessions": "No hay detalles de sesión disponibles para este ticket.",
+    "noEvidence": "no conservada (coincidencia en un prompt)",
+    "sessionsOmitted_one": "{{count}} sesión adicional no mostrada",
+    "sessionsOmitted_other": "{{count}} sesiones adicionales no mostradas",
+    "sessionsOmitted_many": "{{count}} sesiones adicionales no mostradas",
+    "rowsOmitted_one": "{{count}} ticket adicional no mostrado ({{cost}})",
+    "rowsOmitted_other": "{{count}} tickets adicionales no mostrados ({{cost}})",
+    "rowsOmitted_many": "{{count}} tickets adicionales no mostrados ({{cost}})",
+    "ambiguityNote": "Una sesión vinculada a más de un ticket aporta su coste completo a cada uno, por lo que la suma de los costes por ticket puede superar el total atribuido.",
+    "tuneHint": "La atribución lee nombres de rama, asuntos de commit y texto de los prompts. Sin una lista de claves de proyecto también coinciden cadenas parecidas y la confianza queda limitada a media.",
+    "tuneHintLink": "Definir claves de proyecto de tickets →"
   }
 }

@@ -333,6 +333,41 @@ how the two sit side by side, and
 [why did my cost figures go up?](#why-did-my-cost-figures-go-up) above for
 the TTL-pricing-basis story this one doesn't touch.
 
+### Why are most rows in the ticket table low-confidence?
+
+Because they are prompt-text matches, and you have no project-key allowlist
+configured.
+
+Attribution reads three signals, and grades them differently: a git **branch**
+name is the strongest (`high`, but only with an allowlist — `medium` without
+one), a **commit subject** is `medium`, and a bare **mention in a prompt** is
+`low`. Without an allowlist the scanner cannot tell a real ticket key from any
+other string of the same shape, so it matches all of them — `HTTP-2`, `WP-1` and
+`UTF-8` look exactly like `PROJ-42` to a regular expression. That is a
+deliberate choice rather than an oversight: an allowlist-shaped feature that
+produced *nothing* until configured would be a worse failure than one that
+produces capped-confidence results and says so.
+
+The fix is to set your real key prefixes — the **Ticket project keys** field in
+the dashboard's Settings tab, or
+[`tickets.projectKeys`](commands.md#tickets) in the config file. That filters
+out the look-alikes and lets branch matches reach `high`.
+
+Saving keys is not retroactive: extraction runs when a session is collected and
+only ever *adds* links, so nothing already recorded moves. To apply the keys to
+what is already stored, press **Re-extract** beside the field (after **Save** —
+the button acts on the saved list), or run
+[`claude-stats repair ticket-links`](commands.md#repair-ticket-links). It drops
+every automatic link, re-derives it under the new keys, and keeps your manual
+links and negations.
+
+**Preview it first if you have never re-extracted.** A bulk pass re-scans every
+session in the database, including ones collected before ticket attribution
+existed — so with no allowlist configured it can attribute considerably *more*
+keys than you have today, at low confidence. `--dry-run` (and the **Preview**
+button) reports the distinct-key count before and after without writing
+anything.
+
 ### Why do my token counts differ from what I expected?
 
 Token counts come directly from the `usage` field in each assistant response — the same numbers the API returns. They reflect actual billing units.

@@ -568,7 +568,9 @@ claude-stats config unset cost.day
 `claude-stats config` only manages `costThresholds` (the `cost.*` keys
 above). The blocks below are **not** settable through `config set` — edit
 `~/.claude-stats/config.json` directly (create it if it doesn't exist; it's a
-plain JSON object) and re-run the relevant command. Every key is optional;
+plain JSON object) and re-run the relevant command. The one exception is
+[`tickets.projectKeys`](#tickets), which also has a field in the dashboard's
+Settings tab. Every key is optional;
 its absence has a defined, honest meaning — usually "this feature reports
 what it can and states what it can't," never a silent full-precision claim
 with a stale or invented default underneath.
@@ -590,6 +592,22 @@ absent-config behaviour instead of breaking every command.
 Each entry is a project-key prefix: an uppercase letter followed by 1–9
 uppercase letters/digits (2–10 characters total), e.g. `PROJ` matches
 `PROJ-123`.
+
+**Setting it from the dashboard.** The Settings tab (`serve`, or the VS Code
+panel) has a **Ticket project keys** field — comma-separated, and the only one
+of these blocks with a GUI, because it is the setting the
+[Tickets table](output-guide.md#the-tickets-table-tickets--value-view) sends you
+to when its rows are low-confidence. Entries are upper-cased and de-duplicated
+on save, anything that is not a key prefix is refused and **named back to you**
+(a full issue id like `PROJ-123` is refused as a whole — the allowlist wants the
+prefix), and emptying the field clears the allowlist rather than keeping the old
+value. Saving the field does not re-extract anything by itself — the keys apply
+to sessions collected from then on. To apply them to everything already stored,
+press **Save**, then use the **Re-extract** button beside the field (or
+[`repair ticket-links`](#repair-ticket-links)); that rebuilds every automatic link
+under the new keys and keeps your manual links and negations. Save first is not
+advice — re-extraction reads the stored allowlist, so the buttons refuse to run
+while the field differs from what is saved.
 
 ### `policyEvents`
 
@@ -1428,6 +1446,60 @@ and are reported as `unfixable` rather than guessed at. A real run backs up the
 database first (the path is printed) and applies every change in one
 transaction; `--dry-run` writes nothing and makes no backup. It is idempotent,
 so a second run on repaired data changes nothing.
+
+### `repair ticket-links`
+
+Drop every **automatic** ticket link and re-derive it under the *current*
+[`tickets.projectKeys`](#tickets) allowlist.
+
+```
+claude-stats repair ticket-links [--dry-run]
+```
+
+| Option | Description |
+|---|---|
+| `--dry-run` | Run the re-extraction and roll it back, reporting exactly what it would have done |
+
+Ticket extraction runs once per session, at `collect` time, and only ever *adds*
+rows — so the allowlist is applied at the moment a session is first seen and
+never revisited. Change your project keys and nothing already recorded moves:
+keys the new allowlist would reject stay attributed, and branch matches that
+would now qualify for `high` confidence stay at `medium`. Neither `collect` nor
+[`backfill`](#backfill) fixes that, because neither one *removes* a link.
+
+**What it keeps.** Manual links — an assignment made with [`ticket`](#ticket) or
+the dashboard's link button, and the tombstones a `--negate` writes — are never
+touched. The distinction the command runs on is that an automatic link is
+*derived* (branch name, commit subject, prompt text: recomputable at any time)
+while a manual one is *testimony* that nothing in the data can reproduce. Your
+negations therefore keep suppressing the keys they suppressed before, including
+keys a branch name will go on producing forever.
+
+A real run backs the database up first (the path is printed) and applies
+everything in one transaction; `--dry-run` rolls back instead of predicting, so
+its numbers are the run's numbers rather than a second implementation's guess.
+Output reports the allowlist in force, sessions re-scanned, links removed,
+links re-derived, manual links preserved, and the distinct-key count before and
+after:
+
+```
+Allowlist in force: PROJ, OPS
+Ticket-link re-extraction complete:
+Backup written to ~/.claude-stats/stats.db.pre-repair-ticket-links-1786550000000
+1328 sessions re-scanned, 154 automatic links removed, 41 re-derived, 1 manual links preserved.
+Distinct ticket keys: 78 → 12
+```
+
+**Run `--dry-run` first if no allowlist is configured.** A bulk pass re-scans
+*every* session, including ones collected before extraction existed, so without
+an allowlist it can attribute considerably *more* keys than are in the store
+today — every key-shaped string in every prompt, at low confidence. That is a
+legitimate mode (see [`tickets`](#tickets)), but it is rarely what someone
+reaching for this command wants, and the dry run shows the key count before it
+happens.
+
+The dashboard's Settings tab offers the same operation as **Preview** and
+**Re-extract** buttons beside the project-keys field.
 
 ---
 

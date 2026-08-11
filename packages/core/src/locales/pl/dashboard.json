@@ -11,7 +11,8 @@
     "settings": "Ustawienia",
     "classify": "Klasyfikuj",
     "spending": "Wydatki",
-    "insights": "Wnioski"
+    "insights": "Wnioski",
+    "tickets": "Zgłoszenia"
   },
   "toolbar": {
     "period": "Okres:",
@@ -308,6 +309,27 @@
     "labelPlaceholder": "Etykieta (np. Praca, Osobiste)",
     "autoRefreshInterval": "Interwał automatycznego odświeżania (sekundy)",
     "autoRefreshHint": "Minimum 60 sekund. Obowiązuje po włączeniu automatycznego odświeżania na pasku narzędzi.",
+    "ticketKeys": "Klucze projektów zgłoszeń",
+    "ticketKeysPlaceholder": "PROJ, OPS",
+    "ticketKeysHint": "Prefiksy projektów, z którymi atrybucja porównuje nazwy gałęzi, tematy commitów i tekst promptów — oddzielone przecinkami, każdy to litera i po niej 1–9 liter lub cyfr. Bez nich ekstrakcja nadal działa, ale każda atrybucja ma najwyżej średnią pewność, bo ciągu wyglądającego jak klucz nie da się odróżnić od prawdziwego klucza.",
+    "ticketKeysRetroHint": "Dotyczy sesji zebranych od teraz. Aby zastosować to do wszystkiego, co już zapisano, użyj poniżej opcji Wyodrębnij ponownie (albo `claude-stats repair ticket-links`) — odbuduje to każde automatyczne powiązanie według tych kluczy i zachowa Twoje powiązania ręczne oraz negacje.",
+    "ticketKeysRejected": "Nie zapisano (klucz projektu to litera i po niej 1–9 liter lub cyfr — PROJ, nie PROJ-123):",
+    "reextract": {
+      "title": "Ponownie wyodrębnij powiązania zgłoszeń",
+      "intro": "Stosuje ZAPISANE klucze do już zebranych sesji — jeśli właśnie je zmieniono, najpierw naciśnij Zapisz. Powiązania automatyczne są usuwane i wyprowadzane ponownie; powiązania ręczne i negacje zostają zachowane, a baza danych jest wcześniej kopiowana.",
+      "preview": "Podgląd",
+      "run": "Wyodrębnij ponownie",
+      "working": "Trwa…",
+      "previewHeader": "Podgląd — nic nie zapisano:",
+      "doneHeader": "Ponowna ekstrakcja zakończona. Odśwież, aby zobaczyć wynik.",
+      "sessions": "Ponownie przeskanowane sesje",
+      "removed": "Usunięte powiązania automatyczne",
+      "created": "Wyprowadzone ponownie",
+      "manual": "Zachowane powiązania ręczne",
+      "keys": "Różne klucze zgłoszeń",
+      "failed": "Ponowna ekstrakcja nie powiodła się.",
+      "unsaved": "Najpierw zapisz klucze — ponowna ekstrakcja korzysta z zapisanej listy, a nie z tekstu powyżej."
+    },
     "backup": {
       "loading": "Ładowanie…",
       "title": "Kopia zapasowa i synchronizacja",
@@ -682,5 +704,38 @@
   },
   "autoCompactFit": {
     "caveat": "Górne ograniczenie: zakłada, że ta sama praca zostanie wykonana przy mniejszym kontekście, i nie wycenia kosztu ewentualnych dodatkowych poprawek, a same oszczędności tokenów są również dolnym ograniczeniem. Margines stojący za tą rekomendacją jest mierzony względem wartości kosztu, która sama jest dolnym ograniczeniem, co przechyla ją w stronę rekomendowania zmiany. To jest domyślne okno auto-compact — flaga uruchomieniowa nadal może je nadpisać — a to narzędzie nie potrafi stwierdzić, czy Claude Code już nie ogranicza tego okna do rozmiaru kontekstu samego modelu."
+  },
+  "tickets": {
+    "title": "Koszt na zgłoszenie",
+    "coverage": "Przypisano {{attributed}} z {{total}} ({{ratio}})",
+    "noSpend": "Brak zarejestrowanych kosztów w tym okresie — nie ma czego przypisać.",
+    "unavailable": "Tabela na zgłoszenie jest niedostępna: ta baza danych jest starsza niż schemat przypisywania zgłoszeń. Uruchom `claude-stats collect`, aby go utworzyć.",
+    "empty": "W tym okresie nie przypisano żadnych numerów zgłoszeń.",
+    "colTicket": "Zgłoszenie",
+    "colCost": "Koszt",
+    "colSessions": "Sesje",
+    "colConfidence": "Pewność",
+    "colSources": "Źródła",
+    "colSession": "Sesja",
+    "colProject": "Projekt",
+    "colSource": "Źródło",
+    "colEvidence": "Dowód",
+    "drillDown_one": "{{count}} sesja",
+    "drillDown_few": "{{count}} sesje",
+    "drillDown_many": "{{count}} sesji",
+    "drillDown_other": "{{count}} sesji",
+    "noSessions": "Brak szczegółów sesji dla tego zgłoszenia.",
+    "noEvidence": "nie zachowano (dopasowanie w prompcie)",
+    "sessionsOmitted_one": "{{count}} kolejna sesja nie jest pokazana",
+    "sessionsOmitted_few": "{{count}} kolejne sesje nie są pokazane",
+    "sessionsOmitted_many": "{{count}} kolejnych sesji nie jest pokazanych",
+    "sessionsOmitted_other": "{{count}} kolejnych sesji nie jest pokazanych",
+    "rowsOmitted_one": "{{count}} kolejne zgłoszenie nie jest pokazane ({{cost}})",
+    "rowsOmitted_few": "{{count}} kolejne zgłoszenia nie są pokazane ({{cost}})",
+    "rowsOmitted_many": "{{count}} kolejnych zgłoszeń nie jest pokazanych ({{cost}})",
+    "rowsOmitted_other": "{{count}} kolejnych zgłoszeń nie jest pokazanych ({{cost}})",
+    "ambiguityNote": "Sesja powiązana z więcej niż jednym zgłoszeniem wnosi swój pełny koszt do każdego z nich, więc suma kosztów poszczególnych zgłoszeń może przekroczyć łączną kwotę przypisaną.",
+    "tuneHint": "Atrybucja czyta nazwy gałęzi, tematy commitów i tekst promptów. Bez listy kluczy projektów pasują też podobne ciągi, a pewność jest ograniczona do średniej.",
+    "tuneHintLink": "Ustaw klucze projektów zgłoszeń →"
   }
 }

@@ -11,7 +11,8 @@
     "settings": "Einstellungen",
     "classify": "Klassifizieren",
     "spending": "Ausgaben",
-    "insights": "Erkenntnisse"
+    "insights": "Erkenntnisse",
+    "tickets": "Tickets"
   },
   "toolbar": {
     "period": "Zeitraum:",
@@ -308,6 +309,27 @@
     "labelPlaceholder": "Label (z. B. Arbeit, Persönlich)",
     "autoRefreshInterval": "Intervall für automatische Aktualisierung (Sekunden)",
     "autoRefreshHint": "Mindestens 60 Sekunden. Gilt, wenn die automatische Aktualisierung in der Symbolleiste aktiviert ist.",
+    "ticketKeys": "Ticket-Projektschlüssel",
+    "ticketKeysPlaceholder": "PROJ, OPS",
+    "ticketKeysHint": "Die Projektpräfixe, gegen die die Zuordnung Branch-Namen, Commit-Betreffzeilen und Prompt-Text prüft — kommagetrennt, je ein Buchstabe gefolgt von 1–9 Buchstaben oder Ziffern. Ohne sie läuft die Extraktion weiter, aber jede Zuordnung ist auf mittlere Konfidenz begrenzt, weil eine schlüsselartige Zeichenfolge nicht von einem echten Schlüssel zu unterscheiden ist.",
+    "ticketKeysRetroHint": "Gilt für ab jetzt erfasste Sitzungen. Um sie auf alles bereits Gespeicherte anzuwenden, unten „Neu extrahieren“ verwenden (oder `claude-stats repair ticket-links`) — das baut jede automatische Verknüpfung mit diesen Schlüsseln neu auf und behält deine manuellen Verknüpfungen und Negierungen.",
+    "ticketKeysRejected": "Nicht gespeichert (ein Projektschlüssel ist ein Buchstabe gefolgt von 1–9 Buchstaben oder Ziffern — PROJ, nicht PROJ-123):",
+    "reextract": {
+      "title": "Ticket-Verknüpfungen neu extrahieren",
+      "intro": "Wendet die GESPEICHERTEN Schlüssel auf bereits erfasste Sitzungen an — bei gerade geänderten Schlüsseln zuerst „Speichern“ drücken. Automatische Verknüpfungen werden verworfen und neu abgeleitet; manuelle Verknüpfungen und Negierungen bleiben erhalten, und die Datenbank wird vorher gesichert.",
+      "preview": "Vorschau",
+      "run": "Neu extrahieren",
+      "working": "Läuft …",
+      "previewHeader": "Vorschau — nichts wurde geschrieben:",
+      "doneHeader": "Neu-Extraktion abgeschlossen. Zum Anzeigen neu laden.",
+      "sessions": "Neu geprüfte Sitzungen",
+      "removed": "Entfernte automatische Verknüpfungen",
+      "created": "Neu abgeleitet",
+      "manual": "Erhaltene manuelle Verknüpfungen",
+      "keys": "Verschiedene Ticket-Schlüssel",
+      "failed": "Neu-Extraktion fehlgeschlagen.",
+      "unsaved": "Zuerst die Schlüssel speichern — die Neu-Extraktion verwendet die gespeicherte Liste, nicht den Text oben."
+    },
     "backup": {
       "loading": "Wird geladen…",
       "title": "Backup & Sync",
@@ -680,5 +702,32 @@
   },
   "autoCompactFit": {
     "caveat": "Obergrenze: Es wird angenommen, dass dieselbe Arbeit mit weniger Kontext erledigt wird; die Kosten möglicher zusätzlicher Nacharbeit werden nicht eingerechnet, und die Token-Einsparungen selbst sind ebenfalls nur eine Untergrenze. Die Marge hinter dieser Empfehlung wird an einem Kostenwert gemessen, der selbst eine Untergrenze ist, was sie zugunsten einer Änderung verzerrt. Dies ist das standardmäßige Auto-Compact-Fenster – das Start-Flag kann es weiterhin überschreiben – und dieses Tool kann nicht erkennen, ob Claude Code das Fenster bereits auf die Kontextgröße des Modells begrenzt."
+  },
+  "tickets": {
+    "title": "Kosten pro Ticket",
+    "coverage": "{{attributed}} von {{total}} zugeordnet ({{ratio}})",
+    "noSpend": "In diesem Zeitraum keine erfassten Kosten – nichts zuzuordnen.",
+    "unavailable": "Die Tabelle pro Ticket ist nicht verfügbar – diese Datenbank ist älter als das Schema der Ticket-Zuordnung. Führen Sie `claude-stats collect` aus, um es anzulegen.",
+    "empty": "In diesem Zeitraum wurden keine Ticket-Schlüssel zugeordnet.",
+    "colTicket": "Ticket",
+    "colCost": "Kosten",
+    "colSessions": "Sessions",
+    "colConfidence": "Konfidenz",
+    "colSources": "Quellen",
+    "colSession": "Session",
+    "colProject": "Projekt",
+    "colSource": "Quelle",
+    "colEvidence": "Belege",
+    "drillDown_one": "{{count}} Session",
+    "drillDown_other": "{{count}} Sessions",
+    "noSessions": "Keine Session-Details für dieses Ticket verfügbar.",
+    "noEvidence": "nicht gespeichert (Prompt-Treffer)",
+    "sessionsOmitted_one": "{{count}} weitere Session nicht angezeigt",
+    "sessionsOmitted_other": "{{count}} weitere Sessions nicht angezeigt",
+    "rowsOmitted_one": "{{count}} weiteres Ticket nicht angezeigt ({{cost}})",
+    "rowsOmitted_other": "{{count}} weitere Tickets nicht angezeigt ({{cost}})",
+    "ambiguityNote": "Eine Session, die mit mehreren Tickets verknüpft ist, zählt ihre vollen Kosten zu jedem davon – die Kosten pro Ticket können daher zusammen mehr ergeben als die zugeordnete Summe.",
+    "tuneHint": "Die Zuordnung liest Branch-Namen, Commit-Betreffzeilen und Prompt-Text. Ohne Positivliste von Projektschlüsseln passen auch ähnlich aussehende Zeichenfolgen, und die Konfidenz ist auf mittel begrenzt.",
+    "tuneHintLink": "Ticket-Projektschlüssel festlegen →"
   }
 }

@@ -4,6 +4,74 @@ All notable changes to the Claude Stats VS Code extension are documented here.
 
 ## Unreleased
 
+### Added
+
+- **The dashboard's Tickets & Value view now lists tickets.** It grouped only
+  the Projects and Classify sections, so a reader who opened the view its label
+  invites them to open saw per-project charts and no ticket anywhere on screen —
+  the per-ticket figures existed solely behind the `get_cost_per_ticket` MCP tool
+  and `report --ticket <KEY>`, which drills into one key at a time, so not even
+  the CLI had a whole-window table. A new **Tickets** section renders first in
+  that view: the coverage header (`$X of $Y attributed (Z%)`) with the same
+  confidence caveat the CLI and MCP tool phrase, then one row per ticket key
+  with its cost, session count, confidence tier and which evidence sources
+  matched, each row expanding into the contributing sessions with the matched
+  branch name or commit subject. Rows are capped at the 25 costliest and each
+  drill-down at 10 sessions; both caps state what they dropped, and the omitted
+  rows report their summed cost, so the table can never be misread as the whole
+  bill. The section is unconditional, like Insights: a per-ticket table that
+  disappeared when nothing was attributed would hide the coverage figure and the
+  enablement copy from precisely the reader who has not configured attribution
+  yet. The link/negate correction card moves here from the Insights panel so it
+  sits beside the evidence it corrects; Insights keeps the coverage figure on
+  its Q2 card and its "see evidence" link now lands on the table. See
+  [output-guide.md](../doc/user-doc/output-guide.md#navigation).
+
+- **Ticket project keys are settable in the GUI.** `tickets.projectKeys` is the
+  allowlist that decides whether an attribution can reach `high` confidence at
+  all — and until now the only way to set it was hand-editing
+  `~/.claude-stats/config.json`, so the reader most likely to notice a table full
+  of `low`-confidence rows had no route from the symptom to the fix. The Settings
+  tab now has a **Ticket project keys** field, and the Tickets table links to it
+  whenever it has a row below `high` (and stops offering the link once every row
+  is `high`). Entries are upper-cased and de-duplicated by the same validator
+  every write path uses, and anything refused is **named back** rather than
+  silently dropped — a full issue id stays one token so `PROJ-123` is reported
+  verbatim instead of being half-saved as `PROJ` plus a `123` nobody typed.
+  Emptying the field clears the allowlist (a real mode: extraction still runs,
+  capped at medium) rather than keeping the previous value. The field states both
+  of its limits on screen: the setting applies to sessions collected afterwards,
+  and applying it to what is already stored is a separate, explicit step (below).
+  See [commands.md](../doc/user-doc/commands.md#tickets).
+
+- **`claude-stats repair ticket-links`, and Preview / Re-extract buttons beside
+  the project-keys field** — apply the allowlist to sessions already collected.
+  Extraction runs once per session at `collect` time and only ever *adds* rows,
+  so a changed allowlist moved nothing that was already recorded: rejected keys
+  stayed attributed and branch matches stayed capped at `medium`. Neither
+  `collect` nor `backfill` fixed that, because neither one *removes* a link. The
+  repair drops every automatic link and re-derives it under the current keys —
+  and **keeps every manual link and negation**, on the principle that an
+  automatic link is derived (recomputable from branch, commits and prompt text at
+  any time) while a manual one is testimony that nothing in the data can
+  reproduce; the delete is scoped to `source != 'tag'` in one place. A real run
+  backs the database up first and applies everything in one transaction, with
+  every `git log` hoisted out of that transaction so a background `collect` never
+  meets a locked database. `--dry-run` (and the **Preview** button) runs the pass
+  and rolls it back, so the preview's numbers are the run's numbers rather than a
+  second implementation's guess — worth using before the first run, since a bulk
+  pass re-scans sessions collected before extraction existed and, with no
+  allowlist configured, can attribute considerably *more* keys than are in the
+  store today. Reported either way: sessions re-scanned, links removed,
+  re-derived, manual links preserved, and the distinct-key count before → after.
+  The bulk pass also fixes subagent inheritance, which depends on the parent
+  being processed first and is a coin flip under `collect`'s file order. Both
+  buttons act on the allowlist as *stored*, so they refuse to run while the field
+  holds unsaved edits — editing the keys and pressing Re-extract would otherwise
+  rebuild every link under the previous list and report a confident summary of a
+  run nobody asked for. See
+  [commands.md](../doc/user-doc/commands.md#repair-ticket-links).
+
 ### Fixed
 
 - **Brazilian Portuguese and Simplified Chinese now resolve from the
