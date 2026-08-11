@@ -130,7 +130,7 @@ contains that section.
 |---|---|---|
 | **Insights** | Always — the default landing view | Insights |
 | **Cost & Controlling** | Always | Overview, Spending¹ |
-| **Tickets & Value** | Always | Projects, Classify |
+| **Tickets & Value** | Always | Tickets, Projects, Classify |
 | **Efficiency & Hygiene** | Always | Context¹, Efficiency¹ |
 | **Plan & Policy** | Always | Plan |
 | **Sessions** | Always | Sessions |
@@ -152,12 +152,13 @@ size-band table, the sawtooth (reset floor/peak/cycle length), and tokens
 carried above each configured cap, each with its own lower-bound caveat
 attached — the dashboard rendering of what [`context`](#context-command-output)
 reports, and present only alongside the spending breakdown itself.
+**Tickets** — the per-ticket cost table, described below.
 **Projects** — per-project usage. **Classify** —
 project-cluster classification (`account classify`). **Context** —
 prompt/context size analysis. **Efficiency** — model-choice recommendations.
 **Plan** — plan verdict and seat sizing. **Sessions** — session list and
-detail. **Energy** — CO₂/energy estimate. **Settings** — config, backup &
-sync, team sync.
+detail. **Energy** — CO₂/energy estimate. **Settings** — config (per-account fees, cost-alert
+thresholds, ticket project keys, auto-refresh), backup & sync, team sync.
 
 The served page and the VS Code webview both render this from a single
 definition, [`nav.ts`](../../packages/cli/src/server/nav.ts).
@@ -265,6 +266,80 @@ Every figure and caveat on this tab is produced by
 tab itself — the same formatters the CLI header, `report --ticket`, and the
 justification pack quote, so none of these surfaces can drift from what the
 others say about the same number.
+
+### The Tickets table (Tickets & Value view)
+
+The **Tickets** section is the first panel of the **Tickets & Value** view, and
+is where the Insights Q2 card's "see evidence" link lands. It answers "what did
+each ticket cost, and why do you claim that?" — the dashboard equivalent of
+[`get_cost_per_ticket`](commands.md#mcp) and
+[`report --ticket <KEY>`](commands.md#report), which drills into one key at a
+time.
+
+- **The coverage header comes first, before any row** — attributed cost, the
+  window total it is a share of, and the percentage, followed by the confidence
+  mix and the count of ambiguous sessions. This is not decoration: a table of
+  ticket costs read without its denominator invites the conclusion that those
+  keys account for the whole bill, and at typical coverage they account for a
+  minority of it. The header is phrased by the shared
+  `packages/core/src/insight.ts` formatters, so it reads identically here, in
+  the CLI header and in the MCP tool's caveat.
+- **One row per ticket key** — cost, contributing session count, the confidence
+  tier for that key (**high** / **medium** / **low**), and which evidence
+  sources matched (git branch, commit subject, prompt mention). The source
+  column is in the main table rather than hidden in the drill-down because it
+  is what distinguishes a branch-derived figure from a key that merely appeared
+  in prose.
+- **Each row expands** into the sessions that fed it, showing each session's
+  project, cost, matching source and the matched text itself — the branch name
+  or commit subject. A prompt-mention link has no quotable evidence line and
+  says so rather than rendering an empty cell. The expander is a native
+  `<details>` element, so the served page and the VS Code webview behave
+  identically with no JavaScript.
+- **Nothing is dropped silently.** The table renders the 25 costliest keys and
+  each drill-down the 10 costliest sessions; when more exist, the section states
+  how many keys were omitted **and their summed cost**, and how many sessions
+  each expanded row is hiding. The caps exist because the whole payload is
+  embedded in every static `report --html` file.
+- **A session linked to two keys contributes its full cost to both**, never a
+  silent 50/50 split — so when the header reports ambiguous sessions, the rows
+  can sum to more than the attributed total, and the section says so. The
+  guarantee that holds exactly is the coverage identity: attributed +
+  unattributed = window total.
+- **The section always renders**, even with nothing attributed: an empty state
+  that vanished would hide the coverage figure and the setup instructions from
+  the reader who has not configured attribution yet. Its three states are
+  distinct — no attribution attempted (nothing claimed), attempted but
+  unavailable (said plainly, with the enablement path), and attempted with a
+  genuinely empty result (a real answer, shown with its coverage figure).
+
+The **link/negate** card sits directly below the table, so correcting a wrong
+automatic link happens beside the evidence that produced it; it is the GUI form
+of [`claude-stats ticket`](commands.md#ticket). A manual link always wins over
+an automatic one, and a negation tombstones a wrong link so extraction cannot
+resurrect it.
+
+If most of your rows show **low** confidence, they are prompt-text mentions —
+setting [`tickets.projectKeys`](commands.md#tickets) to your real key prefixes filters out
+strings that merely look like ticket keys and upgrades branch matches from
+medium to high. The section links to that field in the Settings tab whenever it
+has a row below **high** (or no rows at all) — and stops offering the link once
+every row is `high`, since the allowlist is then demonstrably doing its job.
+
+Saving keys is not retroactive on its own: they apply to sessions collected
+afterwards. The **Re-extract** button beside the field applies them to
+everything already stored — it drops every automatic link and re-derives it,
+keeping manual links and negations, after backing the database up. **Preview**
+runs the same pass and rolls it back, reporting the counts it would have
+written (including the distinct-key count before and after). Both are the
+dashboard form of [`repair ticket-links`](commands.md#repair-ticket-links), and
+both are hidden in a static `report --html` export, which has no way to write.
+
+**Save before re-extracting.** Both buttons act on the allowlist as *stored*, not
+on the text in the field, so editing the keys and pressing Re-extract without
+pressing Save would rebuild every link under the previous list. Rather than
+silently saving on your behalf, the buttons refuse while the two differ and say
+so.
 
 ### Cache-TTL fit evidence block (Plan tab)
 

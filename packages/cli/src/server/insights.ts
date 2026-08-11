@@ -702,7 +702,12 @@ export function buildAlerts(
  */
 export const EVIDENCE_TAB: Readonly<Record<string, NavTabId>> = {
   "cost-and-controlling": "spending",
-  "tickets-and-value": "projects",
+  // The `tickets` section, not `projects`: Q2's "what did it buy?" card quotes a
+  // ticket coverage figure and a top ticket, and its evidence is the per-ticket
+  // table. It pointed at `projects` only because no ticket surface existed to
+  // point at — so the one link on the page that promised ticket evidence landed
+  // the reader on per-project charts.
+  "tickets-and-value": "tickets",
   "efficiency-and-hygiene": "efficiency",
   "plan-and-policy": "plan",
 };

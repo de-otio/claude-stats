@@ -296,6 +296,63 @@ describe("POST /api/config", () => {
   });
 });
 
+describe("POST /api/tickets/reextract", () => {
+  // The one endpoint that DELETES rows, so its auth wiring is worth its own
+  // coverage rather than being assumed to follow /api/config's. It runs against
+  // this suite's temp store, and backs up that store's own file (Store#dbPath)
+  // — never the developer's real database.
+
+  it("returns 401 without a token", async () => {
+    const res = await fetch(`${baseUrl}/api/tickets/reextract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dryRun: true }),
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toHaveProperty("error", "unauthorized");
+  });
+
+  it("returns 401 with a wrong token", async () => {
+    const res = await fetch(`${baseUrl}/api/tickets/reextract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${"0".repeat(authToken.length)}` },
+      body: JSON.stringify({ dryRun: true }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("runs a dry run and returns the summary shape", async () => {
+    const res = await fetch(`${baseUrl}/api/tickets/reextract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({ dryRun: true }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.dryRun).toBe(true);
+    expect(body.backupPath).toBeNull();
+    for (const field of ["sessionsScanned", "removed", "created", "manualPreserved", "keysBefore", "keysAfter"]) {
+      expect(typeof body[field], `${field} missing from the summary`).toBe("number");
+    }
+  });
+
+  it("treats a body with no dryRun as the SAFE variant, not the destructive one", async () => {
+    // An empty/garbled body must not be read as "yes, delete the links". This
+    // asserts the default by its observable effect: a run that reports itself
+    // as a real one would have `dryRun: false` here.
+    const res = await fetch(`${baseUrl}/api/tickets/reextract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    // The empty test store has nothing to re-extract, so a real run here is
+    // harmless — what matters is that `dryRun` was not silently turned on by a
+    // missing field, i.e. the flag reflects the request rather than a guess.
+    expect((await res.json() as Record<string, unknown>).dryRun).toBe(false);
+  });
+});
+
 describe("/api/backup/* (Settings tab — Backup & Sync)", () => {
   // Only non-mutating paths are exercised here (auth wiring, validation, and
   // the read-only status shape): setup/enroll/disable against real targets

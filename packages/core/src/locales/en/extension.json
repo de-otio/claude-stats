@@ -272,6 +272,27 @@
           "body": "Shown only when something genuinely needs attention, and deliberately quiet: an alert that fires on noise trains you to ignore the strip."
         }
       ]
+    },
+    "tickets": {
+      "title": "Tickets",
+      "sections": [
+        {
+          "heading": "Cost per ticket",
+          "body": "Cost attributed to work-item keys (PROJ-123), found in git branch names, commit subjects and prompt text. No ticket system is contacted — the key itself is the entire interface. Rows are cost-descending; expand one to see the sessions behind it and which signal matched."
+        },
+        {
+          "heading": "Coverage",
+          "body": "What fraction of the period's spend is attributed to any ticket at all. This is normally well below 100%, because work without a key in its branch, commits or prompts cannot be attributed. Read the table as a view of the attributed part, never as the whole bill."
+        },
+        {
+          "heading": "Confidence tiers",
+          "body": "High means a branch name matched while a project-key allowlist was configured. Medium means a commit subject matched, or a branch matched with no allowlist to filter noise. Low means only prompt text mentioned the key. Two independent signals agreeing upgrade the tier by one step."
+        },
+        {
+          "heading": "Ticket attribution",
+          "body": "Link the current session to a key, or negate an automatic link that is wrong. A negated link cannot be resurrected by re-extraction. Buttons act only in the VS Code panel — the served page renders them inert, since a LAN visitor must not be able to write to your database."
+        }
+      ]
     }
   },
   "panel": {
@@ -279,6 +300,7 @@
     "errors": {
       "failedToLoadConfig": "Failed to load config",
       "failedToSaveConfig": "Failed to save config",
+      "failedToReextract": "Failed to re-extract ticket links",
       "failedToLoadClusters": "Failed to load projects for classification.",
       "classifyFailed": "Could not apply classification: {{message}}"
     }

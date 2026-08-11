@@ -84,6 +84,12 @@ export const NAV_TABS = [
   { id: "overview", labelKey: "dashboard:tabs.overview", dataKey: undefined },
   { id: "energy", labelKey: "dashboard:tabs.energy", dataKey: "energy" },
   { id: "spending", labelKey: "dashboard:tabs.spending", dataKey: "spending" },
+  // Unconditional, like `insights` and for the same reason: a per-ticket table
+  // that disappeared when nothing was attributed would hide the coverage figure
+  // and the enablement copy from precisely the user who has not set attribution
+  // up yet. `ticketTable` is a `DashboardData` field, but it is deliberately NOT
+  // a `dataKey` predicate — see the section's own honest-empty branch.
+  { id: "tickets", labelKey: "dashboard:tabs.tickets", dataKey: undefined },
   { id: "projects", labelKey: "dashboard:tabs.projects", dataKey: undefined },
   { id: "sessions", labelKey: "dashboard:tabs.sessions", dataKey: undefined },
   { id: "plan", labelKey: "dashboard:tabs.plan", dataKey: undefined },
@@ -138,9 +144,17 @@ export interface NavView {
  *    volume-and-trend evidence UNDER the cost answer: raw token counts are
  *    evidence, and evidence lives one click down from the Insights headline
  *    (02 §2.6), not in a permanent tab of its own.
- *  - **tickets-and-value** — "what did it buy?". Projects (per-project cost,
- *    fee attribution, Nature of Work) and Classify, which 02 §2.4 says should
- *    stop being a permanent tab and live where its output matters.
+ *  - **tickets-and-value** — "what did it buy?". Tickets (the per-ticket cost
+ *    table with confidence tiers, its coverage header, the session drill-down and
+ *    the link/negate card), Projects (per-project cost, fee attribution, Nature
+ *    of Work) and Classify, which 02 §2.4 says should stop being a permanent tab
+ *    and live where its output matters.
+ *
+ *    NOTE a deliberate deviation from 02 §2.4's table, which assigns the
+ *    per-ticket cost table to **Cost & Controlling** and leaves this view the
+ *    link/negate UI alone. Followed literally, the view NAMED "Tickets & Value"
+ *    lists no tickets — which is exactly the confusion that prompted this
+ *    section's existence. The table lands here, where its label promises it.
  *  - **efficiency-and-hygiene** — "was it efficient?". Context (cache/context
  *    analysis) and Efficiency (model-tier analysis).
  *  - **plan-and-policy** — "is the setup right?". The Plan tab and the policy
@@ -159,7 +173,11 @@ export const NAV_VIEWS = [
   // showing token mechanics (02 §2.1).
   { id: "insights", labelKey: "dashboard:views.insights", sections: ["insights"] },
   { id: "cost-and-controlling", labelKey: "dashboard:views.cost-and-controlling", sections: ["overview", "spending"] },
-  { id: "tickets-and-value", labelKey: "dashboard:views.tickets-and-value", sections: ["projects", "classify"] },
+  // `tickets` FIRST: the view is named for it, and a reader who opens "Tickets &
+  // Value" expecting a ticket list previously got the per-project charts with no
+  // ticket anywhere on the screen — the view's label promised a surface that
+  // existed only in MCP (`get_cost_per_ticket`) and in `report --ticket <KEY>`.
+  { id: "tickets-and-value", labelKey: "dashboard:views.tickets-and-value", sections: ["tickets", "projects", "classify"] },
   { id: "efficiency-and-hygiene", labelKey: "dashboard:views.efficiency-and-hygiene", sections: ["context", "efficiency"] },
   { id: "plan-and-policy", labelKey: "dashboard:views.plan-and-policy", sections: ["plan"] },
   { id: "sessions", labelKey: "dashboard:views.sessions", sections: ["sessions"] },

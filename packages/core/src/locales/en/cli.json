@@ -377,6 +377,17 @@
       "doneHeader": "Project-path repair complete:",
       "backupWritten": "Backup written to {{path}}",
       "summary": "{{total}} sessions checked, {{changed}} corrected, {{unfixable}} unfixable (source file no longer available)."
+    },
+    "ticketLinks": {
+      "description": "Drop every automatic ticket link and re-derive it under the current tickets.projectKeys allowlist. Manual links and negations are kept.",
+      "dryRunOption": "Run the re-extraction and roll it back, reporting what it would do.",
+      "allowlist": "Allowlist in force: {{keys}}",
+      "noAllowlist": "No tickets.projectKeys allowlist configured — extraction will match every key-shaped string and cap at medium confidence.",
+      "dryRunHeader": "Ticket-link re-extraction (dry run) — nothing was written:",
+      "doneHeader": "Ticket-link re-extraction complete:",
+      "backupWritten": "Backup written to {{path}}",
+      "summary": "{{sessions}} sessions re-scanned, {{removed}} automatic links removed, {{created}} re-derived, {{manual}} manual links preserved.",
+      "keys": "Distinct ticket keys: {{before}} → {{after}}"
     }
   },
   "errors": {

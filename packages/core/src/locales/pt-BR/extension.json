@@ -272,6 +272,27 @@
           "body": "Exibida apenas quando algo realmente precisa de atenção, e deliberadamente discreta: um alerta que dispara com ruído ensina você a ignorar a faixa."
         }
       ]
+    },
+    "tickets": {
+      "title": "Tickets",
+      "sections": [
+        {
+          "heading": "Custo por ticket",
+          "body": "Custo atribuído a chaves de trabalho (PROJ-123), encontradas em nomes de branches git, assuntos de commits e texto de prompts. Nenhum sistema de tickets é contatado: a chave é toda a interface. As linhas são ordenadas por custo decrescente; expanda uma para ver as sessões correspondentes e qual sinal coincidiu."
+        },
+        {
+          "heading": "Cobertura",
+          "body": "Qual fração do gasto do período está atribuída a algum ticket. Normalmente fica bem abaixo de 100%, porque trabalho sem uma chave no branch, nos commits ou nos prompts não pode ser atribuído. Leia a tabela como uma visão da parte atribuída, nunca como a fatura inteira."
+        },
+        {
+          "heading": "Níveis de confiança",
+          "body": "Alta: um nome de branch coincidiu com uma lista de chaves de projeto configurada. Média: um assunto de commit coincidiu, ou um branch coincidiu sem lista para filtrar ruído. Baixa: apenas o texto de um prompt mencionou a chave. Dois sinais independentes que concordam elevam o nível em um passo."
+        },
+        {
+          "heading": "Atribuição de tickets",
+          "body": "Vincule a sessão atual a uma chave, ou anule um vínculo automático incorreto. Um vínculo anulado não pode ressurgir em uma nova extração. Os botões atuam apenas no painel do VS Code: na página servida ficam inertes, pois um visitante da rede local não deve poder gravar no seu banco de dados."
+        }
+      ]
     }
   },
   "panel": {
@@ -279,6 +300,7 @@
     "errors": {
       "failedToLoadConfig": "Falha ao carregar a configuração",
       "failedToSaveConfig": "Falha ao salvar a configuração",
+      "failedToReextract": "Falha ao reextrair os vínculos de ticket",
       "failedToLoadClusters": "Falha ao carregar projetos para classificação.",
       "classifyFailed": "Não foi possível aplicar a classificação: {{message}}"
     }

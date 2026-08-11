@@ -373,6 +373,17 @@
       "doneHeader": "项目路径修复完成：",
       "backupWritten": "备份已写入 {{path}}",
       "summary": "已检查 {{total}} 个 session，修正 {{changed}} 个，{{unfixable}} 个无法修复（源文件已不可用）。"
+    },
+    "ticketLinks": {
+      "description": "删除所有自动工单关联，并按当前的 tickets.projectKeys 白名单重新推导。手动关联与否定记录会保留。",
+      "dryRunOption": "执行重新提取并回滚，仅报告它将会做什么。",
+      "allowlist": "生效的白名单：{{keys}}",
+      "noAllowlist": "未配置 tickets.projectKeys 白名单 —— 提取将匹配所有形似键的字符串，且置信度上限为中。",
+      "dryRunHeader": "重新提取工单关联（试运行）—— 未写入任何内容：",
+      "doneHeader": "工单关联重新提取完成：",
+      "backupWritten": "备份已写入 {{path}}",
+      "summary": "重新扫描 {{sessions}} 个会话，移除 {{removed}} 条自动关联，重新推导 {{created}} 条，保留 {{manual}} 条手动关联。",
+      "keys": "不同的工单键：{{before}} → {{after}}"
     }
   },
   "archive": {

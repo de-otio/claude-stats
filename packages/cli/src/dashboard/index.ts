@@ -10,7 +10,7 @@ import type { UsageWindow } from "@claude-stats/core/types";
 import { classifyUsageIntensity } from "@claude-stats/core/planMechanics";
 import { readClaudeAccount } from "../account.js";
 import { resolveAccountFee, type Config } from "../config.js";
-import { getTicketCostReport } from "../ticketing/index.js";
+import { getTicketCostReport, type TicketCostReport } from "../ticketing/index.js";
 import { computeTtlFitForWindow } from "../ttlFit/index.js";
 import type { TtlFitResult } from "@claude-stats/core/ttlFit";
 import { computeContextCarryForWindow } from "../contextCarry/index.js";
@@ -360,6 +360,18 @@ export interface DashboardData {
    */
   currentSessionTicket?: CurrentSessionTicket | null;
   /**
+   * The per-ticket cost table for this window — the `tickets` section's body.
+   *
+   * Undefined until {@link attachInsights} runs (matching {@link insights}'s
+   * precedent, so pre-existing `DashboardData` literals keep compiling); null
+   * when the report could not be built at all (a pre-V19 store). Note that
+   * "built, but no ticket is attributed" is a THIRD state and is a populated
+   * object with an empty `rows` — the section then renders its honest-empty
+   * branch with the coverage figure still on screen, which is the one state
+   * where "0% attributed" is the answer the reader needs.
+   */
+  ticketTable?: DashboardTicketTable | null;
+  /**
    * Declared policy boundaries (`config.policyEvents`), for annotating the
    * `byDay` timeline (constraint-impact/02 §2.2 point 3: "annotate the
    * timeline with everything else that changed"). Undefined until {@link
@@ -456,6 +468,71 @@ export interface CurrentSessionTicket {
   sessionId: string;
   links: readonly CurrentSessionTicketLink[];
 }
+
+/** One session behind a ticket row — the drill-down's leaf. */
+export interface DashboardTicketSession {
+  /** First 8 characters. The full id is never needed to READ the drill-down,
+   *  and the short form is what the rest of the page already displays. */
+  sessionIdShort: string;
+  /** Last two path segments, like every other project label on the page. */
+  projectLabel: string;
+  cost: number;
+  source: string;
+  confidence: string;
+  /** The matched branch name / commit subject, truncated to
+   *  {@link MAX_TICKET_EVIDENCE_CHARS}. Null for a prompt-sourced link, which
+   *  by design stores no evidence text (see `ExtractedLink.evidence`). */
+  evidence: string | null;
+}
+
+/** One row of the per-ticket cost table. */
+export interface DashboardTicketRow {
+  ticketKey: string;
+  cost: number;
+  sessionCount: number;
+  confidence: string;
+  sources: readonly string[];
+  /** The sessions behind `cost`, capped at {@link MAX_TICKET_SESSIONS}. */
+  sessions: readonly DashboardTicketSession[];
+  /** Sessions this row has but did not keep, so the drill-down can say it is
+   *  showing a subset rather than presenting a cap as the whole list. */
+  sessionsOmitted: number;
+}
+
+/**
+ * The per-ticket cost table and its coverage header — the `tickets` section's
+ * whole input (gui-redesign/02 §2.4).
+ *
+ * A BOUNDED PROJECTION of `TicketCostReport`, for the same reason
+ * {@link DashboardContextCarry} is one: the rendered HTML embeds this entire
+ * `DashboardData` verbatim into every generated report file, so an unbounded
+ * table (one row per ticket key ever seen, each carrying every contributing
+ * session's evidence text) would put unbounded free-form text into a file the
+ * user may forward. `rows` is capped at {@link MAX_TICKET_ROWS} and each row's
+ * sessions at {@link MAX_TICKET_SESSIONS}, and BOTH caps report what they
+ * dropped — a silent truncation reads as "this is all of it" when it is not.
+ */
+export interface DashboardTicketTable {
+  /** Coverage over exactly this dashboard's window and filters — the same
+   *  object `insights.ticketCoverage` carries, so the table's header and the
+   *  Insights card can never quote different fractions of the same total. */
+  coverage: TicketCoverage;
+  rows: readonly DashboardTicketRow[];
+  /** Ticket keys beyond {@link MAX_TICKET_ROWS}, and their summed cost — stated
+   *  rather than dropped, so the visible rows are never read as the whole
+   *  attributed spend. */
+  rowsOmitted: number;
+  rowsOmittedCost: number;
+}
+
+/** Row cap for {@link DashboardTicketTable}. Generous enough that a normal
+ *  sprint's worth of keys fits whole, low enough to bound the payload. */
+export const MAX_TICKET_ROWS = 25;
+/** Per-row session cap for {@link DashboardTicketTable}. */
+export const MAX_TICKET_SESSIONS = 10;
+/** Evidence truncation. A branch name or commit subject is identifying enough
+ *  to recognise well inside this; the rest is payload weight. */
+export const MAX_TICKET_EVIDENCE_CHARS = 120;
 
 /**
  * The Insights tab's extra inputs. Deliberately narrow: everything else the
@@ -1675,6 +1752,7 @@ export function attachInsights(
 
   let ticketCoverage: TicketCoverage | null = null;
   let topTicket: { key: string; cost: number } | null = null;
+  let ticketTable: DashboardTicketTable | null = null;
   let reconciliation: Reconciliation | null = null;
   try {
     const { since, until } = periodRange(opts, tz);
@@ -1694,6 +1772,10 @@ export function attachInsights(
     ticketCoverage = report.coverage;
     const top = report.tickets[0];
     topTicket = top ? { key: top.ticketKey, cost: top.cost } : null;
+    // The SAME `report` — the table is a projection of what was already
+    // computed for the coverage figure, not a second query. `report.tickets`
+    // is cost-descending, so the cap keeps the rows that matter.
+    ticketTable = projectTicketTable(store, report);
 
     // `report.totalCost` is the SAME bottom-up figure `ticketCoverage`'s
     // denominator is derived from, over the SAME window — so the number
@@ -1713,6 +1795,7 @@ export function attachInsights(
   } catch {
     ticketCoverage = null;
     topTicket = null;
+    ticketTable = null;
     reconciliation = null;
   }
 
@@ -1782,6 +1865,7 @@ export function attachInsights(
     previousCost,
     reconciliation,
   };
+  data.ticketTable = ticketTable;
 
   // Gathered in its OWN try, same isolation reasoning as attributionCalibration
   // above: a `computeTtlFit` failure (including "not implemented yet" during
@@ -1843,6 +1927,100 @@ export function attachInsights(
   // logic could disagree with `byDay`'s own.
   data.policyEvents = config.policyEvents ?? [];
   return data;
+}
+
+/**
+ * Project a `TicketCostReport` into the bounded {@link DashboardTicketTable}
+ * the `tickets` section renders.
+ *
+ * One extra store read (`getActiveTicketLinkDetails`), scoped to exactly the
+ * sessions that survive the caps — not to the window — so the evidence text
+ * fetched is bounded by what is displayed rather than by how much history the
+ * store holds.
+ *
+ * Costs are read from `report.sessionCosts`, the map the report's own figures
+ * were folded from, so a drill-down can never disagree with the row above it.
+ * Rows keep their report order (cost-descending) and sessions are ordered
+ * cost-descending too, which is what makes the per-row cap keep the sessions
+ * that explain the cost rather than an arbitrary ten.
+ */
+function projectTicketTable(store: Store, report: TicketCostReport): DashboardTicketTable {
+  const kept = report.tickets.slice(0, MAX_TICKET_ROWS);
+  const dropped = report.tickets.slice(MAX_TICKET_ROWS);
+
+  // Sessions to fetch evidence for: only those a kept row will actually show.
+  const keptSessions = new Map<string, Set<string>>(); // ticketKey -> sessionIds
+  const needed = new Set<string>();
+  for (const row of kept) {
+    const byCost = [...row.sessionIds].sort(
+      (a, b) => (report.sessionCosts.get(b) ?? 0) - (report.sessionCosts.get(a) ?? 0),
+    );
+    const show = byCost.slice(0, MAX_TICKET_SESSIONS);
+    keptSessions.set(row.ticketKey, new Set(show));
+    for (const sid of show) needed.add(sid);
+  }
+
+  // (session, key) -> the link's grading + evidence. A session/key pair can have
+  // several source rows (branch AND commit); the drill-down shows ONE line per
+  // session, so they are merged here: sources joined, evidence taken from the
+  // first row that has any (prompt rows carry none by design).
+  const detail = new Map<string, { sources: string[]; confidence: string; evidence: string | null; project: string | null }>();
+  const detailKey = (sessionId: string, ticketKey: string): string => `${sessionId} ${ticketKey}`;
+  for (const link of store.getActiveTicketLinkDetails([...needed])) {
+    const key = detailKey(link.session_id, link.ticket_key);
+    const cur = detail.get(key);
+    if (!cur) {
+      detail.set(key, {
+        sources: [link.source],
+        confidence: link.confidence,
+        evidence: link.evidence,
+        project: link.project_path,
+      });
+    } else {
+      if (!cur.sources.includes(link.source)) cur.sources.push(link.source);
+      if (cur.evidence == null && link.evidence != null) cur.evidence = link.evidence;
+    }
+  }
+
+  const rows: DashboardTicketRow[] = kept.map((row) => {
+    const show = keptSessions.get(row.ticketKey)!;
+    const ordered = [...row.sessionIds]
+      .filter((sid) => show.has(sid))
+      .sort((a, b) => (report.sessionCosts.get(b) ?? 0) - (report.sessionCosts.get(a) ?? 0));
+    return {
+      ticketKey: row.ticketKey,
+      cost: row.cost,
+      sessionCount: row.sessionCount,
+      confidence: row.confidence,
+      sources: row.sources,
+      sessions: ordered.map((sid) => {
+        const d = detail.get(detailKey(sid, row.ticketKey));
+        const evidence = d?.evidence ?? null;
+        return {
+          sessionIdShort: sid.slice(0, 8),
+          projectLabel: d?.project ? shortProjectLabel(d.project) : "",
+          cost: report.sessionCosts.get(sid) ?? 0,
+          // A session in `row.sessionIds` whose detail row is missing would be a
+          // store/report disagreement, not an empty link — fall back to the
+          // row's own grading rather than rendering blanks.
+          source: d ? d.sources.join(", ") : row.sources.join(", "),
+          confidence: d?.confidence ?? row.confidence,
+          evidence:
+            evidence != null && evidence.length > MAX_TICKET_EVIDENCE_CHARS
+              ? `${evidence.slice(0, MAX_TICKET_EVIDENCE_CHARS - 1)}…`
+              : evidence,
+        };
+      }),
+      sessionsOmitted: Math.max(0, row.sessionIds.length - ordered.length),
+    };
+  });
+
+  return {
+    coverage: report.coverage,
+    rows,
+    rowsOmitted: dropped.length,
+    rowsOmittedCost: dropped.reduce((sum, r) => sum + r.cost, 0),
+  };
 }
 
 /**

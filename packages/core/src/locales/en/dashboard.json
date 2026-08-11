@@ -11,7 +11,8 @@
     "energy": "Energy",
     "settings": "Settings",
     "classify": "Classify",
-    "insights": "Insights"
+    "insights": "Insights",
+    "tickets": "Tickets"
   },
   "views": {
     "insights": "Insights",
@@ -326,6 +327,27 @@
     "monthly": "Monthly",
     "autoRefreshInterval": "Auto-Refresh Interval (seconds)",
     "autoRefreshHint": "Minimum 60 seconds. Applies when auto-refresh is turned on from the toolbar.",
+    "ticketKeys": "Ticket project keys",
+    "ticketKeysPlaceholder": "PROJ, OPS",
+    "ticketKeysHint": "The project prefixes attribution matches branch names, commit subjects and prompt text against — comma-separated, each a letter followed by one to nine more letters or digits. Without them extraction still runs, but every attribution caps at medium confidence, because a key-shaped string cannot be told from a real key.",
+    "ticketKeysRetroHint": "Applies to sessions collected from now on. To apply it to everything already stored, use Re-extract below (or `claude-stats repair ticket-links`) — that rebuilds every automatic link under these keys and keeps your manual links and negations.",
+    "ticketKeysRejected": "Not saved (a project key is a letter followed by one to nine more letters or digits — PROJ, not PROJ-123):",
+    "reextract": {
+      "title": "Re-extract ticket links",
+      "intro": "Applies the SAVED keys to sessions already collected — press Save first if you just changed them. Automatic links are dropped and re-derived; manual links and negations are kept, and the database is backed up first.",
+      "preview": "Preview",
+      "run": "Re-extract",
+      "working": "Working…",
+      "previewHeader": "Preview — nothing was written:",
+      "doneHeader": "Re-extraction complete. Reload to see it.",
+      "sessions": "Sessions re-scanned",
+      "removed": "Automatic links removed",
+      "created": "Re-derived",
+      "manual": "Manual links kept",
+      "keys": "Distinct ticket keys",
+      "failed": "Re-extraction failed.",
+      "unsaved": "Save your keys first — re-extraction uses the saved list, not the text above."
+    },
     "save": "Save",
     "savedReload": "Saved! Reload to see updated dashboard.",
     "networkError": "Network error.",
@@ -680,5 +702,32 @@
       "title": "Good context hygiene",
       "body": "{{percent}}% of your sessions show compaction activity, and few long sessions went uncompacted. You're keeping context sizes in check."
     }
+  },
+  "tickets": {
+    "title": "Cost per ticket",
+    "coverage": "{{attributed}} of {{total}} attributed ({{ratio}})",
+    "noSpend": "No recorded spend in this period — nothing to attribute.",
+    "unavailable": "The per-ticket table is unavailable — this database predates the ticket-attribution schema. Run `claude-stats collect` to build it.",
+    "empty": "No ticket keys were attributed in this period.",
+    "colTicket": "Ticket",
+    "colCost": "Cost",
+    "colSessions": "Sessions",
+    "colConfidence": "Confidence",
+    "colSources": "Sources",
+    "colSession": "Session",
+    "colProject": "Project",
+    "colSource": "Source",
+    "colEvidence": "Evidence",
+    "drillDown_one": "{{count}} session",
+    "drillDown_other": "{{count}} sessions",
+    "noSessions": "No session detail available for this ticket.",
+    "noEvidence": "not kept (prompt match)",
+    "sessionsOmitted_one": "{{count}} further session not shown",
+    "sessionsOmitted_other": "{{count}} further sessions not shown",
+    "rowsOmitted_one": "{{count}} further ticket not shown ({{cost}})",
+    "rowsOmitted_other": "{{count}} further tickets not shown ({{cost}})",
+    "ambiguityNote": "A session linked to more than one ticket contributes its full cost to each, so per-ticket costs can sum to more than the attributed total.",
+    "tuneHint": "Attribution reads branch names, commit subjects and prompt text. Without a project-key allowlist, look-alike strings match too and confidence caps at medium.",
+    "tuneHintLink": "Set ticket project keys →"
   }
 }

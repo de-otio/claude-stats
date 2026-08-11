@@ -25,6 +25,7 @@ import {
 } from "./insights.js";
 import { renderCostQualityCard, COST_QUALITY_CSS } from "./costQualityCard.js";
 import { renderTicketAttributionCard, TICKET_CARD_CSS } from "./ticketCard.js";
+import { renderTicketTable, TICKET_TABLE_CSS } from "./ticketTable.js";
 import { escapeHtml } from "./utils.js";
 import type { PolicyEvent } from "@claude-stats/core/types/insight";
 import { RECONCILIATION_CSS } from "./reconciliationPanel.js";
@@ -914,6 +915,7 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
     currency: data.insights?.currency ?? "USD",
   });
   const ticketCardHtml = renderTicketAttributionCard(data.currentSessionTicket, t);
+  const ticketTableHtml = renderTicketTable(data.ticketTable, t);
   // The Overview cost card and the Insights Q1 card are the SAME answer object,
   // rendered twice. Phase 1 of the migration is additive — nothing moves yet —
   // so both surfaces exist for one release, and the only way two renderings of
@@ -1082,6 +1084,7 @@ ${INSIGHTS_CSS}
 ${RECONCILIATION_CSS}
 ${COST_QUALITY_CSS}
 ${TICKET_CARD_CSS}
+${TICKET_TABLE_CSS}
   </style>
 </head>
 <body>
@@ -1125,7 +1128,6 @@ ${TICKET_CARD_CSS}
   <!-- ═══════════════ TAB: Insights (default) ═══════════════ -->
   ${sectionOpen("insights")}
     ${insightsHtml}
-    ${ticketCardHtml}
   </div>
 
   <!-- ═══════════════ TAB: Overview ═══════════════ -->
@@ -1235,6 +1237,21 @@ ${TICKET_CARD_CSS}
         <canvas id="chart-cumulative"></canvas>
       </div>
     </div>
+  </div>
+
+  <!-- ═══════════════ TAB: Projects ═══════════════ -->
+  <!-- ═══════════════ TAB: Tickets ═══════════════ -->
+  <!--
+    The per-ticket cost table, its coverage header and the session drill-down,
+    then the link/negate card — which lived in the Insights panel until this
+    section existed. It moves rather than being duplicated: the card is an ACTION
+    on a ticket link, and its natural home is beside the table those links feed.
+    Insights keeps the coverage FIGURE (Q2's "what did it buy?" card); the
+    correction UI belongs with the evidence.
+  -->
+  ${sectionOpen("tickets")}
+    ${ticketTableHtml}
+    ${ticketCardHtml}
   </div>
 
   <!-- ═══════════════ TAB: Projects ═══════════════ -->
@@ -1960,6 +1977,33 @@ CO₂_grams = total_kWh × grid_intensity</div>
                 <label style="display:block; font-size:0.65rem; color:#aaa; margin-bottom:0.2rem;">${t("dashboard:settings.monthly")}</label>
                 <input id="cfg-threshold-month" type="number" min="0" step="0.01" placeholder="—" style="width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;">
               </div>
+            </div>
+          </div>
+
+          <!-- Ticket project keys (config.tickets.projectKeys) — the allowlist
+               that decides whether an attribution can reach high confidence.
+               Free text, validated server-side only (validateTicketsConfig):
+               a client-side pre-filter would be a second implementation of that
+               rule, free to disagree with it. What the client owes instead is
+               naming what the server refused — see #cfg-ticket-keys-note. -->
+          <div style="border-top:1px solid #2a2a4a; padding-top:1rem; margin-top:0.5rem;">
+            <label for="cfg-ticket-keys" style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">${t("dashboard:settings.ticketKeys")}</label>
+            <input id="cfg-ticket-keys" type="text" autocapitalize="characters" spellcheck="false" placeholder="${t("dashboard:settings.ticketKeysPlaceholder")}" style="width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;">
+            <div style="font-size:0.6rem; color:#999; margin-top:0.3rem; line-height:1.5;">${t("dashboard:settings.ticketKeysHint")}</div>
+            <div style="font-size:0.6rem; color:#777; margin-top:0.3rem; line-height:1.5;">${t("dashboard:settings.ticketKeysRetroHint")}</div>
+            <div id="cfg-ticket-keys-note" role="status" style="font-size:0.6rem; color:#f28e2b; margin-top:0.3rem; line-height:1.5;"></div>
+
+            <!-- Re-extraction. Hidden until initSettings() confirms a write
+                 channel exists — a static report --html export has none, and a
+                 button that can only fail is worse than no button. -->
+            <div id="reextract-block" style="display:none; margin-top:0.75rem; padding-top:0.6rem; border-top:1px dashed #2a2a4a;">
+              <div style="font-size:0.7rem; color:#ccc; margin-bottom:0.2rem;">${t("dashboard:settings.reextract.title")}</div>
+              <div style="font-size:0.6rem; color:#999; line-height:1.5;">${t("dashboard:settings.reextract.intro")}</div>
+              <div style="display:flex; gap:0.5rem; margin-top:0.45rem;">
+                <button type="button" id="reextract-preview" style="padding:0.3rem 0.9rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; cursor:pointer; font-size:0.7rem;">${t("dashboard:settings.reextract.preview")}</button>
+                <button type="button" id="reextract-run" style="padding:0.3rem 0.9rem; background:#4e79a7; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.7rem;">${t("dashboard:settings.reextract.run")}</button>
+              </div>
+              <div id="reextract-result" role="status" style="font-size:0.65rem; color:#ccc; margin-top:0.45rem; line-height:1.6;"></div>
             </div>
           </div>
 
@@ -3072,7 +3116,154 @@ CO₂_grams = total_kWh × grid_intensity</div>
           document.getElementById('cfg-auto-refresh').value = cfg.autoRefreshSeconds;
           configuredAutoRefreshSecs = Math.max(MIN_AUTO_REFRESH_SECS, cfg.autoRefreshSeconds);
         }
+        setTicketKeysField(cfg);
         renderAccountFees(cfg);
+      }
+
+      // ── Ticket project keys (config.tickets.projectKeys) ──────────────────
+      //
+      // Show the STORED form, always — the server upper-cases and de-duplicates,
+      // so echoing its version (rather than leaving whatever was typed) is how
+      // the field states what is actually in effect.
+      function setTicketKeysField(cfg) {
+        var input = document.getElementById('cfg-ticket-keys');
+        if (!input) return;
+        var keys = (cfg && cfg.tickets && cfg.tickets.projectKeys) || [];
+        input.value = keys.join(', ');
+        // What is actually IN the config — set from the load and from every save
+        // response, i.e. only ever from the authority. Re-extraction reads the
+        // saved allowlist, so this is what tells the user when the text they are
+        // looking at is not the list the button would use.
+        savedTicketKeys = keys.slice();
+      }
+
+      // The allowlist as last seen in the config file, for the unsaved-changes
+      // guard in runReextract().
+      var savedTicketKeys = [];
+
+      // Split on separators only (comma/semicolon/whitespace) rather than on
+      // every non-alphanumeric run: 'PROJ-123' then survives as ONE token, is
+      // refused by the server as a whole, and is reported back verbatim — which
+      // teaches "I want the prefix, not the issue id". Splitting inside it would
+      // save PROJ and report a bare '123' the reader never typed.
+      function parseTicketKeys(raw) {
+        var parts = String(raw == null ? '' : raw).split(/[,;\\s]+/);
+        var out = [];
+        for (var i = 0; i < parts.length; i++) {
+          var k = parts[i].trim().toUpperCase();
+          if (k && out.indexOf(k) === -1) out.push(k);
+        }
+        return out;
+      }
+
+      // ── Re-extraction (the allowlist applied to what is already stored) ───
+      //
+      // Localized copy, injected server-side. Every entry is a complete label:
+      // the counts are appended as separate DOM nodes rather than interpolated
+      // into a sentence, which is the same shape the Backup section uses and the
+      // reason no client-side template engine is needed here.
+      var RX = {
+        working: '${jsStr(t("dashboard:settings.reextract.working"))}',
+        previewHeader: '${jsStr(t("dashboard:settings.reextract.previewHeader"))}',
+        doneHeader: '${jsStr(t("dashboard:settings.reextract.doneHeader"))}',
+        sessions: '${jsStr(t("dashboard:settings.reextract.sessions"))}',
+        removed: '${jsStr(t("dashboard:settings.reextract.removed"))}',
+        created: '${jsStr(t("dashboard:settings.reextract.created"))}',
+        manual: '${jsStr(t("dashboard:settings.reextract.manual"))}',
+        keys: '${jsStr(t("dashboard:settings.reextract.keys"))}',
+        failed: '${jsStr(t("dashboard:settings.reextract.failed"))}',
+        unsaved: '${jsStr(t("dashboard:settings.reextract.unsaved"))}'
+      };
+
+      function reextractAsync(dryRun, callback) {
+        if (typeof window.__vscodeApi !== 'undefined') {
+          var id = ++_configCallbackId;
+          _configCallbacks[id] = callback;
+          window.__vscodeApi.postMessage({ command: 'reextractTickets', dryRun: dryRun, callbackId: id });
+        } else {
+          fetch('/api/tickets/reextract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dryRun: dryRun })
+          })
+          .then(function (r) { return r.json(); })
+          .then(function (result) { callback(null, result); })
+          .catch(function (err) { callback(err); });
+        }
+      }
+
+      /** Label/value rows, built as nodes — the counts are user-visible data,
+       *  never spliced into markup. */
+      function renderReextractSummary(el, summary) {
+        el.textContent = '';
+        var head = document.createElement('div');
+        head.style.cssText = 'font-weight:600; margin-bottom:0.2rem;';
+        head.textContent = summary.dryRun ? RX.previewHeader : RX.doneHeader;
+        el.appendChild(head);
+        var rows = [
+          [RX.sessions, String(summary.sessionsScanned)],
+          [RX.removed, String(summary.removed)],
+          [RX.created, String(summary.created)],
+          [RX.manual, String(summary.manualPreserved)],
+          // The pair a reader tuning an allowlist is actually watching.
+          [RX.keys, String(summary.keysBefore) + ' \\u2192 ' + String(summary.keysAfter)]
+        ];
+        for (var i = 0; i < rows.length; i++) {
+          var row = document.createElement('div');
+          var label = document.createElement('span');
+          label.style.color = '#999';
+          label.textContent = rows[i][0] + ': ';
+          var value = document.createElement('span');
+          value.textContent = rows[i][1];
+          row.appendChild(label);
+          row.appendChild(value);
+          el.appendChild(row);
+        }
+      }
+
+      function runReextract(dryRun) {
+        var out = document.getElementById('reextract-result');
+        var buttons = [document.getElementById('reextract-preview'), document.getElementById('reextract-run')];
+
+        // Re-extraction reads the SAVED allowlist (the config file is the
+        // authority — see the endpoint), so typing keys and pressing Re-extract
+        // without pressing Save would rebuild every link under the OLD list and
+        // report a confident summary of the wrong run. Refuse instead, and say
+        // which button is missing: silently saving on a destructive click would
+        // be a worse surprise than being stopped.
+        var input = document.getElementById('cfg-ticket-keys');
+        if (input && parseTicketKeys(input.value).join(',') !== savedTicketKeys.join(',')) {
+          out.style.color = '#f28e2b';
+          out.textContent = RX.unsaved;
+          return;
+        }
+        for (var i = 0; i < buttons.length; i++) { if (buttons[i]) buttons[i].disabled = true; }
+        out.style.color = '#ccc';
+        out.textContent = RX.working;
+        reextractAsync(dryRun, function (err, summary) {
+          for (var j = 0; j < buttons.length; j++) { if (buttons[j]) buttons[j].disabled = false; }
+          // A summary without sessionsScanned is an error envelope (or a 401),
+          // not a result — reporting "0 sessions" for it would read as "your
+          // store is empty" when the truth is "the write never happened".
+          if (err || !summary || typeof summary.sessionsScanned !== 'number') {
+            out.style.color = '#e15759';
+            out.textContent = RX.failed;
+            return;
+          }
+          renderReextractSummary(out, summary);
+        });
+      }
+
+      // Which of the keys we sent did the server not keep? Compared against the
+      // saved config in its own response, so this reports the real outcome of the
+      // write instead of re-deriving the validation rule client-side.
+      function rejectedTicketKeys(sent, savedConfig) {
+        var accepted = (savedConfig && savedConfig.tickets && savedConfig.tickets.projectKeys) || [];
+        var out = [];
+        for (var i = 0; i < sent.length; i++) {
+          if (accepted.indexOf(sent[i]) === -1) out.push(sent[i]);
+        }
+        return out;
       }
 
       // Per-account plan types + their default monthly fee (USD). Labels are
@@ -3605,6 +3796,20 @@ CO₂_grams = total_kWh × grid_intensity</div>
           if (!err && cfg) populateSettingsForm(cfg);
         });
 
+        // Re-extraction needs a host that can write: the served dashboard or
+        // the VS Code webview. A static report --html file opened from disk has
+        // neither, so the block stays hidden there rather than offering an
+        // action whose only possible outcome is an error.
+        var reextractBlock = document.getElementById('reextract-block');
+        var canWrite = typeof window.__vscodeApi !== 'undefined'
+          || window.location.protocol === 'http:'
+          || window.location.protocol === 'https:';
+        if (reextractBlock && canWrite) {
+          reextractBlock.style.display = '';
+          document.getElementById('reextract-preview').addEventListener('click', function () { runReextract(true); });
+          document.getElementById('reextract-run').addEventListener('click', function () { runReextract(false); });
+        }
+
         document.getElementById('settings-form').addEventListener('submit', function (e) {
           e.preventDefault();
           var threshDay = document.getElementById('cfg-threshold-day').value;
@@ -3619,8 +3824,16 @@ CO₂_grams = total_kWh × grid_intensity</div>
           if (threshMonth) config.costThresholds.month = parseFloat(threshMonth);
           if (autoRefreshVal) config.autoRefreshSeconds = Math.max(MIN_AUTO_REFRESH_SECS, parseInt(autoRefreshVal, 10) || MIN_AUTO_REFRESH_SECS);
           config.accountFees = collectAccountFees();
+          // Sent unconditionally, including as an empty array: an empty
+          // allowlist is a real, documented mode (extraction still runs, capped
+          // at medium confidence), so clearing the field has to be able to clear
+          // the setting. Omitting the key on empty would make the field
+          // one-way — you could add prefixes but never remove the last one.
+          var ticketKeys = parseTicketKeys(document.getElementById('cfg-ticket-keys').value);
+          config.tickets = { projectKeys: ticketKeys };
 
           var statusEl = document.getElementById('settings-status');
+          var keysNote = document.getElementById('cfg-ticket-keys-note');
           saveConfigAsync(config, function (err, result) {
             if (err) {
               statusEl.textContent = '${jsStr(t("dashboard:settings.networkError"))}';
@@ -3631,6 +3844,16 @@ CO₂_grams = total_kWh × grid_intensity</div>
             if (result && result.ok) {
               statusEl.textContent = '${jsStr(t("dashboard:settings.savedReload"))}';
               statusEl.style.color = '#59a14f';
+              // Report the write's real outcome for the allowlist: re-show the
+              // stored keys, and name any the server refused. textContent, not
+              // innerHTML — the rejected strings are user input.
+              if (keysNote) {
+                var rejected = rejectedTicketKeys(ticketKeys, result.config);
+                keysNote.textContent = rejected.length > 0
+                  ? '${jsStr(t("dashboard:settings.ticketKeysRejected"))} ' + rejected.join(', ')
+                  : '';
+              }
+              if (result.config) setTicketKeysField(result.config);
             } else {
               statusEl.textContent = '${jsStr(t("dashboard:settings.errorSaving"))}';
               statusEl.style.color = '#e15759';

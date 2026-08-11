@@ -86,15 +86,33 @@ export interface RunExtractionOptions {
  * `collect`-level concern outside this lane's scope, and the failure mode is
  * "occasionally under-attributes a subagent," never a wrong attribution.
  */
+/**
+ * The commit window this session's extraction reads, or null when the session
+ * has no timestamp to anchor one.
+ *
+ * Exported so a BULK caller can pre-warm the commit cache with exactly the
+ * bounds extraction will ask for (`repair/ticket-links.ts` does, to keep every
+ * `git log` subprocess outside its write transaction). Deriving those bounds at
+ * the call site instead would put a second copy of `COMMIT_WINDOW_PAD_MS` in the
+ * tree — and a copy that drifted would not fail loudly, it would just miss the
+ * cache and quietly move the subprocesses back inside the lock.
+ */
+export function ticketCommitWindow(session: SessionRow): { start: number; end: number } | null {
+  if (session.first_timestamp == null) return null;
+  return {
+    start: session.first_timestamp,
+    end: (session.last_timestamp ?? session.first_timestamp) + COMMIT_WINDOW_PAD_MS,
+  };
+}
+
 export function runTicketExtraction(store: Store, session: SessionRow, opts: RunExtractionOptions = {}): void {
   const branches: Observation[] = session.git_branch ? [{ text: session.git_branch }] : [];
 
   let commits: Observation[] = [];
-  if (session.first_timestamp != null) {
-    const start = session.first_timestamp;
-    const end = (session.last_timestamp ?? session.first_timestamp) + COMMIT_WINDOW_PAD_MS;
+  const window = ticketCommitWindow(session);
+  if (window !== null) {
     const cache = opts.commitCache ?? createCommitSubjectsCache();
-    commits = getCommitSubjectsInWindowCached(cache, session.project_path, start, end).map((subject) => ({ text: subject }));
+    commits = getCommitSubjectsInWindowCached(cache, session.project_path, window.start, window.end).map((subject) => ({ text: subject }));
   }
 
   // A4: a targeted `uuid, prompt_text` read — `getSessionMessages` (`SELECT
@@ -201,6 +219,24 @@ export interface TicketCostReport {
    * accounts for every session exactly once when there is no ambiguity.
    */
   unattributedSessions: Array<{ sessionId: string; cost: number }>;
+  /**
+   * The per-session priced cost this whole report is folded from — every
+   * session in the window, keyed by id.
+   *
+   * Exposed (rather than left a local) so a drill-down that shows the sessions
+   * behind a ticket row can price them from the SAME map `cost`, `totalCost`
+   * and `coverage` were derived from. The alternative — a consumer re-pricing
+   * the sessions it renders — is how a drill-down comes to disagree with the
+   * row it drills into: a second pricing pass has its own window handling, its
+   * own unknown-model policy, and no way to stay in step with this one.
+   *
+   * A `Map`, not a plain object, because it is a query-path intermediate and
+   * NOT part of any serialized payload: `DashboardData` deliberately carries a
+   * bounded projection of the table (see `DashboardTicketTable`), and a
+   * whole-window session→cost object embedded in every generated report file
+   * would be pure weight.
+   */
+  sessionCosts: ReadonlyMap<string, number>;
 }
 
 /**
@@ -339,5 +375,5 @@ export function getTicketCostReport(store: Store, filters: TicketReportFilters =
     .filter((sid) => !coveredSessionIds.has(sid))
     .map((sid) => ({ sessionId: sid, cost: sessionCosts.get(sid) ?? 0 }));
 
-  return { totalCost, unknownTokens, tickets: rows, coverage, anyFallbackRates, unattributedSessions };
+  return { totalCost, unknownTokens, tickets: rows, coverage, anyFallbackRates, unattributedSessions, sessionCosts };
 }

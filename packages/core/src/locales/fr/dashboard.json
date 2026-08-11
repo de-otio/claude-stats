@@ -11,7 +11,8 @@
     "settings": "Paramètres",
     "classify": "Classer",
     "spending": "Dépenses",
-    "insights": "Analyses"
+    "insights": "Analyses",
+    "tickets": "Tickets"
   },
   "toolbar": {
     "period": "Période :",
@@ -308,6 +309,27 @@
     "labelPlaceholder": "Libellé (ex. Travail, Personnel)",
     "autoRefreshInterval": "Intervalle d'actualisation automatique (secondes)",
     "autoRefreshHint": "Minimum 60 secondes. S'applique lorsque l'actualisation automatique est activée depuis la barre d'outils.",
+    "ticketKeys": "Clés de projet des tickets",
+    "ticketKeysPlaceholder": "PROJ, OPS",
+    "ticketKeysHint": "Les préfixes de projet auxquels l'attribution compare les noms de branche, les objets de commit et le texte des prompts — séparés par des virgules, chacun une lettre suivie de 1 à 9 lettres ou chiffres. Sans eux, l'extraction fonctionne toujours, mais chaque attribution est plafonnée à une confiance moyenne, car une chaîne ayant la forme d'une clé ne peut pas être distinguée d'une vraie clé.",
+    "ticketKeysRetroHint": "S'applique aux sessions collectées à partir de maintenant. Pour l'appliquer à tout ce qui est déjà enregistré, utilisez Ré-extraire ci-dessous (ou `claude-stats repair ticket-links`) : cela reconstruit chaque lien automatique avec ces clés et conserve vos liens manuels et invalidations.",
+    "ticketKeysRejected": "Non enregistré (une clé de projet est une lettre suivie de 1 à 9 lettres ou chiffres — PROJ, pas PROJ-123) :",
+    "reextract": {
+      "title": "Ré-extraire les liens de ticket",
+      "intro": "Applique les clés ENREGISTRÉES aux sessions déjà collectées — si vous venez de les modifier, cliquez d'abord sur Enregistrer. Les liens automatiques sont supprimés puis redérivés ; les liens manuels et les invalidations sont conservés, et la base de données est sauvegardée au préalable.",
+      "preview": "Aperçu",
+      "run": "Ré-extraire",
+      "working": "En cours…",
+      "previewHeader": "Aperçu — rien n'a été écrit :",
+      "doneHeader": "Ré-extraction terminée. Rechargez pour la voir.",
+      "sessions": "Sessions ré-analysées",
+      "removed": "Liens automatiques supprimés",
+      "created": "Redérivés",
+      "manual": "Liens manuels conservés",
+      "keys": "Clés de ticket distinctes",
+      "failed": "Échec de la ré-extraction.",
+      "unsaved": "Enregistrez d'abord vos clés : la ré-extraction utilise la liste enregistrée, pas le texte ci-dessus."
+    },
     "backup": {
       "loading": "Chargement…",
       "title": "Sauvegarde et synchronisation",
@@ -681,5 +703,35 @@
   },
   "autoCompactFit": {
     "caveat": "Borne supérieure : suppose que le même travail est effectué avec moins de contexte et ne chiffre pas le coût d'éventuelles reprises supplémentaires ; les économies de tokens sont elles aussi une borne inférieure. La marge qui sous-tend cette recommandation est mesurée par rapport à un coût qui constitue lui-même une borne inférieure, ce qui la biaise en faveur d'un changement. Il s'agit de la fenêtre d'auto-compactage par défaut — l'indicateur de lancement peut toujours la remplacer — et cet outil ne peut pas déterminer si Claude Code limite déjà la fenêtre à la taille de contexte du modèle."
+  },
+  "tickets": {
+    "title": "Coût par ticket",
+    "coverage": "{{attributed}} sur {{total}} attribué ({{ratio}})",
+    "noSpend": "Aucune dépense enregistrée sur cette période — rien à attribuer.",
+    "unavailable": "Le tableau par ticket n'est pas disponible : cette base de données est antérieure au schéma d'attribution des tickets. Exécutez `claude-stats collect` pour le créer.",
+    "empty": "Aucune clé de ticket n'a été attribuée sur cette période.",
+    "colTicket": "Ticket",
+    "colCost": "Coût",
+    "colSessions": "Sessions",
+    "colConfidence": "Confiance",
+    "colSources": "Sources",
+    "colSession": "Session",
+    "colProject": "Projet",
+    "colSource": "Source",
+    "colEvidence": "Preuve",
+    "drillDown_one": "{{count}} session",
+    "drillDown_other": "{{count}} sessions",
+    "drillDown_many": "{{count}} sessions",
+    "noSessions": "Aucun détail de session disponible pour ce ticket.",
+    "noEvidence": "non conservée (correspondance dans un prompt)",
+    "sessionsOmitted_one": "{{count}} session supplémentaire non affichée",
+    "sessionsOmitted_other": "{{count}} sessions supplémentaires non affichées",
+    "sessionsOmitted_many": "{{count}} sessions supplémentaires non affichées",
+    "rowsOmitted_one": "{{count}} ticket supplémentaire non affiché ({{cost}})",
+    "rowsOmitted_other": "{{count}} tickets supplémentaires non affichés ({{cost}})",
+    "rowsOmitted_many": "{{count}} tickets supplémentaires non affichés ({{cost}})",
+    "ambiguityNote": "Une session liée à plusieurs tickets impute son coût intégral à chacun d'eux : la somme des coûts par ticket peut donc dépasser le total attribué.",
+    "tuneHint": "L'attribution lit les noms de branche, les objets de commit et le texte des prompts. Sans liste de clés de projet, des chaînes ressemblantes correspondent aussi et la confiance est plafonnée à moyenne.",
+    "tuneHintLink": "Définir les clés de projet des tickets →"
   }
 }
