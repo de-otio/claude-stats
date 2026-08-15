@@ -19,11 +19,11 @@
  * branch here, not an error path: it renders its own enablement sentence
  * instead of an empty widget (gui-redesign/02 §2.6).
  *
- * Design tokens are CSS custom properties. Each maps to a VS Code theme
- * variable with a fallback equal to the served dashboard's existing dark
- * palette, so `CARD_TOKENS_CSS` — embedded once per page — makes the same
- * card markup render correctly in both hosts: the webview host overrides the
- * `--vscode-*` variables, the served host falls through to the fallback.
+ * Design tokens are CSS custom properties, embedded once per page as
+ * `CARD_TOKENS_CSS`, so the same card markup renders identically in both hosts
+ * — the served page and the VS Code webview, which show the same
+ * `renderDashboard` HTML. See that constant for why the tokens are literal dark
+ * values rather than VS Code theme variables.
  */
 import type { InsightAnswer } from "@claude-stats/core/types/insight";
 
@@ -38,21 +38,38 @@ function escapeHtml(s: string): string {
 /**
  * Design tokens for the card primitive, as CSS custom properties. Embed once
  * inside the page's `<style>` block (or a webview's) before rendering any
- * card. Values follow `--vscode-<name>` with a fallback to the served
- * dashboard's existing palette so light/dark VS Code themes and the served
- * (theme-less) host all render sensibly.
+ * card.
+ *
+ * The values are literals from the dashboard's dark palette, deliberately NOT
+ * `var(--vscode-<name>, <fallback>)`. They were that shape once, on the theory
+ * that a card would then follow a light VS Code theme in the webview — but the
+ * page around it cannot: `renderDashboard` hardcodes `body`'s `#1a1a2e`,
+ * `.chart-card`'s `#16213e` and every `#888` label, and both hosts render that
+ * same HTML. So under a light theme (`Light Modern` sets `--vscode-foreground`
+ * to `#3b3b3b`) the chrome stayed dark while the tokens turned dark too, and
+ * every card's text, table header and tier badge went dark-on-dark —
+ * unreadable, which is how this was found.
+ *
+ * A card must therefore be as dark as the page it sits in. If the dashboard
+ * ever earns real light-theme support, the switch belongs to the whole page —
+ * a `[data-theme]`/`prefers-color-scheme` swap of these tokens *and* the
+ * template's hardcoded colours together — not to the cards alone.
+ *
+ * `--cs-card-fg-muted` is lighter than the `#888` the template uses for its own
+ * labels: card muted text runs 0.65–0.72rem, where `#888` on `#16213e` is
+ * ~4.5:1 — right at the WCAG AA line for small text. `#a0a8bd` clears it.
  */
 export const CARD_TOKENS_CSS = `
     :root {
-      --cs-card-bg: var(--vscode-editorWidget-background, #16213e);
-      --cs-card-border: var(--vscode-widget-border, #0f3460);
-      --cs-card-fg: var(--vscode-foreground, #eee);
-      --cs-card-fg-muted: var(--vscode-descriptionForeground, #888);
-      --cs-card-accent: var(--vscode-textLink-foreground, #a0c4ff);
-      --cs-card-up: var(--vscode-testing-iconPassed, #59a14f);
-      --cs-card-down: var(--vscode-testing-iconFailed, #e15759);
-      --cs-card-unavailable-bg: var(--vscode-inputValidation-infoBackground, #1c2740);
-      --cs-card-unavailable-border: var(--vscode-inputValidation-infoBorder, #2a3552);
+      --cs-card-bg: #16213e;
+      --cs-card-border: #0f3460;
+      --cs-card-fg: #eee;
+      --cs-card-fg-muted: #a0a8bd;
+      --cs-card-accent: #a0c4ff;
+      --cs-card-up: #59a14f;
+      --cs-card-down: #e15759;
+      --cs-card-unavailable-bg: #1c2740;
+      --cs-card-unavailable-border: #2a3552;
     }`;
 
 const TREND_GLYPH: Record<InsightAnswer["trend"], string> = {

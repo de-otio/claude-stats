@@ -152,11 +152,14 @@ describe("webview path — the Insights tab, in the VS Code host", () => {
   it("keeps the Insights CSS inside the nonce-protected document", () => {
     const webview = patchForWebview(
       renderDashboard(populatedData, t), "vscode-webview://abc", "vscode-resource://chart.js");
-    // The tab's own layout class, and the VS Code theme variable the alert
-    // token maps to — proof the tokens reached the webview, where they are the
-    // whole point (the served host only ever sees the fallbacks).
+    // The tab's own layout class, and the alert token — proof the tokens
+    // reached the webview. The token is a literal colour, not a `--vscode-*`
+    // theme variable: the page chrome is hardcoded dark in both hosts, so a
+    // light VS Code theme would otherwise paint dark on dark (see
+    // `CARD_TOKENS_CSS`).
     expect(webview).toContain(".cs-insights-grid");
-    expect(webview).toContain("--vscode-inputValidation-warningBorder");
+    expect(webview).toContain("--cs-alert-warning: #f28e2b");
+    expect(webview).not.toContain("--vscode-");
   });
 });
 

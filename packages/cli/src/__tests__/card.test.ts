@@ -146,11 +146,50 @@ describe("renderCard — the shared card primitive", () => {
     }
   });
 
-  it("maps every design token to a --vscode- variable with a fallback, so both hosts render sensibly", () => {
+  it("resolves every design token to a literal colour, never a VS Code theme variable", () => {
+    // Regression guard. These tokens used to be `var(--vscode-…, <dark
+    // fallback>)`, which broke the webview under a LIGHT VS Code theme: the
+    // page chrome around a card is hardcoded dark in renderDashboard(), so a
+    // theme-derived foreground (Light Modern's #3b3b3b) put dark text on a dark
+    // card. A card cannot theme independently of the page it sits in.
     const lines = CARD_TOKENS_CSS.split("\n").filter((l) => l.includes("--cs-card-"));
     expect(lines.length).toBeGreaterThan(0);
     for (const line of lines) {
-      expect(line).toMatch(/var\(--vscode-[a-zA-Z-]+,\s*#?[0-9a-zA-Z]+\)/);
+      expect(line).toMatch(/--cs-card-[a-z-]+:\s*#[0-9a-f]{3,6};/);
+      expect(line).not.toContain("--vscode-");
+    }
+  });
+
+  it("keeps every token readable on the card background it is painted on", () => {
+    // The defect the literals fix was a contrast one, so assert contrast, not
+    // just the absence of `var()`. Card text is small (0.65–0.85rem), so the
+    // WCAG AA small-text threshold (4.5:1) is the right bar for foregrounds.
+    const hex = (name: string): string => {
+      const m = CARD_TOKENS_CSS.match(new RegExp(`${name}:\\s*(#[0-9a-f]{3,6});`));
+      if (m == null) throw new Error(`token ${name} not declared as a literal`);
+      return m[1]!;
+    };
+    const luminance = (h: string): number => {
+      const full = h.length === 4 ? `#${[...h.slice(1)].map((c) => c + c).join("")}` : h;
+      const chan = [1, 3, 5].map((i) => {
+        const c = parseInt(full.slice(i, i + 2), 16) / 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * chan[0]! + 0.7152 * chan[1]! + 0.0722 * chan[2]!;
+    };
+    const contrast = (a: string, b: string): number => {
+      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    const bg = hex("--cs-card-bg");
+    for (const fg of ["--cs-card-fg", "--cs-card-fg-muted", "--cs-card-accent"]) {
+      expect(contrast(hex(fg), bg)).toBeGreaterThanOrEqual(4.5);
+    }
+    // The tier/trend colours carry meaning through hue, so they are held to the
+    // same floor — an unreadable "down" figure is the same defect as
+    // unreadable muted text.
+    for (const fg of ["--cs-card-up", "--cs-card-down"]) {
+      expect(contrast(hex(fg), bg)).toBeGreaterThanOrEqual(3);
     }
   });
 });

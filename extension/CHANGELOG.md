@@ -2,6 +2,30 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## Unreleased
+
+### Fixed
+
+- **Card text is readable again under a light VS Code theme.** The design
+  tokens the cards paint with were declared as `var(--vscode-<name>,
+  <dark fallback>)`, on the theory that a card would then follow the editor's
+  theme. It cannot: the page around it is unconditionally dark — `renderDashboard`
+  hardcodes the body's `#1a1a2e`, the card background's `#16213e` and every
+  muted label — and both hosts, the served dashboard and the webview, render
+  that same HTML. So under a light theme (`Light Modern` resolves
+  `--vscode-foreground` to `#3b3b3b`) the chrome stayed dark while the text
+  turned dark with it, and the Tickets table's coverage headline, confidence
+  caveat, column headers, evidence-source cells and session drill-downs went
+  dark-on-dark, with tier badges on a near-white background. The tokens are now
+  literal values from the dashboard's own palette, so a card is as dark as the
+  page it sits in. Muted text is lighter than it was even on a dark theme
+  (`#a0a8bd`, not `#888`): card labels run 0.65–0.72rem, where the old value sat
+  exactly on the WCAG AA contrast line. This affects every card the dashboard
+  draws — Insights, reconciliation, Tickets — not just the one where it was
+  noticed. Real light-theme support would mean switching these tokens *and* the
+  template's hardcoded colours together, as one page-level choice; the token
+  block now records that.
+
 ## 0.22.0 — 2026-08-11
 
 ### Added

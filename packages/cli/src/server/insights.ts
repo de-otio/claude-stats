@@ -790,12 +790,14 @@ export function renderInsightsTab(
  * `--cs-alert-warning` is declared here rather than in `CARD_TOKENS_CSS`
  * because it has exactly one consumer and `card.ts`'s token contract is
  * "every `--cs-card-*` token is used by `CARD_CSS`" — a card token consumed
- * only from this file would quietly break that. Same `var(--vscode-…,
- * fallback)` shape, so it themes identically in both hosts.
+ * only from this file would quietly break that. A literal dark-palette value
+ * for the same reason the card tokens are literals (see `CARD_TOKENS_CSS`): the
+ * alert sits on `--cs-card-bg`, which is unconditionally dark in both hosts, so
+ * a theme-derived colour would be a contrast lottery.
  */
 export const INSIGHTS_CSS = `
     :root {
-      --cs-alert-warning: var(--vscode-inputValidation-warningBorder, #f28e2b);
+      --cs-alert-warning: #f28e2b;
     }
     .cs-insights-lede {
       font-size: 0.75rem; color: var(--cs-card-fg-muted); margin: 0 0 0.75rem;
