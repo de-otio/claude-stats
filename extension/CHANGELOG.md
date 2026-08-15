@@ -2,7 +2,7 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
-## Unreleased
+## 0.22.1 — 2026-08-15
 
 ### Fixed
 
