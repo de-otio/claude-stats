@@ -2,6 +2,33 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.22.2 — 2026-08-17
+
+### Changed
+
+- **The per-ticket cost UI is now opt-in, and off by default.** The Tickets
+  table (0.22.0) surfaced a problem the design docs had predicted: a session
+  linked to several ticket keys shows its full cost under every key — correct
+  per row and disclosed in a footnote, but as a table it reads as spend that
+  never happened, and on a real store the rows can sum to several times the
+  window's actual total. Measuring where the attributed dollars actually come
+  from made it worse: the large majority rest on prompt-text mentions, the
+  weakest evidence tier — a pasted backlog list reads as a dozen attributions —
+  and the confidence tiers themselves are uncalibrated until enough links have
+  been explicitly confirmed or corrected. Figures with those properties should
+  not be a default surface, so the dashboard's ticket surfaces — the cost
+  table, the link/negate card, the Insights Q2 coverage figure, the ticket
+  filter and the Settings allowlist field — are hidden until
+  [`tickets.showUi: true`](../doc/user-doc/commands.md#tickets) is set. The Q2
+  card says the surface is hidden pending validation and names the setting,
+  never "no spend attributed yet" — that would be false over a store that
+  holds links. Everything that carries its evidence with it is unaffected and
+  keeps working: extraction (links keep accumulating, so calibration evidence
+  still builds while the UI is hidden), `report --ticket`, the
+  `get_cost_per_ticket` MCP tool and the justification pack. Teams whose
+  branch-per-ticket workflow gives the table genuinely high-confidence rows
+  can opt back in with one config line.
+
 ## 0.22.1 — 2026-08-15
 
 ### Fixed

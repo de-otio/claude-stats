@@ -8,7 +8,7 @@ This file exists so that "we know, and here is the reasoning" is checkable
 rather than assumed. An advisory that is genuinely unreachable is still shipped
 code, and a reader deserves to see the argument rather than a reassurance.
 
-**Last reviewed:** 2026-08-15, for extension release 0.22.1.
+**Last reviewed:** 2026-08-17, for extension release 0.22.2.
 
 GitHub currently reports **2 high** on the default branch, which are the two
 shipped-but-unreachable entries below; both upstream pins were re-checked on
