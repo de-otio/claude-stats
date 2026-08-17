@@ -136,7 +136,7 @@ describe("attachTicketAttribution", () => {
 
   it("attaches null (never throws) when the store is empty, and the card states it honestly", () => {
     const data = { currentSessionTicket: undefined } as { currentSessionTicket?: unknown };
-    attachTicketAttribution(store, data as Parameters<typeof attachTicketAttribution>[1]);
+    attachTicketAttribution(store, data as Parameters<typeof attachTicketAttribution>[1], { tickets: { showUi: true } });
     expect(data.currentSessionTicket).toBeNull();
 
     const html = renderTicketAttributionCard(data.currentSessionTicket as never, t);
@@ -158,7 +158,7 @@ describe("attachTicketAttribution", () => {
     store.negateTicketLink(sid, "PROJ-2");
 
     const data = { currentSessionTicket: undefined } as { currentSessionTicket?: unknown };
-    attachTicketAttribution(store, data as Parameters<typeof attachTicketAttribution>[1]);
+    attachTicketAttribution(store, data as Parameters<typeof attachTicketAttribution>[1], { tickets: { showUi: true } });
     const attached = data.currentSessionTicket as { sessionId: string; links: Array<{ ticketKey: string; negated: boolean }> };
     expect(attached.sessionId).toBe(sid);
     const active = attached.links.find((l) => l.ticketKey === "PROJ-1")!;
@@ -216,12 +216,27 @@ describe("attachTicketAttribution", () => {
   it("renders a session with no links as an honest empty list, not an empty card", () => {
     seedSession(store, "s1");
     const data = { currentSessionTicket: undefined } as { currentSessionTicket?: unknown };
-    attachTicketAttribution(store, data as Parameters<typeof attachTicketAttribution>[1]);
+    attachTicketAttribution(store, data as Parameters<typeof attachTicketAttribution>[1], { tickets: { showUi: true } });
     const html = renderTicketAttributionCard(data.currentSessionTicket as never, t);
     expect(html).toContain("dashboard:ticketCard.noLinks");
     // The link form must still be offered — an empty session is exactly when
     // a manual link is most useful.
     expect(html).toContain("ticket-key-input");
+  });
+
+  // The per-ticket UI is opt-in (`tickets.showUi`, default off). The attach
+  // must leave the field UNDEFINED — the "never ran" state the card omits —
+  // not null, which would render the honest-empty card for a hidden feature.
+  it("leaves currentSessionTicket undefined (card omitted) when tickets.showUi is off or config is absent", () => {
+    seedSession(store, "s-hidden");
+    store.addTicketLink({ sessionId: "s-hidden", ticketKey: "PROJ-1", source: "branch", confidence: "high" });
+
+    for (const config of [undefined, {}, { tickets: {} }, { tickets: { showUi: false } }]) {
+      const data = { currentSessionTicket: undefined } as { currentSessionTicket?: unknown };
+      attachTicketAttribution(store, data as Parameters<typeof attachTicketAttribution>[1], config);
+      expect(data.currentSessionTicket).toBeUndefined();
+      expect(renderTicketAttributionCard(data.currentSessionTicket as never, t)).toBe("");
+    }
   });
 });
 

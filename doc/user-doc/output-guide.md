@@ -130,7 +130,7 @@ contains that section.
 |---|---|---|
 | **Insights** | Always — the default landing view | Insights |
 | **Cost & Controlling** | Always | Overview, Spending¹ |
-| **Tickets & Value** | Always | Tickets, Projects, Classify |
+| **Tickets & Value** | Always | Tickets², Projects, Classify |
 | **Efficiency & Hygiene** | Always | Context¹, Efficiency¹ |
 | **Plan & Policy** | Always | Plan |
 | **Sessions** | Always | Sessions |
@@ -141,6 +141,11 @@ contains that section.
 `contextAnalysis`, `modelEfficiency` respectively). A view whose sections are
 all absent does not appear at all — which is why a payload with no energy
 block shows seven entries rather than eight.
+
+² The Tickets section (with the ticket filter and the Settings allowlist
+field) is opt-in via [`tickets.showUi`](commands.md#tickets) and hidden by
+default while attribution accuracy is being validated — see
+[the Tickets table](#the-tickets-table-tickets--value-view).
 
 What each section holds: **Insights** — five business-question cards, an
 alerts strip, and (if configured) the reconciliation panel, described below.
@@ -269,6 +274,18 @@ others say about the same number.
 
 ### The Tickets table (Tickets & Value view)
 
+> **Opt-in since 0.22.2.** The per-ticket UI — this table, the link/negate
+> card, the Q2 coverage figure, the ticket filter and the Settings allowlist
+> field — is hidden by default while attribution accuracy is being validated:
+> the confidence tiers are uncalibrated until enough links have been explicitly
+> confirmed or corrected, and on real stores prompt-mention links (the weakest
+> tier) dominate the attributed dollars. Set
+> [`tickets.showUi: true`](commands.md#tickets) to render it. Extraction keeps
+> running either way, and [`report --ticket`](commands.md#report), the
+> [`get_cost_per_ticket`](commands.md#mcp) MCP tool and the justification pack
+> are unaffected — those are deliberate, evidence-carrying surfaces rather than
+> the default screen. Everything below describes the opted-in dashboard.
+
 The **Tickets** section is the first panel of the **Tickets & Value** view, and
 is where the Insights Q2 card's "see evidence" link lands. It answers "what did
 each ticket cost, and why do you claim that?" — the dashboard equivalent of
@@ -306,7 +323,7 @@ time.
   can sum to more than the attributed total, and the section says so. The
   guarantee that holds exactly is the coverage identity: attributed +
   unattributed = window total.
-- **The section always renders**, even with nothing attributed: an empty state
+- **The section always renders once opted in**, even with nothing attributed: an empty state
   that vanished would hide the coverage figure and the setup instructions from
   the reader who has not configured attribution yet. Its three states are
   distinct — no attribution attempted (nothing claimed), attempted but

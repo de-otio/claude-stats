@@ -367,7 +367,7 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
           const { attachCostPerTask, attachInsights, attachTicketAttribution } = await import("../dashboard/index.js");
           await attachCostPerTask(store, data, opts);
           attachInsights(store, data, opts, cfg);
-          attachTicketAttribution(store, data);
+          attachTicketAttribution(store, data, cfg);
           // sec#1 / sec#8: strip email and raw tier/billing/seat from unauth path.
           const html = await tryRenderDashboard(redactDashboardForHttp(data));
           // Set auth cookie so SPA can authenticate subsequent mutating
@@ -387,7 +387,7 @@ export function startServer(_port: number, store: Store, opts: StartServerOption
           const { attachCostPerTask, attachInsights, attachTicketAttribution } = await import("../dashboard/index.js");
           await attachCostPerTask(store, data, opts);
           attachInsights(store, data, opts, apiCfg);
-          attachTicketAttribution(store, data);
+          attachTicketAttribution(store, data, apiCfg);
           // sec#1 / sec#8: strip email and raw tier/billing/seat from unauth path.
           sendJson(res, 200, redactDashboardForHttp(data));
           return;

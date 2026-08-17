@@ -115,6 +115,8 @@
     "bought": {
       "unavailable": "Bisher wurden keine Ausgaben Arbeitsvorgängen zugeordnet.",
       "enablement": "Hinterlegen Sie Ihre Projekt-Schlüssel unter Einstellungen → Tickets, um Ausgaben automatisch zuzuordnen.",
+      "hidden": "Die Kosten pro Ticket sind ausgeblendet, solange die Genauigkeit der Zuordnung noch überprüft wird.",
+      "hiddenEnablement": "Aktivieren Sie sie mit tickets.showUi in der Konfigurationsdatei; der CLI-Bericht und die MCP-Tools zeigen die Werte samt Konfidenzstufen weiterhin an.",
       "completed_one": "{{count}} Aufgabe abgeschlossen",
       "completed_other": "{{count}} Aufgaben abgeschlossen",
       "attributed": "{{percent}} der Ausgaben Arbeitsvorgängen zugeordnet",

@@ -588,13 +588,15 @@ absent-config behaviour instead of breaking every command.
 | Key | Default | Meaning when absent |
 |---|---|---|
 | `projectKeys` | _(unset)_ | Without an allowlist, ticket extraction (git branch, commit subject, prompt mentions) still runs, but every attribution is capped at **medium confidence** — the scanner cannot otherwise tell a real ticket key from an unrelated identifier of the same shape. With an allowlist, precision is essentially perfect and `high` confidence becomes reachable. |
+| `showUi` | `false` | The dashboard's per-ticket surfaces (the Tickets table, the link/negate card, the Insights Q2 coverage figure, the ticket filter and the Settings allowlist field) stay hidden. Hidden is the default while attribution accuracy is being validated; set `true` to render them. Extraction, `report --ticket`, the `get_cost_per_ticket` MCP tool and the justification pack are not gated by this. |
 
 Each entry is a project-key prefix: an uppercase letter followed by 1–9
 uppercase letters/digits (2–10 characters total), e.g. `PROJ` matches
 `PROJ-123`.
 
-**Setting it from the dashboard.** The Settings tab (`serve`, or the VS Code
-panel) has a **Ticket project keys** field — comma-separated, and the only one
+**Setting it from the dashboard** (requires `tickets.showUi: true` — the field
+is part of the hidden-by-default per-ticket UI). The Settings tab (`serve`, or
+the VS Code panel) has a **Ticket project keys** field — comma-separated, and the only one
 of these blocks with a GUI, because it is the setting the
 [Tickets table](output-guide.md#the-tickets-table-tickets--value-view) sends you
 to when its rows are low-confidence. Entries are upper-cased and de-duplicated

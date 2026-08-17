@@ -835,6 +835,14 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
   // the exact asymmetry the filter-symmetry contract exists to prevent. The
   // control is omitted and its absence stated rather than shipped wrong.
   const applied = data.appliedFilters ?? { projectPath: null, ticket: null, taskClass: null };
+  // The per-ticket UI is opt-in (`tickets.showUi`, default off — see
+  // `Config.tickets.showUi`). One predicate gates every ticket surface on the
+  // page — the filter input, the tickets panel (table + link/negate card) and
+  // the Settings allowlist block — so a build can never show the settings for
+  // a table it does not render, or vice versa. Absent `insights` (a caller
+  // that never attached) leaves the surfaces in, preserving that caller's
+  // pre-flag behaviour.
+  const ticketUiHidden = data.insights?.ticketUiHidden === true;
   const activeFilterCount =
     (applied.projectPath ? 1 : 0) + (applied.ticket ? 1 : 0) + (applied.taskClass ? 1 : 0);
   const filterViews = DOMAIN_VIEW_IDS.join(" ");
@@ -878,8 +886,8 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
       <option value=""${applied.taskClass ? "" : " selected"}>${escapeHtml(t("dashboard:filters.any"))}</option>
       ${taskClassOptions}
     </select>
-    <label for="filter-ticket">${escapeHtml(t("dashboard:filters.ticket"))}</label>
-    <input type="text" id="filter-ticket" placeholder="${escapeHtml(t("dashboard:filters.ticketPlaceholder"))}" value="${applied.ticket ? escapeHtml(applied.ticket) : ""}" />
+    ${ticketUiHidden ? "" : `<label for="filter-ticket">${escapeHtml(t("dashboard:filters.ticket"))}</label>
+    <input type="text" id="filter-ticket" placeholder="${escapeHtml(t("dashboard:filters.ticketPlaceholder"))}" value="${applied.ticket ? escapeHtml(applied.ticket) : ""}" />`}
     <button id="filter-apply" type="button">${escapeHtml(t("dashboard:filters.apply"))}</button>
     <button id="filter-clear" type="button">${escapeHtml(t("dashboard:filters.clear"))}</button>
     ${activeFilterCount > 0 ? `<span class="cs-filters-active">${escapeHtml(t("dashboard:filters.active", { count: activeFilterCount }))}</span>` : ""}
@@ -1249,10 +1257,16 @@ ${TICKET_TABLE_CSS}
     Insights keeps the coverage FIGURE (Q2's "what did it buy?" card); the
     correction UI belongs with the evidence.
   -->
-  ${sectionOpen("tickets")}
+  ${
+    // The whole panel, heading included — an empty "Tickets" heading over
+    // nothing would read as a broken section, which is worse than absence.
+    ticketUiHidden
+      ? ""
+      : `${sectionOpen("tickets")}
     ${ticketTableHtml}
     ${ticketCardHtml}
-  </div>
+  </div>`
+  }
 
   <!-- ═══════════════ TAB: Projects ═══════════════ -->
   ${sectionOpen("projects")}
@@ -1985,8 +1999,10 @@ CO₂_grams = total_kWh × grid_intensity</div>
                Free text, validated server-side only (validateTicketsConfig):
                a client-side pre-filter would be a second implementation of that
                rule, free to disagree with it. What the client owes instead is
-               naming what the server refused — see #cfg-ticket-keys-note. -->
-          <div style="border-top:1px solid #2a2a4a; padding-top:1rem; margin-top:0.5rem;">
+               naming what the server refused — see #cfg-ticket-keys-note.
+               Gated with the rest of the ticket UI: settings for a table the
+               build does not render would be a knob wired to nothing visible. -->
+          ${ticketUiHidden ? "" : `<div style="border-top:1px solid #2a2a4a; padding-top:1rem; margin-top:0.5rem;">
             <label for="cfg-ticket-keys" style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">${t("dashboard:settings.ticketKeys")}</label>
             <input id="cfg-ticket-keys" type="text" autocapitalize="characters" spellcheck="false" placeholder="${t("dashboard:settings.ticketKeysPlaceholder")}" style="width:100%; padding:0.3rem; background:#16213e; color:#eee; border:1px solid #0f3460; border-radius:4px; font-size:0.75rem; box-sizing:border-box;">
             <div style="font-size:0.6rem; color:#999; margin-top:0.3rem; line-height:1.5;">${t("dashboard:settings.ticketKeysHint")}</div>
@@ -2005,7 +2021,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
               </div>
               <div id="reextract-result" role="status" style="font-size:0.65rem; color:#ccc; margin-top:0.45rem; line-height:1.6;"></div>
             </div>
-          </div>
+          </div>`}
 
           <div style="border-top:1px solid #2a2a4a; padding-top:1rem; margin-top:0.5rem;">
             <label style="display:block; font-size:0.75rem; color:#ccc; margin-bottom:0.3rem;">${t("dashboard:settings.autoRefreshInterval")}</label>
@@ -3824,13 +3840,18 @@ CO₂_grams = total_kWh × grid_intensity</div>
           if (threshMonth) config.costThresholds.month = parseFloat(threshMonth);
           if (autoRefreshVal) config.autoRefreshSeconds = Math.max(MIN_AUTO_REFRESH_SECS, parseInt(autoRefreshVal, 10) || MIN_AUTO_REFRESH_SECS);
           config.accountFees = collectAccountFees();
-          // Sent unconditionally, including as an empty array: an empty
-          // allowlist is a real, documented mode (extraction still runs, capped
-          // at medium confidence), so clearing the field has to be able to clear
-          // the setting. Omitting the key on empty would make the field
-          // one-way — you could add prefixes but never remove the last one.
-          var ticketKeys = parseTicketKeys(document.getElementById('cfg-ticket-keys').value);
-          config.tickets = { projectKeys: ticketKeys };
+          // Sent whenever the field is rendered, including as an empty array:
+          // an empty allowlist is a real, documented mode (extraction still
+          // runs, capped at medium confidence), so clearing the field has to be
+          // able to clear the setting. Omitting the key on empty would make the
+          // field one-way — you could add prefixes but never remove the last
+          // one. When the ticket UI is hidden (tickets.showUi off) the field
+          // does not exist; omitting the tickets key entirely lets mergeConfig
+          // keep the stored allowlist instead of clearing a list nobody could
+          // see.
+          var ticketKeysInput = document.getElementById('cfg-ticket-keys');
+          var ticketKeys = ticketKeysInput ? parseTicketKeys(ticketKeysInput.value) : null;
+          if (ticketKeys !== null) config.tickets = { projectKeys: ticketKeys };
 
           var statusEl = document.getElementById('settings-status');
           var keysNote = document.getElementById('cfg-ticket-keys-note');
@@ -3847,7 +3868,7 @@ CO₂_grams = total_kWh × grid_intensity</div>
               // Report the write's real outcome for the allowlist: re-show the
               // stored keys, and name any the server refused. textContent, not
               // innerHTML — the rejected strings are user input.
-              if (keysNote) {
+              if (keysNote && ticketKeys !== null) {
                 var rejected = rejectedTicketKeys(ticketKeys, result.config);
                 keysNote.textContent = rejected.length > 0
                   ? '${jsStr(t("dashboard:settings.ticketKeysRejected"))} ' + rejected.join(', ')

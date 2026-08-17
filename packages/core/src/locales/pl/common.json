@@ -119,6 +119,8 @@
     "bought": {
       "unavailable": "Na razie żadne wydatki nie zostały przypisane do zadań.",
       "enablement": "Dodaj klucze swojego projektu w Ustawienia → Zgłoszenia, aby automatycznie przypisywać wydatki.",
+      "hidden": "Koszt na zgłoszenie jest ukryty, dopóki dokładność przypisywania nie zostanie zweryfikowana.",
+      "hiddenEnablement": "Włącz go opcją tickets.showUi w pliku konfiguracyjnym; raport CLI i narzędzia MCP nadal udostępniają te dane wraz z poziomami pewności.",
       "completed_one": "{{count}} zadanie ukończone",
       "completed_few": "{{count}} zadania ukończone",
       "completed_many": "{{count}} zadań ukończonych",

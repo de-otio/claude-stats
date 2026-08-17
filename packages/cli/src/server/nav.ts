@@ -89,6 +89,9 @@ export const NAV_TABS = [
   // and the enablement copy from precisely the user who has not set attribution
   // up yet. `ticketTable` is a `DashboardData` field, but it is deliberately NOT
   // a `dataKey` predicate — see the section's own honest-empty branch.
+  // (When the per-ticket UI is off — `tickets.showUi`, the default — the
+  // TEMPLATE drops the whole panel on its `ticketUiHidden` predicate; this
+  // entry describes the opted-in page.)
   { id: "tickets", labelKey: "dashboard:tabs.tickets", dataKey: undefined },
   { id: "projects", labelKey: "dashboard:tabs.projects", dataKey: undefined },
   { id: "sessions", labelKey: "dashboard:tabs.sessions", dataKey: undefined },

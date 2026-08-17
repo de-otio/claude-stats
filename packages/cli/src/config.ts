@@ -106,6 +106,17 @@ export interface Config {
    */
   tickets?: {
     projectKeys?: string[];
+    /**
+     * Show the per-ticket cost surfaces in the dashboard/webview (the cost
+     * table, the link/negate card, Q2's coverage figure, the ticket filter
+     * and the Settings block). Default OFF: attribution precision is
+     * uncalibrated and prompt-mention links dominate real stores, so the
+     * dollar figures are not yet defensible as a default surface — see
+     * doc/analysis/ticket-attribution/01 §1.2's accuracy ladder. The CLI
+     * report, MCP tools and the justification pack are unaffected: those are
+     * deliberate, evidence-carrying surfaces, not the default screen.
+     */
+    showUi?: boolean;
   };
   /**
    * Declared policy boundaries for constraint-impact reporting
@@ -335,6 +346,7 @@ export function validateTicketsConfig(input: unknown): NonNullable<Config["ticke
     }
     out.projectKeys = keys;
   }
+  if (typeof r.showUi === "boolean") out.showUi = r.showUi;
   return out;
 }
 
@@ -479,6 +491,15 @@ export function validateHygieneConfig(input: unknown): NonNullable<Config["hygie
 export function ticketProjectKeys(config: Config): string[] | undefined {
   const keys = config.tickets?.projectKeys;
   return keys && keys.length > 0 ? keys : undefined;
+}
+
+/**
+ * Whether the dashboard renders the per-ticket cost surfaces. Opt-in
+ * (`tickets.showUi: true`) — see the field's doc for why hidden is the
+ * default. Extraction, the CLI report and MCP are not gated by this.
+ */
+export function showTicketUi(config: Config): boolean {
+  return config.tickets?.showUi === true;
 }
 
 /**

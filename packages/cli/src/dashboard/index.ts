@@ -9,7 +9,7 @@ import { estimateCost, lookupPlanFee, PLAN_FEES } from "@claude-stats/core/prici
 import type { UsageWindow } from "@claude-stats/core/types";
 import { classifyUsageIntensity } from "@claude-stats/core/planMechanics";
 import { readClaudeAccount } from "../account.js";
-import { resolveAccountFee, type Config } from "../config.js";
+import { resolveAccountFee, showTicketUi, type Config } from "../config.js";
 import { getTicketCostReport, type TicketCostReport } from "../ticketing/index.js";
 import { computeTtlFitForWindow } from "../ttlFit/index.js";
 import type { TtlFitResult } from "@claude-stats/core/ttlFit";
@@ -600,6 +600,15 @@ export interface DashboardInsights {
    * residual).
    */
   reconciliation: Reconciliation | null;
+  /**
+   * True when `tickets.showUi` is off (the default): the per-ticket cost
+   * surfaces are deliberately hidden, and `ticketCoverage`/`topTicket` above
+   * are null BECAUSE of that, not because the store has no links. Q2 and the
+   * template branch on this to say "hidden", never "no data" — conflating the
+   * two would tell a user with a fully-configured allowlist that they have
+   * nothing attributed.
+   */
+  ticketUiHidden?: boolean;
 }
 
 export interface Recommendation {
@@ -1855,6 +1864,19 @@ export function attachInsights(
     previousCost = null;
   }
 
+  // The per-ticket UI is opt-in (`tickets.showUi`, hidden by default) — the
+  // report above was still computed because reconciliation rides on its
+  // bottom-up total, but none of the ticket figures reach the payload when
+  // hidden. `ticketTable` is left UNSET (not null): null renders the
+  // "report unavailable" explanation, and undefined omits the section —
+  // hidden must read as absent, not broken.
+  const ticketUiShown = showTicketUi(config);
+  if (!ticketUiShown) {
+    ticketCoverage = null;
+    topTicket = null;
+    ticketTable = null;
+  }
+
   data.insights = {
     vocabulary,
     ticketCoverage,
@@ -1864,8 +1886,9 @@ export function attachInsights(
     attributionCalibration,
     previousCost,
     reconciliation,
+    ticketUiHidden: !ticketUiShown,
   };
-  data.ticketTable = ticketTable;
+  if (ticketUiShown) data.ticketTable = ticketTable;
 
   // Gathered in its OWN try, same isolation reasoning as attributionCalibration
   // above: a `computeTtlFit` failure (including "not implemented yet" during
@@ -2030,7 +2053,12 @@ function projectTicketTable(store: Store, report: TicketCostReport): DashboardTi
  * pre-V19 schema) leaves the field null, which the card renders as its
  * honest empty state rather than omitting itself.
  */
-export function attachTicketAttribution(store: Store, data: DashboardData): DashboardData {
+export function attachTicketAttribution(store: Store, data: DashboardData, config?: Config): DashboardData {
+  // Opt-in like every other ticket surface (`tickets.showUi`). The field stays
+  // UNDEFINED — the card's "never ran" state, which omits it — rather than
+  // null, which renders the honest-empty card for a feature that is hidden.
+  // Callers that pass no config get the hidden default, not the old behaviour.
+  if (!config || !showTicketUi(config)) return data;
   try {
     const sessionId = store.getMostRecentSessionId();
     if (!sessionId) {

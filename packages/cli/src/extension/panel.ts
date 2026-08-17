@@ -169,7 +169,7 @@ export class DashboardPanel {
       // Insights tab inputs (ticket coverage, hourly rate, cost vocabulary).
       // Synchronous and cheap; needs the config the two attaches above do not.
       attachInsights(store, data, dashOpts, cfg);
-      attachTicketAttribution(store, data);
+      attachTicketAttribution(store, data, cfg);
       const html = renderDashboard(data, t);
       this.panel.webview.html = patchForWebview(
         html,

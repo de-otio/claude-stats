@@ -40,6 +40,7 @@ import {
   formatMoney,
   formatPercent,
   tLiteral,
+  unavailable,
 } from "@claude-stats/core/insight";
 import type { TtlFitResult } from "@claude-stats/core/ttlFit";
 import type { ContextCarryResult } from "@claude-stats/core/contextCarry";
@@ -349,14 +350,25 @@ export function buildInsightAnswers(data: DashboardData, opts: InsightBuildOptio
       : []),
   ];
 
-  const bought = answerBought(opts.t, {
-    // Successes, not attempts: "what it bought" is work that landed.
-    completedTasks: cpt ? cpt.successCount : null,
-    coverage,
-    topTicket: ins?.topTicket ?? null,
-    currency: opts.currency,
-    calibration,
-  });
+  // `ticketUiHidden` outranks the data: coverage was nulled BECAUSE the
+  // per-ticket UI is off (`tickets.showUi`), so letting `answerBought` fall
+  // into its "no spend attributed yet" branch would (a) be false for a store
+  // that holds links, and (b) point at a Settings block this build does not
+  // render. Say what is actually the case — hidden pending validation — with
+  // the real enablement path.
+  const bought = ins?.ticketUiHidden
+    ? unavailable("bought", opts.t("common:insight.bought.hidden"), {
+        reason: "not-enabled",
+        enablement: opts.t("common:insight.bought.hiddenEnablement"),
+      })
+    : answerBought(opts.t, {
+        // Successes, not attempts: "what it bought" is work that landed.
+        completedTasks: cpt ? cpt.successCount : null,
+        coverage,
+        topTicket: ins?.topTicket ?? null,
+        currency: opts.currency,
+        calibration,
+      });
 
   const efficiency = answerEfficiency(opts.t, {
     recoverableWaste: cpt?.efficiency ? cpt.efficiency.recoverableWaste : null,

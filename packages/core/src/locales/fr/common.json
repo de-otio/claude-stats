@@ -117,6 +117,8 @@
     "bought": {
       "unavailable": "Aucune dépense encore attribuée à des éléments de travail.",
       "enablement": "Ajoutez vos clés de projet dans Paramètres → Tickets pour attribuer les dépenses automatiquement.",
+      "hidden": "Le coût par ticket est masqué tant que la précision de l'attribution est en cours de validation.",
+      "hiddenEnablement": "Activez-le avec tickets.showUi dans le fichier de configuration ; le rapport CLI et les outils MCP continuent d'exposer les chiffres avec leurs niveaux de confiance.",
       "completed_one": "{{count}} tâche terminée",
       "completed_many": "{{count}} tâches terminées",
       "completed_other": "{{count}} tâches terminées",

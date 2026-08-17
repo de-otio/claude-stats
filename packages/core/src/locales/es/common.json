@@ -117,6 +117,8 @@
     "bought": {
       "unavailable": "Todavía no hay gasto atribuido a elementos de trabajo.",
       "enablement": "Añade las claves de tu proyecto en Ajustes → Tickets para atribuir el gasto automáticamente.",
+      "hidden": "El coste por ticket está oculto mientras se valida la precisión de la atribución.",
+      "hiddenEnablement": "Actívalo con tickets.showUi en el archivo de configuración; el informe de la CLI y las herramientas MCP siguen mostrando las cifras con sus niveles de confianza.",
       "completed_one": "{{count}} tarea completada",
       "completed_many": "{{count}} tareas completadas",
       "completed_other": "{{count}} tareas completadas",

@@ -115,6 +115,8 @@
     "bought": {
       "unavailable": "作業項目に割り当てられた支出はまだありません。",
       "enablement": "設定 → チケット でプロジェクトキーを追加すると、支出が自動的に割り当てられます。",
+      "hidden": "チケット別コストの表示は、割り当て精度の検証が完了するまで無効になっています。",
+      "hiddenEnablement": "設定ファイルの tickets.showUi で有効にできます。CLI レポートと MCP ツールでは、信頼度付きの数値を引き続き確認できます。",
       "completed_one": "{{count}} 件のタスクが完了",
       "completed_other": "{{count}} 件のタスクが完了",
       "attributed": "支出の {{percent}} を作業項目に割り当て",

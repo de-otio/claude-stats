@@ -114,7 +114,10 @@ describe("attachInsights — reconciliation wiring", () => {
   it("computes a reconciliation over the SAME bottom-up total the ticket coverage denominator uses", () => {
     seedSession(store, { input: 100_000, output: 20_000 });
     // claude-sonnet-4-6: $3/M in, $15/M out -> 0.1*3 + 0.02*15 = 0.3 + 0.3 = $0.60
-    const config: Config = { reconciliation: { invoiceTotal: 0.6, tolerancePercent: 5 } };
+    // `showUi` because line R-1 below reads `ticketCoverage`, which the
+    // default-hidden ticket UI nulls (reconciliation itself works either way —
+    // ticket-ui-visibility.test.ts pins that).
+    const config: Config = { reconciliation: { invoiceTotal: 0.6, tolerancePercent: 5 }, tickets: { showUi: true } };
     const data = attachInsights(store, buildDashboard(store, {}), {}, config);
     const recon = data.insights?.reconciliation;
     expect(recon).not.toBeNull();

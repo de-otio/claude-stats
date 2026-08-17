@@ -115,6 +115,8 @@
     "bought": {
       "unavailable": "尚无支出归因到工作项。",
       "enablement": "在 设置 → 工单 中添加你的项目标识，即可自动归因支出。",
+      "hidden": "在归因准确性得到验证之前，工单成本展示已关闭。",
+      "hiddenEnablement": "可在配置文件中通过 tickets.showUi 启用；CLI 报告和 MCP 工具仍会提供带置信度的数据。",
       "completed_one": "完成 {{count}} 个任务",
       "completed_other": "完成 {{count}} 个任务",
       "attributed": "{{percent}} 的支出已归因到工作项",

@@ -177,6 +177,8 @@
     "bought": {
       "unavailable": "No spend attributed to work items yet.",
       "enablement": "Add your project keys under Settings → Tickets to attribute spend automatically.",
+      "hidden": "Per-ticket cost reporting is turned off while attribution accuracy is being validated.",
+      "hiddenEnablement": "Enable it with tickets.showUi in the config file; the CLI report and MCP tools still expose the figures with their confidence tiers.",
       "completed_one": "{{count}} task completed",
       "completed_other": "{{count}} tasks completed",
       "attributed": "{{percent}} of spend attributed to work items",
