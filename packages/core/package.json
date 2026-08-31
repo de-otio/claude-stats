@@ -166,8 +166,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@noble/ciphers": "^2.2.0",
-    "@noble/curves": "^2.2.0",
+    "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "^2.4.0",
     "@noble/hashes": "^2.2.0",
     "age-encryption": "^0.3.0",
     "i18next": "^25.8.18"
