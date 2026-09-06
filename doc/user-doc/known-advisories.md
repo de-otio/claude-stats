@@ -10,12 +10,18 @@ code, and a reader deserves to see the argument rather than a reassurance.
 
 **Last reviewed:** 2026-09-06, for extension release 0.22.4.
 
-At that review GitHub reported **7 open** (6 high, 1 moderate): four in the
-shipped tree of the VSIX, two in the shipped tree of the CLI, and one dev-only.
-**The six shipped ones are fixed in 0.22.4** and are recorded below under
-"Resolved" rather than deleted, because the reasoning for *how* they were fixed
-is the part worth keeping. The dev-only one remains open with no action
-available.
+At that review GitHub reported **7 open** (6 high, 1 moderate): two in the
+shipped tree of the VSIX (`sharp`, `adm-zip`) and five in the shipped tree of
+the CLI (`fast-uri` ×4, `qs`). **All seven are fixed in 0.22.4**, and Dependabot
+now reports zero open. They are recorded below under "Resolved" rather than
+deleted, because the reasoning for *how* they were fixed is the part worth
+keeping.
+
+The dev-only `brace-expansion` entry further down is **not** one of those seven.
+Dependabot never raised it, because the vulnerable copy is bundled inside the
+`aws-cdk-lib` tarball and Dependabot does not read inside bundles — only
+`npm audit` sees it. That difference is why the two tools disagree on the count,
+and it is the thing to remember before reconciling them again.
 
 ---
 
@@ -196,6 +202,9 @@ Any of the following should prompt a re-review of this file:
   shipped-code question rather than a local-tooling one.
 - **AWS refreshes the `aws-cdk-lib` bundle.** Then a plain version bump clears
   the remaining entry with no override needed.
+- **Dependabot and `npm audit` agree on the count.** Today they do not, and the
+  bundled-dependency reason above is the whole explanation. If they ever agree,
+  something about the tree changed.
 
 ---
 

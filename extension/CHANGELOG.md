@@ -6,9 +6,9 @@ All notable changes to the Claude Stats VS Code extension are documented here.
 
 ### Security
 
-- **Six dependency advisories in the shipped trees are resolved.** GitHub
-  reported seven open advisories against this repository; six of them sat in
-  code that actually ships, and all six are now on fixed versions.
+- **All seven dependency advisories in the shipped trees are resolved.** GitHub
+  reported seven open advisories against this repository — every one of them in
+  code that actually ships — and all seven are now on fixed versions.
 
   In the VSIX: `sharp` 0.34.5 → 0.35.4, clearing four inherited libvips decoder
   CVEs, and `adm-zip` 0.5.18 → 0.6.0, clearing a crafted-ZIP allocation flaw.
@@ -20,16 +20,18 @@ All notable changes to the Claude Stats VS Code extension are documented here.
   single-`onnxruntime-node` assertion still passes and both packages were
   checked to load in the installed tree.
 
-  In the CLI: `fast-uri` 3.1.5 → 3.1.7, clearing four parsing and ReDoS
-  advisories, and `qs` 6.15.3 → 6.16.0 for a prototype-pollution advisory.
-  `fast-uri` is the one of the six that is genuinely on an executed path —
-  `ajv` uses it while validating MCP tool schemas — so it is a real fix rather
-  than a report cleared.
+  In the CLI: `fast-uri` 3.1.5 → 3.1.7, clearing four of the seven advisories
+  on its own, and `qs` 6.15.3 → 6.16.0 for a prototype-pollution advisory.
+  `fast-uri` is the one that is genuinely on an executed path — `ajv` uses it
+  while validating MCP tool schemas — so it is a real fix rather than a report
+  cleared.
 
-  The seventh advisory is dev-only, is not shipped in any artifact, and has no
-  upstream fix; `doc/user-doc/known-advisories.md` records why, alongside the
-  reasoning for each fix above and a correction to the previous review, which
-  had recorded the wrong shipped `onnxruntime-node` version.
+  `doc/user-doc/known-advisories.md` records the reasoning for each fix, plus a
+  correction to the previous review, which had recorded the wrong shipped
+  `onnxruntime-node` version. A separate dev-only advisory remains open there;
+  it ships in no artifact, has no upstream fix, and is visible only to
+  `npm audit` because the vulnerable copy is bundled inside a dependency's own
+  tarball.
 
   No user-visible behaviour changes in this release.
 
