@@ -51,6 +51,10 @@ export default defineConfig({
       // MUST precede the bare `@claude-stats/core` below for the same reason —
       // the bare alias is a prefix of this one and would otherwise shadow it.
       "@claude-stats/core/autoCompactFit": path.resolve(__dirname, "packages/core/src/autoCompactFit.ts"),
+      // NOTE: like the subpath aliases above, this MUST precede the bare
+      // `@claude-stats/core` below — the bare alias is a prefix of this one and
+      // would otherwise shadow it.
+      "@claude-stats/core/engagedTime": path.resolve(__dirname, "packages/core/src/engagedTime.ts"),
       "@claude-stats/core": path.resolve(__dirname, "packages/core/src/index.ts"),
     },
   },

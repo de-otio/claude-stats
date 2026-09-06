@@ -144,6 +144,10 @@
       "types": "./dist/contextCarry.d.ts",
       "default": "./dist/contextCarry.js"
     },
+    "./engagedTime": {
+      "types": "./dist/engagedTime.d.ts",
+      "default": "./dist/engagedTime.js"
+    },
     "./autoCompactFit": {
       "types": "./dist/autoCompactFit.d.ts",
       "default": "./dist/autoCompactFit.js"

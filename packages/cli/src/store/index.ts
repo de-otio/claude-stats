@@ -2437,6 +2437,98 @@ export class Store {
     return rows.map(r => r.ts);
   }
 
+  /**
+   * Assistant-response timestamps joined to their session's project path, for
+   * the engaged-hours metric (`buildProjectHoursReport`).
+   *
+   * **Population invariant [D-1]: `messages` holds ASSISTANT entries only.**
+   * The parser has exactly one `messages.push` and it sits inside the
+   * `type === "assistant"` branch (`packages/core/src/parser/session.ts`), so
+   * user prompts, `system` records, `attachment` entries (~23% of transcript
+   * volume) and the dozen other observed entry types produce no rows here.
+   * The figure this feeds is therefore a function of WHICH ENTRY TYPES BECOME
+   * ROWS. Adding columns to this table is safe; adding rows for new entry
+   * types would silently change every historical engaged-hours figure ever
+   * reported — so that is a deliberate, versioned change (`metricVersion`),
+   * never a drive-by parser improvement. See
+   * `doc/analysis/schema-drift-2026-09/` for the entry types now in the data.
+   *
+   * Deliberately a SIBLING of `getMessageTimestamps` rather than a widening of
+   * it: that method applies neither `source_deleted = 0` nor the interactive
+   * filter, so it counts deleted sessions and CI runs. Copying it would have
+   * inherited exactly the over-capture this metric must avoid [C-5].
+   */
+  getMessageTimestampsByProject(filters: {
+    since: number;
+    until: number;
+    accountUuid?: string;
+    /** Default false — non-interactive (CI) sessions are not human work [C-5]. */
+    includeCI?: boolean;
+    /** Hard row ceiling; the caller surfaces truncation rather than OOMing [SEC-6]. */
+    maxRows?: number;
+  }): Array<{ ts: number; sessionId: string; projectPath: string; isTurnStart: number }> {
+    const conditions: string[] = [
+      // The column is nullable; without this the first gap is measured against
+      // NULL and poisons the whole day [C-6].
+      "m.timestamp IS NOT NULL",
+      "m.timestamp >= ?",
+      "m.timestamp < ?",
+      "s.source_deleted = 0",
+    ];
+    const params: unknown[] = [filters.since, filters.until];
+    if (filters.includeCI !== true) conditions.push("s.is_interactive = 1");
+    if (filters.accountUuid) {
+      conditions.push("s.account_uuid = ?");
+      params.push(filters.accountUuid);
+    }
+    let sql = `
+      SELECT m.timestamp AS ts, m.session_id AS sessionId,
+             COALESCE(s.project_path, '') AS projectPath,
+             m.is_turn_start AS isTurnStart
+      FROM messages m
+      JOIN sessions s ON m.session_id = s.session_id
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY m.timestamp ASC
+    `;
+    if (filters.maxRows !== undefined) {
+      sql += ` LIMIT ${Math.max(0, Math.floor(filters.maxRows))}`;
+    }
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(...params) as Array<{
+      ts: number; sessionId: string; projectPath: string; isTurnStart: number;
+    }>;
+  }
+
+  /**
+   * `EXPLAIN QUERY PLAN` for the engaged-hours read, so a test can assert the
+   * timestamp index is actually seeked rather than the table scanned [M-3].
+   */
+  explainMessageTimestampsByProject(filters: {
+    since: number; until: number; accountUuid?: string; includeCI?: boolean;
+  }): string {
+    const conditions: string[] = [
+      "m.timestamp IS NOT NULL", "m.timestamp >= ?", "m.timestamp < ?", "s.source_deleted = 0",
+    ];
+    const params: unknown[] = [filters.since, filters.until];
+    if (filters.includeCI !== true) conditions.push("s.is_interactive = 1");
+    if (filters.accountUuid) { conditions.push("s.account_uuid = ?"); params.push(filters.accountUuid); }
+    const sql = `
+      EXPLAIN QUERY PLAN
+      SELECT m.timestamp AS ts, m.session_id AS sessionId,
+             COALESCE(s.project_path, '') AS projectPath,
+             m.is_turn_start AS isTurnStart
+      FROM messages m
+      JOIN sessions s ON m.session_id = s.session_id
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY m.timestamp ASC
+    `;
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (stmt.all as (...args: any[]) => unknown[])(...params) as Array<{ detail: string }>;
+    return rows.map(r => r.detail).join(" | ");
+  }
+
   // ─── Tags ──────────────────────────────────────────────────────────────────
 
   addTag(sessionId: string, tag: string): void {
