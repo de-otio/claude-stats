@@ -31,7 +31,7 @@ import {
   pollForTokens,
   saveTokens,
 } from "../sync/auth.js";
-import { t } from "./i18n.js";
+import { onI18nReady, t } from "./i18n.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -64,6 +64,15 @@ export class SyncManager implements vscode.Disposable {
     this.statusBarItem.command = "claude-stats.syncNow";
     this.disposables.push(this.statusBarItem);
     this.disposables.push(this._onDidChangeStatus);
+
+    // `activate()` constructs us synchronously, before the async initI18n()
+    // promise resolves — so this first paint uses the passthrough `t` and
+    // writes the raw key ("extension:sync.status.disconnectedText") into the
+    // status bar. Unlike the token/cost item, nothing re-renders us on a timer
+    // or on collection, so without this relabel the key stays on screen until
+    // the status happens to change. Repaint as soon as translations land.
+    const unsubscribeI18n = onI18nReady(() => this.updateStatusBar());
+    this.disposables.push({ dispose: unsubscribeI18n });
 
     // Initial load
     this.config = this.loadConfig();

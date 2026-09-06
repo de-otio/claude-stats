@@ -9,6 +9,8 @@
  *   2. Exactly the same set of keys in each file (dot-flattened).
  *   3. The same {{placeholder}} identifiers in each value (order-insensitive).
  *   4. The same $(codicon) tokens in each value (order-insensitive).
+ *   5. No GROWTH in the number of values that are byte-identical to `en`,
+ *      per (locale, namespace), against a committed baseline.
  *
  * Exits non-zero and prints a readable report on any drift. Designed to be
  * fast (<1 s), dependency-free, and runnable in CI before the test suite.
@@ -20,6 +22,21 @@
  *     sometimes drop them by accident when restructuring a sentence.
  *   - Missing $(codicons) break status-bar icons silently — the string still
  *     renders, just without the icon.
+ *   - **Identical values render English to the user.** Checks 1–4 compare key
+ *     sets, placeholders and codicons — never the values — so a namespace whose
+ *     values are verbatim English passes clean. That is not hypothetical: it
+ *     hid ~1,200 untranslated strings, including whole features (backup, sync,
+ *     archive, org) stubbed into nine locales and never filled, while every
+ *     locale reported "ok".
+ *
+ * Why the identity check is a RATCHET against a baseline rather than a flat
+ * "no identical values" rule: some identity is legitimate (brand names, "OK",
+ * codicon-only strings), and the pre-existing debt in `cli`/`dashboard`/
+ * `common`/`frontend` is real but not something a build should block on today.
+ * A per-(locale, namespace) baseline fails the moment a namespace gets WORSE —
+ * which is the actual drift the rule exists to catch — without demanding the
+ * backlog be cleared first. Ratchet the baseline down whenever you fill some;
+ * `--update-baseline` rewrites it from the current tree.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -28,6 +45,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOCALES_DIR = path.resolve(__dirname, "..", "packages", "core", "src", "locales");
 const REFERENCE_LOCALE = "en";
+const BASELINE_PATH = path.resolve(__dirname, "locale-identity-baseline.json");
 
 /**
  * Flatten a nested object to a map of dot-joined key → leaf value.
@@ -108,7 +126,55 @@ function arraysEqual(a, b) {
  * Compare one locale against the reference and return a list of human-readable
  * problem strings. Empty list = locale is in parity.
  */
-function compareLocale(refLocale, otherLocale, localesDir) {
+/**
+ * Is this value's identity with `en` legitimate rather than a missed translation?
+ *
+ * Exempt: non-strings (arrays are leaves here), and anything with no
+ * translatable letters once `{{placeholders}}` and `$(codicons)` are stripped —
+ * "—", "100%", "$(sync)", "{{count}}". A single letter is also exempt, which
+ * covers unit suffixes. Everything else is a real word in English and, if the
+ * target locale spells it identically, is a translation that never happened.
+ *
+ * Deliberately NOT a per-key allowlist: an allowlist has to be maintained, and
+ * the failure mode of forgetting to add to it is a false alarm that trains
+ * people to bypass the check. The baseline ratchet absorbs legitimate identity
+ * without anyone curating a list.
+ */
+function isExemptFromIdentity(value) {
+  if (typeof value !== "string") return true;
+  const stripped = value
+    .replace(/\{\{[^}]*\}\}/g, "")
+    .replace(/\$\([^)]*\)/g, "")
+    .trim();
+  const letters = stripped.match(/\p{L}/gu);
+  return letters === null || letters.length < 2;
+}
+
+/** Count values byte-identical to the reference, excluding legitimate identity. */
+function countIdenticalValues(refMap, otherMap) {
+  let n = 0;
+  for (const [key, refValue] of refMap.entries()) {
+    if (!otherMap.has(key)) continue;
+    if (isExemptFromIdentity(refValue)) continue;
+    if (otherMap.get(key) === refValue) n++;
+  }
+  return n;
+}
+
+/** Load the committed identity baseline; `{}` when absent. */
+export function loadIdentityBaseline(baselinePath = BASELINE_PATH) {
+  if (!fs.existsSync(baselinePath)) return {};
+  try {
+    const raw = JSON.parse(fs.readFileSync(baselinePath, "utf-8"));
+    delete raw.$schema;
+    delete raw._comment;
+    return raw;
+  } catch (err) {
+    throw new Error(`identity baseline is not valid JSON (${err.message})`);
+  }
+}
+
+function compareLocale(refLocale, otherLocale, localesDir, baseline = null, counts = null) {
   const problems = [];
 
   const refFiles = fs.readdirSync(path.join(localesDir, refLocale))
@@ -214,6 +280,23 @@ function compareLocale(refLocale, otherLocale, localesDir) {
         );
       }
     }
+
+    // Untranslated-value ratchet. Only runs when a baseline is supplied, so the
+    // synthetic-fixture tests (which have no baseline) are unaffected.
+    const namespace = file.replace(/\.json$/, "");
+    const identical = countIdenticalValues(refMap, otherMap);
+    if (counts !== null) counts[namespace] = identical;
+    if (baseline !== null) {
+      const allowed = baseline?.[otherLocale]?.[namespace] ?? 0;
+      if (identical > allowed) {
+        problems.push(
+          `${file}: ${identical} values are identical to ${refLocale} (baseline allows ${allowed}) — ` +
+            `${identical - allowed} newly untranslated string(s). Fill them ` +
+            `(node scripts/fill-locales.mjs --locale=${otherLocale} --force), ` +
+            `or rebaseline with --update-baseline if the identity is legitimate.`,
+        );
+      }
+    }
   }
 
   return problems;
@@ -223,7 +306,7 @@ function compareLocale(refLocale, otherLocale, localesDir) {
  * Run the check against a given locales directory.
  * Returns a Map<locale, string[]> of problems by locale.
  */
-export function runCheck(localesDir = LOCALES_DIR, referenceLocale = REFERENCE_LOCALE) {
+export function runCheck(localesDir = LOCALES_DIR, referenceLocale = REFERENCE_LOCALE, baseline = null, countsOut = null) {
   if (!fs.existsSync(localesDir)) {
     throw new Error(`Locales directory not found: ${localesDir}`);
   }
@@ -239,7 +322,9 @@ export function runCheck(localesDir = LOCALES_DIR, referenceLocale = REFERENCE_L
   const results = new Map();
   for (const locale of entries) {
     if (locale === referenceLocale) continue;
-    results.set(locale, compareLocale(referenceLocale, locale, localesDir));
+    const counts = countsOut !== null ? {} : null;
+    results.set(locale, compareLocale(referenceLocale, locale, localesDir, baseline, counts));
+    if (countsOut !== null) countsOut[locale] = counts;
   }
   return results;
 }
@@ -250,12 +335,36 @@ export function runCheck(localesDir = LOCALES_DIR, referenceLocale = REFERENCE_L
 // imported from a test or another script.
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
+  const updateBaseline = process.argv.includes("--update-baseline");
   let results;
+  const counts = {};
+  let baseline = null;
   try {
-    results = runCheck();
+    baseline = updateBaseline ? null : loadIdentityBaseline();
+    results = runCheck(LOCALES_DIR, REFERENCE_LOCALE, baseline, counts);
   } catch (err) {
     console.error(`locale parity check: ${err.message}`);
     process.exit(2);
+  }
+
+  if (updateBaseline) {
+    const out = {
+      _comment:
+        "Max values per (locale, namespace) allowed to be byte-identical to en. " +
+        "A RATCHET: the check fails when a namespace gets worse, never when it gets better. " +
+        "Regenerate with `node scripts/check-locale-parity.mjs --update-baseline` after filling locales.",
+      ...Object.fromEntries(
+        Object.keys(counts).sort().map((loc) => [
+          loc,
+          Object.fromEntries(Object.keys(counts[loc]).sort().map((ns) => [ns, counts[loc][ns]])),
+        ]),
+      ),
+    };
+    fs.writeFileSync(BASELINE_PATH, JSON.stringify(out, null, 2) + "\n");
+    const total = Object.values(counts).reduce(
+      (t, ns) => t + Object.values(ns).reduce((a, b) => a + b, 0), 0);
+    console.log(`Wrote ${path.relative(process.cwd(), BASELINE_PATH)} — ${total} identical value(s) baselined.`);
+    process.exit(0);
   }
 
   let totalProblems = 0;
@@ -273,6 +382,16 @@ if (isMain) {
   }
 
   if (totalProblems === 0) {
+    let slack = 0;
+    for (const loc of sortedLocales) {
+      for (const [ns, n] of Object.entries(counts[loc] ?? {})) {
+        slack += Math.max(0, (baseline?.[loc]?.[ns] ?? 0) - n);
+      }
+    }
+    if (slack > 0) {
+      console.log(`\n  note: ${slack} baselined identical value(s) are now translated — ` +
+        `run with --update-baseline to tighten the ratchet.`);
+    }
     console.log(`\nAll ${sortedLocales.length} non-reference locale(s) are in parity with "${REFERENCE_LOCALE}".`);
     process.exit(0);
   } else {

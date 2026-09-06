@@ -45,6 +45,14 @@ Open an issue with:
 - The command you ran
 - The error output or unexpected behavior
 
+## Translations
+
+Any change that adds or edits a user-facing string must update **all ten
+locales** in the same change, and `npm run locales:check` must pass — it fails
+on missing keys, dropped `{{placeholders}}` or `$(codicons)`, and on any growth
+in values left verbatim English. See [doc/dev/i18n.md](doc/dev/i18n.md) for the
+tooling (`scripts/fill-locales.mjs`) and the reasoning.
+
 ## Code style
 
 - TypeScript throughout

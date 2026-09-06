@@ -23,6 +23,7 @@
  *   node scripts/fill-locales.mjs --dry-run      # Report work without calling the CLI
  *   node scripts/fill-locales.mjs --verbose      # Log CLI invocations/responses
  *   node scripts/fill-locales.mjs --force        # Also retranslate keys that equal en (stubs)
+ *   node scripts/fill-locales.mjs --namespace=extension  # Only this namespace file
  *   node scripts/fill-locales.mjs --model=opus   # Model alias (default: opus)
  *   node scripts/fill-locales.mjs --max-budget-usd=1.00  # Per-batch spend cap (default: 1.00)
  *
@@ -89,6 +90,7 @@ const LOCALE_NAMES = {
 function parseArgs(argv) {
   const out = {
     locales: null,
+    namespaces: null,
     dryRun: false,
     verbose: false,
     force: false,
@@ -101,14 +103,16 @@ function parseArgs(argv) {
     else if (arg === "--force") out.force = true;
     else if (arg.startsWith("--locale=")) {
       out.locales = arg.slice("--locale=".length).split(",").map((s) => s.trim()).filter(Boolean);
+    } else if (arg.startsWith("--namespace=")) {
+      out.namespaces = arg.slice("--namespace=".length).split(",").map((s) => s.trim()).filter(Boolean);
     } else if (arg.startsWith("--model=")) {
       out.model = arg.slice("--model=".length);
     } else if (arg.startsWith("--max-budget-usd=")) {
       out.maxBudgetUsd = arg.slice("--max-budget-usd=".length);
     } else if (arg === "--help" || arg === "-h") {
       console.log(
-        "Usage: fill-locales.mjs [--locale=xx[,yy]] [--dry-run] [--verbose] [--force]\n" +
-          "                         [--model=opus] [--max-budget-usd=1.00]\n" +
+        "Usage: fill-locales.mjs [--locale=xx[,yy]] [--namespace=ns[,ns]] [--dry-run]\n" +
+          "                         [--verbose] [--force] [--model=opus] [--max-budget-usd=1.00]\n" +
           "\nFills missing translation keys in every non-en locale using `claude -p`" +
           " (the Claude Code CLI in headless mode).\n" +
           "Requires the `claude` binary on PATH and an already-authenticated session" +
@@ -430,7 +434,16 @@ async function translateBatch(localeName, localeCode, missingEntries, opts) {
 
 async function fillLocale(locale, opts) {
   const localeName = LOCALE_NAMES[locale] ?? locale;
-  const namespaces = listNamespaces(LOCALES_DIR);
+  const all = listNamespaces(LOCALES_DIR);
+  const namespaces = opts.namespaces === null
+    ? all
+    : all.filter((ns) => opts.namespaces.includes(ns));
+  if (opts.namespaces !== null) {
+    const unknown = opts.namespaces.filter((ns) => !all.includes(ns));
+    if (unknown.length > 0) {
+      throw new Error(`unknown namespace(s): ${unknown.join(", ")} (have: ${all.join(", ")})`);
+    }
+  }
   const summary = { locale, totalMissing: 0, filled: 0, namespaces: {} };
 
   // Ensure target dir exists.

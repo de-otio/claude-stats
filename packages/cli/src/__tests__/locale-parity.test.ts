@@ -105,4 +105,89 @@ describe("locale parity check", () => {
       expect(problems, `Locale "${locale}" has parity problems:\n${problems.join("\n")}`).toEqual([]);
     }
   });
+
+  // ── Untranslated-value ratchet ────────────────────────────────────────────
+  //
+  // Checks 1-4 above compare key sets, placeholders and codicons but never the
+  // VALUES, so a namespace whose values are verbatim English passed clean. That
+  // is how ~1,200 untranslated strings shipped across nine locales — including
+  // whole features — while every locale reported "ok". These tests cover the
+  // gate that closes it.
+  describe("untranslated-value ratchet", () => {
+    it("does not run at all when no baseline is supplied", () => {
+      // Back-compat: the fixture tests above pass no baseline and must not
+      // start failing because their synthetic values look English.
+      write("en", "common.json", { a: "hello world" });
+      write("xx", "common.json", { a: "hello world" });
+      expect(runCheck(dir, "en")).toBeDefined();
+      expect(runCheck(dir, "en").get("xx")).toEqual([]);
+    });
+
+    it("fails when a namespace has MORE identical values than the baseline", () => {
+      write("en", "common.json", { a: "hello world", b: "good evening" });
+      write("xx", "common.json", { a: "hello world", b: "good evening" });
+
+      const problems = runCheck(dir, "en", { xx: { common: 1 } }).get("xx") as string[];
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toContain("2 values are identical");
+      expect(problems[0]).toContain("baseline allows 1");
+      expect(problems[0]).toContain("1 newly untranslated string(s)");
+    });
+
+    it("passes when identical values are at or below the baseline", () => {
+      write("en", "common.json", { a: "hello world", b: "good evening" });
+      write("xx", "common.json", { a: "hello world", b: "bonsoir tout" });
+
+      expect(runCheck(dir, "en", { xx: { common: 1 } }).get("xx")).toEqual([]);
+    });
+
+    it("treats a missing baseline entry as zero tolerance", () => {
+      write("en", "common.json", { a: "hello world" });
+      write("xx", "common.json", { a: "hello world" });
+
+      const problems = runCheck(dir, "en", {}).get("xx") as string[];
+      expect(problems[0]).toContain("baseline allows 0");
+    });
+
+    it("exempts values with no translatable letters", () => {
+      // Codicon-only, placeholder-only, punctuation and numbers are identical
+      // in every locale for good reason; counting them would train people to
+      // bypass the check.
+      write("en", "common.json", {
+        icon: "$(sync~spin)",
+        ph: "{{count}}",
+        dash: "—",
+        pct: "100%",
+        num: "42",
+      });
+      write("xx", "common.json", {
+        icon: "$(sync~spin)",
+        ph: "{{count}}",
+        dash: "—",
+        pct: "100%",
+        num: "42",
+      });
+
+      expect(runCheck(dir, "en", {}).get("xx")).toEqual([]);
+    });
+
+    it("counts a real word even when it also carries a placeholder or codicon", () => {
+      write("en", "common.json", { a: "$(cloud) Sync failed: {{error}}" });
+      write("xx", "common.json", { a: "$(cloud) Sync failed: {{error}}" });
+
+      const problems = runCheck(dir, "en", {}).get("xx") as string[];
+      expect(problems[0]).toContain("1 values are identical");
+    });
+
+    it("reports per namespace, so one bad file does not mask another", () => {
+      write("en", "common.json", { a: "hello world" });
+      write("xx", "common.json", { a: "hello world" });
+      write("en", "extension.json", { b: "good evening" });
+      write("xx", "extension.json", { b: "bonsoir tout" });
+
+      const problems = runCheck(dir, "en", {}).get("xx") as string[];
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toContain("common.json");
+    });
+  });
 });
