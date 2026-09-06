@@ -2,6 +2,37 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.22.4 — 2026-09-06
+
+### Security
+
+- **Six dependency advisories in the shipped trees are resolved.** GitHub
+  reported seven open advisories against this repository; six of them sat in
+  code that actually ships, and all six are now on fixed versions.
+
+  In the VSIX: `sharp` 0.34.5 → 0.35.4, clearing four inherited libvips decoder
+  CVEs, and `adm-zip` 0.5.18 → 0.6.0, clearing a crafted-ZIP allocation flaw.
+  Neither could be fixed by a version bump, because `@huggingface/transformers`
+  is at its latest release and still pins the vulnerable ranges — and its
+  `onnxruntime-node` pin is *exact*, so raising ours would have nested a second
+  copy and shipped two sets of native binaries. Both are therefore taken as
+  `overrides`, which leaves the dependency graph's shape intact; the build's
+  single-`onnxruntime-node` assertion still passes and both packages were
+  checked to load in the installed tree.
+
+  In the CLI: `fast-uri` 3.1.5 → 3.1.7, clearing four parsing and ReDoS
+  advisories, and `qs` 6.15.3 → 6.16.0 for a prototype-pollution advisory.
+  `fast-uri` is the one of the six that is genuinely on an executed path —
+  `ajv` uses it while validating MCP tool schemas — so it is a real fix rather
+  than a report cleared.
+
+  The seventh advisory is dev-only, is not shipped in any artifact, and has no
+  upstream fix; `doc/user-doc/known-advisories.md` records why, alongside the
+  reasoning for each fix above and a correction to the previous review, which
+  had recorded the wrong shipped `onnxruntime-node` version.
+
+  No user-visible behaviour changes in this release.
+
 ## 0.22.3 — 2026-09-06
 
 ### Fixed
