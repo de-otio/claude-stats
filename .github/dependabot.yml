@@ -58,10 +58,13 @@ updates:
   # does not see it. Without this entry nothing watches @huggingface/transformers
   # or onnxruntime-node — the two packages that actually reach users' machines.
   #
-  # Note: scripts/prepare-vsix.mjs installs these with --no-package-lock, so
-  # Dependabot can only offer updates for the declared ranges; it cannot see the
-  # transitive tree, and no security alert will ever fire for one. Adding a
-  # lockfile here would close that gap and make the VSIX build reproducible.
+  # extension/package-lock.json now exists and scripts/prepare-vsix.mjs installs
+  # from it with `npm ci`, so Dependabot does see the transitive tree and
+  # security alerts DO fire for it — four did, against sharp and adm-zip. (This
+  # note previously said the opposite, from when the VSIX was built with
+  # --no-package-lock.) Transitive fixes here usually need an `overrides` entry
+  # in extension/package.json, because both direct parents pin exact or
+  # caret-capped ranges; see doc/user-doc/known-advisories.md.
   - package-ecosystem: npm
     directory: "/extension"
     schedule:

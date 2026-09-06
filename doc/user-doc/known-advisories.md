@@ -8,70 +8,109 @@ This file exists so that "we know, and here is the reasoning" is checkable
 rather than assumed. An advisory that is genuinely unreachable is still shipped
 code, and a reader deserves to see the argument rather than a reassurance.
 
-**Last reviewed:** 2026-09-06, for extension release 0.22.3.
+**Last reviewed:** 2026-09-06, for extension release 0.22.4.
 
-GitHub currently reports **2 high** on the default branch, which are the two
-shipped-but-unreachable entries below; both upstream pins were re-checked on
-this review. The `sharp` pin has not moved. The `adm-zip` one has: as of
-`onnxruntime-node@1.29.0` an upstream fix exists, and taking it is a native
-dependency bump tracked separately from this release (see that entry). `npm audit` surfaces a third that GitHub
-does not, in the dev-only tree — recorded below so the difference between the
-two counts is explained rather than puzzling.
+At that review GitHub reported **7 open** (6 high, 1 moderate): four in the
+shipped tree of the VSIX, two in the shipped tree of the CLI, and one dev-only.
+**The six shipped ones are fixed in 0.22.4** and are recorded below under
+"Resolved" rather than deleted, because the reasoning for *how* they were fixed
+is the part worth keeping. The dev-only one remains open with no action
+available.
 
 ---
 
-## Open — shipped, not reachable
-
-Both of the following ship inside the VSIX (`prepare-vsix.mjs` runs
-`npm ci --omit=dev --omit=peer`, and neither package is excluded by
-`.vscodeignore`). Neither sits on a code path this product executes.
-
-**Neither has an upstream fix available.** In both cases the direct parent is
-already at its latest published version and still pins the vulnerable range, so
-no dependency bump resolves them. Forcing them with an npm `overrides` block
-would mean a semver-minor bump — potentially breaking, under 0.x conventions —
-on the two packages that handle native binaries and image codecs, which is
-exactly the shipped tree that `verify-vsix.mjs` and the single-onnxruntime
-assertion exist to protect. That trade is not worth making for a path that is
-never taken.
+## Resolved in 0.22.4
 
 ### `sharp` — inherited libvips CVEs (high)
 
 | | |
 |---|---|
-| Advisory | CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, CVE-2026-35591 |
-| Affected | `sharp < 0.35.0` (we ship 0.34.5) |
+| Advisory | [GHSA-f88m-g3jw-g9cj](https://github.com/advisories/GHSA-f88m-g3jw-g9cj) — CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, CVE-2026-35591 |
+| Was | `sharp@0.34.5`, affected range `< 0.35.0` |
+| Now | `sharp@0.35.4`, via an `overrides` entry in `extension/package.json` |
 | Reached via | `@huggingface/transformers` → `sharp@^0.34.5` |
-| Upstream | `@huggingface/transformers@4.2.0` is the latest release and still pins `^0.34.5`, which cannot resolve to 0.35.0 |
 
-**Why it is not reachable here.** `sharp` is `transformers`' *image*
-preprocessing dependency. This product runs one model — `all-MiniLM-L6-v2-int8`,
-a text sentence-embedding model — and invokes it as `pipeline(text, …)`
-(`packages/cli/src/recap/embeddings.ts`). There is no image input, no image
-pipeline, and no call path that reaches an image decoder. The library is
-present in the bundle and never invoked.
+`@huggingface/transformers@4.2.0` is still the latest release and still pins
+`^0.34.5`, which cannot resolve to 0.35.x. There is no parent bump that fixes
+this, so the fix is an override.
 
-The CVEs are decoder bugs in libvips, triggered by processing a malicious
-image. Reaching them requires this product to decode an image, which it does
-not do.
+**Why the override is safe here.** The CVEs are decoder bugs in libvips;
+`sharp@0.35.4` bundles libvips 8.18.6, past all four. The 0.34 → 0.35 step is a
+minor under 0.x conventions and so potentially breaking, which is why an earlier
+review declined it — but `transformers` only reaches `sharp` on its *image*
+preprocessing path, and this product runs one model
+(`all-MiniLM-L6-v2-int8`, text sentence embeddings) invoked as
+`pipeline(text, …)` in `packages/cli/src/recap/embeddings.ts`. There is no image
+input and no call path to an image decoder. The remaining risk was therefore
+load-time API breakage, not behavioural drift, and that was checked directly:
+`@huggingface/transformers` and `sharp@0.35.4` both import and initialise
+cleanly in the installed shipped tree.
+
+The net effect is that a decoder we do not call is now a *fixed* decoder we do
+not call — which also means the "this product gains an image path" trigger below
+no longer arrives with a live advisory attached.
 
 ### `adm-zip` — crafted ZIP triggers a 4 GB allocation (high)
 
 | | |
 |---|---|
-| Affected | `adm-zip < 0.6.0` (we ship 0.5.18) |
-| Reached via | `onnxruntime-node` → `adm-zip@^0.5.16` |
-| Upstream | **Fix available since this review.** We ship `onnxruntime-node@1.27.0`, which pins `^0.5.16`; `1.29.0` (latest on 2026-09-06) pins `^0.6.0`. The bump is a native-binary change and is taken as its own dependency PR, not folded into a release commit |
+| Advisory | [GHSA-xcpc-8h2w-3j85](https://github.com/advisories/GHSA-xcpc-8h2w-3j85) |
+| Was | `adm-zip@0.5.18`, affected range `< 0.6.0` |
+| Now | `adm-zip@0.6.0`, via an `overrides` entry in `extension/package.json` |
+| Reached via | `onnxruntime-node@1.24.3` → `adm-zip@^0.5.16` |
 
-**Why it is not reachable here.** `onnxruntime-node` uses `adm-zip` to unpack
-**its own bundled native binaries** — archives that ship inside the package we
-install and pin. The vulnerability requires a *crafted* ZIP, i.e. an archive an
-attacker controls. Nothing in this product passes a user-supplied, downloaded,
-or otherwise untrusted archive to `adm-zip`.
+**Why not simply bump the parent.** `onnxruntime-node@1.29.0` does pin
+`^0.6.0` — but its version is not ours to choose. `@huggingface/transformers@4.2.0`
+pins `onnxruntime-node` to the **exact** version `1.24.3`, so raising our own
+declaration nests a second copy and the VSIX ships two sets of native binaries.
+`scripts/prepare-vsix.mjs` asserts there is exactly one, and
+`.github/dependabot.yml` ignores the package for this reason.
 
-Note that an attacker who could substitute the archive would already have
-write access to the installed extension tree, at which point the ZIP parser is
-not the weakest link.
+> **Correction to the previous review.** It recorded that we ship
+> `onnxruntime-node@1.27.0` and proposed taking `1.29.0` as a standalone
+> dependency PR. The shipped pin is and was `1.24.3`, and that bump would have
+> tripped the single-onnxruntime assertion rather than resolving anything.
+
+**Why the override is safe here.** `onnxruntime-node@1.29.0` pinning `^0.6.0`
+is upstream validating 0.6.x against exactly this usage — unpacking the
+package's own bundled native binaries — so the override is a supported
+combination rather than a guess. Verified after the change: exactly one
+`onnxruntime-node` in the installed tree, and it loads.
+
+The reachability argument has not changed and still holds independently: the
+vulnerability needs a *crafted* archive, and nothing in this product passes a
+user-supplied, downloaded or otherwise untrusted archive to `adm-zip`. An
+attacker who could substitute the bundled archive would already have write
+access to the installed extension tree.
+
+### `fast-uri` — ReDoS and parsing flaws (high ×4)
+
+| | |
+|---|---|
+| Advisories | [GHSA-jqff-g426-hqxp](https://github.com/advisories/GHSA-jqff-g426-hqxp), [GHSA-f65p-4m7j-42xc](https://github.com/advisories/GHSA-f65p-4m7j-42xc), [GHSA-fph4-wmhf-6fwf](https://github.com/advisories/GHSA-fph4-wmhf-6fwf), [GHSA-5jgf-p345-68v8](https://github.com/advisories/GHSA-5jgf-p345-68v8) |
+| Was | `fast-uri@3.1.5`, affected ranges up to `< 3.1.6` |
+| Now | `fast-uri@3.1.7` |
+| Reached via | `packages/cli` → `@modelcontextprotocol/sdk` → `ajv` → `fast-uri@^3.0.1` |
+
+No override needed: `ajv@8.20.0` already allows `^3.0.1`, so the lockfile was
+simply pinning a version older than the fix. A lockfile refresh resolved it.
+An `overrides` floor of `^3.1.6` was added anyway so a future re-resolution
+cannot silently drop back below the fix.
+
+This one *is* on an executed path — `ajv` validates MCP tool schemas — so unlike
+the two above it was fixed on its merits, not merely to clear a report.
+
+### `qs` — prototype pollution (moderate)
+
+| | |
+|---|---|
+| Advisory | [GHSA-x5fp-wj9c-mxmx](https://github.com/advisories/GHSA-x5fp-wj9c-mxmx) |
+| Was | `qs@6.15.3`, affected range `>= 6.14.2, <= 6.15.3` |
+| Now | `qs@6.16.0` |
+| Reached via | `packages/cli` → `@modelcontextprotocol/sdk` → `express` → `qs` |
+
+The root `overrides` block already carried `qs`, at a floor (`^6.15.2`) that had
+been overtaken by the advisory. The floor was raised to `^6.16.0`.
 
 ---
 
@@ -94,7 +133,7 @@ a dependency of the CLI or core packages either. The exposure is to whoever
 runs `cdk synth` locally or in CI, on glob patterns written in this repo's own
 infrastructure code — not to a user of the extension.
 
-**Two traps worth recording**, because both cost time on this review:
+**Two traps worth recording**, because both cost time on an earlier review:
 
 1. **The `overrides` block cannot fix it.** `package.json` already declares
    `"brace-expansion": "^5.0.9"`, and it has no effect here: the copy in
@@ -114,24 +153,49 @@ clears itself whenever AWS refreshes the bundle.
 
 ---
 
+## On using `overrides` for the shipped tree
+
+Two of the fixes above are overrides against a parent's declared range, which is
+a thing to do deliberately rather than reflexively. The standard this file
+applies:
+
+- **An override needs positive evidence of compatibility, not just a green
+  advisory.** For `adm-zip` that evidence is a later release of the same parent
+  pinning the same new range. For `sharp` it is that the only risk left after
+  the reachability argument is load-time breakage, which can be — and was —
+  checked directly.
+- **An override must not disturb an invariant the build asserts.** Here that is
+  `prepare-vsix.mjs`'s single-`onnxruntime-node` check. Overrides do not renest
+  the overridden package's parents, which is what makes them the right tool for
+  `adm-zip` where a parent bump is not.
+- **Prefer the lockfile when the declared range already allows the fix.** That
+  was the case for `fast-uri`; reaching for an override first would have hidden
+  that the range was never the problem.
+
+---
+
 ## What would change this assessment
 
 Any of the following should prompt a re-review of this file:
 
-- **This product gains an image path.** If a future feature feeds images to
-  `transformers` — screenshots, diagrams, anything decoded — the `sharp`
-  reasoning above collapses immediately and the advisory becomes live.
+- **`@huggingface/transformers` publishes a release that moves its pins.** Then
+  both overrides above should be re-examined and dropped if they have become
+  redundant — an override that is no longer doing anything is a trap for the
+  next reader. Its `onnxruntime-node` pin is the one to watch, since ours must
+  follow it exactly.
+- **A new advisory lands on a package that IS on an executed path.** The
+  reachability arguments above are specific to `sharp` and `adm-zip`; they do
+  not generalise. `fast-uri` is the counter-example already in the tree.
 - **Anything starts unpacking an archive it did not produce.** A downloaded
   model bundle, an imported backup, a synced shard delivered as a ZIP.
-- **Upstream publishes a fixed parent.** Then take it; the reasoning here is a
-  justification for waiting, not a preference for staying behind.
-- **A new advisory lands on a package that IS on an executed path.** The
-  argument above is specific to these two; it does not generalise.
+- **This product gains an image path.** Less urgent than it was — the shipped
+  decoder is now fixed — but the `sharp` reasoning above would still need
+  rewriting rather than reusing.
 - **`packages/infra` stops being dev-only.** If CDK code is ever imported by
   the CLI, core, or the extension, the `brace-expansion` reasoning becomes a
   shipped-code question rather than a local-tooling one.
 - **AWS refreshes the `aws-cdk-lib` bundle.** Then a plain version bump clears
-  the third entry with no override needed.
+  the remaining entry with no override needed.
 
 ---
 
@@ -142,15 +206,30 @@ Reproduce with:
 ```bash
 gh api repos/<owner>/<repo>/dependabot/alerts \
   --jq '.[] | select(.state=="open") | {sev: .security_advisory.severity,
-        pkg: .dependency.package.name, scope: .dependency.scope}'
+        pkg: .dependency.package.name, path: .dependency.manifest_path}'
 
-cd extension && npm ls sharp adm-zip      # confirm the dependency paths
-npm view @huggingface/transformers@latest dependencies.sharp
+npm ls fast-uri qs                        # root: the CLI's shipped tree
+npm ls sharp adm-zip --prefix extension   # the VSIX's shipped tree
+```
+
+The load-bearing checks are the ones that establish what upstream actually
+pins — they are what distinguishes "no fix exists" from "we have not looked",
+and they are what caught the `onnxruntime-node` version error corrected above:
+
+```bash
+npm view @huggingface/transformers@latest dependencies
 npm view onnxruntime-node@latest dependencies.adm-zip
 ```
 
-The last two are the load-bearing checks: they are what establishes that no
-upstream fix exists yet, rather than that we have not looked.
+After changing an override in the shipped tree, verify the invariant and the
+load path rather than trusting the resolution:
+
+```bash
+npm ci --omit=dev --omit=peer --prefix extension
+find extension/node_modules -type d -name onnxruntime-node   # must print one
+node --input-type=module -e 'await import("@huggingface/transformers"); \
+  await import("onnxruntime-node")'
+```
 
 > The `gh` call needs a token with the `security_events` scope; a default
 > `gh auth login` token returns `403` on that endpoint. Without it, audit the
