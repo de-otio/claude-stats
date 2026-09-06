@@ -2,6 +2,27 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.22.3 — 2026-09-06
+
+### Fixed
+
+- **Status-bar items no longer show a raw translation key on activation.** The
+  team-sync chip could read `extension:sync.status.disconnectedText` instead of
+  `Sync Off`. Both status-bar items are built in the same tick that starts the
+  async translation load, so their first paint used a passthrough that returns
+  the key; the token/cost item recovered on its first collection, but nothing
+  repainted the sync chip until its status happened to change. Both now relabel
+  the moment translations land, and the cost item keeps real numbers if they
+  arrived first.
+- **The extension namespace is actually translated in every locale.** About
+  130 strings per locale — the backup, sync, archive, organisation, device-sync
+  and notification surfaces — had been stubbed into `de`, `es`, `fr`, `ja`,
+  `pl`, `pt-BR`, `ru`, `uk` and `zh-CN` as verbatim English and never filled.
+  The locale parity check compared keys, placeholders and codicons but never
+  values, so every locale reported clean. It now also fails when a locale gains
+  values identical to English, against a committed baseline, so this class of
+  gap cannot reopen silently.
+
 ## 0.22.2 — 2026-08-17
 
 ### Changed

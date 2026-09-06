@@ -8,11 +8,13 @@ This file exists so that "we know, and here is the reasoning" is checkable
 rather than assumed. An advisory that is genuinely unreachable is still shipped
 code, and a reader deserves to see the argument rather than a reassurance.
 
-**Last reviewed:** 2026-08-17, for extension release 0.22.2.
+**Last reviewed:** 2026-09-06, for extension release 0.22.3.
 
 GitHub currently reports **2 high** on the default branch, which are the two
 shipped-but-unreachable entries below; both upstream pins were re-checked on
-this review and neither has moved. `npm audit` surfaces a third that GitHub
+this review. The `sharp` pin has not moved. The `adm-zip` one has: as of
+`onnxruntime-node@1.29.0` an upstream fix exists, and taking it is a native
+dependency bump tracked separately from this release (see that entry). `npm audit` surfaces a third that GitHub
 does not, in the dev-only tree — recorded below so the difference between the
 two counts is explained rather than puzzling.
 
@@ -59,7 +61,7 @@ not do.
 |---|---|
 | Affected | `adm-zip < 0.6.0` (we ship 0.5.18) |
 | Reached via | `onnxruntime-node` → `adm-zip@^0.5.16` |
-| Upstream | `onnxruntime-node@1.27.0` is the latest release and still pins `^0.5.16`, which cannot resolve to 0.6.0 |
+| Upstream | **Fix available since this review.** We ship `onnxruntime-node@1.27.0`, which pins `^0.5.16`; `1.29.0` (latest on 2026-09-06) pins `^0.6.0`. The bump is a native-binary change and is taken as its own dependency PR, not folded into a release commit |
 
 **Why it is not reachable here.** `onnxruntime-node` uses `adm-zip` to unpack
 **its own bundled native binaries** — archives that ship inside the package we
