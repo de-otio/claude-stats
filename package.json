@@ -36,14 +36,14 @@
     "vite": "^8.2.1"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.115.0",
-    "@types/node": "^26.2.0",
-    "@types/vscode": "^1.125.0",
-    "@vitest/coverage-v8": "^4.1.9",
+    "@anthropic-ai/sdk": "^0.123.0",
+    "@types/node": "^26.4.1",
+    "@types/vscode": "^1.136.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "chart.js": "^4.5.1",
-    "esbuild": "^0.28.1",
+    "esbuild": "^0.28.2",
     "fast-check": "^4.0.0",
-    "tsx": "^4.23.0",
+    "tsx": "^4.23.13",
     "typescript": "^5.5.0",
     "vite": "^8.2.1",
     "vitest": "^4.0.18"
