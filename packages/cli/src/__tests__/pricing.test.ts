@@ -328,6 +328,12 @@ describe("printSummary cost line", () => {
     );
     const costCall = calls.find(s => s.includes("Cost"));
     expect(costCall).toBeDefined();
-    expect(costCall).toContain("unknown models excluded");
+    // The caveat NAMES the unpriced id (V23 unpriced-model surface): since the
+    // rate table refuses point-release ids rather than inheriting a
+    // predecessor's row, an unpriced id is a fixable gap and the reader needs
+    // to know which one it is, not just how many tokens went unpriced.
+    expect(costCall).toContain("1 model ids unpriced");
+    expect(costCall).toContain("mystery-model-9");
+    expect(costCall).toContain("excluded from the total");
   });
 });

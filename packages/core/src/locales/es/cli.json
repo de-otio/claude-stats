@@ -322,7 +322,10 @@
     "quarantined": "En cuarentena",
     "unparseableLines": "líneas no analizables",
     "lastCollected": "Última recopilación",
-    "never": "nunca"
+    "never": "nunca",
+    "costBasis": "Base de coste",
+    "costBasisDetail": "{{perResponse}} filas por respuesta, {{preDedupe}} filas pre-dedupe",
+    "costBasisClean": "todas las filas contadas son por respuesta"
   },
   "config": {
     "noConfig": "(sin configuración establecida)",
@@ -354,7 +357,9 @@
   },
   "diagnose": {
     "quarantinedLines": "Líneas en cuarentena : {{count}}",
-    "useStatus": "Usa 'status' para métricas de la base de datos."
+    "useStatus": "Usa 'status' para métricas de la base de datos.",
+    "pricingHeader": "Desfase de precios:",
+    "costBasisHeader": "Base de coste:"
   },
   "serve": {
     "listening": "Escuchando en {{url}}",
@@ -387,6 +392,19 @@
       "backupWritten": "Copia de seguridad escrita en {{path}}",
       "summary": "{{sessions}} sesiones reanalizadas, {{removed}} enlaces automáticos eliminados, {{created}} vueltos a derivar, {{manual}} enlaces manuales conservados.",
       "keys": "Claves de ticket distintas: {{before}} → {{after}}"
+    },
+    "dedupe": {
+      "description": "Vuelve a analizar cada sesión cuya transcripción aún existe para que el uso se cuente una vez por respuesta de la API (cost_basis = per-response) en lugar de una vez por bloque de contenido (pre-dedupe). Las sesiones sin transcripción permanecen pre-dedupe y se notifican.",
+      "dryRunOption": "Informa qué sesiones se volverían a analizar sin escribir nada ni crear una copia de seguridad.",
+      "dryRunHeader": "Reparación de dedupe de uso (simulación) — no se han escrito cambios:",
+      "doneHeader": "Reparación de dedupe de uso completada:",
+      "backupWritten": "Copia de seguridad escrita en {{path}}",
+      "sessions": "{{repaired}} sesiones reparadas, {{skipped}} omitidas (sin transcripción en disco), {{clean}} ya por respuesta.",
+      "rows": "{{inScope}} filas pre-dedupe en el ámbito, {{relabelled}} reetiquetadas como por respuesta, {{remaining}} filas pre-dedupe permanecen en la base de datos.",
+      "tokens": "Sesiones reparadas: entrada {{beforeInput}} → {{afterInput}}, salida {{beforeOutput}} → {{afterOutput}}.",
+      "remainingNote": "Las filas que permanecen pre-dedupe no tienen transcripción que volver a analizar; cada vista de costes indica cuándo un rango las incluye.",
+      "parseErrors": "⚠  {{count}} errores de análisis puestos en cuarentena durante el reanálisis.",
+      "lockHeld": "Ya se está ejecutando otra reparación de dedupe de uso (pid {{pid}}, iniciada {{started}}). Espere a que termine o elimine la fila de metadatos repair_dedupe_lock si ese proceso ya no existe."
     }
   },
   "archive": {
@@ -571,5 +589,19 @@
       "verdictRecommend": "Recomendación: establece autoCompactWindow en {{recommendedTokens}} tokens como valor predeterminado (una marca de inicio o la configuración administrada aún pueden anularlo). Rango considerado: desde {{conservativeTokens}} tokens (conservador, recomendado) hasta {{aggressiveTokens}} tokens (agresivo, más ahorro pero más reinicios).",
       "divergenceNote": "Este bloque se calculó con un umbral de detección de reinicios más bajo ({{resetFloorUsed}} tokens) que el recuento de reinicios mostrado arriba (detectado con el valor predeterminado de {{resetFloorDefault}} tokens), por lo que sus recuentos de reinicios/ciclos no coincidirán con las cifras principales de esta pantalla."
     }
+  },
+  "costBasis": {
+    "label": "Base",
+    "allPreDedupe": "Las {{rows}} filas contadas en este rango son anteriores a la corrección por respuesta (cost_basis = pre-dedupe) y están infladas aproximadamente 2x. Ejecute `claude-stats repair dedupe` para corregir las sesiones cuya transcripción aún existe.",
+    "mixed": "{{rows}} de {{total}} filas contadas ({{percent}} %) en este rango son anteriores a la corrección por respuesta (cost_basis = pre-dedupe) y están infladas aproximadamente 2x. Ejecute `claude-stats repair dedupe` para corregir las sesiones cuya transcripción aún existe.",
+    "sessionPreDedupe": "Esta sesión se contó una vez por bloque de contenido (cost_basis = pre-dedupe); su uso está inflado aproximadamente 2x. Ejecute `claude-stats repair dedupe` si su transcripción aún existe.",
+    "sessionMixed": "{{rows}} de {{total}} mensajes contados en esta sesión son pre-dedupe (contados una vez por bloque de contenido, aproximadamente 2x). Ejecute `claude-stats repair dedupe` si su transcripción aún existe."
+  },
+  "pricingDrift": {
+    "unpricedCaveat": "({{count}} ids de modelo sin precio — {{tokens}} tokens excluidos del total: {{models}})",
+    "unpricedModel": "  {{model}}: {{tokens}} tokens sin tarifa asignada y con coste $0 en todos los totales",
+    "finding": "  {{model}} rechazó la tarifa de {{matchedKey}} ({{reason}}, tabla {{table}}) — añada una fila de precios o una anulación en la configuración",
+    "none": "Todos los ids de modelo con precio se resolvieron a una tarifa.",
+    "statusLabel": "Modelos sin precio"
   }
 }

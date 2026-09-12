@@ -2,9 +2,15 @@
  * Dashboard — builds pre-aggregated JSON for visualization tools.
  * See plans/11-dashboard-export.md for design.
  */
-import type { Store, SessionRow, MessageFilter } from "../store/index.js";
+import type { Store, SessionRow, MessageFilter, SpendingMessageRow } from "../store/index.js";
 import type { ReportOptions } from "../reporter/index.js";
 import { periodRange } from "../reporter/index.js";
+import {
+  collectPricingDrift,
+  costBasisFor,
+  type CostBasisSummary,
+  type UnpricedModel,
+} from "../reporter/cost-basis.js";
 import { estimateCost, lookupPlanFee, PLAN_FEES } from "@claude-stats/core/pricing";
 import type { UsageWindow } from "@claude-stats/core/types";
 import { classifyUsageIntensity } from "@claude-stats/core/planMechanics";
@@ -100,6 +106,23 @@ export interface DashboardSummary {
    * silently omits this reads as "actual metered cost" when it may not be.
    */
   anyFallbackRates: boolean;
+  /**
+   * How the counted rows in this period were counted (schema V23). A period
+   * that includes `pre-dedupe` rows — written before one-response-per-
+   * `message.id` accounting, ~2x inflated — must say so beside its cost.
+   * `basis` and the two counts are machine values; the label is the host's
+   * (template / MCP description). Optional so `DashboardData` fixtures that
+   * predate it keep compiling; `buildDashboard` always populates it.
+   */
+  costBasis?: CostBasisSummary;
+  /**
+   * Model ids `estimateCost` refused a rate for in this period, most tokens
+   * first. Their cost is $0 in `estimatedCost` and every breakdown — the
+   * pricing module refuses a point-release id rather than inheriting its
+   * predecessor's row — so a non-empty list qualifies every money figure on
+   * the page. Optional for the same fixture reason as `costBasis`.
+   */
+  unpricedModels?: UnpricedModel[];
   totalDurationMs: number;
   // Plan ROI
   planFee: number;
@@ -1033,6 +1056,11 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       estimatedCost: Math.round(result.cost * 100) / 100,
     });
   }
+  // The two disclosures that qualify `totalCost` — see DashboardSummary.
+  // Drift is collected over the SAME read the total was priced from, so the
+  // ids it names are exactly the ones that contributed $0 above.
+  const unpricedModels = collectPricingDrift(messageTotals).unpricedModels;
+  const costBasis = costBasisFor(store, msgFilter);
 
   // ── Fill empty day buckets for the full period range so charts always show
   //    all days in the selected window, not just days that have sessions ────
@@ -1663,6 +1691,8 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       cacheEfficiency,
       estimatedCost: Math.round(totalCost * 100) / 100,
       anyFallbackRates,
+      costBasis,
+      unpricedModels,
       totalDurationMs,
       planFee,
       planMultiplier,
@@ -2491,6 +2521,33 @@ export function buildRecommendations(t: InsightT, input: {
   return out;
 }
 
+/**
+ * `HIGH_THINKING`: more than half of a response's output was thinking.
+ *
+ * The previous predicate was `thinking_blocks > 0`, which fires on the
+ * majority of messages (corpus mean thinking share is ~41%) and so carried
+ * no information. This one reads `thinking_tokens` — a SUBSET of
+ * `output_tokens`, reported per response since August — over carrier rows
+ * only (`usage_counted = 1`; a non-carrier's token columns are zeroed by
+ * construction, so the ratio would be 0/0 there).
+ *
+ * It never fires on a row where `thinking_tokens IS NULL` — pre-August
+ * history, and every pre-V23 row — and that is deliberate: NULL means "not
+ * reported", and a flag inferred from an absent field is a fabrication. The
+ * `message_hourly` `th_*` columns and the store's other `thinking_blocks > 0`
+ * reads are NOT moved to this rule: moving some reads and not others makes
+ * the rollup and the raw reads disagree.
+ *
+ */
+export const HIGH_THINKING_SHARE = 0.5;
+
+export function isHighThinking(row: SpendingMessageRow): boolean {
+  if (row.usage_counted === 0) return false;
+  if (row.thinking_tokens == null) return false;
+  if (row.output_tokens <= 0) return false;
+  return row.thinking_tokens > HIGH_THINKING_SHARE * row.output_tokens;
+}
+
 function buildSpendingSection(
   store: Store,
   rows: SessionRow[],
@@ -2563,10 +2620,7 @@ function buildSpendingSection(
     const flags: string[] = [];
     if (a.timesAvg > 2) flags.push("OUTLIER");
     if (a.message.stop_reason === "max_tokens") flags.push("TRUNCATED");
-    if (a.message.thinking_blocks > 0) {
-      // Approximate: if thinking blocks exist and output is large, flag it
-      flags.push("HIGH_THINKING");
-    }
+    if (isHighThinking(a.message)) flags.push("HIGH_THINKING");
     const msgTools: string[] = JSON.parse(a.message.tools) as string[];
     if (msgTools.some(t => t.startsWith("mcp__"))) flags.push("MCP_HEAVY");
 

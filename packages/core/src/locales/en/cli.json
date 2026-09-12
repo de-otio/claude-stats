@@ -320,7 +320,10 @@
     "quarantined": "Quarantined",
     "unparseableLines": "unparseable lines",
     "lastCollected": "Last collected",
-    "never": "never"
+    "never": "never",
+    "costBasis": "Cost basis",
+    "costBasisDetail": "{{perResponse}} rows per-response, {{preDedupe}} rows pre-dedupe",
+    "costBasisClean": "every counted row is per-response"
   },
   "config": {
     "noConfig": "(no configuration set)",
@@ -362,7 +365,9 @@
   },
   "diagnose": {
     "quarantinedLines": "Quarantined lines : {{count}}",
-    "useStatus": "Use 'status' for database metrics."
+    "useStatus": "Use 'status' for database metrics.",
+    "pricingHeader": "Pricing drift:",
+    "costBasisHeader": "Cost basis:"
   },
   "serve": {
     "listening": "Listening on {{url}}",
@@ -388,6 +393,19 @@
       "backupWritten": "Backup written to {{path}}",
       "summary": "{{sessions}} sessions re-scanned, {{removed}} automatic links removed, {{created}} re-derived, {{manual}} manual links preserved.",
       "keys": "Distinct ticket keys: {{before}} → {{after}}"
+    },
+    "dedupe": {
+      "description": "Re-parse every session whose transcript still exists so usage is counted once per API response (cost_basis = per-response) instead of once per content block (pre-dedupe). Sessions with no transcript stay pre-dedupe and are reported.",
+      "dryRunOption": "Report which sessions would be re-parsed without writing or creating a backup.",
+      "dryRunHeader": "Usage-dedupe repair (dry run) — no changes written:",
+      "doneHeader": "Usage-dedupe repair complete:",
+      "backupWritten": "Backup written to {{path}}",
+      "sessions": "{{repaired}} sessions repaired, {{skipped}} skipped (no transcript on disk), {{clean}} already per-response.",
+      "rows": "{{inScope}} pre-dedupe rows in scope, {{relabelled}} relabelled per-response, {{remaining}} pre-dedupe rows remain in the database.",
+      "tokens": "Repaired sessions: input {{beforeInput}} → {{afterInput}}, output {{beforeOutput}} → {{afterOutput}}.",
+      "remainingNote": "Rows that remain pre-dedupe have no transcript to re-parse; every cost surface discloses when a range includes them.",
+      "parseErrors": "⚠  {{count}} parse errors quarantined during the re-parse.",
+      "lockHeld": "Another usage-dedupe repair is running (pid {{pid}}, started {{started}}). Wait for it to finish, or delete the repair_dedupe_lock metadata row if that process is gone."
     }
   },
   "errors": {
@@ -568,5 +586,19 @@
       "verdictRecommend": "Recommendation: set autoCompactWindow to {{recommendedTokens}} tokens as your default (a launch flag or managed settings can still override it). Range considered: {{conservativeTokens}} tokens (conservative, recommended) down to {{aggressiveTokens}} tokens (aggressive, more saving but more resets).",
       "divergenceNote": "This block was computed at a lower reset-detection floor ({{resetFloorUsed}} tokens) than the reset count shown above (detected at the {{resetFloorDefault}}-token default) — so its reset/cycle counts will not match the primary figures on this screen."
     }
+  },
+  "costBasis": {
+    "label": "Basis",
+    "allPreDedupe": "All {{rows}} counted rows in this range predate the per-response fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. Run `claude-stats repair dedupe` to correct sessions whose transcript still exists.",
+    "mixed": "{{rows}} of {{total}} counted rows ({{percent}}%) in this range predate the per-response fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. Run `claude-stats repair dedupe` to correct sessions whose transcript still exists.",
+    "sessionPreDedupe": "This session was counted once per content block (cost_basis = pre-dedupe); its usage is inflated by roughly 2x. Run `claude-stats repair dedupe` if its transcript still exists.",
+    "sessionMixed": "{{rows}} of {{total}} counted messages in this session are pre-dedupe (counted once per content block, roughly 2x). Run `claude-stats repair dedupe` if its transcript still exists."
+  },
+  "pricingDrift": {
+    "unpricedCaveat": "({{count}} model ids unpriced — {{tokens}} tokens excluded from the total: {{models}})",
+    "unpricedModel": "  {{model}}: {{tokens}} tokens resolved to no rate and cost $0 in every total",
+    "finding": "  {{model}} refused the rate of {{matchedKey}} ({{reason}}, {{table}} table) — add a pricing row or a config override",
+    "none": "Every priced model id resolved to a rate.",
+    "statusLabel": "Unpriced models"
   }
 }

@@ -2280,6 +2280,38 @@ export class Store {
   }
 
   /**
+   * How many of the rows that CONTRIBUTE to a cost total in this window still
+   * carry the pre-V23 per-entry usage (`'pre-dedupe'`) versus the carrier model
+   * (`'per-response'`). Carriers only — a non-carrier contributes nothing to a
+   * total, so it must not be allowed to dilute the verdict either way.
+   *
+   * Same filter builder and membership subquery as `getMessageTotals`, so the
+   * disclosure printed beside a total describes exactly the rows in it. Any
+   * basis token this build does not recognise counts as pre-dedupe: absence of
+   * information reads as "do not trust", which is the direction the column's
+   * NOT NULL DEFAULT already encodes.
+   */
+  getCostBasisCounts(filters: MessageFilter = {}): { preDedupeRows: number; perResponseRows: number } {
+    const f = this.buildMessageFilter(filters);
+    const sql = `
+      SELECT
+        SUM(CASE WHEN m.cost_basis = 'per-response' THEN 1 ELSE 0 END) AS per_response,
+        SUM(CASE WHEN m.cost_basis = 'per-response' THEN 0 ELSE 1 END) AS pre_dedupe
+      FROM messages m
+      WHERE ${this.messageWhereExists(f)} AND m.usage_counted = 1
+    `;
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row = (stmt.get as (...args: any[]) => unknown)(...f.params) as
+      | { per_response: number | null; pre_dedupe: number | null }
+      | undefined;
+    return {
+      preDedupeRows: row?.pre_dedupe ?? 0,
+      perResponseRows: row?.per_response ?? 0,
+    };
+  }
+
+  /**
    * Per-project, per-model token totals for messages SENT in the window — the
    * message-scoped counterpart of the session-row `byProject` accumulation.
    * Σ over projects == `getMessageTotals` for identical filters.
@@ -4016,11 +4048,15 @@ export class Store {
 
     // 2. Top messages by token cost
     const topMessages = (() => {
+      // `thinking_tokens` and `usage_counted` feed the dashboard's HIGH_THINKING
+      // flag, which reads thinking as a share of output over carrier rows only.
+      // Non-carriers carry zeroed usage and can never rank, so the filter costs
+      // nothing and keeps the list honest.
       const sql = `SELECT m.uuid, m.session_id, m.model, m.input_tokens, m.output_tokens,
           m.cache_read_tokens, m.cache_creation_tokens, m.thinking_blocks, m.tools,
-          m.prompt_text, m.timestamp, m.stop_reason
+          m.prompt_text, m.timestamp, m.stop_reason, m.thinking_tokens, m.usage_counted
         FROM messages m JOIN sessions s ON m.session_id = s.session_id
-        ${sessionWhere}
+        ${sessionWhere} AND m.usage_counted = 1
         ORDER BY (m.input_tokens + m.output_tokens + m.cache_creation_tokens) DESC LIMIT ?`;
       const stmt = this.db.prepare(sql);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -4753,6 +4789,10 @@ export interface SpendingMessageRow {
   prompt_text: string | null;
   timestamp: number | null;
   stop_reason: string | null;
+  /** NULL where the transcript predates the field — never coerced to 0. */
+  thinking_tokens: number | null;
+  /** Always 1 here; the SELECT filters to carriers. Present so readers need not assume. */
+  usage_counted: number;
 }
 
 export interface SpendingProjectRow {

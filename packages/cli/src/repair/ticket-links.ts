@@ -40,8 +40,8 @@
  *    `runTicketExtraction`). A bulk pass gets to choose the order, so it does —
  *    and this is the one path where subagent inheritance is reliable.
  */
-import fs from "node:fs";
 import type { Store, SessionRow } from "../store/index.js";
+import { backupDatabase } from "./backup.js";
 import { runTicketExtraction, ticketCommitWindow } from "../ticketing/index.js";
 import { createCommitSubjectsCache, getCommitSubjectsInWindowCached } from "../recap/git.js";
 
@@ -165,14 +165,9 @@ export function reextractTicketLinks(
     return { ...preview, dryRun: true, backupPath: null };
   }
 
-  let backupPath: string | null = null;
-  // The store's OWN file, not `paths.statsDb`: this must copy the database it
-  // is about to delete rows from.
-  const dbPath = opts.dbPath ?? store.dbPath;
-  if (fs.existsSync(dbPath)) {
-    backupPath = `${dbPath}.pre-repair-ticket-links-${now()}`;
-    fs.copyFileSync(dbPath, backupPath);
-  }
+  // The store's OWN file, not `paths.statsDb`: this must snapshot the database
+  // it is about to delete rows from.
+  const backupPath = backupDatabase(opts.dbPath ?? store.dbPath, "ticket-links", now);
 
   const result = store.transaction(apply);
   return { ...result, dryRun: false, backupPath };

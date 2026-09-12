@@ -733,5 +733,12 @@
     "ambiguityNote": "Une session liée à plusieurs tickets impute son coût intégral à chacun d'eux : la somme des coûts par ticket peut donc dépasser le total attribué.",
     "tuneHint": "L'attribution lit les noms de branche, les objets de commit et le texte des prompts. Sans liste de clés de projet, des chaînes ressemblantes correspondent aussi et la confiance est plafonnée à moyenne.",
     "tuneHintLink": "Définir les clés de projet des tickets →"
+  },
+  "costBasis": {
+    "allPreDedupe": "Les {{rows}} messages comptabilisés sur cette période sont tous antérieurs au correctif par réponse (cost_basis = pre-dedupe) — le coût affiché est gonflé d'environ 2x. Exécutez `claude-stats repair dedupe` pour corriger les sessions dont la transcription existe encore.",
+    "mixed": "{{rows}} des {{total}} messages comptabilisés ({{percent}} %) sur cette période sont antérieurs au correctif par réponse (cost_basis = pre-dedupe) et sont gonflés d'environ 2x. Exécutez `claude-stats repair dedupe` pour corriger les sessions dont la transcription existe encore."
+  },
+  "pricingDrift": {
+    "unpricedCaveat": "{{count}} identifiants de modèle n'ont été associés à aucun tarif et sont exclus du coût total ({{tokens}} tokens) : {{models}}. Ajoutez une ligne de tarification ou une surcharge dans la configuration."
   }
 }

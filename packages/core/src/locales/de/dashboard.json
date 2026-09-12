@@ -729,5 +729,12 @@
     "ambiguityNote": "Eine Session, die mit mehreren Tickets verknüpft ist, zählt ihre vollen Kosten zu jedem davon – die Kosten pro Ticket können daher zusammen mehr ergeben als die zugeordnete Summe.",
     "tuneHint": "Die Zuordnung liest Branch-Namen, Commit-Betreffzeilen und Prompt-Text. Ohne Positivliste von Projektschlüsseln passen auch ähnlich aussehende Zeichenfolgen, und die Konfidenz ist auf mittel begrenzt.",
     "tuneHintLink": "Ticket-Projektschlüssel festlegen →"
+  },
+  "costBasis": {
+    "allPreDedupe": "Alle {{rows}} gezählten Nachrichten in diesem Zeitraum stammen aus der Zeit vor dem Per-Response-Fix (cost_basis = pre-dedupe) — die angezeigten Kosten sind um etwa das 2-Fache überhöht. Führen Sie `claude-stats repair dedupe` aus, um Sessions zu korrigieren, deren Transkript noch vorhanden ist.",
+    "mixed": "{{rows}} von {{total}} gezählten Nachrichten ({{percent}} %) in diesem Zeitraum stammen aus der Zeit vor dem Per-Response-Fix (cost_basis = pre-dedupe) und sind um etwa das 2-Fache überhöht. Führen Sie `claude-stats repair dedupe` aus, um Sessions zu korrigieren, deren Transkript noch vorhanden ist."
+  },
+  "pricingDrift": {
+    "unpricedCaveat": "{{count}} Modell-IDs konnten keinem Tarif zugeordnet werden und sind von der Kostensumme ausgeschlossen ({{tokens}} Tokens): {{models}}. Fügen Sie eine Preiszeile oder eine Konfigurations-Überschreibung hinzu."
   }
 }

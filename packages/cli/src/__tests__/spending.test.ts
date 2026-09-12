@@ -16,6 +16,8 @@ function makeMsg(overrides: Partial<SpendingMessageRow> = {}): SpendingMessageRo
     prompt_text: null,
     timestamp: Date.now(),
     stop_reason: "end_turn",
+    thinking_tokens: null,
+    usage_counted: 1,
     ...overrides,
   };
 }

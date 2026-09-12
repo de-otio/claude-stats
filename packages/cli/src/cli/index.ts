@@ -5,7 +5,7 @@
 import { Command } from "commander";
 import { collect } from "../aggregator/index.js";
 import { Store, validateTag } from "../store/index.js";
-import { printSummary, printStatus, printSearchResults, printSessionList, printSessionDetail, printTrend, printSpendingReport, printTicketReport, periodRange } from "../reporter/index.js";
+import { printSummary, printStatus, printSearchResults, printSessionList, printSessionDetail, printTrend, printSpendingReport, printTicketReport, periodRange, readStatusHealth, printHealthDiagnostics } from "../reporter/index.js";
 import { searchHistory } from "../history/index.js";
 import { loadConfig, saveConfig, createJudgeProviderFromConfig, ticketProjectKeys } from "../config.js";
 import { generateJustificationPack, parseSections } from "../pack/index.js";
@@ -792,7 +792,7 @@ export async function buildCli(): Promise<Command> {
     .action(() => {
       const store = new Store();
       try {
-        printStatus(store.getStatus());
+        printStatus(store.getStatus(), readStatusHealth(store));
       } finally {
         store.close();
       }
@@ -875,6 +875,7 @@ export async function buildCli(): Promise<Command> {
         const status = store.getStatus();
         console.log(`\n\u2500\u2500\u2500 ${t("cli:report.titleDiagnose")} \u2500\u2500\u2500\n`);
         console.log(t("cli:diagnose.quarantinedLines", { count: status.quarantineCount }));
+        printHealthDiagnostics(readStatusHealth(store));
         console.log(`\n${t("cli:diagnose.useStatus")}`);
       } finally {
         store.close();

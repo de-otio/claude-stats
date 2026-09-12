@@ -729,5 +729,12 @@
     "ambiguityNote": "关联到多个工单的会话，会把全额成本计入每一个工单，因此各工单成本相加可能超过已归因总额。",
     "tuneHint": "归因会读取分支名、提交标题和提示词文本。没有项目键白名单时，形似的字符串也会匹配，置信度上限为中。",
     "tuneHintLink": "设置工单项目键 →"
+  },
+  "costBasis": {
+    "allPreDedupe": "此时间段内已统计的全部 {{rows}} 条消息均早于按响应去重修复（cost_basis = pre-dedupe）— 显示的费用被高估约 2 倍。运行 `claude-stats repair dedupe` 可修正 transcript 仍然存在的 session。",
+    "mixed": "此时间段内已统计的 {{total}} 条消息中有 {{rows}} 条（{{percent}}%）早于按响应去重修复（cost_basis = pre-dedupe），费用被高估约 2 倍。运行 `claude-stats repair dedupe` 可修正 transcript 仍然存在的 session。"
+  },
+  "pricingDrift": {
+    "unpricedCaveat": "{{count}} 个模型 ID 未能匹配到费率，已从费用总计中排除（{{tokens}} 个 token）：{{models}}。请添加定价行或配置覆盖项。"
   }
 }

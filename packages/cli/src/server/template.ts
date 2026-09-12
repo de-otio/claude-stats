@@ -27,6 +27,7 @@ import { renderCostQualityCard, COST_QUALITY_CSS } from "./costQualityCard.js";
 import { renderTicketAttributionCard, TICKET_CARD_CSS } from "./ticketCard.js";
 import { renderTicketTable, TICKET_TABLE_CSS } from "./ticketTable.js";
 import { escapeHtml } from "./utils.js";
+import { costBasisLabel } from "../reporter/cost-basis.js";
 import type { PolicyEvent } from "@claude-stats/core/types/insight";
 import { RECONCILIATION_CSS } from "./reconciliationPanel.js";
 import { formatMoney, formatCount, formatPercent } from "@claude-stats/core/insight";
@@ -415,6 +416,32 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
 
   const escapeHtml = (s: string) => s.replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+  // The two disclosures that qualify the cost card (schema V23). Both sit
+  // ABOVE it, full-width, in the same warning register as the empty-period
+  // hint: a reader must meet the caveat before the number. Nothing renders
+  // for a clean period, so the banner is information, not wallpaper.
+  // `cost_basis` values are closed machine tokens and appear verbatim in
+  // `data-cost-basis`; only the sentence is translated.
+  const basis = data.summary.costBasis;
+  const costBasisLabelText = basis
+    ? costBasisLabel(basis, (k, o) => t(k, o), "dashboard")
+    : null;
+  const costBasisBanner = basis && costBasisLabelText
+    ? `<div class="summary-card cost-basis-banner" data-cost-basis="${escapeHtml(basis.basis)}" style="grid-column: 1 / -1; text-align: left; padding: 0.5rem 0.75rem; border-color:#e0a458; background:rgba(224,164,88,0.08);">
+        <span style="font-size:0.75rem; color:#e0a458;">${escapeHtml(costBasisLabelText)}</span>
+      </div>`
+    : "";
+  const unpriced = data.summary.unpricedModels ?? [];
+  const unpricedBanner = unpriced.length > 0
+    ? `<div class="summary-card unpriced-banner" style="grid-column: 1 / -1; text-align: left; padding: 0.5rem 0.75rem; border-color:#e15759; background:rgba(225,87,89,0.08);">
+        <span style="font-size:0.75rem; color:#e15759;">${escapeHtml(t("dashboard:pricingDrift.unpricedCaveat", {
+          count: unpriced.length,
+          tokens: fmtNum(unpriced.reduce((n, m) => n + m.tokens, 0)),
+          models: unpriced.map((m) => m.model).join(", "),
+        }))}</span>
+      </div>`
+    : "";
   // Escape a string for safe embedding inside a single-quoted JS string
   // literal in the inline <script> block. Translations routinely contain
   // apostrophes ("haven't", French "l'autre", Ukrainian "прив'язано") — left
@@ -1151,6 +1178,8 @@ ${TICKET_TABLE_CSS}
         <span style="font-size:0.75rem; color:#e0a458;">${t("dashboard:summary.emptyPeriodHint")}</span>
       </div>
       ` : ""}
+      ${costBasisBanner}
+      ${unpricedBanner}
       <div style="grid-column: 1 / -1;">
         ${renderCard(costAnswer, {
           id: "card-cost",

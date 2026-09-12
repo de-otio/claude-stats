@@ -320,7 +320,10 @@
     "quarantined": "隔離済み",
     "unparseableLines": "解析不能な行",
     "lastCollected": "最終収集時刻",
-    "never": "未収集"
+    "never": "未収集",
+    "costBasis": "コスト基準",
+    "costBasisDetail": "{{perResponse}} 行がレスポンス単位、{{preDedupe}} 行が重複排除前",
+    "costBasisClean": "集計対象の全行がレスポンス単位です"
   },
   "config": {
     "noConfig": "（設定なし）",
@@ -351,7 +354,9 @@
   },
   "diagnose": {
     "quarantinedLines": "隔離された行 : {{count}}",
-    "useStatus": "データベースメトリクスは 'status' を使用してください。"
+    "useStatus": "データベースメトリクスは 'status' を使用してください。",
+    "pricingHeader": "料金ドリフト:",
+    "costBasisHeader": "コスト基準:"
   },
   "serve": {
     "listening": "{{url}} でリッスン中",
@@ -384,6 +389,19 @@
       "backupWritten": "バックアップを {{path}} に書き込みました",
       "summary": "{{sessions}} 件のセッションを再スキャン、自動リンク {{removed}} 件を削除、{{created}} 件を再導出、手動リンク {{manual}} 件を保持。",
       "keys": "個別のチケットキー: {{before}} → {{after}}"
+    },
+    "dedupe": {
+      "description": "トランスクリプトがまだ存在するすべての session を再解析し、使用量をコンテンツブロックごと (pre-dedupe) ではなく API レスポンスごと (cost_basis = per-response) に 1 回だけ集計するようにします。トランスクリプトのない session は pre-dedupe のままとなり、その旨が報告されます。",
+      "dryRunOption": "書き込みやバックアップの作成を行わずに、どの session が再解析されるかを報告します。",
+      "dryRunHeader": "使用量の重複排除修復 (ドライラン) — 変更は書き込まれていません:",
+      "doneHeader": "使用量の重複排除修復が完了しました:",
+      "backupWritten": "バックアップを {{path}} に書き込みました",
+      "sessions": "{{repaired}} 件の session を修復、{{skipped}} 件をスキップ (ディスク上にトランスクリプトなし)、{{clean}} 件は既にレスポンス単位です。",
+      "rows": "対象の pre-dedupe 行 {{inScope}} 件、{{relabelled}} 件をレスポンス単位に再ラベル付け、{{remaining}} 件の pre-dedupe 行がデータベースに残っています。",
+      "tokens": "修復した session: 入力 {{beforeInput}} → {{afterInput}}、出力 {{beforeOutput}} → {{afterOutput}}。",
+      "remainingNote": "pre-dedupe のまま残っている行には再解析するトランスクリプトがありません。範囲にこれらの行が含まれる場合、すべてのコスト表示でその旨が明示されます。",
+      "parseErrors": "⚠  再解析中に {{count}} 件の解析エラーを隔離しました。",
+      "lockHeld": "別の使用量重複排除修復が実行中です (pid {{pid}}、開始 {{started}})。完了を待つか、そのプロセスが既に存在しない場合は repair_dedupe_lock メタデータ行を削除してください。"
     }
   },
   "archive": {
@@ -568,5 +586,19 @@
       "verdictRecommend": "推奨: autoCompactWindow の既定値を {{recommendedTokens}} トークンに設定してください (起動フラグや管理された設定で上書きすることもできます)。検討した範囲: {{conservativeTokens}} トークン (保守的、推奨) から {{aggressiveTokens}} トークン (積極的、節約は大きいがリセットも増加) まで。",
       "divergenceNote": "このブロックは、上に表示されているリセット数 (既定の {{resetFloorDefault}} トークンで検出) よりも低いリセット検出しきい値 ({{resetFloorUsed}} トークン) で計算されています — そのため、リセット数/サイクル数はこの画面の主要な数値と一致しません。"
     }
+  },
+  "costBasis": {
+    "label": "基準",
+    "allPreDedupe": "この範囲の集計対象 {{rows}} 行はすべてレスポンス単位の修正より前のもの (cost_basis = pre-dedupe) で、約 2 倍に水増しされています。トランスクリプトがまだ存在する session を修正するには `claude-stats repair dedupe` を実行してください。",
+    "mixed": "この範囲の集計対象 {{total}} 行のうち {{rows}} 行 ({{percent}}%) はレスポンス単位の修正より前のもの (cost_basis = pre-dedupe) で、約 2 倍に水増しされています。トランスクリプトがまだ存在する session を修正するには `claude-stats repair dedupe` を実行してください。",
+    "sessionPreDedupe": "この session はコンテンツブロックごとに集計されており (cost_basis = pre-dedupe)、使用量が約 2 倍に水増しされています。トランスクリプトがまだ存在する場合は `claude-stats repair dedupe` を実行してください。",
+    "sessionMixed": "この session の集計対象メッセージ {{total}} 件のうち {{rows}} 件が pre-dedupe です (コンテンツブロックごとに集計、約 2 倍)。トランスクリプトがまだ存在する場合は `claude-stats repair dedupe` を実行してください。"
+  },
+  "pricingDrift": {
+    "unpricedCaveat": "({{count}} 個のモデル ID が未価格設定 — {{tokens}} token が合計から除外されています: {{models}})",
+    "unpricedModel": "  {{model}}: {{tokens}} token に該当する料金がなく、すべての合計でコストが $0 になっています",
+    "finding": "  {{model}} は {{matchedKey}} の料金を適用できませんでした ({{reason}}、{{table}} テーブル) — 料金行または設定のオーバーライドを追加してください",
+    "none": "価格設定済みのすべてのモデル ID に料金が解決されました。",
+    "statusLabel": "未価格設定のモデル"
   }
 }

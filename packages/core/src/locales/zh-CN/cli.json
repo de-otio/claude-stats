@@ -320,7 +320,10 @@
     "quarantined": "已隔离",
     "unparseableLines": "无法解析的行",
     "lastCollected": "上次收集",
-    "never": "从未"
+    "never": "从未",
+    "costBasis": "成本基准",
+    "costBasisDetail": "{{perResponse}} 行按响应计数，{{preDedupe}} 行为去重前计数",
+    "costBasisClean": "所有计入的行均为按响应计数"
   },
   "config": {
     "noConfig": "（未设置任何配置）",
@@ -351,7 +354,9 @@
   },
   "diagnose": {
     "quarantinedLines": "已隔离的行 : {{count}}",
-    "useStatus": "使用 'status' 查看数据库指标。"
+    "useStatus": "使用 'status' 查看数据库指标。",
+    "pricingHeader": "定价漂移：",
+    "costBasisHeader": "成本基准："
   },
   "serve": {
     "listening": "正在监听 {{url}}",
@@ -384,6 +389,19 @@
       "backupWritten": "备份已写入 {{path}}",
       "summary": "重新扫描 {{sessions}} 个会话，移除 {{removed}} 条自动关联，重新推导 {{created}} 条，保留 {{manual}} 条手动关联。",
       "keys": "不同的工单键：{{before}} → {{after}}"
+    },
+    "dedupe": {
+      "description": "重新解析所有转录文件仍存在的 session，使用量按每次 API 响应计数一次（cost_basis = per-response），而不是按每个内容块计数一次（pre-dedupe）。没有转录文件的 session 保持 pre-dedupe 状态并会被报告。",
+      "dryRunOption": "报告哪些 session 将被重新解析，不写入数据也不创建备份。",
+      "dryRunHeader": "使用量去重修复（试运行）— 未写入任何更改：",
+      "doneHeader": "使用量去重修复完成：",
+      "backupWritten": "备份已写入 {{path}}",
+      "sessions": "{{repaired}} 个 session 已修复，{{skipped}} 个已跳过（磁盘上无转录文件），{{clean}} 个已是按响应计数。",
+      "rows": "范围内 {{inScope}} 行为 pre-dedupe，{{relabelled}} 行已重新标记为 per-response，数据库中仍有 {{remaining}} 行为 pre-dedupe。",
+      "tokens": "已修复的 session：输入 {{beforeInput}} → {{afterInput}}，输出 {{beforeOutput}} → {{afterOutput}}。",
+      "remainingNote": "仍为 pre-dedupe 的行没有可供重新解析的转录文件；当某个范围包含这些行时，所有成本界面都会予以说明。",
+      "parseErrors": "⚠  重新解析期间隔离了 {{count}} 个解析错误。",
+      "lockHeld": "另一个使用量去重修复正在运行（pid {{pid}}，启动于 {{started}}）。请等待其完成；如果该进程已不存在，请删除 repair_dedupe_lock 元数据行。"
     }
   },
   "archive": {
@@ -568,5 +586,19 @@
       "verdictRecommend": "建议：将 autoCompactWindow 默认设为 {{recommendedTokens}} token（启动标志或托管设置仍可覆盖）。考虑范围：从 {{conservativeTokens}} token（保守，推荐）到 {{aggressiveTokens}} token（激进，节省更多但重置更多）。",
       "divergenceNote": "此区块采用的重置检测下限（{{resetFloorUsed}} token）低于上方所示重置计数所用的下限（按 {{resetFloorDefault}} token 的默认值检测）— 因此其重置/周期计数与本页面的主要数据不一致。"
     }
+  },
+  "costBasis": {
+    "label": "基准",
+    "allPreDedupe": "此范围内计入的全部 {{rows}} 行均早于按响应计数修复（cost_basis = pre-dedupe），数值约被高估 2 倍。运行 `claude-stats repair dedupe` 以修正转录文件仍存在的 session。",
+    "mixed": "此范围内计入的 {{total}} 行中有 {{rows}} 行（{{percent}}%）早于按响应计数修复（cost_basis = pre-dedupe），数值约被高估 2 倍。运行 `claude-stats repair dedupe` 以修正转录文件仍存在的 session。",
+    "sessionPreDedupe": "此 session 按每个内容块计数一次（cost_basis = pre-dedupe）；其使用量约被高估 2 倍。如果其转录文件仍存在，请运行 `claude-stats repair dedupe`。",
+    "sessionMixed": "此 session 计入的 {{total}} 条消息中有 {{rows}} 条为 pre-dedupe（按每个内容块计数一次，约 2 倍）。如果其转录文件仍存在，请运行 `claude-stats repair dedupe`。"
+  },
+  "pricingDrift": {
+    "unpricedCaveat": "（{{count}} 个模型 id 未定价 — 总计中已排除 {{tokens}} 个 token：{{models}}）",
+    "unpricedModel": "  {{model}}：{{tokens}} 个 token 未匹配到任何费率，在所有总计中成本为 $0",
+    "finding": "  {{model}} 拒绝了 {{matchedKey}} 的费率（{{reason}}，{{table}} 表）— 请添加定价行或配置覆盖",
+    "none": "所有已定价的模型 id 均已匹配到费率。",
+    "statusLabel": "未定价模型"
   }
 }

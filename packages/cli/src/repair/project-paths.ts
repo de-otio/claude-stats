@@ -15,19 +15,22 @@
  * are left untouched (counted as `unfixable`).
  *
  * Safety, mirrors attribution/reattribute.ts: `--dry-run` computes counts
- * without writing; a real run backs up the DB file first, then applies all
- * changes in one transaction.
+ * without writing; a real run backs up the DB first (`repair/backup.ts` — a
+ * `VACUUM INTO` snapshot, since a plain file copy misses the WAL), then
+ * applies all changes in one transaction.
  */
 import fs from "node:fs";
-import { paths } from "@claude-stats/core/paths";
 import { extractCwdFromSessionFile } from "@claude-stats/core/parser/session";
 import type { Store } from "../store/index.js";
 import { getGitRemoteUrl } from "../git.js";
+import { backupDatabase } from "./backup.js";
 
 export interface RepairProjectPathsOptions {
   dryRun?: boolean;
-  /** Path to the live DB file, used for the pre-repair backup. Defaults to
-   *  paths.statsDb, the same default the Store constructor uses. */
+  /** Path to back up before writing. Defaults to the store's OWN file
+   *  (`Store#dbPath`) — never `paths.statsDb`, which would snapshot the live
+   *  database whenever the store was opened on some other path (a test store,
+   *  a disposable exercise DB) and leave the one being modified unprotected. */
   dbPath?: string;
 }
 
@@ -88,11 +91,7 @@ export async function repairProjectPaths(
   let backupPath: string | null = null;
   let changed = 0;
   if (changes.size > 0) {
-    const dbPath = opts.dbPath ?? paths.statsDb;
-    if (fs.existsSync(dbPath)) {
-      backupPath = `${dbPath}.pre-repair-project-paths-${now()}`;
-      fs.copyFileSync(dbPath, backupPath);
-    }
+    backupPath = backupDatabase(opts.dbPath ?? store.dbPath, "project-paths", now);
 
     store.transaction(() => {
       changed = store.updateProjectPaths(changes);

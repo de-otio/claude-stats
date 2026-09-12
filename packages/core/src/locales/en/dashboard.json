@@ -729,5 +729,12 @@
     "ambiguityNote": "A session linked to more than one ticket contributes its full cost to each, so per-ticket costs can sum to more than the attributed total.",
     "tuneHint": "Attribution reads branch names, commit subjects and prompt text. Without a project-key allowlist, look-alike strings match too and confidence caps at medium.",
     "tuneHintLink": "Set ticket project keys →"
+  },
+  "costBasis": {
+    "allPreDedupe": "All {{rows}} counted messages in this period predate the per-response fix (cost_basis = pre-dedupe) — the cost shown is inflated by roughly 2x. Run `claude-stats repair dedupe` to correct sessions whose transcript still exists.",
+    "mixed": "{{rows}} of {{total}} counted messages ({{percent}}%) in this period predate the per-response fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. Run `claude-stats repair dedupe` to correct sessions whose transcript still exists."
+  },
+  "pricingDrift": {
+    "unpricedCaveat": "{{count}} model ids resolved to no rate and are excluded from the cost total ({{tokens}} tokens): {{models}}. Add a pricing row or a config override."
   }
 }

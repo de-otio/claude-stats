@@ -737,5 +737,12 @@
     "ambiguityNote": "Sesja powiązana z więcej niż jednym zgłoszeniem wnosi swój pełny koszt do każdego z nich, więc suma kosztów poszczególnych zgłoszeń może przekroczyć łączną kwotę przypisaną.",
     "tuneHint": "Atrybucja czyta nazwy gałęzi, tematy commitów i tekst promptów. Bez listy kluczy projektów pasują też podobne ciągi, a pewność jest ograniczona do średniej.",
     "tuneHintLink": "Ustaw klucze projektów zgłoszeń →"
+  },
+  "costBasis": {
+    "allPreDedupe": "Wszystkie {{rows}} policzone wiadomości w tym okresie pochodzą sprzed poprawki per-response (cost_basis = pre-dedupe) — pokazany koszt jest zawyżony około 2x. Uruchom `claude-stats repair dedupe`, aby skorygować sesje, których transkrypt nadal istnieje.",
+    "mixed": "{{rows}} z {{total}} policzonych wiadomości ({{percent}}%) w tym okresie pochodzi sprzed poprawki per-response (cost_basis = pre-dedupe) i jest zawyżonych około 2x. Uruchom `claude-stats repair dedupe`, aby skorygować sesje, których transkrypt nadal istnieje."
+  },
+  "pricingDrift": {
+    "unpricedCaveat": "{{count}} identyfikatorów modeli nie ma przypisanej stawki i zostały wykluczone z łącznego kosztu ({{tokens}} tokenów): {{models}}. Dodaj wiersz cennika lub nadpisanie w konfiguracji."
   }
 }

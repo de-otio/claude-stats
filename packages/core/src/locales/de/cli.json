@@ -320,7 +320,10 @@
     "quarantined": "Isoliert",
     "unparseableLines": "nicht parsbare Zeilen",
     "lastCollected": "Letzte Erfassung",
-    "never": "nie"
+    "never": "nie",
+    "costBasis": "Kostenbasis",
+    "costBasisDetail": "{{perResponse}} Zeilen per-response, {{preDedupe}} Zeilen pre-dedupe",
+    "costBasisClean": "jede gezählte Zeile ist per-response"
   },
   "config": {
     "noConfig": "(keine Konfiguration gesetzt)",
@@ -351,7 +354,9 @@
   },
   "diagnose": {
     "quarantinedLines": "Isolierte Zeilen: {{count}}",
-    "useStatus": "Verwenden Sie 'status' für Datenbankmetriken."
+    "useStatus": "Verwenden Sie 'status' für Datenbankmetriken.",
+    "pricingHeader": "Preisdrift:",
+    "costBasisHeader": "Kostenbasis:"
   },
   "serve": {
     "listening": "Lauscht auf {{url}}",
@@ -384,6 +389,19 @@
       "backupWritten": "Sicherung geschrieben nach {{path}}",
       "summary": "{{sessions}} Sitzungen neu geprüft, {{removed}} automatische Verknüpfungen entfernt, {{created}} neu abgeleitet, {{manual}} manuelle Verknüpfungen erhalten.",
       "keys": "Verschiedene Ticket-Schlüssel: {{before}} → {{after}}"
+    },
+    "dedupe": {
+      "description": "Alle Sessions, deren Transkript noch existiert, erneut parsen, damit die Nutzung einmal pro API-Antwort (cost_basis = per-response) statt einmal pro Content-Block (pre-dedupe) gezählt wird. Sessions ohne Transkript bleiben pre-dedupe und werden gemeldet.",
+      "dryRunOption": "Meldet, welche Sessions erneut geparst würden, ohne etwas zu schreiben oder ein Backup anzulegen.",
+      "dryRunHeader": "Usage-Dedupe-Reparatur (Probelauf) — keine Änderungen geschrieben:",
+      "doneHeader": "Usage-Dedupe-Reparatur abgeschlossen:",
+      "backupWritten": "Backup geschrieben nach {{path}}",
+      "sessions": "{{repaired}} Sessions repariert, {{skipped}} übersprungen (kein Transkript auf der Festplatte), {{clean}} bereits per-response.",
+      "rows": "{{inScope}} pre-dedupe-Zeilen im Umfang, {{relabelled}} als per-response umgezeichnet, {{remaining}} pre-dedupe-Zeilen verbleiben in der Datenbank.",
+      "tokens": "Reparierte Sessions: Input {{beforeInput}} → {{afterInput}}, Output {{beforeOutput}} → {{afterOutput}}.",
+      "remainingNote": "Zeilen, die pre-dedupe bleiben, haben kein Transkript zum erneuten Parsen; jede Kostenansicht weist darauf hin, wenn ein Zeitraum sie enthält.",
+      "parseErrors": "⚠  {{count}} Parse-Fehler beim erneuten Parsen in Quarantäne verschoben.",
+      "lockHeld": "Eine andere Usage-Dedupe-Reparatur läuft bereits (PID {{pid}}, gestartet {{started}}). Warten Sie, bis sie abgeschlossen ist, oder löschen Sie die Metadatenzeile repair_dedupe_lock, falls dieser Prozess nicht mehr existiert."
     }
   },
   "archive": {
@@ -568,5 +586,19 @@
       "verdictRecommend": "Empfehlung: autoCompactWindow standardmäßig auf {{recommendedTokens}} Token setzen (ein Start-Flag oder verwaltete Einstellungen können dies weiterhin überschreiben). Betrachteter Bereich: {{conservativeTokens}} Token (konservativ, empfohlen) bis hinunter zu {{aggressiveTokens}} Token (aggressiv, mehr Ersparnis, aber mehr Resets).",
       "divergenceNote": "Dieser Block wurde mit einer niedrigeren Erkennungsschwelle für Resets ({{resetFloorUsed}} Token) berechnet als die oben gezeigte Reset-Anzahl (erkannt mit dem Standardwert von {{resetFloorDefault}} Token) — daher stimmen seine Reset-/Zykluszahlen nicht mit den primären Werten auf diesem Bildschirm überein."
     }
+  },
+  "costBasis": {
+    "label": "Basis",
+    "allPreDedupe": "Alle {{rows}} gezählten Zeilen in diesem Zeitraum stammen aus der Zeit vor der Per-Response-Korrektur (cost_basis = pre-dedupe) und sind um etwa das 2-Fache überhöht. Führen Sie `claude-stats repair dedupe` aus, um Sessions zu korrigieren, deren Transkript noch existiert.",
+    "mixed": "{{rows}} von {{total}} gezählten Zeilen ({{percent}} %) in diesem Zeitraum stammen aus der Zeit vor der Per-Response-Korrektur (cost_basis = pre-dedupe) und sind um etwa das 2-Fache überhöht. Führen Sie `claude-stats repair dedupe` aus, um Sessions zu korrigieren, deren Transkript noch existiert.",
+    "sessionPreDedupe": "Diese Session wurde einmal pro Content-Block gezählt (cost_basis = pre-dedupe); ihre Nutzung ist um etwa das 2-Fache überhöht. Führen Sie `claude-stats repair dedupe` aus, falls ihr Transkript noch existiert.",
+    "sessionMixed": "{{rows}} von {{total}} gezählten Nachrichten in dieser Session sind pre-dedupe (einmal pro Content-Block gezählt, etwa 2x). Führen Sie `claude-stats repair dedupe` aus, falls ihr Transkript noch existiert."
+  },
+  "pricingDrift": {
+    "unpricedCaveat": "({{count}} Modell-IDs ohne Preis — {{tokens}} Tokens von der Summe ausgeschlossen: {{models}})",
+    "unpricedModel": "  {{model}}: {{tokens}} Tokens ohne zugeordneten Tarif, in jeder Summe mit 0 $ bewertet",
+    "finding": "  {{model}} hat den Tarif von {{matchedKey}} abgelehnt ({{reason}}, Tabelle {{table}}) — Pricing-Zeile oder Config-Override hinzufügen",
+    "none": "Jede bepreiste Modell-ID wurde einem Tarif zugeordnet.",
+    "statusLabel": "Modelle ohne Preis"
   }
 }

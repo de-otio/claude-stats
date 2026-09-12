@@ -729,5 +729,12 @@
     "ambiguityNote": "複数のチケットに紐づくセッションは、その全額がそれぞれのチケットに計上されます。そのためチケットごとのコストの合計は、割り当て済み合計を上回ることがあります。",
     "tuneHint": "帰属はブランチ名・コミット件名・プロンプト本文を読み取ります。プロジェクトキーの許可リストがないと類似した文字列も一致し、信頼度は中が上限になります。",
     "tuneHintLink": "チケットのプロジェクトキーを設定 →"
+  },
+  "costBasis": {
+    "allPreDedupe": "この期間の集計対象メッセージ {{rows}} 件はすべてレスポンス単位の修正より前のもの (cost_basis = pre-dedupe) で、表示されているコストは約 2 倍に膨らんでいます。`claude-stats repair dedupe` を実行すると、トランスクリプトがまだ残っている session を修正できます。",
+    "mixed": "この期間の集計対象メッセージ {{total}} 件のうち {{rows}} 件 ({{percent}}%) はレスポンス単位の修正より前のもの (cost_basis = pre-dedupe) で、約 2 倍に膨らんでいます。`claude-stats repair dedupe` を実行すると、トランスクリプトがまだ残っている session を修正できます。"
+  },
+  "pricingDrift": {
+    "unpricedCaveat": "{{count}} 件のモデル ID は料金が解決できなかったため、コスト合計から除外されています ({{tokens}} token): {{models}}。料金行を追加するか、設定で上書きしてください。"
   }
 }

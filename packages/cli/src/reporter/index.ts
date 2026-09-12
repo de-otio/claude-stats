@@ -12,6 +12,17 @@ import { estimateCost, formatCost } from "@claude-stats/core/pricing";
 import { formatMoney, formatPercent, confidenceCaveat } from "@claude-stats/core/insight";
 import { attributeToolCosts, groupByMcpServer, detectAnomalies } from "../spending.js";
 import { t } from "../i18n.js";
+import {
+  costBasisFor,
+  costBasisLabel,
+  countCostBasisRows,
+  collectPricingDrift,
+  hasPricingDrift,
+  renderPricingDriftLines,
+  summarizeCostBasis,
+  unpricedCaveat,
+  type PricingDriftReport,
+} from "./cost-basis.js";
 import { renderItem } from "../recap/templates.js";
 import { dayWindowInTz } from "../recap/index.js";
 import { getTicketCostReport } from "../ticketing/index.js";
@@ -193,6 +204,16 @@ function isRoundTripYmd(dateYmd: string, tz: string): boolean {
 }
 
 type Totals = { sessions: number; input: number; output: number; prompts: number };
+
+/**
+ * The cost-basis disclosure line under a cost total. Prints nothing for a
+ * clean window — `costBasisLabel` returns null then — so the line only ever
+ * appears when there is something to disclose.
+ */
+function printCostBasisLine(label: string | null): void {
+  if (label === null) return;
+  console.log(`${t("cli:costBasis.label").padEnd(9)}: ${label}`);
+}
 
 function makeTotals(): Totals {
   return { sessions: 0, input: 0, output: 0, prompts: 0 };
@@ -529,12 +550,13 @@ export function printSummary(store: Store, opts: ReportOptions = {}): void {
   console.log(`${t("cli:report.labelCache").padEnd(9)}: ${t("cli:report.cacheDetail", { read: formatTokens(totalCacheRead), created: formatTokens(totalCacheCreate), efficiency: cacheEfficiency })}`);
 
   // Cost estimation from per-message model data
-  const messageTotals = store.getMessageTotals({
+  const msgFilter = {
     projectPath: opts.projectPath,
     repoUrl: opts.repoUrl,
     since: since > 0 ? since : undefined,
     until: isCustomRange ? until : undefined,
-  });
+  };
+  const messageTotals = store.getMessageTotals(msgFilter);
   let totalCost = 0;
   let unknownTokens = 0;
   for (const mt of messageTotals) {
@@ -558,9 +580,13 @@ export function printSummary(store: Store, opts: ReportOptions = {}): void {
   }
   let costLine = `${t("cli:report.labelCost").padEnd(9)}: ${t("cli:report.costLine", { cost: formatCost(totalCost) })}`;
   if (unknownTokens > 0) {
-    costLine += ` ${t("cli:report.costUnknown", { tokens: formatTokens(unknownTokens) })}`;
+    // WHICH ids went unpriced, not just how many tokens: since the pricing
+    // module refuses point-release ids rather than inheriting a predecessor's
+    // rates, an unpriced id is a fixable gap, and the reader needs its name.
+    costLine += ` ${unpricedCaveat(collectPricingDrift(messageTotals), t, formatTokens) ?? t("cli:report.costUnknown", { tokens: formatTokens(unknownTokens) })}`;
   }
   console.log(costLine);
+  printCostBasisLine(costBasisLabel(costBasisFor(store, msgFilter), t));
 
   // Plan ROI — only shown when a plan fee is configured
   const planFee = opts.planFee ?? 0;
@@ -743,7 +769,19 @@ export function printSpendingReport(store: Store, opts: SpendingOptions = {}): v
   }
   modelCosts.sort((a, b) => b.cost - a.cost);
 
-  console.log(`${t("cli:report.spendingTotalCost")}: ${formatCost(grandTotal)}`);
+  const spendingCaveat = unpricedCaveat(collectPricingDrift(report.byModel), t, formatTokens);
+  console.log(`${t("cli:report.spendingTotalCost")}: ${formatCost(grandTotal)}${spendingCaveat ? ` ${spendingCaveat}` : ""}`);
+  printCostBasisLine(
+    costBasisLabel(
+      costBasisFor(store, {
+        projectPath: opts.projectPath,
+        repoUrl: opts.repoUrl,
+        since: since > 0 ? since : undefined,
+        until: isCustomRange ? until : undefined,
+      }),
+      t,
+    ),
+  );
   for (const mc of modelCosts) {
     const pct = grandTotal > 0 ? ((mc.cost / grandTotal) * 100).toFixed(1) : "0.0";
     const name = mc.model.replace(/^claude-/, "").replace(/-\d+$/, m => m);
@@ -1036,6 +1074,21 @@ export function printTicketReport(store: Store, opts: ReportOptions = {}, out: N
   }
 
   write(`${t("cli:report.labelCost").padEnd(9)}: ${formatMoney(row.cost)}  (${confidenceLabel(row.confidence)})`);
+  // Basis over exactly the rows this ticket's cost was summed from — the
+  // `ticket` filter is the same predicate `getTicketCostReport` prices by.
+  const basisLabel = costBasisLabel(
+    costBasisFor(store, {
+      since: since > 0 ? since : undefined,
+      until: isCustomRange ? until : undefined,
+      projectPath: opts.projectPath,
+      repoUrl: opts.repoUrl,
+      accountUuid: opts.accountUuid,
+      includeCI: opts.includeCI,
+      ticket: ticketKey,
+    }),
+    t,
+  );
+  if (basisLabel) write(`${t("cli:costBasis.label").padEnd(9)}: ${basisLabel}`);
   write(`${t("cli:report.labelSessions").padEnd(9)}: ${row.sessionCount}`);
   write(`${t("cli:report.ticketTokensLabel").padEnd(9)}: ${formatTokens(row.inputTokens)} in / ${formatTokens(row.outputTokens)} out`);
   write(`${t("cli:report.ticketSourcesLabel").padEnd(9)}: ${row.sources.join(", ")}`);
@@ -1198,6 +1251,22 @@ export function printSessionList(store: Store, opts: ReportOptions = {}): void {
     if (planFee > 0 && totalCost > 0) {
       console.log(`  ${t("cli:report.planValueUsed", { planFee: formatCost(planFee), percent: (totalCost / planFee * 100).toFixed(1) })}`);
     }
+    // The per-session totals above were priced from `messageTotalsBySession`,
+    // so that is the read the unpriced caveat has to be drawn from.
+    const caveat = unpricedCaveat(collectPricingDrift(messageTotalsBySession), t, formatTokens);
+    if (caveat) console.log(`  ${caveat}`);
+    // Basis over exactly the listed sessions: every row of each is priced
+    // into its cost column, whatever the period bound was.
+    let basisCounts = { preDedupeRows: 0, perResponseRows: 0 };
+    for (const row of rows) {
+      const c = countCostBasisRows(store.getSessionMessages(row.session_id));
+      basisCounts = {
+        preDedupeRows: basisCounts.preDedupeRows + c.preDedupeRows,
+        perResponseRows: basisCounts.perResponseRows + c.perResponseRows,
+      };
+    }
+    const basisLabel = costBasisLabel(summarizeCostBasis(basisCounts), t);
+    if (basisLabel) console.log(`  ${basisLabel}`);
   } else {
     console.log(
       `${t("cli:report.sessionSummary", { count: rows.length }).padEnd(10 + 2 + 19 + 2 + 8)}  ${String(totalPrompts).padStart(7)}  ${formatTokens(totalInput).padStart(8)}  ${formatTokens(totalOutput).padStart(8)}`
@@ -1266,10 +1335,44 @@ export function printSessionDetail(store: Store, sessionId: string, opts: Report
   console.log(
     `${"".padStart(3)}  ${"".padEnd(5)}  ${t("cli:report.tableTotals").padEnd(16)}  ${formatTokens(totalInput).padStart(8)}  ${formatTokens(totalOutput).padStart(8)}  ${formatTokens(totalCache).padStart(8)}`
   );
+  const basis = summarizeCostBasis(countCostBasisRows(messages));
+  if (basis.basis === "pre-dedupe") {
+    console.log(`  ${t("cli:costBasis.sessionPreDedupe")}`);
+  } else if (basis.basis === "mixed") {
+    console.log(`  ${t("cli:costBasis.sessionMixed", { rows: basis.preDedupeRows, total: basis.preDedupeRows + basis.perResponseRows })}`);
+  }
   console.log();
 }
 
-export function printStatus(info: StatusInfo): void {
+/**
+ * Session-level cost-basis summary for one session's rows \u2014 the shape the
+ * MCP `get_session_detail` payload and the CLI detail view share. Exported
+ * so the MCP handler and this reporter cannot disagree about it.
+ */
+export function sessionCostBasis(messages: readonly MessageRow[]) {
+  return summarizeCostBasis(countCostBasisRows(messages));
+}
+
+/**
+ * The two health facts `status` and `diagnose` add to the store's own
+ * `StatusInfo`: how much of the database is still counted the old way, and
+ * which model ids the rate table refuses. Both are read over ALL history \u2014
+ * the question a status check answers is "is my database trustworthy", not
+ * "is this week's".
+ */
+export interface StatusHealth {
+  costBasis: ReturnType<typeof summarizeCostBasis>;
+  pricingDrift: PricingDriftReport;
+}
+
+export function readStatusHealth(store: Store): StatusHealth {
+  return {
+    costBasis: costBasisFor(store),
+    pricingDrift: collectPricingDrift(store.getMessageTotals()),
+  };
+}
+
+export function printStatus(info: StatusInfo, health?: StatusHealth): void {
   console.log(`\n\u2500\u2500\u2500 ${t("cli:report.titleStatus")} \u2500\u2500\u2500\n`);
   console.log(`${t("cli:status.databaseSize").padEnd(16)}: ${formatBytes(info.dbSize)}`);
   console.log(`${t("cli:status.sessions").padEnd(16)}: ${info.sessionCount}`);
@@ -1278,7 +1381,37 @@ export function printStatus(info: StatusInfo): void {
   console.log(
     `${t("cli:status.lastCollected").padEnd(16)}: ${info.lastCollected ? new Date(info.lastCollected).toLocaleString() : t("cli:status.never")}`
   );
+  if (health) {
+    const cb = health.costBasis;
+    console.log(
+      `${t("cli:status.costBasis").padEnd(16)}: ${
+        cb.preDedupeRows === 0
+          ? t("cli:status.costBasisClean")
+          : t("cli:status.costBasisDetail", { perResponse: cb.perResponseRows, preDedupe: cb.preDedupeRows })
+      }`,
+    );
+    const label = costBasisLabel(cb, t);
+    if (label) console.log(`${"".padEnd(16)}  ${label}`);
+    const drift = health.pricingDrift;
+    console.log(
+      `${t("cli:pricingDrift.statusLabel").padEnd(16)}: ${
+        hasPricingDrift(drift) ? drift.unpricedModels.map((m) => m.model).join(", ") : t("cli:pricingDrift.none")
+      }`,
+    );
+    for (const line of renderPricingDriftLines(drift, t)) console.log(`${"".padEnd(16)}  ${line}`);
+  }
   console.log();
+}
+
+/** The `diagnose` view of the same health facts, one section each. */
+export function printHealthDiagnostics(health: StatusHealth): void {
+  console.log(`\n${t("cli:diagnose.costBasisHeader")}`);
+  const label = costBasisLabel(health.costBasis, t);
+  console.log(`  ${label ?? t("cli:status.costBasisClean")}`);
+  console.log(`\n${t("cli:diagnose.pricingHeader")}`);
+  const lines = renderPricingDriftLines(health.pricingDrift, t);
+  if (lines.length === 0) console.log(`  ${t("cli:pricingDrift.none")}`);
+  for (const line of lines) console.log(line);
 }
 
 // \u2500\u2500 Daily Recap Reporter \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
