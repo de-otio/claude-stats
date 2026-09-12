@@ -61,8 +61,28 @@ export interface MergedSession {
   readonly messages: readonly MessageRow[];
 }
 
-/** SessionRow fields folded with `max()` — cumulative, monotonic-by-collection. */
-const MONOTONIC_COUNTER_FIELDS = [
+/**
+ * SessionRow fields that are a PROJECTION of the session's messages.
+ *
+ * ‼️ THESE ARE NO LONGER FOLDED WITH `max()` (V23). They were, and that was
+ *    safe only while they could only ever grow. The usage-carrier row model
+ *    makes them SHRINK — a session's token counters halve where its entries
+ *    were multi-block — and `max()` across devices would have pinned the
+ *    INFLATED value permanently: no logical clock can retract it, because a
+ *    smaller number always loses to a larger one no matter how new it is. One
+ *    un-upgraded peer would have held every device's history wrong forever.
+ *
+ *    They are recomputed from the merged message UNION instead, mirroring the
+ *    store's own `recomputeSessionAggregatesSql` projection. The union is
+ *    itself convergent, so a pure function of it is too — and a counter derived
+ *    from the rows it summarises cannot disagree with them.
+ *
+ * `max()` survives ONLY as the fallback for a session whose union carries no
+ * messages at all, which is exactly the `WHERE EXISTS (SELECT 1 FROM messages)`
+ * arm of the SQL projection: with nothing to project from, the last known value
+ * beats a fabricated zero.
+ */
+const PROJECTED_COUNTER_FIELDS = [
   "prompt_count",
   "assistant_message_count",
   "input_tokens",
@@ -99,10 +119,16 @@ export function combineSession(a: MergedSession, b: MergedSession): MergedSessio
   // LWW base = the higher-clock record; descriptive fields come from it wholesale.
   const winner = compareClock(a.clock, b.clock) >= 0 ? a : b;
   const session: SessionRow = { ...winner.session };
+  const messages = unionMessages(a, b);
 
-  // Monotonic counters: max() across both versions (order-free, idempotent).
-  for (const f of MONOTONIC_COUNTER_FIELDS) {
-    session[f] = Math.max(a.session[f], b.session[f]);
+  // Counters derive from the union; with no union to derive from, the last
+  // known value wins. See PROJECTED_COUNTER_FIELDS.
+  if (messages.length > 0) {
+    projectCounters(session, messages, Math.max(a.session.prompt_count, b.session.prompt_count));
+  } else {
+    for (const f of PROJECTED_COUNTER_FIELDS) {
+      session[f] = Math.max(a.session[f], b.session[f]);
+    }
   }
   for (const f of STICKY_FLAG_FIELDS) {
     session[f] = Math.max(a.session[f], b.session[f]);
@@ -115,8 +141,69 @@ export function combineSession(a: MergedSession, b: MergedSession): MergedSessio
   return {
     clock: laterClock(a.clock, b.clock),
     session,
-    messages: unionMessages(a, b),
+    messages,
   };
+}
+
+/**
+ * Overwrite a session's counter columns with the projection of `messages`,
+ * mirroring the store's `recomputeSessionAggregatesSql` field for field.
+ *
+ * Non-carrier rows have zeroed token columns, so a plain sum over the union IS
+ * a sum over carriers — no filter needed here, exactly as in SQL.
+ *
+ * `prompt_count` falls back to `fallbackPromptCount` when the union carries no
+ * `is_turn_start` signal at all (rows collected before schema V18 have none),
+ * rather than reporting "0 prompts" for the whole of history — the same CASE
+ * the SQL projection uses.
+ */
+function projectCounters(
+  session: SessionRow,
+  messages: readonly MessageRow[],
+  fallbackPromptCount: number,
+): void {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheCreationTokens = 0;
+  let cacheReadTokens = 0;
+  let thinkingBlocks = 0;
+  let webSearchRequests = 0;
+  let webFetchRequests = 0;
+  let throttleEvents = 0;
+  let turnStarts = 0;
+  for (const m of messages) {
+    inputTokens += m.input_tokens;
+    outputTokens += m.output_tokens;
+    cacheCreationTokens += m.cache_creation_tokens;
+    cacheReadTokens += m.cache_read_tokens;
+    thinkingBlocks += m.thinking_blocks;
+    webSearchRequests += m.web_search_requests ?? 0;
+    webFetchRequests += m.web_fetch_requests ?? 0;
+    throttleEvents += m.is_throttled ?? 0;
+    turnStarts += m.is_turn_start ?? 0;
+  }
+  session.input_tokens = inputTokens;
+  session.output_tokens = outputTokens;
+  session.cache_creation_tokens = cacheCreationTokens;
+  session.cache_read_tokens = cacheReadTokens;
+  session.thinking_blocks = thinkingBlocks;
+  session.web_search_requests = webSearchRequests;
+  session.web_fetch_requests = webFetchRequests;
+  session.throttle_events = throttleEvents;
+  session.assistant_message_count = messages.length;
+  session.prompt_count = turnStarts > 0 ? turnStarts : fallbackPromptCount;
+}
+
+/**
+ * Worst-wins on `cost_basis`: a sync may ADD doubt about how a row's usage was
+ * counted, never remove it. An absent value is doubt too — it means the writer
+ * predates the column and cannot vouch for the number.
+ */
+function worstBasis(a: MessageRow, b: MessageRow): string {
+  return (a.cost_basis ?? "pre-dedupe") === "per-response" &&
+    (b.cost_basis ?? "pre-dedupe") === "per-response"
+    ? "per-response"
+    : "pre-dedupe";
 }
 
 /**
@@ -129,24 +216,38 @@ function unionMessages(a: MergedSession, b: MergedSession): readonly MessageRow[
   const byUuid = new Map<string, MessageRow>();
   // Insert lower-clock first, then let the higher-clock record overwrite ties.
   for (const side of lowerFirst) {
-    for (const m of side.messages) byUuid.set(m.uuid, m);
+    for (const m of side.messages) {
+      const seen = byUuid.get(m.uuid);
+      // The higher-clock row wins the VALUES, but `cost_basis` is worst-wins:
+      // a device that cannot vouch for a number must not have its doubt erased
+      // by a newer snapshot that merely didn't know to record any.
+      byUuid.set(m.uuid, seen ? { ...m, cost_basis: worstBasis(seen, m) } : m);
+    }
   }
   return [...byUuid.values()].sort((x, y) => (x.uuid < y.uuid ? -1 : x.uuid > y.uuid ? 1 : 0));
 }
 
 function sortByUuid(messages: readonly MessageRow[]): readonly MessageRow[] {
-  return [...messages].sort((x, y) => (x.uuid < y.uuid ? -1 : x.uuid > y.uuid ? 1 : 0));
+  return [...messages]
+    // An absent `cost_basis` (a shard written before the column existed) means
+    // "cannot vouch for this". Materialising that here — rather than leaving it
+    // undefined — is what keeps a never-combined record byte-identical to a
+    // combined one, and it is the same pessimistic default the column carries.
+    .map((m) => (m.cost_basis === undefined ? { ...m, cost_basis: "pre-dedupe" } : m))
+    .sort((x, y) => (x.uuid < y.uuid ? -1 : x.uuid > y.uuid ? 1 : 0));
 }
 
 function toMerged(record: StampedRecord<SessionExportPayload>): MergedSession {
-  return {
-    clock: record.clock,
-    session: record.value.session,
-    // Sort here too so a session that is NEVER combined normalizes identically to
-    // one that is — otherwise idempotency (merge(X) === merge(X∪X)) would break on
-    // message ORDER alone.
-    messages: sortByUuid(record.value.messages),
-  };
+  // Normalize here too so a session that is NEVER combined comes out identical to
+  // one that is — otherwise idempotency (merge(X) === merge(X∪X)) would break on
+  // message ORDER, on an absent `cost_basis`, or on counters that were never
+  // reprojected. Same reason the sort has always lived here.
+  const messages = sortByUuid(record.value.messages);
+  const session: SessionRow = { ...record.value.session };
+  if (messages.length > 0) {
+    projectCounters(session, messages, session.prompt_count);
+  }
+  return { clock: record.clock, session, messages };
 }
 
 /**

@@ -96,8 +96,11 @@ export function computeSnapshotHash(inputs: SnapshotHashInputs): string {
     // Digest-algorithm version. Bump whenever digest *computation* changes so
     // that entries cached by an older algorithm are invalidated (cache miss →
     // recompute). v2: per-segment cost attribution + folded subagent cost +
-    // costByModel (the cost-attribution fix).
-    `algo:2`,
+    // costByModel (the cost-attribution fix). v3: the usage-carrier row model
+    // (one charge per API response, not one per transcript entry) plus the
+    // corrected rate rows — every cached dollar figure below it is wrong, and
+    // `maxUuid` cannot notice because a repair changes VALUES, not uuids.
+    `algo:3`,
     `date:${inputs.date}`,
     `tz:${inputs.tz}`,
     `projects:${sortedPaths.join(',')}`,

@@ -33,6 +33,23 @@ export interface UsageData {
   };
   service_tier?: string;
   inference_geo?: string;
+  /**
+   * Inference speed mode (`"standard"` | `"fast"`). 489,970 occurrences in the
+   * current corpus, all `"standard"` — see
+   * doc/analysis/cost-correctness-2026-09/03-request-dimensions-delta.md §3.3.
+   * Captured as a column only; no analytic is built on it in this release.
+   */
+  speed?: string;
+  /**
+   * Breakdown of `output_tokens`. Exactly one key has ever been observed —
+   * `thinking_tokens`, a SUBSET of `output_tokens` — and the whole object is
+   * ABSENT on ~32% of the corpus (everything before mid-August). That absence
+   * is why `messages.thinking_tokens` is nullable: a `0` default fabricates a
+   * 0% thinking share for a third of history.
+   */
+  output_tokens_details?: {
+    thinking_tokens?: number;
+  };
 }
 
 export interface ContentBlock {
@@ -83,6 +100,16 @@ export interface RawSessionEntry {
   isMeta?: boolean;
   message?: MessagePayload;
   requestId?: string;
+  /**
+   * Reasoning-effort tier for this request. Sits at the ENTRY ROOT, not under
+   * `message` — verified twice against real transcripts
+   * (doc/analysis/cost-correctness-2026-09/03-request-dimensions-delta.md §3.1).
+   * NOT typed as a closed union: only `high` and `xhigh` have ever been
+   * observed, `xhigh` itself arrived as a surprise, and a union here would make
+   * the next unannounced tier a compile error rather than data. Shape-validated
+   * at the parser boundary instead.
+   */
+  effort?: string;
   // queue-operation
   operation?: "enqueue" | "dequeue";
   // system
@@ -212,7 +239,57 @@ export interface MessageRecord {
    * accumulated.
    */
   isThrottled?: boolean;
+  /**
+   * `message.id` — the API RESPONSE id (schema V23).
+   *
+   * One API response is written to the transcript as N entries, one per content
+   * block, and every one of them repeats the WHOLE response's usage. `uuid` is
+   * per ENTRY, so deduping on it counts the response N times (measured: 2.03
+   * entries per response, 1.94x on cache-read tokens). This is the key that
+   * identifies the group. Null when the transcript did not carry one — such a
+   * row is its own group of one and stays a carrier.
+   */
+  messageId?: string | null;
+  /**
+   * False for a non-carrier: an entry of a multi-entry `message.id` group that
+   * is NOT the one whose usage is counted. Its token fields are zeroed while
+   * its tool / thinking-block / file-path data is kept intact — those are
+   * accumulated PER ENTRY and 92% of tool-use records live on non-first
+   * entries, so dropping the row (rather than its usage) is a data-loss event.
+   * Defaults to true, which is also the column default, so every row written
+   * before V23 reads back as a carrier.
+   */
+  usageCounted?: boolean;
+  /** Reasoning-effort tier (`RawSessionEntry.effort`), shape-validated. */
+  effort?: string | null;
+  /** Inference speed mode (`usage.speed`), shape-validated. */
+  speed?: string | null;
+  /**
+   * `usage.output_tokens_details.thinking_tokens` — a SUBSET of `outputTokens`.
+   * `null` (never 0) when the response did not report it: absent on ~32% of
+   * history, and a 0 there fabricates a 0% thinking share.
+   */
+  thinkingTokens?: number | null;
+  /** How this row's usage was counted — see {@link CostBasis}. */
+  costBasis?: CostBasis;
 }
+
+/**
+ * How a `messages` row's usage figures were arrived at (schema V23).
+ *
+ * A CLOSED MACHINE TOKEN, deliberately not localised and deliberately NOT
+ * NULLABLE in the column: the default is the WORST value, so a row nobody has
+ * vouched for reads as "don't trust me" rather than as good data.
+ *
+ *  - `pre-dedupe` — written by a parser that deduped on `entry.uuid`, so this
+ *    row's usage may be one of N copies of the same API response's usage. Every
+ *    row that existed before V23 carries this.
+ *  - `per-response` — written by the carrier-aware parser: usage is counted
+ *    exactly once per `message.id`.
+ *
+ * Merge rule is WORST-WINS: a sync may add doubt, never remove it.
+ */
+export type CostBasis = "pre-dedupe" | "per-response";
 
 // ─── Collection state ─────────────────────────────────────────────────────────
 

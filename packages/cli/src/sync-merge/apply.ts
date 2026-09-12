@@ -66,7 +66,23 @@ export function rowToSessionRecord(row: SessionRow): SessionRecord {
   };
 }
 
-/** Project a merged {@link MessageRow} back into the store's write shape. */
+/**
+ * Project a merged {@link MessageRow} back into the store's write shape.
+ *
+ * EVERY column the store persists must appear here. This is a lossy seam by
+ * construction — a column added to `messages` and to `MessageRow` is not added
+ * here by the type checker, it is simply dropped on apply — and it had already
+ * silently lost four V18 columns: `is_turn_start`, `web_search_requests`,
+ * `web_fetch_requests` and `is_throttled`. A synced session therefore arrived
+ * with 0 prompts, 0 throttle events and no server-tool calls no matter what the
+ * origin device measured, and — since V18 — those columns are exactly what the
+ * session counters are projected FROM. Restored below, with the V23 columns.
+ *
+ * Still not carried, and not a defect of this function: `messages.account_uuid`
+ * and `messages.git_branch` have no `MessageRecord` field and no writer in
+ * `upsertMessages` — the attribution engine owns the first
+ * (`applyMessageOverrides`) and nothing writes the second yet.
+ */
 export function rowToMessageRecord(row: MessageRow): MessageRecord {
   return {
     uuid: row.uuid,
@@ -88,6 +104,22 @@ export function rowToMessageRecord(row: MessageRow): MessageRecord {
     ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
     promptText: row.prompt_text,
     toolErrorCount: row.tool_error_count ?? 0,
+    isTurnStart: (row.is_turn_start ?? 0) !== 0,
+    webSearchRequests: row.web_search_requests ?? 0,
+    webFetchRequests: row.web_fetch_requests ?? 0,
+    isThrottled: (row.is_throttled ?? 0) !== 0,
+    messageId: row.message_id ?? null,
+    // Absent (a shard from a device that predates V23) means "nobody demoted
+    // this row", which is the column's own default. The store re-derives the
+    // carrier anyway: `upsertMessages` demotes any incoming row whose group
+    // already has a counted one, so an un-upgraded peer's duplicates cannot
+    // re-inflate a repaired group.
+    usageCounted: (row.usage_counted ?? 1) !== 0,
+    effort: row.effort ?? null,
+    speed: row.speed ?? null,
+    thinkingTokens: row.thinking_tokens ?? null,
+    // Worst-wins is applied by the merge fold; an un-stamped row is doubt.
+    costBasis: row.cost_basis === "per-response" ? "per-response" : "pre-dedupe",
   };
 }
 

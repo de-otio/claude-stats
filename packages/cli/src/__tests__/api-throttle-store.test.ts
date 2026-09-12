@@ -47,20 +47,28 @@ function event(overrides: Partial<ApiErrorEvent> & { uuid: string; sessionId: st
   };
 }
 
+/**
+ * What this suite pins is that V22's TABLE lands on both the fresh and the
+ * upgrade path — not the number stamped afterwards, which every later migration
+ * moves. It was written as a literal "22" and duly broke on V23; asserting the
+ * store's own current version keeps the check about the migration.
+ */
+const CURRENT_SCHEMA_VERSION = "23";
+
 describe("schema V22 migration", () => {
   let dbPath: string;
 
   beforeEach(() => { dbPath = tmpDb(); });
   afterEach(() => { try { fs.unlinkSync(dbPath); } catch { /* best effort */ } });
 
-  it("creates api_error_events on a fresh database and reports version 22", () => {
+  it("creates api_error_events on a fresh database and stamps the current version", () => {
     const store = new Store(dbPath);
     store.close();
     const raw = new DatabaseSync(dbPath);
     const version = raw
       .prepare("SELECT value FROM metadata WHERE key = 'schema_version'")
       .get() as { value: string };
-    expect(version.value).toBe("22");
+    expect(version.value).toBe(CURRENT_SCHEMA_VERSION);
     const cols = raw.prepare("PRAGMA table_info(api_error_events)").all() as Array<{ name: string }>;
     const names = cols.map((c) => c.name).sort();
     expect(names).toEqual(
@@ -89,7 +97,7 @@ describe("schema V22 migration", () => {
     const version = raw2
       .prepare("SELECT value FROM metadata WHERE key = 'schema_version'")
       .get() as { value: string };
-    expect(version.value).toBe("22");
+    expect(version.value).toBe(CURRENT_SCHEMA_VERSION);
     // The existing session survived the migration untouched.
     const s = raw2.prepare("SELECT session_id FROM sessions WHERE session_id = 's1'").get();
     expect(s).toBeTruthy();

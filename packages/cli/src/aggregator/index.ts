@@ -417,7 +417,40 @@ export async function collect(
   const windowSince = now() - 2 * 24 * 60 * 60 * 1000;
   computeAndUpsertWindows(store, windowSince);
 
+  // …and, ONCE, over all of history — see `repriceUsageWindows`.
+  repriceUsageWindows(store);
+
   return result;
+}
+
+/**
+ * `metadata` key recording which cost basis the stored `usage_windows` dollars
+ * were computed under. Bump {@link USAGE_WINDOW_BASIS} when anything that moves
+ * a stored dollar figure changes; clear the key to force one full recompute
+ * (which is what a repair pass should do after it corrects `messages`).
+ */
+export const USAGE_WINDOW_BASIS_KEY = "usage_windows_basis";
+/** v23 = corrected pricing rows + the usage-carrier row model. */
+export const USAGE_WINDOW_BASIS = "v23";
+
+/**
+ * Recompute EVERY usage window from the current `messages` table, once per
+ * basis change.
+ *
+ * `usage_windows` stores DOLLARS, not tokens — 555 rows holding $113,222 of
+ * pre-fix cost on one contributor's machine — and the routine maintenance above
+ * only ever revisits the last two days. Without this, every window older than
+ * 48 hours would keep the numbers it was written with: the old rate table and
+ * the duplicated usage, silently, forever.
+ *
+ * Cheap to re-run and safe to interrupt: `upsertUsageWindow` is keyed on
+ * `window_start`, so a partial pass simply leaves the remainder for next time
+ * (the marker is only written after a complete pass).
+ */
+export function repriceUsageWindows(store: Store): void {
+  if (store.getMeta(USAGE_WINDOW_BASIS_KEY) === USAGE_WINDOW_BASIS) return;
+  computeAndUpsertWindows(store, 0);
+  store.setMeta(USAGE_WINDOW_BASIS_KEY, USAGE_WINDOW_BASIS);
 }
 
 const WINDOW_DURATION_MS = 5 * 60 * 60 * 1000; // 5 hours

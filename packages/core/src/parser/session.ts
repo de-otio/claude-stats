@@ -101,6 +101,142 @@ export async function extractCwdFromSessionFile(
   }
 }
 
+/**
+ * Yield every processable line of a session file from `startOffset`, one at a
+ * time, buffering exactly ONE line.
+ *
+ * The rule this exists to serve is small — "discard the LAST line if it fails
+ * JSON parsing (a partial write)" — and the previous implementation paid for it
+ * by accumulating every line of the range in an array first. That is fine for a
+ * tail and fatal at offset 0: the largest transcript on one contributor's
+ * machine is 994 MB, and a full re-parse from 0 is exactly the remedy users are
+ * told to run after this release. One line of lookahead is all the rule needs.
+ *
+ * Blank lines are skipped (they still advance the offset), so "the last line"
+ * means the last NON-BLANK one — same as before.
+ */
+async function* streamProcessableLines(
+  filePath: string,
+  startOffset: number,
+): AsyncGenerator<{ raw: string; offset: number }> {
+  const stream = fs.createReadStream(filePath, {
+    encoding: "utf8",
+    start: startOffset,
+  });
+  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  let pending: { raw: string; offset: number } | null = null;
+  let currentOffset = startOffset;
+  try {
+    for await (const line of rl) {
+      const lineBytes = Buffer.byteLength(line, "utf8") + 1; // +1 for newline
+      if (line.trim()) {
+        if (pending) yield pending;
+        pending = { raw: line, offset: currentOffset };
+      }
+      currentOffset += lineBytes;
+    }
+    // Rule 6: discard the last line if it fails JSON parsing (partial write)
+    if (pending && isValidJson(pending.raw)) yield pending;
+  } finally {
+    rl.close();
+    stream.destroy();
+  }
+}
+
+/**
+ * Shape check for a short lowercase token (`effort`, `speed`).
+ *
+ * A SHAPE check, not an enum: `xhigh` arrived unannounced once already, so a
+ * closed list would drop the next real value on the floor while a shape keeps
+ * it. What it must exclude is free text — `getSessionMessages` is `SELECT *`
+ * and feeds the personal-plane export, so any column added to `messages`
+ * enrols itself in an export automatically, and validation therefore happens
+ * where the value ENTERS.
+ */
+const SHORT_TOKEN_RE = /^[a-z]{1,10}$/;
+/** Shape check for `message.id` (`msg_01ABC…`). */
+const MESSAGE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+function validShape(value: unknown, re: RegExp): string | null {
+  return typeof value === "string" && re.test(value) ? value : null;
+}
+
+/**
+ * A non-negative, finite, integral token count, or null. Anything else — a
+ * string, a float, a negative, NaN — is "not reported", never coerced to 0:
+ * `thinking_tokens` is absent on ~32% of history and a fabricated 0 there reads
+ * as a measured 0% thinking share.
+ */
+function validTokenCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
+/** Total billable token volume on a record — the usage-carrier tiebreak. */
+function usageMagnitude(m: MessageRecord): number {
+  return (
+    m.inputTokens + m.outputTokens + m.cacheCreationTokens + m.cacheReadTokens
+  );
+}
+
+/**
+ * Strip the REPEATED usage from every non-carrier entry of a `message.id` group.
+ *
+ * One API response is written as N transcript entries — one per content block —
+ * and each entry repeats the WHOLE response's usage. Measured over 12,899
+ * groups: 84% are multi-entry, at 2.03 entries per response, which is where the
+ * 1.94x cache-read and 2.60x output over-count come from.
+ *
+ * The rows are KEPT. `toolUseCounts`, `filePaths`, `thinkingBlocks` and
+ * `toolErrorCount` are accumulated per ENTRY and 9,955 groups carry a
+ * `tool_use` block on a NON-FIRST entry, so deleting non-carriers would destroy
+ * ~92% of tool-use records to fix a token count. Only the usage is zeroed.
+ *
+ * The carrier is the MAX-usage entry in the group (it differs from first-wins
+ * in only 18 of 10,554 groups, but MAX is the prior set's verified choice);
+ * ties resolve to the earliest entry, so the choice is deterministic and a
+ * re-parse of the same bytes reaches the same answer.
+ *
+ * This can only see the entries in THIS parse range. A group straddling a
+ * collect checkpoint is split across two invocations and no parser-local state
+ * can join them — which is why the rule is ALSO enforced at the store.
+ */
+function markUsageCarriers(messages: MessageRecord[]): void {
+  const groups = new Map<string, MessageRecord[]>();
+  for (const m of messages) {
+    if (!m.messageId) continue; // no id → its own group of one, stays a carrier
+    const existing = groups.get(m.messageId);
+    if (existing) existing.push(m);
+    else groups.set(m.messageId, [m]);
+  }
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    let carrier = group[0]!;
+    for (const m of group) {
+      if (usageMagnitude(m) > usageMagnitude(carrier)) carrier = m;
+    }
+    for (const m of group) {
+      if (m === carrier) continue;
+      m.usageCounted = false;
+      m.inputTokens = 0;
+      m.outputTokens = 0;
+      m.cacheCreationTokens = 0;
+      m.cacheReadTokens = 0;
+      m.ephemeral5mCacheTokens = 0;
+      m.ephemeral1hCacheTokens = 0;
+      m.webSearchRequests = 0;
+      m.webFetchRequests = 0;
+      m.thinkingTokens = null;
+      // A truncation is a property of the RESPONSE, so counting it on every
+      // entry of the group inflates throttle_events by the same factor the
+      // tokens were inflated by. `thinkingBlocks`, `tools`, `filePaths` and
+      // `toolErrorCount` are per-ENTRY data and are deliberately left intact.
+      m.isThrottled = false;
+    }
+  }
+}
+
 /** Parse a session JSONL file from the given byte offset onward.
  *  Reads incrementally — only processes new lines since the last run. */
 export async function parseSessionFile(
@@ -112,30 +248,7 @@ export async function parseSessionFile(
   const messages: MessageRecord[] = [];
   const errors: ParseError[] = [];
 
-  // Collect all raw lines from startOffset
-  const lines: Array<{ raw: string; offset: number }> = [];
-  let currentOffset = startOffset;
-
-  const stream = fs.createReadStream(filePath, {
-    encoding: "utf8",
-    start: startOffset,
-  });
-  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-
-  for await (const line of rl) {
-    const lineBytes = Buffer.byteLength(line, "utf8") + 1; // +1 for newline
-    if (line.trim()) {
-      lines.push({ raw: line, offset: currentOffset });
-    }
-    currentOffset += lineBytes;
-  }
-
-  // Rule 6: discard the last line if it fails JSON parsing (partial write)
   let lastGoodOffset = startOffset;
-  const linesToProcess =
-    lines.length > 0 && !isValidJson(lines[lines.length - 1]!.raw)
-      ? lines.slice(0, -1)
-      : lines;
 
   // Session-level accumulators
   let sessionId: string | null = null;
@@ -154,12 +267,19 @@ export async function parseSessionFile(
   let hasQueueOperation = false;
   let promptCount = 0;
   let assistantMessageCount = 0;
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let cacheCreationTokens = 0;
-  let cacheReadTokens = 0;
-  let webSearchRequests = 0;
-  let webFetchRequests = 0;
+  // Usage from assistant entries carrying NO uuid. Those produce no `messages`
+  // row, so they cannot be deduped and cannot be summed back out of `messages`
+  // afterwards — they are accumulated here and added to the carrier totals at
+  // the end, exactly as they were counted before. Every uuid-bearing entry's
+  // usage is derived from the message records AFTER the carrier pass, so the
+  // session totals and the rows they summarise can never disagree.
+  let unkeyedInputTokens = 0;
+  let unkeyedOutputTokens = 0;
+  let unkeyedCacheCreationTokens = 0;
+  let unkeyedCacheReadTokens = 0;
+  let unkeyedWebSearchRequests = 0;
+  let unkeyedWebFetchRequests = 0;
+  let unkeyedThrottleEvents = 0;
   let totalThinkingBlocks = 0;
   const toolUseCounts = new Map<string, number>();
   const modelsSet = new Set<string>();
@@ -172,7 +292,6 @@ export async function parseSessionFile(
   let parentUuid: string | null = null;
 
   // New accumulators for usage analysis
-  let throttleEvents = 0;
   const allTimestamps: number[] = [];     // for active duration
   const responseTimes: number[] = [];     // assistant_ts - user_ts pairs
   let lastUserTimestamp: number | null = null;
@@ -180,7 +299,7 @@ export async function parseSessionFile(
   const apiErrorEvents: ApiErrorEvent[] = [];
 
   let lineNumber = 0;
-  for (const { raw, offset } of linesToProcess) {
+  for await (const { raw, offset } of streamProcessableLines(filePath, startOffset)) {
     lineNumber++;
     let entry: RawSessionEntry;
 
@@ -300,6 +419,12 @@ export async function parseSessionFile(
       //
       // Entries with no uuid cannot be deduped and also produce no message row,
       // so they stay counted exactly as before.
+      //
+      // This is only HALF the rule. It collapses the same ENTRY appearing
+      // twice; `markUsageCarriers` (below) collapses the N DISTINCT entries one
+      // API response is written as. The two are independent — 59% of
+      // multi-entry response groups repeat no uuid at all, which is why this
+      // guard never noticed the 1.94x.
       const assistantUuid = entry.uuid;
       if (assistantUuid) {
         if (seenAssistantUuids.has(assistantUuid)) continue;
@@ -349,17 +474,20 @@ export async function parseSessionFile(
 
       // Throttle heuristic: truncated at suspiciously low output
       const msgIsThrottled = msgStopReason === "max_tokens" && msgOutputTokens < 200;
-      if (msgIsThrottled) {
-        throttleEvents++;
-      }
 
-      if (usage) {
-        inputTokens += usage.input_tokens ?? 0;
-        outputTokens += msgOutputTokens; // msgOutputTokens = usage.output_tokens ?? 0
-        cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
-        cacheReadTokens += usage.cache_read_input_tokens ?? 0;
-        webSearchRequests += usage.server_tool_use?.web_search_requests ?? 0;
-        webFetchRequests += usage.server_tool_use?.web_fetch_requests ?? 0;
+      // Only entries that produce no `messages` row are accumulated here; see
+      // the `unkeyed*` declarations. Everything else is summed from the message
+      // records after the usage-carrier pass.
+      if (!assistantUuid) {
+        if (msgIsThrottled) unkeyedThrottleEvents++;
+        if (usage) {
+          unkeyedInputTokens += usage.input_tokens ?? 0;
+          unkeyedOutputTokens += msgOutputTokens;
+          unkeyedCacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
+          unkeyedCacheReadTokens += usage.cache_read_input_tokens ?? 0;
+          unkeyedWebSearchRequests += usage.server_tool_use?.web_search_requests ?? 0;
+          unkeyedWebFetchRequests += usage.server_tool_use?.web_fetch_requests ?? 0;
+        }
       }
 
       // Extract tool usage and thinking blocks from content blocks
@@ -422,9 +550,22 @@ export async function parseSessionFile(
       totalThinkingBlocks += thinkingBlockCount;
       const msgFilePaths = Array.from(msgFilePathsSet);
 
-      // Store per-message record for detailed analysis
+      // Store per-message record for detailed analysis.
+      //
+      // The three V23 dimensions are shape-validated HERE, where they enter —
+      // see `validShape`. `effort` sits at the ENTRY ROOT (not under `message`);
+      // `speed` and `output_tokens_details` sit inside `usage`.
       const msgUuid = entry.uuid;
       if (msgUuid) {
+        const messageId = validShape(entry.message?.id, MESSAGE_ID_RE);
+        const msgInputTokens = usage?.input_tokens ?? 0;
+        const msgCacheCreationTokens = usage?.cache_creation_input_tokens ?? 0;
+        const msgCacheReadTokens = usage?.cache_read_input_tokens ?? 0;
+        // A row with no `message.id` cannot be joined to its siblings, so this
+        // parser cannot promise its usage is counted once per response — unless
+        // it reports no usage at all, which nothing can inflate.
+        const hasUsage =
+          msgInputTokens + msgOutputTokens + msgCacheCreationTokens + msgCacheReadTokens > 0;
         messages.push({
           uuid: msgUuid,
           sessionId: entry.sessionId ?? sessionId ?? "",
@@ -432,10 +573,10 @@ export async function parseSessionFile(
           claudeVersion: entry.version ?? claudeVersion,
           model: model ?? null,
           stopReason: entry.message?.stop_reason ?? null,
-          inputTokens: usage?.input_tokens ?? 0,
+          inputTokens: msgInputTokens,
           outputTokens: msgOutputTokens,
-          cacheCreationTokens: usage?.cache_creation_input_tokens ?? 0,
-          cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
+          cacheCreationTokens: msgCacheCreationTokens,
+          cacheReadTokens: msgCacheReadTokens,
           tools: msgTools,
           filePaths: msgFilePaths,
           thinkingBlocks: thinkingBlockCount,
@@ -449,10 +590,41 @@ export async function parseSessionFile(
           webSearchRequests: usage?.server_tool_use?.web_search_requests ?? 0,
           webFetchRequests: usage?.server_tool_use?.web_fetch_requests ?? 0,
           isThrottled: msgIsThrottled,
+          messageId,
+          // Every entry starts as a carrier; `markUsageCarriers` demotes the
+          // non-winners once the whole range has been read.
+          usageCounted: true,
+          effort: validShape(entry.effort, SHORT_TOKEN_RE),
+          speed: validShape(usage?.speed, SHORT_TOKEN_RE),
+          thinkingTokens: validTokenCount(usage?.output_tokens_details?.thinking_tokens),
+          costBasis: messageId !== null || !hasUsage ? "per-response" : "pre-dedupe",
         });
       }
       lastPromptText = null;
     }
+  }
+
+  // One API response = one charge. Strip the repeated usage off every
+  // non-carrier entry BEFORE the session totals are derived from the records,
+  // so `ParseResult.session` and `ParseResult.messages` state the same number.
+  markUsageCarriers(messages);
+
+  let inputTokens = unkeyedInputTokens;
+  let outputTokens = unkeyedOutputTokens;
+  let cacheCreationTokens = unkeyedCacheCreationTokens;
+  let cacheReadTokens = unkeyedCacheReadTokens;
+  let webSearchRequests = unkeyedWebSearchRequests;
+  let webFetchRequests = unkeyedWebFetchRequests;
+  let throttleEvents = unkeyedThrottleEvents;
+  for (const m of messages) {
+    // Non-carriers are already zeroed, so this is a sum over carriers.
+    inputTokens += m.inputTokens;
+    outputTokens += m.outputTokens;
+    cacheCreationTokens += m.cacheCreationTokens;
+    cacheReadTokens += m.cacheReadTokens;
+    webSearchRequests += m.webSearchRequests ?? 0;
+    webFetchRequests += m.webFetchRequests ?? 0;
+    if (m.isThrottled) throttleEvents++;
   }
 
   const toolUseCountsArr: ToolUseCount[] = Array.from(

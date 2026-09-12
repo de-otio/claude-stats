@@ -16,6 +16,7 @@ import type { DeviceId, OriginClock, StampedRecord } from "@claude-stats/core/ty
 import type { SessionExportPayload } from "../../backup/records.js";
 import type { MessageRow, SessionRow } from "../../store/index.js";
 import { combineSession, compareClock, mergeRecords, type MergedSession } from "../../sync-merge/merge.js";
+import { rowToMessageRecord } from "../../sync-merge/apply.js";
 
 // ── deterministic record construction ────────────────────────────────────────
 // Content is a PURE function of (sessionId, device, counter) so two records that
@@ -184,13 +185,22 @@ describe("equal-counter records resolve on the device tiebreak, not updated_at (
     expect(a[0]!.clock.originDevice).toBe("aaaa0002");
   });
 
-  it("combineSession takes max() of monotonic counters across versions", () => {
-    // Same session, different counters: winner is the higher clock, but the
-    // cumulative counters are the max seen — never lost, never double-counted.
+  it("combineSession PROJECTS counters from the merged message union", () => {
+    // Was: `max()` across versions. That is safe only while a counter can only
+    // grow, and V23's usage-carrier model makes these counters SHRINK — so a
+    // max() fold would let one un-upgraded peer's inflated shard pin the old
+    // number on every device, permanently and unrecoverably by any clock.
+    // The counters are now derived from the rows they summarise, exactly as
+    // the store's own recomputeSessionAggregates derives them.
     const older = makeRecord("s1", "aaaa0001" as DeviceId, 2);
     const newer = makeRecord("s1", "aaaa0001" as DeviceId, 5);
     const [merged] = mergeRecords([newer, older]);
-    expect(merged!.session.input_tokens).toBe(50); // max(20, 50)
+    // Union is 2 messages (shared uuid + one per-device uuid), 1 input token each.
+    expect(merged!.messages).toHaveLength(2);
+    expect(merged!.session.input_tokens).toBe(2);
+    expect(merged!.session.assistant_message_count).toBe(2);
+    // No is_turn_start signal anywhere in the union (pre-V18 rows have none),
+    // so prompt_count keeps the last known value rather than reporting zero.
     expect(merged!.session.prompt_count).toBe(5);
     expect(merged!.clock.counter).toBe(5);
     // Union of messages: shared uuid resolves to the newer prompt; both per-device
@@ -225,5 +235,224 @@ describe("combineSession algebraic laws (unit)", () => {
     expect(JSON.stringify(combineSession(A, A))).toBe(JSON.stringify(mergeRecords([
       { clock: A.clock, value: { session: A.session, messages: A.messages } },
     ])[0]));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// V23 — the cross-device half of the usage-carrier model.
+//
+// The release makes session token counters SHRINK. Everything below pins the
+// two ways that could have gone wrong: a `max()` fold pinning the inflated
+// value forever, and a sync quietly erasing another device's doubt about how a
+// number was counted.
+
+function v23Message(
+  uuid: string,
+  sessionId: string,
+  opts: Partial<MessageRow> = {},
+): MessageRow {
+  return {
+    uuid,
+    session_id: sessionId,
+    timestamp: 1_700_000_000_000,
+    claude_version: "1.0.0",
+    model: "claude-x",
+    stop_reason: "end_turn",
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_creation_tokens: 0,
+    cache_read_tokens: 0,
+    tools: "[]",
+    file_paths: "[]",
+    thinking_blocks: 0,
+    service_tier: null,
+    inference_geo: null,
+    ephemeral_5m_cache_tokens: 0,
+    ephemeral_1h_cache_tokens: 0,
+    prompt_text: null,
+    ...opts,
+  } as MessageRow;
+}
+
+function stamped(
+  sessionId: string,
+  device: DeviceId,
+  counter: number,
+  messages: MessageRow[],
+  sessionOverrides: Partial<SessionRow> = {},
+): StampedRecord<SessionExportPayload> {
+  return {
+    clock: { wallMs: 500 + counter, counter, originDevice: device },
+    value: {
+      session: { ...sessionRow(sessionId, device, counter), ...sessionOverrides },
+      messages,
+    },
+  };
+}
+
+describe("V23 — counters follow the repair downwards across devices", () => {
+  it("an un-upgraded peer's inflated shard cannot pin the old number", () => {
+    // One API response written as two transcript entries. The un-upgraded peer
+    // still has both rows counting the full usage (1000 + 1000) and a session
+    // row that says 2000. The repaired device has demoted the second entry to a
+    // zeroed non-carrier, so the true figure is 1000.
+    const stale = stamped(
+      "s1",
+      "aaaa0001" as DeviceId,
+      1,
+      [
+        v23Message("e1", "s1", { input_tokens: 1_000, message_id: "msg_1", usage_counted: 1 }),
+        v23Message("e2", "s1", { input_tokens: 1_000, message_id: "msg_1", usage_counted: 1 }),
+      ],
+      { input_tokens: 2_000 },
+    );
+    const repaired = stamped(
+      "s1",
+      "aaaa0002" as DeviceId,
+      2,
+      [
+        v23Message("e1", "s1", {
+          input_tokens: 1_000,
+          message_id: "msg_1",
+          usage_counted: 1,
+          cost_basis: "per-response",
+        }),
+        v23Message("e2", "s1", {
+          input_tokens: 0,
+          message_id: "msg_1",
+          usage_counted: 0,
+          cost_basis: "per-response",
+        }),
+      ],
+      { input_tokens: 1_000 },
+    );
+
+    for (const order of [[stale, repaired], [repaired, stale]]) {
+      const [merged] = mergeRecords(order);
+      expect(merged!.session.input_tokens).toBe(1_000);
+      // …and the rows agree with the counter, which is the whole point of
+      // projecting rather than folding.
+      const rowSum = merged!.messages.reduce((n, m) => n + m.input_tokens, 0);
+      expect(rowSum).toBe(merged!.session.input_tokens);
+    }
+  });
+
+  it("projection is exact for every counter the store projects", () => {
+    const rec = stamped(
+      "s1",
+      "aaaa0001" as DeviceId,
+      1,
+      [
+        v23Message("a", "s1", {
+          input_tokens: 3,
+          output_tokens: 5,
+          cache_read_tokens: 7,
+          cache_creation_tokens: 9,
+          thinking_blocks: 2,
+          web_search_requests: 1,
+          web_fetch_requests: 4,
+          is_throttled: 1,
+          is_turn_start: 1,
+        }),
+        v23Message("b", "s1", { output_tokens: 1, is_turn_start: 1 }),
+      ],
+      { input_tokens: 999, prompt_count: 999 },
+    );
+    const [merged] = mergeRecords([rec]);
+    const s = merged!.session;
+    expect(s.input_tokens).toBe(3);
+    expect(s.output_tokens).toBe(6);
+    expect(s.cache_read_tokens).toBe(7);
+    expect(s.cache_creation_tokens).toBe(9);
+    expect(s.thinking_blocks).toBe(2);
+    expect(s.web_search_requests).toBe(1);
+    expect(s.web_fetch_requests).toBe(4);
+    expect(s.throttle_events).toBe(1);
+    expect(s.assistant_message_count).toBe(2);
+    expect(s.prompt_count).toBe(2); // real is_turn_start signal wins over 999
+  });
+
+  it("a session with no messages keeps its last known counters", () => {
+    // Mirrors the SQL projection's `WHERE EXISTS (SELECT 1 FROM messages)` arm:
+    // with nothing to project from, a fabricated zero is worse than a stale max.
+    const a = stamped("s1", "aaaa0001" as DeviceId, 1, [], { input_tokens: 40 });
+    const b = stamped("s1", "aaaa0002" as DeviceId, 2, [], { input_tokens: 10 });
+    const [merged] = mergeRecords([a, b]);
+    expect(merged!.session.input_tokens).toBe(40);
+  });
+});
+
+describe("V23 — cost_basis is worst-wins on merge", () => {
+  it("a newer 'per-response' row cannot erase an older device's doubt", () => {
+    const doubtful = stamped("s1", "aaaa0001" as DeviceId, 1, [
+      v23Message("e1", "s1", { input_tokens: 5, cost_basis: "pre-dedupe" }),
+    ]);
+    const confident = stamped("s1", "aaaa0002" as DeviceId, 9, [
+      v23Message("e1", "s1", { input_tokens: 5, cost_basis: "per-response" }),
+    ]);
+    for (const order of [[doubtful, confident], [confident, doubtful]]) {
+      const [merged] = mergeRecords(order);
+      expect(merged!.messages[0]!.cost_basis).toBe("pre-dedupe");
+    }
+  });
+
+  it("agreement on 'per-response' survives the fold", () => {
+    const a = stamped("s1", "aaaa0001" as DeviceId, 1, [
+      v23Message("e1", "s1", { cost_basis: "per-response" }),
+    ]);
+    const b = stamped("s1", "aaaa0002" as DeviceId, 2, [
+      v23Message("e1", "s1", { cost_basis: "per-response" }),
+    ]);
+    expect(mergeRecords([a, b])[0]!.messages[0]!.cost_basis).toBe("per-response");
+  });
+
+  it("an absent cost_basis is doubt, not permission", () => {
+    // A shard written before the column existed cannot vouch for its numbers.
+    const legacy = stamped("s1", "aaaa0001" as DeviceId, 1, [v23Message("e1", "s1")]);
+    const [merged] = mergeRecords([legacy]);
+    expect(merged!.messages[0]!.cost_basis).toBe("pre-dedupe");
+  });
+});
+
+describe("V23 — rowToMessageRecord carries every persisted column", () => {
+  it("restores the four V18 columns it was silently dropping", () => {
+    const rec = rowToMessageRecord(
+      v23Message("e1", "s1", {
+        is_turn_start: 1,
+        web_search_requests: 3,
+        web_fetch_requests: 4,
+        is_throttled: 1,
+      }),
+    );
+    expect(rec.isTurnStart).toBe(true);
+    expect(rec.webSearchRequests).toBe(3);
+    expect(rec.webFetchRequests).toBe(4);
+    expect(rec.isThrottled).toBe(true);
+  });
+
+  it("carries the V23 columns, defaulting an old peer's row pessimistically", () => {
+    const carried = rowToMessageRecord(
+      v23Message("e1", "s1", {
+        message_id: "msg_1",
+        usage_counted: 0,
+        cost_basis: "per-response",
+        effort: "xhigh",
+        speed: "standard",
+        thinking_tokens: 42,
+      }),
+    );
+    expect(carried.messageId).toBe("msg_1");
+    expect(carried.usageCounted).toBe(false);
+    expect(carried.costBasis).toBe("per-response");
+    expect(carried.effort).toBe("xhigh");
+    expect(carried.speed).toBe("standard");
+    expect(carried.thinkingTokens).toBe(42);
+
+    const legacy = rowToMessageRecord(v23Message("e2", "s1"));
+    expect(legacy.messageId).toBeNull();
+    expect(legacy.usageCounted).toBe(true); // the column's own default
+    expect(legacy.costBasis).toBe("pre-dedupe"); // unknown reads as untrusted
+    // NOT 0 — an unreported thinking-token count must never read as "no thinking".
+    expect(legacy.thinkingTokens).toBeNull();
   });
 });

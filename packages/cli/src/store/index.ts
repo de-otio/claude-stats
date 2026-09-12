@@ -27,7 +27,7 @@ import { estimateCost } from "@claude-stats/core/pricing";
 import { requireTicketKey } from "@claude-stats/core/tickets";
 import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
-const SCHEMA_VERSION = 22;
+const SCHEMA_VERSION = 23;
 
 /**
  * SQL narrowing a session-id column to sessions attributed to one ticket key.
@@ -132,10 +132,48 @@ export class Store {
     if (current < 20) this.migrateToV20();
     if (current < 21) this.migrateToV21();
     if (current < 22) this.migrateToV22();
+    if (current < 23) this.migrateToV23();
 
+    // Stamp the version FORWARD ONLY.
+    //
+    // Three processes open this database at whatever version each happens to
+    // ship — the CLI, the MCP server and the VS Code extension update
+    // independently, and running a new one then an old one is routine, not
+    // exotic. An unconditional stamp let the old build write its own lower
+    // number back, which re-armed every migration above it on the next launch
+    // of the new build: a backfill designed to run once would run again, over
+    // data the new build had already corrected.
+    //
+    // A database from the FUTURE is left exactly as it is and reported. This
+    // build cannot know what the newer schema means, so the honest move is to
+    // say so rather than to quietly operate on it.
+    if (current > SCHEMA_VERSION) {
+      console.warn(
+        `[claude-stats] database schema is v${current}, but this build understands v${SCHEMA_VERSION}. ` +
+          `Leaving it alone — update claude-stats (CLI, MCP server and VS Code extension) to read it correctly.`,
+      );
+      return;
+    }
+    if (current < SCHEMA_VERSION) {
+      this.db
+        .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
+        .run("schema_version", String(SCHEMA_VERSION));
+    }
+  }
+
+  /** Read one `metadata` value, or null when the key is absent. */
+  getMeta(key: string): string | null {
+    const row = this.db
+      .prepare("SELECT value FROM metadata WHERE key = ?")
+      .get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  }
+
+  /** Write one `metadata` value. */
+  setMeta(key: string, value: string): void {
     this.db
       .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)")
-      .run("schema_version", String(SCHEMA_VERSION));
+      .run(key, value);
   }
 
   private migrateToV1(): void {
@@ -780,6 +818,115 @@ export class Store {
   }
 
   /**
+   * V23 — the usage-carrier row model, plus three request dimensions
+   * (`doc/analysis/cost-correctness-2026-09/06-implementation-plan.md` §6.1).
+   *
+   * ONE API RESPONSE IS WRITTEN AS N TRANSCRIPT ENTRIES, one per content block,
+   * and every one of them repeats the WHOLE response's usage. `messages` is
+   * keyed on the per-ENTRY `uuid`, so it has been counting each response 2.03
+   * times on average — 1.94x on cache-read tokens, 2.60x on output.
+   *
+   * `message_id` is the response identity; `usage_counted` marks the ONE entry
+   * per group whose usage is real. Non-carriers keep their row (their tool,
+   * thinking-block and file-path data is per-entry and 92% of tool-use records
+   * live on non-first entries) and have their token columns zeroed, so every
+   * existing `SUM(...)` over `messages` becomes a sum over carriers with no
+   * query change — and, because uuids never move, a later re-parse upserts the
+   * same rows in place and merely corrects which one carries the usage.
+   *
+   * Column notes:
+   *  - `thinking_tokens` is NULLABLE. `NOT NULL DEFAULT 0` would fabricate a 0%
+   *    thinking share for the ~32% of history written before the field existed.
+   *    That exact bug was produced once already during the research (23.7%
+   *    reported against a true 38.9%).
+   *  - `cost_basis` is the deliberate EXCEPTION: `NOT NULL DEFAULT 'pre-dedupe'`
+   *    so that every row nobody has vouched for reads as "don't trust me". A
+   *    nullable flag whose NULL means "fine" inverts the fail-safe.
+   *  - The partial unique index enforces "at most ONE carrier per
+   *    (session, message_id)" — the invariant `upsertMessages` maintains — and
+   *    is scoped to carriers because the whole point is that a group has MANY
+   *    rows. It is per-session, matching the store's enforcement scope: a
+   *    resumed/forked transcript can replay a response into a different session
+   *    and a global constraint would turn that into a collector crash.
+   *
+   * Additive. The only backfill is `cost_basis` for rows written before the
+   * column existed, and it is written to be safe on a PARTIALLY repaired table
+   * (`WHERE cost_basis IS NULL`) — never a blanket update, which would relabel
+   * rows a repair had already corrected.
+   */
+  private migrateToV23(): void {
+    const addColumn = (table: string, column: string, def: string): void => {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === column)) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+      }
+    };
+
+    // Request dimensions (03-request-dimensions-delta.md). All nullable: an
+    // absent value must read as "not reported", not as a measured zero.
+    addColumn("messages", "effort", "TEXT");
+    addColumn("messages", "speed", "TEXT");
+    addColumn("messages", "thinking_tokens", "INTEGER");
+
+    // The carrier model.
+    addColumn("messages", "message_id", "TEXT");
+    addColumn("messages", "usage_counted", "INTEGER NOT NULL DEFAULT 1");
+    // SQLite requires a constant default for ALTER TABLE ADD COLUMN, which is
+    // exactly what is wanted here: every pre-existing row is stamped
+    // 'pre-dedupe' by the ADD itself.
+    addColumn("messages", "cost_basis", "TEXT NOT NULL DEFAULT 'pre-dedupe'");
+
+    this.db.exec("BEGIN");
+    try {
+      // Idempotent against a partially-repaired table. A row can only be NULL
+      // here if it was written between the ADD COLUMN and this UPDATE by a
+      // build that did not supply the column; rows a repair has already labelled
+      // 'per-response' must not be dragged back to 'pre-dedupe'.
+      this.db.exec(`UPDATE messages SET cost_basis = 'pre-dedupe' WHERE cost_basis IS NULL`);
+      this.db.exec(`UPDATE messages SET usage_counted = 1 WHERE usage_counted IS NULL`);
+      // Make the invariant TRUE before declaring it, so that creating the index
+      // can never be the thing that stops the database opening. A no-op on a
+      // first run (no row has a `message_id` yet) and a no-op whenever the
+      // invariant already holds; on a table that somehow carries two carriers
+      // for one response it keeps the MAX-usage row — the same rule the parser
+      // applies — and zeroes the rest.
+      this.db.exec(`
+        UPDATE messages SET
+          usage_counted = 0,
+          input_tokens = 0, output_tokens = 0,
+          cache_creation_tokens = 0, cache_read_tokens = 0,
+          ephemeral_5m_cache_tokens = 0, ephemeral_1h_cache_tokens = 0,
+          web_search_requests = 0, web_fetch_requests = 0,
+          thinking_tokens = NULL, is_throttled = 0
+        WHERE usage_counted = 1 AND message_id IS NOT NULL
+          AND uuid NOT IN (
+            SELECT uuid FROM (
+              SELECT uuid, ROW_NUMBER() OVER (
+                PARTITION BY session_id, message_id
+                ORDER BY (input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) DESC,
+                         uuid ASC
+              ) AS rn
+              FROM messages WHERE usage_counted = 1 AND message_id IS NOT NULL
+            ) WHERE rn = 1
+          );
+      `);
+      this.db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_usage_carrier
+          ON messages (session_id, message_id)
+          WHERE message_id IS NOT NULL AND usage_counted = 1;
+      `);
+      this.db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_messages_message_id
+          ON messages (message_id) WHERE message_id IS NOT NULL;
+      `);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
+  /**
    * V14 — anchor pins. Durable, session-keyed ground-truth pins produced by the
    * attribution engine's anchor signal (live CLI sessions observed active under
    * the currently-read account). Persisted because the live-session files are
@@ -928,16 +1075,24 @@ export class Store {
         this.db.exec(deleteSql);
         this.db.prepare(insertSql).run();
       }
-      // Freshness watermark: the messages-table row count this rollup was last
+      // Freshness watermark: the state of `messages` this rollup was last
       // built/maintained against. The read dispatcher uses the rollup only when
-      // this still matches the current count (else falls back to the raw seek).
-      // collect() recomputes every touched hour and then this runs, so after a
-      // collect the watermark equals the current count and the rollup is fresh.
-      // Direct upsertMessages that bypass a recompute (e.g. tests) leave the
-      // count ahead of the watermark, so reads correctly fall back to raw.
+      // this still matches (else falls back to the raw seek). collect()
+      // recomputes every touched hour and then this runs, so after a collect
+      // the watermark matches and the rollup is fresh. Direct upsertMessages
+      // that bypass a recompute (e.g. tests) leave the two out of step, so
+      // reads correctly fall back to raw.
+      //
+      // A ROW COUNT ALONE IS NOT ENOUGH (V23). The usage-carrier repair changes
+      // token VALUES on existing rows without adding or removing a single one,
+      // so a count-only watermark would leave a fully stale rollup looking
+      // fresh and every rolled-up read would keep serving pre-fix numbers.
+      // `SUM(usage_counted)` moves with exactly that repair, and is the same
+      // one-pass scan. The format change also invalidates every watermark
+      // written by an older build, which is the correct conservative outcome.
       this.db
-        .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES ('message_hourly_watermark', (SELECT CAST(COUNT(*) AS TEXT) FROM messages))")
-        .run();
+        .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES ('message_hourly_watermark', ?)")
+        .run(this.messagesWatermark());
     });
   }
 
@@ -951,8 +1106,21 @@ export class Store {
       .prepare("SELECT value FROM metadata WHERE key = 'message_hourly_watermark'")
       .get() as { value: string } | undefined;
     if (!wm) return false;
-    const cur = this.db.prepare("SELECT COUNT(*) AS c FROM messages").get() as { c: number };
-    return Number(wm.value) === cur.c;
+    return wm.value === this.messagesWatermark();
+  }
+
+  /**
+   * The `messages` fingerprint the rollup's freshness is judged against:
+   * `"<row count>:<counted rows>"`. Column-guarded because
+   * `recomputeMessageHourly` is called from the V12 migration, which on a fresh
+   * database runs long before V23 adds `usage_counted`.
+   */
+  private messagesWatermark(): string {
+    const cols = this.db.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>;
+    const sql = cols.some((c) => c.name === "usage_counted")
+      ? "SELECT COUNT(*) || ':' || COALESCE(SUM(usage_counted), 0) AS w FROM messages"
+      : "SELECT COUNT(*) || ':0' AS w FROM messages";
+    return (this.db.prepare(sql).get() as { w: string }).w;
   }
 
   // ─── Transaction wrapper ────────────────────────────────────────────────────
@@ -1162,7 +1330,14 @@ export class Store {
     // information" and keep what is already stored. A re-parse that reports
     // different NON-ZERO usage is a real correction and still wins, including
     // when it corrects downwards — which a blunt MAX() would have blocked.
+    //
+    // GATED ON `usage_counted` (V23). A deliberately-zeroed NON-CARRIER is
+    // byte-identical to a replay copy — all four token fields are 0 — so
+    // without the gate the guard above would refuse every demotion and the
+    // whole carrier model would silently no-op. An incoming row only claims to
+    // carry usage when it says `usage_counted = 1`.
     const carriesNoUsage =
+      "excluded.usage_counted = 1 AND " +
       "excluded.input_tokens = 0 AND excluded.output_tokens = 0 AND " +
       "excluded.cache_read_tokens = 0 AND excluded.cache_creation_tokens = 0";
     const keepIfNoUsage = (col: string): string =>
@@ -1175,8 +1350,9 @@ export class Store {
         tools, file_paths, thinking_blocks,
         service_tier, inference_geo, ephemeral_5m_cache_tokens, ephemeral_1h_cache_tokens,
         prompt_text, tool_error_count,
-        is_turn_start, web_search_requests, web_fetch_requests, is_throttled
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        is_turn_start, web_search_requests, web_fetch_requests, is_throttled,
+        message_id, usage_counted, cost_basis, effort, speed, thinking_tokens
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (uuid) DO UPDATE SET
         model                       = excluded.model,
         ${keepIfNoUsage("input_tokens")},
@@ -1188,29 +1364,98 @@ export class Store {
         ${keepIfNoUsage("ephemeral_1h_cache_tokens")},
         ${keepIfNoUsage("web_search_requests")},
         ${keepIfNoUsage("web_fetch_requests")},
+        -- A token count, not a label: COALESCE would protect it from a NULL but
+        -- not from a replay's 0, so it joins the keepIfNoUsage family.
+        ${keepIfNoUsage("thinking_tokens")},
+        -- Same guard again: a replay must not promote a demoted row back to
+        -- carrier. A real re-parse (non-zero usage, or an explicit 0) wins.
+        ${keepIfNoUsage("usage_counted")},
         tools                       = excluded.tools,
         file_paths                  = COALESCE(excluded.file_paths, messages.file_paths),
         service_tier                = excluded.service_tier,
         inference_geo               = excluded.inference_geo,
         prompt_text                 = COALESCE(excluded.prompt_text, messages.prompt_text),
         tool_error_count            = excluded.tool_error_count,
+        -- Never cleared by a writer that does not know about them: an older
+        -- build (or an un-upgraded peer's shard) supplies NULL here.
+        message_id                  = COALESCE(excluded.message_id, messages.message_id),
+        effort                      = COALESCE(excluded.effort, messages.effort),
+        speed                       = COALESCE(excluded.speed, messages.speed),
+        -- A re-parse is authoritative about its OWN basis, in both directions:
+        -- this is how a repair clears 'pre-dedupe'. The worst-wins rule applies
+        -- to the cross-device MERGE (sync-merge/merge.ts), not here.
+        cost_basis                  = excluded.cost_basis,
         -- Turn-start and throttle are properties of the real turn, so a zeroed
         -- replay must not clear them: MAX keeps a 1 once seen. Both are 0/1 and
         -- NOT NULL, so MAX has no NULL hazard here.
         is_turn_start               = MAX(messages.is_turn_start, excluded.is_turn_start),
         is_throttled                = MAX(messages.is_throttled, excluded.is_throttled)
     `);
+
+    // Free the carrier slot for any row this batch demotes, BEFORE any insert.
+    // Without this, a full re-parse that moves the carrier to a different entry
+    // of the same group would hit the partial unique index (two counted rows)
+    // or, worse, land in an order that leaves the group with none.
+    const demoteStored = this.db.prepare(`
+      UPDATE messages SET
+        usage_counted = 0,
+        input_tokens = 0, output_tokens = 0,
+        cache_creation_tokens = 0, cache_read_tokens = 0,
+        ephemeral_5m_cache_tokens = 0, ephemeral_1h_cache_tokens = 0,
+        web_search_requests = 0, web_fetch_requests = 0,
+        thinking_tokens = NULL, is_throttled = 0
+      WHERE uuid = ? AND usage_counted = 1
+    `);
     for (const r of records) {
+      if (r.messageId != null && r.usageCounted === false) demoteStored.run(r.uuid);
+    }
+
+    // Is some OTHER row already counting this response's usage?
+    const carrierTaken = this.db.prepare(
+      `SELECT 1 FROM messages
+        WHERE session_id = ? AND message_id = ? AND usage_counted = 1 AND uuid != ?
+        LIMIT 1`,
+    );
+    /** Group keys already claimed by an earlier record of THIS batch. */
+    const claimed = new Set<string>();
+
+    for (const r of records) {
+      // THE PARSER CANNOT DO THIS ALONE. Parsing is incremental from
+      // `checkpoint.lastByteOffset`, and the entries of one `message.id` group
+      // are consecutive lines written seconds apart while a session is live —
+      // so a group straddling that offset is split across two parse
+      // invocations, and no parser-local state can see the earlier half. The
+      // store is the only place that can. A second copy of a response's usage
+      // is demoted here even though the parser that produced it believed it was
+      // the carrier.
+      let carried = r.usageCounted ?? true;
+      if (carried && r.messageId != null) {
+        // `|` cannot occur in either half: session ids are uuids and
+        // `message_id` is shape-validated to /^[A-Za-z0-9_-]{1,64}$/.
+        const key = `${r.sessionId}|${r.messageId}`;
+        if (claimed.has(key) || carrierTaken.get(r.sessionId, r.messageId, r.uuid) !== undefined) {
+          carried = false;
+        } else {
+          claimed.add(key);
+        }
+      }
+      const zero = !carried;
       stmt.run(
         r.uuid, r.sessionId, r.timestamp, r.claudeVersion,
-        r.model, r.stopReason, r.inputTokens, r.outputTokens,
-        r.cacheCreationTokens, r.cacheReadTokens,
+        r.model, r.stopReason,
+        zero ? 0 : r.inputTokens, zero ? 0 : r.outputTokens,
+        zero ? 0 : r.cacheCreationTokens, zero ? 0 : r.cacheReadTokens,
         JSON.stringify(r.tools), JSON.stringify(r.filePaths ?? []),
         r.thinkingBlocks,
-        r.serviceTier, r.inferenceGeo, r.ephemeral5mCacheTokens, r.ephemeral1hCacheTokens,
+        r.serviceTier, r.inferenceGeo,
+        zero ? 0 : r.ephemeral5mCacheTokens, zero ? 0 : r.ephemeral1hCacheTokens,
         r.promptText ?? null, r.toolErrorCount ?? 0,
-        r.isTurnStart ? 1 : 0, r.webSearchRequests ?? 0, r.webFetchRequests ?? 0,
-        r.isThrottled ? 1 : 0
+        r.isTurnStart ? 1 : 0,
+        zero ? 0 : (r.webSearchRequests ?? 0), zero ? 0 : (r.webFetchRequests ?? 0),
+        zero || !r.isThrottled ? 0 : 1,
+        r.messageId ?? null, carried ? 1 : 0, r.costBasis ?? "pre-dedupe",
+        r.effort ?? null, r.speed ?? null,
+        zero ? null : (r.thinkingTokens ?? null),
       );
     }
   }
@@ -4197,6 +4442,47 @@ export interface MessageRow {
    * (see attribution/assign.ts); null means the session-level account applies.
    */
   account_uuid?: string | null;
+  /**
+   * 1 when this assistant message answers a real USER PROMPT (schema v18).
+   * Optional for back-compat with rows/fixtures written before it.
+   */
+  is_turn_start?: number;
+  /** Server-side web_search calls billed to this message (schema v18). */
+  web_search_requests?: number;
+  /** Server-side web_fetch calls billed to this message (schema v18). */
+  web_fetch_requests?: number;
+  /** 1 when this message was truncated at the output limit (schema v18). */
+  is_throttled?: number;
+  /** Branch this message was written on (schema v20); null falls back to the session's. */
+  git_branch?: string | null;
+  /**
+   * `message.id` — the API RESPONSE id (schema V23). Many rows share one: an
+   * API response is written as one entry per content block. Null on every row
+   * written before V23, and on entries that carried no id.
+   */
+  message_id?: string | null;
+  /**
+   * 1 for the ONE entry per `message.id` group whose usage is real (schema V23);
+   * 0 for the others, whose token columns are zeroed while their tool /
+   * thinking-block / file-path data is kept. Column default is 1, so every
+   * pre-V23 row reads back as a carrier.
+   */
+  usage_counted?: number;
+  /**
+   * How this row's usage was counted — `'pre-dedupe'` or `'per-response'`
+   * (schema V23, NOT NULL, defaults to the pessimistic value). See `CostBasis`
+   * in `@claude-stats/core/types`.
+   */
+  cost_basis?: string;
+  /** Reasoning-effort tier for the request (schema V23); null = not reported. */
+  effort?: string | null;
+  /** Inference speed mode (schema V23); null = not reported. */
+  speed?: string | null;
+  /**
+   * Thinking tokens, a SUBSET of `output_tokens` (schema V23). NULL means NOT
+   * REPORTED — ~32% of history predates the field — and must never be read as 0.
+   */
+  thinking_tokens?: number | null;
 }
 
 /**
