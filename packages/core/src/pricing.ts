@@ -45,6 +45,14 @@ export interface CacheWriteSplit {
 // `cacheWrite1hPerMillion` is `2 × inputPerMillion` on every row — that is the
 // published multiplier, not a guess, hence `ttlRateBasis: "parsed"` throughout.
 const DEFAULT_PRICING: Record<string, ModelPricing> = {
+  // Fable 5.1 / Mythos 5.1 — identical to their predecessors on four of five
+  // rates. The exception is `cacheReadPerMillion`, which DROPPED from 1.00 to
+  // 0.25. It is not derivable from the other four and it is not a typo; cache
+  // reads are ~99.6% of input volume, so that one cell is a 4× error on the
+  // dominant term. Without these rows the ids prefix-match the 5.0 rows and
+  // inherit 1.00 with `known: true`.
+  "claude-fable-5-1":  { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 0.25, cacheWritePerMillion: 12.50, cacheWrite1hPerMillion: 20,   ttlRateBasis: "parsed" },
+  "claude-mythos-5-1": { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 0.25, cacheWritePerMillion: 12.50, cacheWrite1hPerMillion: 20,   ttlRateBasis: "parsed" },
   // Fable 5 / Mythos 5 — the top capability tier, priced above Opus.
   "claude-fable-5":    { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 1.00, cacheWritePerMillion: 12.50, cacheWrite1hPerMillion: 20,   ttlRateBasis: "parsed" },
   "claude-mythos-5":   { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 1.00, cacheWritePerMillion: 12.50, cacheWrite1hPerMillion: 20,   ttlRateBasis: "parsed" },
@@ -52,12 +60,21 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
   // generation Opus usage costed zero with `known: true` nowhere to be seen.
   "claude-opus-5":     { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed" },
   "claude-opus-4-8":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed" },
+  // Opus 4.7 was absent and prefix-matched the RETIRED `claude-opus-4` row at
+  // 15/18.75/30/1.50/75 — a 3× over-charge, the largest single correction in
+  // this release. Current-generation Opus rates, same as 4.8 and 4.6.
+  "claude-opus-4-7":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed" },
   "claude-opus-4-6":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed" },
   "claude-opus-4-5":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed" },
   "claude-opus-4-1":   { inputPerMillion: 15,   outputPerMillion: 75, cacheReadPerMillion: 1.50, cacheWritePerMillion: 18.75, cacheWrite1hPerMillion: 30,   ttlRateBasis: "parsed" },
   "claude-opus-4":     { inputPerMillion: 15,   outputPerMillion: 75, cacheReadPerMillion: 1.50, cacheWritePerMillion: 18.75, cacheWrite1hPerMillion: 30,   ttlRateBasis: "parsed" },
-  // Introductory pricing through 2026-08-31; standard rate ($3/$15, matching
-  // Sonnet 4.6) takes effect 2026-09-01 — bump this row then.
+  // The comment that used to stand here predicted a 2026-09-01 increase to
+  // $3/$15 and instructed a future reader to bump the row. THE INCREASE DID NOT
+  // HAPPEN: the published pricing page still lists Claude Sonnet 5 at $2 input
+  // / $10 output (re-read 2026-09-12, eleven days after the supposed effective
+  // date), and the fetched pricing cache agrees. Making that edit would have
+  // introduced a 50% over-report on every Sonnet 5 request. Rates below are
+  // verified 2026-09-12 — do not bump them from a prediction; re-read the page.
   "claude-sonnet-5":   { inputPerMillion: 2,    outputPerMillion: 10, cacheReadPerMillion: 0.20, cacheWritePerMillion: 2.50,  cacheWrite1hPerMillion: 4,    ttlRateBasis: "parsed" },
   "claude-sonnet-4-6": { inputPerMillion: 3,    outputPerMillion: 15, cacheReadPerMillion: 0.30, cacheWritePerMillion: 3.75,  cacheWrite1hPerMillion: 6,    ttlRateBasis: "parsed" },
   "claude-sonnet-4-5": { inputPerMillion: 3,    outputPerMillion: 15, cacheReadPerMillion: 0.30, cacheWritePerMillion: 3.75,  cacheWrite1hPerMillion: 6,    ttlRateBasis: "parsed" },
@@ -73,8 +90,18 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
  */
 export let PRICING: Record<string, ModelPricing> = { ...DEFAULT_PRICING };
 
-/** ISO date string when the active pricing data was last verified / fetched. */
-export let PRICING_VERIFIED_DATE = "2026-07-03";
+/**
+ * ISO date string when the active pricing data was last verified / fetched.
+ *
+ * NOTE — this constant is the date `DEFAULT_PRICING` was verified against the
+ * published pricing page, and it is **not what most users see**:
+ * `applyPricingCache()` overwrites it with the cache's `fetchedAt` at startup
+ * (see below), so on any machine that has ever fetched, surfaces render the
+ * fetch date instead. Bumping this value is therefore a statement about the
+ * shipped table only. Do not "fix" the overwrite — a fetched table verified
+ * later than the shipped one should say so.
+ */
+export let PRICING_VERIFIED_DATE = "2026-09-12";
 
 /**
  * Fill a rate row's TTL fields when the source did not carry them.
@@ -282,13 +309,183 @@ export type RateOverrides = Partial<Record<PricingSource, Record<string, ModelPr
 /** How a rate was arrived at — carried into every cost figure. */
 export type RateBasis = "first_party" | "configured" | "first_party_fallback";
 
-/** Longest-prefix lookup over an arbitrary rate table. */
-function lookupIn(table: Record<string, ModelPricing>, modelName: string): ModelPricing | null {
-  const keys = Object.keys(table).sort((a, b) => b.length - a.length);
+// ─── The suffix-shape rule ───────────────────────────────────────────────────
+//
+// Longest-prefix matching is load-bearing: a dated snapshot id
+// (`claude-haiku-4-5-20251001`) MUST inherit its base row's rates, and so must
+// a context-window tier id (`claude-opus-5[1m]` — 4.6-and-later models include
+// the full 1M window at standard pricing, confirmed both against the published
+// pricing page and by repricing against Claude Code's own `cost-state` rollup).
+//
+// But a point-release id is also a string prefix extension of its predecessor's
+// (`claude-fable-5-1` starts with `claude-fable-5`), so plain prefix matching
+// resolves a NEW model to an OLD rate row and reports `known: true` while doing
+// it. That is how Fable 5.1 came to be priced at Fable 5's 1.00 cache-read rate
+// (4×) and Opus 4.7 at retired Opus 4 rates (3×).
+//
+// The two cases are told apart by the SHAPE of the remainder after the matched
+// key. Refusing yields the `{cost: 0, known: false}` path this module was
+// designed around — a visibly missing number rather than a confidently wrong
+// one — plus a drift finding naming the model so the row gets added.
+
+/** Dated snapshot of the same model, e.g. `-20251001`. */
+const DATED_SNAPSHOT_REMAINDER = /^-\d{8}$/;
+/** Context-window tier, e.g. `[1m]`, `[200k]`. */
+const CONTEXT_TIER_REMAINDER = /^\[\d+[mk]\]$/;
+/** Point-release successor, e.g. `-1`, `-11`. */
+const POINT_RELEASE_REMAINDER = /^-\d{1,2}$/;
+
+/**
+ * How the text after a matched rate-table key is to be read. The first three
+ * inherit the matched row; the last two refuse it.
+ */
+export type ModelIdSuffixShape =
+  | "exact"
+  | "dated-snapshot"
+  | "context-tier"
+  | "point-release-suffix"
+  | "unknown-suffix-shape";
+
+/**
+ * Classify the remainder of a model id after its matched rate-table key.
+ *
+ * Pure and total — every string maps to exactly one shape, and it never throws.
+ * Exported so the rule can be tested directly rather than only through the
+ * resolver.
+ */
+export function classifyModelIdSuffix(remainder: string): ModelIdSuffixShape {
+  if (remainder === "") return "exact";
+  if (DATED_SNAPSHOT_REMAINDER.test(remainder)) return "dated-snapshot";
+  if (CONTEXT_TIER_REMAINDER.test(remainder)) return "context-tier";
+  if (POINT_RELEASE_REMAINDER.test(remainder)) return "point-release-suffix";
+  return "unknown-suffix-shape";
+}
+
+/** The shapes that may inherit the matched row's rates. */
+export type InheritingSuffixShape = "exact" | "dated-snapshot" | "context-tier";
+
+/**
+ * True when a remainder of this shape may inherit the matched row's rates.
+ *
+ * A type predicate rather than a plain boolean so the complement — the two
+ * refusing shapes — is the compiler's own narrowing, not a second hand-written
+ * list that could drift out of step with this one.
+ */
+export function suffixShapeInherits(shape: ModelIdSuffixShape): shape is InheritingSuffixShape {
+  return shape === "exact" || shape === "dated-snapshot" || shape === "context-tier";
+}
+
+/**
+ * A model id that prefix-matched a rate row but was refused it.
+ *
+ * This is the API Lane C renders. All four fields are machine values, not
+ * prose: `reason` and `table` are CLOSED token sets (render them unlocalised,
+ * or map them to i18n keys), and `modelId` / `matchedKey` are model ids, not
+ * user text. Nothing here is localisable and nothing here is free text.
+ */
+export interface PricingDriftFinding {
+  kind: "unpriced-model-variant";
+  /** Canonical (normalized) model id that was refused a rate. */
+  modelId: string;
+  /** The rate-table key it would have silently inherited from. */
+  matchedKey: string;
+  /** Why it was refused — closed set. */
+  reason: "point-release-suffix" | "unknown-suffix-shape";
+  /** Which matcher refused it: the shipped table, or a configured override. */
+  table: "built-in" | "override";
+}
+
+/** Outcome of one prefix match, including the refusal case. */
+export interface PricingTableMatch {
+  /** The key that matched, or `null` when no key is a prefix of the id. */
+  matchedKey: string | null;
+  /** The row to use, or `null` when the match was refused or absent. */
+  pricing: ModelPricing | null;
+  /** Shape of the remainder, or `null` when no key matched at all. */
+  shape: ModelIdSuffixShape | null;
+  /** Set exactly when a key matched but the shape refused it. */
+  drift: PricingDriftFinding | null;
+}
+
+/**
+ * Longest-prefix lookup over an arbitrary rate table, with the suffix-shape
+ * rule applied.
+ *
+ * Pure: it reads only its arguments and returns the finding rather than
+ * recording it. `resolvePricing` is the impure wrapper that accumulates.
+ *
+ * A refused match does NOT fall through to a shorter key. A shorter key's
+ * remainder is strictly longer and would land in `unknown-suffix-shape`
+ * anyway, so falling through could only ever turn one refusal into another —
+ * while making the reported `matchedKey` less informative.
+ */
+export function matchPricingTable(
+  table: Record<string, ModelPricing>,
+  canonical: string,
+  which: "built-in" | "override",
+  sortedKeys?: readonly string[],
+): PricingTableMatch {
+  const keys = sortedKeys ?? Object.keys(table).sort((a, b) => b.length - a.length);
   for (const key of keys) {
-    if (modelName.startsWith(key)) return table[key]!;
+    if (!canonical.startsWith(key)) continue;
+    const row = table[key];
+    if (!row) continue;
+    const shape = classifyModelIdSuffix(canonical.slice(key.length));
+    if (suffixShapeInherits(shape)) {
+      return { matchedKey: key, pricing: row, shape, drift: null };
+    }
+    return {
+      matchedKey: key,
+      pricing: null,
+      shape,
+      drift: {
+        kind: "unpriced-model-variant",
+        modelId: canonical,
+        matchedKey: key,
+        reason: shape,
+        table: which,
+      },
+    };
   }
-  return null;
+  return { matchedKey: null, pricing: null, shape: null, drift: null };
+}
+
+/**
+ * Deduplicated drift findings seen since the last clear.
+ *
+ * `resolvePricing` runs once per priced message row — millions of calls over a
+ * full history — so this is keyed and capped rather than appended to. The cap
+ * bounds memory against a corpus full of junk model ids; the surface only ever
+ * needs the distinct list.
+ */
+const _driftFindings = new Map<string, PricingDriftFinding>();
+const MAX_DRIFT_FINDINGS = 100;
+
+function recordPricingDrift(f: PricingDriftFinding): void {
+  // JSON-encoded tuple rather than a joined string: model ids arrive from
+  // transcript data, so no separator character can be assumed absent from them.
+  const key = JSON.stringify([f.table, f.modelId, f.matchedKey]);
+  if (_driftFindings.has(key) || _driftFindings.size >= MAX_DRIFT_FINDINGS) return;
+  _driftFindings.set(key, f);
+}
+
+/**
+ * Snapshot of the distinct drift findings accumulated so far, in a stable
+ * order. Returns copies; mutating the result cannot corrupt the accumulator.
+ *
+ * Lane C reads this after a cost pass to render the unpriced-model surface.
+ * Pair it with `clearPricingDriftFindings()` at the start of a pass so the
+ * findings belong to that pass.
+ */
+export function getPricingDriftFindings(): PricingDriftFinding[] {
+  return [..._driftFindings.values()]
+    .map((f) => ({ ...f }))
+    .sort((a, b) => a.modelId.localeCompare(b.modelId) || a.table.localeCompare(b.table));
+}
+
+/** Drop every accumulated finding. Call before a pass whose findings you want. */
+export function clearPricingDriftFindings(): void {
+  _driftFindings.clear();
 }
 
 /**
@@ -307,6 +504,17 @@ export interface ResolvedPricing {
   source: PricingSource;
   rateBasis: RateBasis;
   canonical: string;
+  /**
+   * Present exactly when a rate-table key prefix-matched this id but the
+   * suffix-shape rule refused it. When `pricing` is `null` this is the reason
+   * for it; when `pricing` is set it means a *configured override* was refused
+   * and the figure fell back to the built-in table.
+   *
+   * The same finding is also accumulated module-side — see
+   * `getPricingDriftFindings()`, which is what surfaces read, since the 19
+   * `estimateCost` call sites cannot thread a return value out.
+   */
+  drift?: PricingDriftFinding;
 }
 
 /**
@@ -317,23 +525,36 @@ export interface ResolvedPricing {
 export function resolvePricing(modelName: string, overrides?: RateOverrides): ResolvedPricing {
   const { canonical, source } = normalizeModelId(modelName);
 
+  // The override table gets the SAME shape rule. Without it a user override for
+  // `claude-fable-5` silently captures `claude-fable-5-1` — the identical defect
+  // one layer up, and the one the built-in fix would otherwise mask.
+  let overrideDrift: PricingDriftFinding | null = null;
   const configured = overrides?.[source];
   if (configured) {
-    const hit = lookupIn(configured, canonical);
-    if (hit) return { pricing: hit, source, rateBasis: "configured", canonical };
+    const m = matchPricingTable(configured, canonical, "override");
+    overrideDrift = m.drift;
+    if (m.drift) recordPricingDrift(m.drift);
+    if (m.pricing) return { pricing: m.pricing, source, rateBasis: "configured", canonical };
+    // A refused override falls through to the built-in table, which is the
+    // documented `first_party_fallback` path: an honest first-party estimate
+    // beats a partner rate we have positive reason to believe is the wrong row.
   }
 
-  for (const key of _sortedKeys) {
-    if (canonical.startsWith(key)) {
-      return {
-        pricing: PRICING[key]!,
-        source,
-        rateBasis: source === "first_party" ? "first_party" : "first_party_fallback",
-        canonical,
-      };
-    }
+  const b = matchPricingTable(PRICING, canonical, "built-in", _sortedKeys);
+  if (b.drift) recordPricingDrift(b.drift);
+  // Prefer the finding that explains the outcome the caller actually got.
+  const drift = b.drift ?? overrideDrift;
+
+  if (b.pricing) {
+    return {
+      pricing: b.pricing,
+      source,
+      rateBasis: source === "first_party" ? "first_party" : "first_party_fallback",
+      canonical,
+      ...(drift ? { drift } : {}),
+    };
   }
-  return { pricing: null, source, rateBasis: "first_party", canonical };
+  return { pricing: null, source, rateBasis: "first_party", canonical, ...(drift ? { drift } : {}) };
 }
 
 /**
