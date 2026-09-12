@@ -75,8 +75,11 @@ behavior is spelled out precisely:
 - **Leaves the machine only by explicit opt-in:** the personal plane (see
   below), encrypted by default when the target is a third-party/cloud store,
   or the LLM judge when configured against a hosted endpoint.
-- **Permissions:** the DB file inherits the same `0600`/owner-only posture as
-  the rest of `~/.claude-stats/`.
+- **Permissions:** the DB file itself is `0644` (not owner-only); containment
+  comes from its parent directory, `~/.claude-stats/`, which
+  [`store/index.ts`](../../packages/cli/src/store/index.ts) creates with mode
+  `0700` — so only the owning user can traverse into the directory to reach
+  the file at all.
 
 ## Derived Ticket Links
 

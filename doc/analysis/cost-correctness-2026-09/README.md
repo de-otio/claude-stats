@@ -1,5 +1,7 @@
 # Cost Correctness — 2026-09-12
 
+> **Status: implemented in extension 0.23.0** — see the changelog.
+
 A re-measurement of what Claude Stats reports as spend, prompted by Anthropic's
 new cost tooling in the bundled `claude-api` skill (Claude Code 2.1.269) and by
 eleven days of new transcript data.

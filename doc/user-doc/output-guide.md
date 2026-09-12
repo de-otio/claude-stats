@@ -43,6 +43,56 @@ Cache efficiency = cache_read / (input + cache_read) × 100
 
 A higher percentage means more of the context was served from cache, reducing cost and latency. For long sessions with large system prompts, 30–60% efficiency is typical.
 
+### Cost, cost basis, and unpriced models
+
+```
+Cost     : $4.82
+Basis    : 340 of 512 counted rows (66%) in this range predate the per-response
+           fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. Run
+           `claude-stats repair dedupe` to correct sessions whose transcript
+           still exists.
+```
+
+The **Cost** line can carry an inline caveat in parentheses when at least one
+model id in the window resolved to no rate:
+
+```
+Cost     : $4.82 (2 model ids unpriced — 18K tokens excluded from the total: claude-opus-4-9, claude-mythos-6)
+```
+
+That parenthetical names every unpriced model id and the token volume excluded
+from the dollar figure — see
+[faq.md](faq.md#what-does-unpriced-model-mean) for what "unpriced" means and
+what to do about it. `claude-opus-4-7` and `claude-fable-5-1` are no longer
+unpriced as of this release; a future point-release id can still hit this.
+
+A **Basis** line appears directly under the Cost line whenever the window
+includes at least one row written before the usage-per-response fix
+(`cost_basis = pre-dedupe`, see
+[faq.md](faq.md#why-did-my-reported-cost-drop-after-upgrading)). It never
+prints for a clean window — only rows still in doubt earn a line. Three
+places phrase it slightly differently for the same underlying fact:
+
+| Surface | Wording |
+|---|---|
+| A window of many sessions (`report`, `report --trend`, `spending`, `report --ticket`) | "N of M counted rows (P%) in this range predate the per-response fix …" (or, if every counted row is affected, "All N counted rows in this range predate …") |
+| A single session (`report --session`) | "This session was counted once per content block (cost_basis = pre-dedupe); its usage is inflated by roughly 2x. Run `claude-stats repair dedupe` if its transcript still exists." (or, if only some of its rows are affected, "N of M counted messages in this session are pre-dedupe …") |
+| `status` / `diagnose` | See below — a database-wide count rather than a window. |
+
+**The dashboard** shows the same two disclosures as banners above the cost
+card — see [Summary bar](#summary-bar) below.
+
+**MCP tool payloads** carry the machine form of the same two facts rather
+than a printed line: a `costBasis` object (`basis`: `per-response` /
+`pre-dedupe` / `mixed`; `preDedupeRows`; `perResponseRows`) alongside any
+tool that returns a cost total (`get_stats`, `list_sessions`,
+`get_session_detail`, `summarize_day`, `get_cost_per_task`,
+`get_cost_per_ticket`, `get_efficiency_hints`, `get_constraint_impact`,
+`get_context_carry`), and `get_status`'s `pricingDrift` object
+(`unpricedModels`, `unpricedTokens`, `findings`) for the unpriced-model case.
+Each tool's own description states this in prose so an agent reads it before
+quoting a number — see [`mcp`](commands.md#mcp) for the tool list.
+
 ### Token formatting
 
 | Displayed | Actual range |
@@ -102,6 +152,10 @@ Sessions        : 42
 Messages        : 1 876
 Quarantined     : 0 unparseable lines
 Last collected  : 3/8/2026, 9:15:04 AM
+Cost basis      : 1 200 rows per-response, 676 rows pre-dedupe
+                  676 of 1 876 counted rows (36%) in this range predate the
+                  per-response fix (cost_basis = pre-dedupe) …
+Unpriced models : Every priced model id resolved to a rate.
 ```
 
 | Field | Meaning |
@@ -111,6 +165,13 @@ Last collected  : 3/8/2026, 9:15:04 AM
 | **Messages** | Total assistant messages stored (one per API call) |
 | **Quarantined** | Lines that could not be parsed; see [faq.md](faq.md) |
 | **Last collected** | Wall-clock time of the most recent `collect` run |
+| **Cost basis** | Counted rows split `per-response` / `pre-dedupe`, **over all history**, followed by the same disclosure sentence described in [Cost, cost basis, and unpriced models](#cost-cost-basis-and-unpriced-models) above — omitted when every counted row is `per-response` (reads "every counted row is per-response" instead) |
+| **Unpriced models** | Model ids that resolved to no rate anywhere in the database, with their token volume and (when known) which rate row they were refused and why — reads "Every priced model id resolved to a rate." when there is nothing to report |
+
+`claude-stats diagnose` reports the same two facts as their own labelled
+sections (`Cost basis:` / `Pricing drift:`) alongside the existing
+quarantine count, for the same reason `status` does: both are database-wide
+health checks, not a window's report.
 
 ---
 
@@ -410,6 +471,15 @@ At the top of the page, five stats are always visible:
 | **Tokens** | Input + output tokens combined (formatted as K or M) |
 | **Cache** | Cache efficiency percentage |
 | **Cost** | Estimated API-equivalent cost |
+
+**Two banners can appear directly above the cost card**, in the same amber
+"something to know before you read this number" register as the empty-period
+hint: an amber **cost-basis banner** when the period includes at least one
+`cost_basis = pre-dedupe` row (see [Cost, cost basis, and unpriced
+models](#cost-cost-basis-and-unpriced-models) above), and a red **unpriced-models
+banner** listing any model ids that resolved to no rate and so cost $0 in the
+figure below. Neither renders for a clean period — the summary bar's shape is
+otherwise unchanged.
 
 ### Cost-per-successful-task card
 

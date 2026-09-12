@@ -231,11 +231,11 @@ Array of event objects:
 }
 ```
 
-## claude-stats' Own Local Schema (SQLite, V19–V22)
+## claude-stats' Own Local Schema (SQLite, V19–V23)
 
 The sections above describe the raw files **Claude Code** writes. This
 section describes fields claude-stats itself **derives and persists** into
-its own local SQLite database (`~/.claude-stats/stats.db`, schema version 22
+its own local SQLite database (`~/.claude-stats/stats.db`, schema version 23
 at time of writing) from that raw data — added since this reference was last
 updated. See [`packages/cli/src/store/index.ts`](../../packages/cli/src/store/index.ts)
 for the authoritative migration source, and
@@ -333,6 +333,47 @@ usage at all, and folding either kind into `messages` would corrupt
 cost-per-turn analytics that assume a row is a real billed API response.
 Feeds the constraint-impact engine's before/after comparison. No prompt or
 response content is captured here — only classification and retry metadata.
+
+### V23 — `messages.message_id`, `usage_counted`, `effort`, `speed`, `thinking_tokens`, `cost_basis`
+
+```sql
+ALTER TABLE messages ADD COLUMN message_id TEXT;
+ALTER TABLE messages ADD COLUMN usage_counted INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE messages ADD COLUMN effort TEXT;
+ALTER TABLE messages ADD COLUMN speed TEXT;
+ALTER TABLE messages ADD COLUMN thinking_tokens INTEGER;
+ALTER TABLE messages ADD COLUMN cost_basis TEXT NOT NULL DEFAULT 'pre-dedupe';
+
+CREATE UNIQUE INDEX idx_messages_message_id_carrier
+  ON messages(message_id) WHERE message_id IS NOT NULL AND usage_counted = 1;
+```
+
+One API response is written to the transcript as multiple `messages` rows —
+one per content block (thinking, text, tool_use) — and every row used to
+repeat and sum the whole response's token usage. These columns fix that
+without deleting anything: exactly one row per `message.id` group is the
+usage carrier, the rest keep their tool/thinking/file-path data with their
+token columns zeroed.
+
+| Column | Type | Nullable | Meaning |
+|---|---|---|---|
+| `message_id` | `TEXT` | yes | The raw `message.id` (e.g. `msg_xxxx`) shared by every transcript entry belonging to one API response. `NULL` on rows from before this column existed and were never re-parsed. |
+| `usage_counted` | `INTEGER` | no (`DEFAULT 1`) | `1` on the one row per `message_id` group that carries the response's real usage (the "carrier"); `0` on every other row in the group, whose token columns are zeroed. Every pre-V23 row reads back as `1` — it was, and still is, the only row for its `uuid`. |
+| `effort` | `TEXT` | yes | The entry-root `effort` field (e.g. `high`), when Claude Code reports one. Captured but has no analytic surface yet. |
+| `speed` | `TEXT` | yes | `usage.speed` (e.g. `standard`, `fast`). Captured but **not priced** — fast-mode's published rate covers only input/output, not the cache rates that dominate volume, and no `estimateCost` call site can pass it yet. |
+| `thinking_tokens` | `INTEGER` | yes | `usage.output_tokens_details.thinking_tokens` — a subset of `output_tokens`. **Deliberately nullable**: the field is absent from roughly a third of history, and defaulting it to `0` would fabricate a 0% thinking share for transcripts that never reported one. Also `NULL` on every `usage_counted = 0` row. |
+| `cost_basis` | `TEXT` | **no** (`DEFAULT 'pre-dedupe'`) | `'per-response'` on a row the corrected, carrier-aware parser wrote or repaired; `'pre-dedupe'` on every row written before that fix (the V23 migration's backfill, and any row a sync partner with an older build still writes). The one column here that is deliberately **not** nullable: an unknown basis must read as "don't trust this row," not as an implied clean bill. |
+
+The partial unique index enforces the carrier rule at the database level —
+at most one `usage_counted = 1` row per `message_id` — rather than leaving it
+as a convention the application code must never violate. See
+[cost-correctness-2026-09/06-implementation-plan.md](cost-correctness-2026-09/06-implementation-plan.md#61-the-row-model--settle-this-before-anything-else)
+for why the row model keeps every entry instead of collapsing each group to
+one row, and [05-privacy-security.md](05-privacy-security.md) for how
+`SELECT *`-shaped reads (the personal-plane export, `get_session_detail`)
+enrol new columns automatically and why `effort`/`speed`/`message_id`/
+`usage_counted` are therefore validated at the parser boundary before they
+ever reach this table.
 
 ## Key Telemetry Event Names
 

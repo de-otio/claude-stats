@@ -2,6 +2,115 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.23.0 — 2026-09-12
+
+### Fixed — reported cost changes for everyone
+
+**Every cost figure this tool reports moves in this release, and most move
+down by half or more.** If you upgrade and your all-time spend looks wrong,
+it is the *old* number that was wrong. Two independent defects, both
+producing confidently wrong figures rather than missing ones:
+
+- **Each API response was counted once per content block.** Claude Code
+  writes one response to the transcript as several entries — one for the
+  thinking block, one for the text, one per tool call — and every entry
+  repeats the whole response's usage. The parser deduplicated on the entry's
+  own uuid, which is distinct per entry, so a three-block response was summed
+  three times. Measured on three samples: **1.94× on cache reads, 2.6× on
+  output tokens, 2.03 entries per response.**
+
+  The obvious fix — keep one row per response — would have been a data-loss
+  event: tool calls, file paths and thinking blocks are recorded per entry, and
+  in a recent sample 92% of tool-use records sat on a non-first entry. So every
+  row stays. Each response now elects one *usage carrier*; the others keep their
+  tool and content data with their token columns zeroed and `usage_counted = 0`.
+  A response whose entries straddle a collection checkpoint is handled at the
+  store, not just in the parser, so an incremental collect cannot double-count
+  a seam.
+
+- **Two current models were priced from the wrong rate row.** Rate lookup was
+  longest-prefix matching, and a point-release model id is a string prefix of
+  its predecessor's. `claude-opus-4-7` matched the *retired* `claude-opus-4`
+  row and was billed at $15 / $75 per MTok instead of $5 / $25 — **3×**, and on
+  the machine this was found on, 34% of the reported lifetime total.
+  `claude-fable-5-1` matched `claude-fable-5`, whose rates are identical in
+  four of five cells; the fifth is cache hits — $1.00 against Fable 5.1's
+  published $0.25 — and cache hits are 99.6% of an agentic session's input
+  volume, so that one cell was **4×**.
+
+  Adding the rows fixes today's instance; the class is fixed by refusing to
+  inherit. A model id that resolves only by prefix to a *point-release*
+  predecessor (`claude-opus-5-1` against `claude-opus-5`) is now priced as
+  **unknown** and named in `status` and `diagnose` under *Unpriced models*,
+  instead of silently taking the old row. Dated snapshots
+  (`claude-haiku-4-5-20251001`) and the 1M-context tier (`claude-opus-5[1m]`,
+  verified against Claude Code's own cost rollup and the live pricing page)
+  still inherit, correctly. The same rule now applies to configured rate
+  overrides, which had the identical hole.
+
+  All rates were re-read from the pricing page on 2026-09-12. A code comment
+  had predicted a Claude Sonnet 5 price increase for 2026-09-01 and told a
+  future reader to apply it; the increase did not happen, the row stays at
+  $2 / $10, and the comment is gone rather than acted on.
+
+### What happens to history you already collected
+
+Every row written before this release keeps its old, inflated numbers and is
+marked `cost_basis = pre-dedupe`. Rows written from now on are `per-response`.
+**Every surface that shows a cost total — CLI summary, spending report, session
+list and detail, dashboard, and every MCP tool that returns a figure — now says
+when its range includes pre-dedupe rows and by roughly how much they are
+inflated.** The tool would rather show you a labelled wrong number than an
+unlabelled one.
+
+To correct history, run **`claude-stats repair dedupe`** (`--dry-run` first to
+see what it would touch). It writes a full backup of the database beside it
+(`VACUUM INTO`, so the write-ahead log is included — the previous backup helper
+copied only the main file and silently missed everything since the last
+checkpoint), then re-parses every session whose transcript still exists and
+relabels it. Nothing is deleted: the corrected rows have the same ids as the
+old ones. Sessions whose transcript Claude Code has since cleaned up cannot be
+repaired — on the development machine that was 90% of sessions — and stay
+`pre-dedupe`, disclosed as such, indefinitely.
+
+Cross-device sync now recomputes session totals from the merged message set
+instead of taking the maximum of each device's counters. That mattered before
+too, but it matters now: these counters *shrink* in this release, and a
+maximum would have let one un-upgraded device pin the inflated figures on every
+other device permanently.
+
+### Added
+
+- Six columns on `messages` (schema V23): `message_id`, `usage_counted`,
+  `effort`, `speed`, `thinking_tokens`, `cost_basis`. `thinking_tokens` is
+  NULL where the transcript predates the field — a third of history — rather
+  than a fabricated 0. `effort` and `speed` are captured with no analytic
+  behind them yet; `speed` in particular is **recorded but not priced** (only
+  two of fast mode's five rates are published).
+- `status` and `diagnose` list unpriced model ids and the tokens excluded from
+  every total because of them.
+- A `schema_version` that is *newer* than the running build is now left alone
+  with a warning. It used to be stamped back down, which would have let an
+  older extension or CLI on the same database re-run this release's migration
+  over rows the repair had already corrected.
+
+### Changed
+
+- The dashboard's `HIGH_THINKING` flag means "more than half of this
+  response's output was thinking". It used to mean "any thinking block was
+  present", which was true of most messages. It never fires on a row whose
+  `thinking_tokens` is NULL, so it is silent on pre-August history by design.
+- The recap cache key is bumped; cached daily digests are recomputed on next
+  use rather than served with pre-fix cost figures. Usage windows are repriced
+  over all history once on first run.
+- The parser streams its input instead of holding a whole transcript in
+  memory. Transcripts approaching 1 GB exist and a full re-parse is now the
+  documented remedy, so this moved from nice-to-have to necessary.
+
+The analysis behind this release, including the two review passes that
+reshaped it and three errors they found in the analysis itself, is in
+`doc/analysis/cost-correctness-2026-09/`.
+
 ## 0.22.4 — 2026-09-06
 
 ### Security

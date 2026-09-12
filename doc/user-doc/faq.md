@@ -89,6 +89,76 @@ Run `claude-stats ttl-fit` (or ask an MCP-connected agent to call
 worth changing anything about your setup — see
 [commands.md](commands.md#ttl-fit) for how to read its verdict.
 
+### Why did my reported cost drop after upgrading?
+
+Two independent bugs were fixed, and both make reported cost go *down*, not up.
+
+1. **Every API response was counted once per content block instead of once
+   per response.** One assistant turn is written to your transcript as
+   several JSONL entries — one for its thinking block, one for its text, one
+   for each tool call — and every entry repeated that turn's *whole* token
+   usage. The old parser summed all of them, so token counts (and the cost
+   computed from them) were inflated by roughly 2x on average — worse on
+   output tokens than on cache-read tokens, because long, reasoning-heavy
+   turns split into more entries than short ones. The corrected parser picks
+   one entry per API response as the "usage carrier" and zeroes the token
+   columns on the rest; nothing is deleted, so the tool calls, file paths,
+   and thinking-block records on those other entries are untouched.
+2. **Two model ids were priced from the wrong rate row.** `claude-opus-4-7`
+   and `claude-fable-5-1` are point-release model ids, and the old pricing
+   lookup matched an unrecognised id to its predecessor's row by string
+   prefix — `claude-opus-4-7` resolved to the retired Claude Opus 4 rates (3x
+   too high), and `claude-fable-5-1` resolved to Claude Fable 5's cache-hit
+   rate (4x too high, and cache hits are the bulk of the input volume on a
+   typical agentic session). Both models now have their own correct rate
+   rows, and the lookup no longer guesses in cases like this — see "What
+   does 'unpriced model' mean?" below.
+
+**History already in your database keeps its old, inflated numbers until
+it's re-parsed.** Every row written before this fix carries
+`cost_basis = pre-dedupe`; every row the corrected parser writes (freshly
+collected, or repaired) carries `cost_basis = per-response`. Any cost total
+that includes at least one `pre-dedupe` row prints a disclosure line saying
+so and naming how many rows are affected — a `Basis` line under the cost
+figure in the CLI, an amber banner above the cost card on the dashboard, or
+a `costBasis` field on an MCP tool's response. See
+[output-guide.md](output-guide.md#cost-cost-basis-and-unpriced-models) for
+exactly where each surface shows it.
+
+Run `claude-stats repair dedupe` (see
+[`repair dedupe`](commands.md#repair-dedupe)) to re-parse and correct every
+session whose transcript still exists on disk. **It can only reach what's
+still on disk** — Claude Code prunes old transcripts on its own schedule,
+and a session whose file is already gone has no ground truth left to
+re-parse from. On the machine this fix was measured on, roughly 90% of
+sessions had no surviving transcript, so most history stayed `pre-dedupe`
+even after running the repair — that's the repair working as designed, not
+failing, and it's why every cost surface keeps disclosing the basis rather
+than assuming a repair fixes everything.
+
+### What does "unpriced model" mean?
+
+It means a model id somewhere in your data resolved to no known rate, so
+every request on that model priced at exactly $0 in every total that
+includes it — a gap you should notice, never trust as "free."
+
+As of this release, the pricing table refuses to guess a rate for a model id
+it doesn't recognise, rather than silently inheriting a similar-looking id's
+rate — which is exactly the `claude-opus-4-7` / `claude-fable-5-1` bug
+described above. A dated snapshot id (`claude-haiku-4-5-20251001`) or a
+context-window tag (`claude-opus-5[1m]`) still correctly inherits its base
+model's rate; a genuinely new point-release id, or any id the table has
+never seen, is refused instead of guessed at.
+
+`claude-stats status` and `claude-stats diagnose` list any unpriced model
+ids found in your data, the token volume they represent, and — where the id
+was refused a specific row rather than simply unrecognised — which row it
+was refused and why. If you see one, either wait for a claude-stats release
+that adds the row, or add it yourself as a [pricing
+override](commands.md#pricing) so your totals include it. Until then, treat
+any total shown next to an unpriced-model caveat as an **under-estimate**:
+the excluded tokens are real spend that isn't in the number.
+
 ### Why doesn't the caps table tell me what to set my context limit to?
 
 Because "tokens above a cap" and "the cost of capping context at that level"

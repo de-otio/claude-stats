@@ -1503,6 +1503,61 @@ happens.
 The dashboard's Settings tab offers the same operation as **Preview** and
 **Re-extract** buttons beside the project-keys field.
 
+### `repair dedupe`
+
+Re-parse every session whose transcript still exists so its usage is counted
+once per API response (`cost_basis = per-response`) instead of once per
+content block (`cost_basis = pre-dedupe`).
+
+```
+claude-stats repair dedupe [--dry-run]
+```
+
+| Option | Description |
+|---|---|
+| `--dry-run` | Report which sessions would be re-parsed without writing or creating a backup |
+
+One API response used to be summed once per JSONL entry it produced — once for
+its thinking block, once for its text, once per tool call — inflating token
+counts (and cost) by roughly 2x. This repair re-parses every session whose
+source file [`collect`](#collect) can still find under
+`~/.claude/projects/`, correcting which entry carries the response's usage.
+**Sessions with no surviving transcript cannot be repaired** and stay
+`cost_basis = pre-dedupe` — see [faq.md](faq.md#why-did-my-reported-cost-drop-after-upgrading)
+for why that is expected, often for the majority of a database's history, not
+a sign the repair failed.
+
+**Nothing is deleted.** Every row that existed before the repair still exists
+after it, with the same id — a re-parse upserts the same rows in place and
+only corrects which one carries the usage and which are zeroed. Tool calls,
+file paths, and thinking-block data survive on the zeroed rows exactly as
+before.
+
+A real run backs up the database file first, to
+`<dbpath>.pre-repair-dedupe-<timestamp>` next to `~/.claude-stats/stats.db`
+(the exact path is printed), then takes an advisory lock so two repairs
+cannot run concurrently against the same database, then re-parses every
+repairable session inside the collector's normal path (so ticket extraction,
+quarantine, and session-aggregate recomputation all run exactly as they do
+during `collect`). `--dry-run` reports the same counts without writing
+anything or creating a backup.
+
+Output reports sessions repaired / skipped (no transcript) / already clean,
+`pre-dedupe` rows in scope and remaining, and the repaired sessions' token
+totals before and after:
+
+```
+Usage-dedupe repair complete:
+Backup written to ~/.claude-stats/stats.db.pre-repair-dedupe-1786550000000
+118 sessions repaired, 1201 skipped (no transcript on disk), 44 already per-response.
+2 340 pre-dedupe rows in scope, 2 340 relabelled per-response, 118 070 pre-dedupe rows remain in the database.
+Repaired sessions: input 4.1M → 2.0M, output 890K → 340K.
+Rows that remain pre-dedupe have no transcript to re-parse; every cost surface discloses when a range includes them.
+```
+
+It is idempotent — a second run over already-repaired sessions finds nothing
+left `pre-dedupe` in scope and relabels nothing.
+
 ---
 
 ## `diagnose`
