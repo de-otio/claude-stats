@@ -592,7 +592,9 @@
     "allPreDedupe": "Alle {{rows}} gezählten Zeilen in diesem Zeitraum stammen aus der Zeit vor der Per-Response-Korrektur (cost_basis = pre-dedupe) und sind um etwa das 2-Fache überhöht. Führen Sie `claude-stats repair dedupe` aus, um Sessions zu korrigieren, deren Transkript noch existiert.",
     "mixed": "{{rows}} von {{total}} gezählten Zeilen ({{percent}} %) in diesem Zeitraum stammen aus der Zeit vor der Per-Response-Korrektur (cost_basis = pre-dedupe) und sind um etwa das 2-Fache überhöht. Führen Sie `claude-stats repair dedupe` aus, um Sessions zu korrigieren, deren Transkript noch existiert.",
     "sessionPreDedupe": "Diese Session wurde einmal pro Content-Block gezählt (cost_basis = pre-dedupe); ihre Nutzung ist um etwa das 2-Fache überhöht. Führen Sie `claude-stats repair dedupe` aus, falls ihr Transkript noch existiert.",
-    "sessionMixed": "{{rows}} von {{total}} gezählten Nachrichten in dieser Session sind pre-dedupe (einmal pro Content-Block gezählt, etwa 2x). Führen Sie `claude-stats repair dedupe` aus, falls ihr Transkript noch existiert."
+    "sessionMixed": "{{rows}} von {{total}} gezählten Nachrichten in dieser Session sind pre-dedupe (einmal pro Content-Block gezählt, etwa 2x). Führen Sie `claude-stats repair dedupe` aus, falls ihr Transkript noch existiert.",
+    "allPreDedupeRepaired": "Alle {{rows}} gezählten Zeilen in diesem Zeitraum stammen aus der Zeit vor der Pro-Antwort-Korrektur (cost_basis = pre-dedupe) und sind um etwa das 2-Fache überhöht. Eine Reparatur wurde bereits ausgeführt; für diese Zeilen ist kein Transkript mehr zum erneuten Einlesen vorhanden, genauer geht es also nicht.",
+    "mixedRepaired": "{{rows}} von {{total}} gezählten Zeilen ({{percent}} %) in diesem Zeitraum stammen aus der Zeit vor der Pro-Antwort-Korrektur (cost_basis = pre-dedupe) und sind um etwa das 2-Fache überhöht. Eine Reparatur wurde bereits ausgeführt; für die verbleibenden Zeilen ist kein Transkript mehr zum erneuten Einlesen vorhanden."
   },
   "pricingDrift": {
     "unpricedCaveat": "({{count}} Modell-IDs ohne Preis — {{tokens}} Tokens von der Summe ausgeschlossen: {{models}})",

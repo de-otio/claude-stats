@@ -732,7 +732,9 @@
   },
   "costBasis": {
     "allPreDedupe": "All {{rows}} counted messages in this period predate the per-response fix (cost_basis = pre-dedupe) — the cost shown is inflated by roughly 2x. Run `claude-stats repair dedupe` to correct sessions whose transcript still exists.",
-    "mixed": "{{rows}} of {{total}} counted messages ({{percent}}%) in this period predate the per-response fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. Run `claude-stats repair dedupe` to correct sessions whose transcript still exists."
+    "mixed": "{{rows}} of {{total}} counted messages ({{percent}}%) in this period predate the per-response fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. Run `claude-stats repair dedupe` to correct sessions whose transcript still exists.",
+    "allPreDedupeRepaired": "All {{rows}} counted rows in this range predate the per-response fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. A repair has already run; these rows have no transcript left to re-parse, so this is as accurate as they can be.",
+    "mixedRepaired": "{{rows}} of {{total}} counted rows ({{percent}}%) in this range predate the per-response fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. A repair has already run; the remaining rows have no transcript left to re-parse."
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} model ids resolved to no rate and are excluded from the cost total ({{tokens}} tokens): {{models}}. Add a pricing row or a config override."

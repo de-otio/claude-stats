@@ -736,7 +736,9 @@
   },
   "costBasis": {
     "allPreDedupe": "Todas as {{rows}} mensagens contabilizadas neste período são anteriores à correção por resposta (cost_basis = pre-dedupe) — o custo exibido está inflado em cerca de 2x. Execute `claude-stats repair dedupe` para corrigir as sessions cuja transcrição ainda existe.",
-    "mixed": "{{rows}} de {{total}} mensagens contabilizadas ({{percent}}%) neste período são anteriores à correção por resposta (cost_basis = pre-dedupe) e estão infladas em cerca de 2x. Execute `claude-stats repair dedupe` para corrigir as sessions cuja transcrição ainda existe."
+    "mixed": "{{rows}} de {{total}} mensagens contabilizadas ({{percent}}%) neste período são anteriores à correção por resposta (cost_basis = pre-dedupe) e estão infladas em cerca de 2x. Execute `claude-stats repair dedupe` para corrigir as sessions cuja transcrição ainda existe.",
+    "allPreDedupeRepaired": "Todas as {{rows}} linhas contabilizadas neste intervalo são anteriores à correção por resposta (cost_basis = pre-dedupe) e estão infladas em aproximadamente 2x. Um reparo já foi executado; essas linhas não têm mais transcrição para reprocessar, então esta é a maior precisão possível para elas.",
+    "mixedRepaired": "{{rows}} de {{total}} linhas contabilizadas ({{percent}}%) neste intervalo são anteriores à correção por resposta (cost_basis = pre-dedupe) e estão infladas em aproximadamente 2x. Um reparo já foi executado; as linhas restantes não têm mais transcrição para reprocessar."
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} IDs de modelo não corresponderam a nenhuma tarifa e foram excluídos do custo total ({{tokens}} tokens): {{models}}. Adicione uma linha de preço ou um override na configuração."

@@ -740,7 +740,9 @@
   },
   "costBasis": {
     "allPreDedupe": "Wszystkie {{rows}} policzone wiadomości w tym okresie pochodzą sprzed poprawki per-response (cost_basis = pre-dedupe) — pokazany koszt jest zawyżony około 2x. Uruchom `claude-stats repair dedupe`, aby skorygować sesje, których transkrypt nadal istnieje.",
-    "mixed": "{{rows}} z {{total}} policzonych wiadomości ({{percent}}%) w tym okresie pochodzi sprzed poprawki per-response (cost_basis = pre-dedupe) i jest zawyżonych około 2x. Uruchom `claude-stats repair dedupe`, aby skorygować sesje, których transkrypt nadal istnieje."
+    "mixed": "{{rows}} z {{total}} policzonych wiadomości ({{percent}}%) w tym okresie pochodzi sprzed poprawki per-response (cost_basis = pre-dedupe) i jest zawyżonych około 2x. Uruchom `claude-stats repair dedupe`, aby skorygować sesje, których transkrypt nadal istnieje.",
+    "allPreDedupeRepaired": "Wszystkie {{rows}} zliczone wiersze w tym zakresie pochodzą sprzed poprawki per-response (cost_basis = pre-dedupe) i są zawyżone około 2x. Naprawa została już wykonana; dla tych wierszy nie ma już transkryptu do ponownego przetworzenia, więc są tak dokładne, jak to możliwe.",
+    "mixedRepaired": "{{rows}} z {{total}} zliczonych wierszy ({{percent}}%) w tym zakresie pochodzi sprzed poprawki per-response (cost_basis = pre-dedupe) i jest zawyżonych około 2x. Naprawa została już wykonana; dla pozostałych wierszy nie ma już transkryptu do ponownego przetworzenia."
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} identyfikatorów modeli nie ma przypisanej stawki i zostały wykluczone z łącznego kosztu ({{tokens}} tokenów): {{models}}. Dodaj wiersz cennika lub nadpisanie w konfiguracji."

@@ -592,7 +592,9 @@
     "allPreDedupe": "All {{rows}} counted rows in this range predate the per-response fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. Run `claude-stats repair dedupe` to correct sessions whose transcript still exists.",
     "mixed": "{{rows}} of {{total}} counted rows ({{percent}}%) in this range predate the per-response fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. Run `claude-stats repair dedupe` to correct sessions whose transcript still exists.",
     "sessionPreDedupe": "This session was counted once per content block (cost_basis = pre-dedupe); its usage is inflated by roughly 2x. Run `claude-stats repair dedupe` if its transcript still exists.",
-    "sessionMixed": "{{rows}} of {{total}} counted messages in this session are pre-dedupe (counted once per content block, roughly 2x). Run `claude-stats repair dedupe` if its transcript still exists."
+    "sessionMixed": "{{rows}} of {{total}} counted messages in this session are pre-dedupe (counted once per content block, roughly 2x). Run `claude-stats repair dedupe` if its transcript still exists.",
+    "allPreDedupeRepaired": "All {{rows}} counted rows in this range predate the per-response fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. A repair has already run; these rows have no transcript left to re-parse, so this is as accurate as they can be.",
+    "mixedRepaired": "{{rows}} of {{total}} counted rows ({{percent}}%) in this range predate the per-response fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. A repair has already run; the remaining rows have no transcript left to re-parse."
   },
   "pricingDrift": {
     "unpricedCaveat": "({{count}} model ids unpriced — {{tokens}} tokens excluded from the total: {{models}})",

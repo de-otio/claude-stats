@@ -732,7 +732,9 @@
   },
   "costBasis": {
     "allPreDedupe": "この期間の集計対象メッセージ {{rows}} 件はすべてレスポンス単位の修正より前のもの (cost_basis = pre-dedupe) で、表示されているコストは約 2 倍に膨らんでいます。`claude-stats repair dedupe` を実行すると、トランスクリプトがまだ残っている session を修正できます。",
-    "mixed": "この期間の集計対象メッセージ {{total}} 件のうち {{rows}} 件 ({{percent}}%) はレスポンス単位の修正より前のもの (cost_basis = pre-dedupe) で、約 2 倍に膨らんでいます。`claude-stats repair dedupe` を実行すると、トランスクリプトがまだ残っている session を修正できます。"
+    "mixed": "この期間の集計対象メッセージ {{total}} 件のうち {{rows}} 件 ({{percent}}%) はレスポンス単位の修正より前のもの (cost_basis = pre-dedupe) で、約 2 倍に膨らんでいます。`claude-stats repair dedupe` を実行すると、トランスクリプトがまだ残っている session を修正できます。",
+    "allPreDedupeRepaired": "この範囲で集計対象の {{rows}} 行はすべて、レスポンス単位の修正より前のもの（cost_basis = pre-dedupe）で、約 2 倍に水増しされています。修復はすでに実行済みですが、これらの行には再解析できるトランスクリプトが残っていないため、これ以上正確にはできません。",
+    "mixedRepaired": "この範囲で集計対象の {{total}} 行のうち {{rows}} 行（{{percent}}%）は、レスポンス単位の修正より前のもの（cost_basis = pre-dedupe）で、約 2 倍に水増しされています。修復はすでに実行済みですが、残りの行には再解析できるトランスクリプトが残っていません。"
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} 件のモデル ID は料金が解決できなかったため、コスト合計から除外されています ({{tokens}} token): {{models}}。料金行を追加するか、設定で上書きしてください。"

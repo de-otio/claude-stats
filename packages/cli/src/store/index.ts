@@ -86,13 +86,26 @@ export class Store {
     this.dbPath = dbPath;
     this.db = new DatabaseSync(dbPath);
     this.db.exec("PRAGMA journal_mode = WAL");
-    this.db.exec("PRAGMA busy_timeout = 5000");
+    this.db.exec(`PRAGMA busy_timeout = ${Store.DEFAULT_BUSY_TIMEOUT_MS}`);
     this.db.exec("PRAGMA foreign_keys = ON");
     this.migrate();
   }
 
   close(): void {
     this.db.close();
+  }
+
+  /** Default wait for a competing writer before SQLITE_BUSY surfaces. */
+  static readonly DEFAULT_BUSY_TIMEOUT_MS = 5000;
+
+  /**
+   * Raise (or lower) how long this connection waits on a competing writer.
+   * Routine collection keeps the 5 s default; a repair that re-parses the
+   * whole history shares the file with every open extension and MCP process
+   * and is better off waiting than aborting. Per-connection, not persisted.
+   */
+  setBusyTimeout(ms: number): void {
+    this.db.exec(`PRAGMA busy_timeout = ${Math.max(0, Math.floor(ms))}`);
   }
 
   // ─── Schema migration ───────────────────────────────────────────────────────

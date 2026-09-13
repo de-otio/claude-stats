@@ -740,7 +740,9 @@
   },
   "costBasis": {
     "allPreDedupe": "Усі {{rows}} врахованих повідомлень у цьому періоді передують виправленню per-response (cost_basis = pre-dedupe) — показана вартість завищена приблизно вдвічі. Виконайте `claude-stats repair dedupe`, щоб виправити session, transcript яких ще існує.",
-    "mixed": "{{rows}} із {{total}} врахованих повідомлень ({{percent}}%) у цьому періоді передують виправленню per-response (cost_basis = pre-dedupe) і завищені приблизно вдвічі. Виконайте `claude-stats repair dedupe`, щоб виправити session, transcript яких ще існує."
+    "mixed": "{{rows}} із {{total}} врахованих повідомлень ({{percent}}%) у цьому періоді передують виправленню per-response (cost_basis = pre-dedupe) і завищені приблизно вдвічі. Виконайте `claude-stats repair dedupe`, щоб виправити session, transcript яких ще існує.",
+    "allPreDedupeRepaired": "Усі {{rows}} врахованих рядків у цьому діапазоні передують виправленню на рівні відповіді (cost_basis = pre-dedupe) і завищені приблизно вдвічі. Відновлення вже виконано; для цих рядків не залишилося transcript для повторного розбору, тож точніше вже не буде.",
+    "mixedRepaired": "{{rows}} із {{total}} врахованих рядків ({{percent}}%) у цьому діапазоні передують виправленню на рівні відповіді (cost_basis = pre-dedupe) і завищені приблизно вдвічі. Відновлення вже виконано; для решти рядків не залишилося transcript для повторного розбору."
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} ідентифікаторів моделей не мають тарифу й виключені із загальної вартості ({{tokens}} tokens): {{models}}. Додайте рядок цін або перевизначення в конфігурації."

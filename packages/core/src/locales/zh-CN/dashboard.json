@@ -732,7 +732,9 @@
   },
   "costBasis": {
     "allPreDedupe": "此时间段内已统计的全部 {{rows}} 条消息均早于按响应去重修复（cost_basis = pre-dedupe）— 显示的费用被高估约 2 倍。运行 `claude-stats repair dedupe` 可修正 transcript 仍然存在的 session。",
-    "mixed": "此时间段内已统计的 {{total}} 条消息中有 {{rows}} 条（{{percent}}%）早于按响应去重修复（cost_basis = pre-dedupe），费用被高估约 2 倍。运行 `claude-stats repair dedupe` 可修正 transcript 仍然存在的 session。"
+    "mixed": "此时间段内已统计的 {{total}} 条消息中有 {{rows}} 条（{{percent}}%）早于按响应去重修复（cost_basis = pre-dedupe），费用被高估约 2 倍。运行 `claude-stats repair dedupe` 可修正 transcript 仍然存在的 session。",
+    "allPreDedupeRepaired": "此范围内全部 {{rows}} 行计入行均早于逐响应修复（cost_basis = pre-dedupe），数值约被高估 2 倍。修复已运行；这些行已没有可重新解析的 transcript，因此这已是它们能达到的最高准确度。",
+    "mixedRepaired": "此范围内 {{total}} 行计入行中有 {{rows}} 行（{{percent}}%）早于逐响应修复（cost_basis = pre-dedupe），数值约被高估 2 倍。修复已运行；其余行已没有可重新解析的 transcript。"
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} 个模型 ID 未能匹配到费率，已从费用总计中排除（{{tokens}} 个 token）：{{models}}。请添加定价行或配置覆盖项。"

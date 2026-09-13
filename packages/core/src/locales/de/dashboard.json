@@ -732,7 +732,9 @@
   },
   "costBasis": {
     "allPreDedupe": "Alle {{rows}} gezählten Nachrichten in diesem Zeitraum stammen aus der Zeit vor dem Per-Response-Fix (cost_basis = pre-dedupe) — die angezeigten Kosten sind um etwa das 2-Fache überhöht. Führen Sie `claude-stats repair dedupe` aus, um Sessions zu korrigieren, deren Transkript noch vorhanden ist.",
-    "mixed": "{{rows}} von {{total}} gezählten Nachrichten ({{percent}} %) in diesem Zeitraum stammen aus der Zeit vor dem Per-Response-Fix (cost_basis = pre-dedupe) und sind um etwa das 2-Fache überhöht. Führen Sie `claude-stats repair dedupe` aus, um Sessions zu korrigieren, deren Transkript noch vorhanden ist."
+    "mixed": "{{rows}} von {{total}} gezählten Nachrichten ({{percent}} %) in diesem Zeitraum stammen aus der Zeit vor dem Per-Response-Fix (cost_basis = pre-dedupe) und sind um etwa das 2-Fache überhöht. Führen Sie `claude-stats repair dedupe` aus, um Sessions zu korrigieren, deren Transkript noch vorhanden ist.",
+    "allPreDedupeRepaired": "Alle {{rows}} gezählten Zeilen in diesem Zeitraum stammen aus der Zeit vor dem Per-Response-Fix (cost_basis = pre-dedupe) und sind um etwa das 2-Fache überhöht. Eine Reparatur wurde bereits ausgeführt; für diese Zeilen ist kein Transkript mehr vorhanden, das erneut geparst werden könnte, genauer geht es daher nicht.",
+    "mixedRepaired": "{{rows}} von {{total}} gezählten Zeilen ({{percent}} %) in diesem Zeitraum stammen aus der Zeit vor dem Per-Response-Fix (cost_basis = pre-dedupe) und sind um etwa das 2-Fache überhöht. Eine Reparatur wurde bereits ausgeführt; für die verbleibenden Zeilen ist kein Transkript mehr vorhanden, das erneut geparst werden könnte."
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} Modell-IDs konnten keinem Tarif zugeordnet werden und sind von der Kostensumme ausgeschlossen ({{tokens}} Tokens): {{models}}. Fügen Sie eine Preiszeile oder eine Konfigurations-Überschreibung hinzu."

@@ -63,6 +63,8 @@ export interface RepairDedupeOptions {
   onProgress?: (scanned: number, total: number) => void;
   /** Age after which a lock is stale even if its process cannot be probed. Default 6h. */
   lockTtlMs?: number;
+  /** Called before each SQLITE_BUSY backoff, for progress output. */
+  onBusyRetry?: (attempt: number, delayMs: number) => void;
   /** Identity of THIS process, for the lock. Defaults to `process.pid`. */
   pid?: number;
 }
@@ -113,6 +115,51 @@ export interface RepairLock {
 }
 
 export const REPAIR_DEDUPE_LOCK_KEY = "repair_dedupe_lock";
+/** ISO timestamp of the last repair that ran to completion (not dry-run). */
+export const REPAIR_DEDUPE_COMPLETED_KEY = "repair_dedupe_completed_at";
+
+/** Busy timeout for the repair connection — see `Store#setBusyTimeout`. */
+export const REPAIR_BUSY_TIMEOUT_MS = 30_000;
+
+/** SQLite's SQLITE_BUSY result code, as `node:sqlite` reports it. */
+const SQLITE_BUSY = 5;
+
+/** True for the error `node:sqlite` throws when the busy timeout expires. */
+export function isSqliteBusy(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: unknown; errcode?: unknown; message?: unknown };
+  if (e.errcode === SQLITE_BUSY) return true;
+  return e.code === "ERR_SQLITE_ERROR" && typeof e.message === "string" && /database is locked/i.test(e.message);
+}
+
+/**
+ * Run `fn`, retrying on SQLITE_BUSY with exponential backoff. The first
+ * production run of this repair aborted with `database is locked`: twelve
+ * processes had the file open (the extension's collector, MCP servers from
+ * other sessions) and one of them held a write transaction past the store's
+ * 5 s default wait. `collect()` is checkpoint-driven, so re-invoking it after
+ * a busy abort resumes with the files that were not yet parsed — the retry is
+ * safe by construction, not by luck. Anything that is not SQLITE_BUSY is
+ * rethrown on the first occurrence.
+ */
+export async function withBusyRetry<T>(
+  fn: () => Promise<T>,
+  opts: { attempts?: number; baseDelayMs?: number; sleep?: (ms: number) => Promise<void>; onRetry?: (attempt: number, delayMs: number) => void } = {},
+): Promise<T> {
+  const attempts = opts.attempts ?? 6;
+  const base = opts.baseDelayMs ?? 1000;
+  const sleep = opts.sleep ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isSqliteBusy(err) || attempt >= attempts) throw err;
+      const delay = base * 2 ** (attempt - 1);
+      opts.onRetry?.(attempt, delay);
+      await sleep(delay);
+    }
+  }
+}
 const DEFAULT_LOCK_TTL_MS = 6 * 60 * 60 * 1000;
 
 function readLock(store: Store): RepairLock | null {
@@ -246,6 +293,7 @@ export async function repairDedupe(
 
   // ── the write path ───────────────────────────────────────────────────────
   claimLock(store, pid, now, opts.lockTtlMs ?? DEFAULT_LOCK_TTL_MS);
+  store.setBusyTimeout(REPAIR_BUSY_TIMEOUT_MS);
   try {
     // The store's OWN file, not `paths.statsDb` — see `Store#dbPath`.
     const backupPath = backupDatabase(opts.dbPath ?? store.dbPath, "dedupe", now);
@@ -270,7 +318,10 @@ export async function repairDedupe(
       }
     });
 
-    const result = await collect(store, { ticketAllowlist: opts.ticketAllowlist }, now);
+    const result = await withBusyRetry(
+      () => collect(store, { ticketAllowlist: opts.ticketAllowlist }, now),
+      { onRetry: opts.onBusyRetry },
+    );
 
     // `message_hourly` caches token VALUES per hour; a repair changes values on
     // existing rows. The collector recomputed the hours it touched, but the
@@ -282,6 +333,9 @@ export async function repairDedupe(
     // collect means the repair leaves no stale dollar figure behind it.
     store.setMeta(USAGE_WINDOW_BASIS_KEY, "");
     repriceUsageWindows(store);
+    // Lets the cost-basis disclosure stop telling the user to run a repair
+    // they have already run — what remains pre-dedupe has no transcript.
+    store.setMeta(REPAIR_DEDUPE_COMPLETED_KEY, new Date(now()).toISOString());
 
     // ── after ────────────────────────────────────────────────────────────
     const candidateIds = new Set(candidates.map((s) => s.session_id));

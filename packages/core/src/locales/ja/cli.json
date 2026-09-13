@@ -592,7 +592,9 @@
     "allPreDedupe": "この範囲の集計対象 {{rows}} 行はすべてレスポンス単位の修正より前のもの (cost_basis = pre-dedupe) で、約 2 倍に水増しされています。トランスクリプトがまだ存在する session を修正するには `claude-stats repair dedupe` を実行してください。",
     "mixed": "この範囲の集計対象 {{total}} 行のうち {{rows}} 行 ({{percent}}%) はレスポンス単位の修正より前のもの (cost_basis = pre-dedupe) で、約 2 倍に水増しされています。トランスクリプトがまだ存在する session を修正するには `claude-stats repair dedupe` を実行してください。",
     "sessionPreDedupe": "この session はコンテンツブロックごとに集計されており (cost_basis = pre-dedupe)、使用量が約 2 倍に水増しされています。トランスクリプトがまだ存在する場合は `claude-stats repair dedupe` を実行してください。",
-    "sessionMixed": "この session の集計対象メッセージ {{total}} 件のうち {{rows}} 件が pre-dedupe です (コンテンツブロックごとに集計、約 2 倍)。トランスクリプトがまだ存在する場合は `claude-stats repair dedupe` を実行してください。"
+    "sessionMixed": "この session の集計対象メッセージ {{total}} 件のうち {{rows}} 件が pre-dedupe です (コンテンツブロックごとに集計、約 2 倍)。トランスクリプトがまだ存在する場合は `claude-stats repair dedupe` を実行してください。",
+    "allPreDedupeRepaired": "この範囲で集計対象の {{rows}} 行はすべて、レスポンス単位の修正より前のもの（cost_basis = pre-dedupe）で、約 2 倍に過大計上されています。修復はすでに実行済みですが、これらの行には再解析できる transcript が残っていないため、これ以上正確にすることはできません。",
+    "mixedRepaired": "この範囲で集計対象の {{total}} 行のうち {{rows}} 行（{{percent}}%）は、レスポンス単位の修正より前のもの（cost_basis = pre-dedupe）で、約 2 倍に過大計上されています。修復はすでに実行済みですが、残りの行には再解析できる transcript が残っていません。"
   },
   "pricingDrift": {
     "unpricedCaveat": "({{count}} 個のモデル ID が未価格設定 — {{tokens}} token が合計から除外されています: {{models}})",

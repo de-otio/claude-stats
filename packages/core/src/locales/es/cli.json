@@ -595,7 +595,9 @@
     "allPreDedupe": "Las {{rows}} filas contadas en este rango son anteriores a la corrección por respuesta (cost_basis = pre-dedupe) y están infladas aproximadamente 2x. Ejecute `claude-stats repair dedupe` para corregir las sesiones cuya transcripción aún existe.",
     "mixed": "{{rows}} de {{total}} filas contadas ({{percent}} %) en este rango son anteriores a la corrección por respuesta (cost_basis = pre-dedupe) y están infladas aproximadamente 2x. Ejecute `claude-stats repair dedupe` para corregir las sesiones cuya transcripción aún existe.",
     "sessionPreDedupe": "Esta sesión se contó una vez por bloque de contenido (cost_basis = pre-dedupe); su uso está inflado aproximadamente 2x. Ejecute `claude-stats repair dedupe` si su transcripción aún existe.",
-    "sessionMixed": "{{rows}} de {{total}} mensajes contados en esta sesión son pre-dedupe (contados una vez por bloque de contenido, aproximadamente 2x). Ejecute `claude-stats repair dedupe` si su transcripción aún existe."
+    "sessionMixed": "{{rows}} de {{total}} mensajes contados en esta sesión son pre-dedupe (contados una vez por bloque de contenido, aproximadamente 2x). Ejecute `claude-stats repair dedupe` si su transcripción aún existe.",
+    "allPreDedupeRepaired": "Las {{rows}} filas contabilizadas en este rango son anteriores a la corrección por respuesta (cost_basis = pre-dedupe) y están infladas aproximadamente 2x. Ya se ejecutó una reparación; estas filas no tienen transcripción disponible para volver a analizar, por lo que esto es lo más preciso posible.",
+    "mixedRepaired": "{{rows}} de {{total}} filas contabilizadas ({{percent}}%) en este rango son anteriores a la corrección por respuesta (cost_basis = pre-dedupe) y están infladas aproximadamente 2x. Ya se ejecutó una reparación; las filas restantes no tienen transcripción disponible para volver a analizar."
   },
   "pricingDrift": {
     "unpricedCaveat": "({{count}} ids de modelo sin precio — {{tokens}} tokens excluidos del total: {{models}})",

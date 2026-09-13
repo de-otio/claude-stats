@@ -598,7 +598,9 @@
     "allPreDedupe": "Wszystkie {{rows}} zliczone wiersze w tym zakresie pochodzą sprzed poprawki per-response (cost_basis = pre-dedupe) i są zawyżone około 2x. Uruchom `claude-stats repair dedupe`, aby skorygować sesje, których transkrypt nadal istnieje.",
     "mixed": "{{rows}} z {{total}} zliczonych wierszy ({{percent}}%) w tym zakresie pochodzi sprzed poprawki per-response (cost_basis = pre-dedupe) i jest zawyżonych około 2x. Uruchom `claude-stats repair dedupe`, aby skorygować sesje, których transkrypt nadal istnieje.",
     "sessionPreDedupe": "Ta sesja została zliczona raz na blok treści (cost_basis = pre-dedupe); jej zużycie jest zawyżone około 2x. Uruchom `claude-stats repair dedupe`, jeśli jej transkrypt nadal istnieje.",
-    "sessionMixed": "{{rows}} z {{total}} zliczonych wiadomości w tej sesji jest pre-dedupe (zliczonych raz na blok treści, około 2x). Uruchom `claude-stats repair dedupe`, jeśli jej transkrypt nadal istnieje."
+    "sessionMixed": "{{rows}} z {{total}} zliczonych wiadomości w tej sesji jest pre-dedupe (zliczonych raz na blok treści, około 2x). Uruchom `claude-stats repair dedupe`, jeśli jej transkrypt nadal istnieje.",
+    "allPreDedupeRepaired": "Wszystkie {{rows}} zliczone wiersze w tym zakresie pochodzą sprzed poprawki per-odpowiedź (cost_basis = pre-dedupe) i są zawyżone około 2x. Naprawa została już wykonana; dla tych wierszy nie istnieje już transkrypt do ponownego przetworzenia, więc są one tak dokładne, jak to możliwe.",
+    "mixedRepaired": "{{rows}} z {{total}} zliczonych wierszy ({{percent}}%) w tym zakresie pochodzi sprzed poprawki per-odpowiedź (cost_basis = pre-dedupe) i jest zawyżonych około 2x. Naprawa została już wykonana; dla pozostałych wierszy nie istnieje już transkrypt do ponownego przetworzenia."
   },
   "pricingDrift": {
     "unpricedCaveat": "({{count}} identyfikatorów modeli bez ceny — {{tokens}} tokenów wykluczono z sumy: {{models}})",

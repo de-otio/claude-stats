@@ -33,6 +33,7 @@ import {
 } from "@claude-stats/core/pricing";
 import type { CostBasis } from "@claude-stats/core/types";
 import type { MessageFilter, MessageTotalRow, Store } from "../store/index.js";
+import { REPAIR_DEDUPE_COMPLETED_KEY } from "../repair/dedupe.js";
 
 // ─── cost basis ──────────────────────────────────────────────────────────────
 
@@ -55,9 +56,16 @@ export interface CostBasisSummary extends CostBasisCounts {
   basis: CostBasisVerdict;
   /** `preDedupeRows / (preDedupeRows + perResponseRows)`, 0 when empty. */
   preDedupeShare: number;
+  /**
+   * True once `claude-stats repair dedupe` has run to completion on this
+   * database. Changes the label's advice, not its numbers: what is still
+   * pre-dedupe after a repair has no transcript left to re-parse, and telling
+   * the user to run the repair again would be wrong.
+   */
+  repairRun: boolean;
 }
 
-export function summarizeCostBasis(counts: CostBasisCounts): CostBasisSummary {
+export function summarizeCostBasis(counts: CostBasisCounts, repairRun = false): CostBasisSummary {
   const total = counts.preDedupeRows + counts.perResponseRows;
   const basis: CostBasisVerdict =
     total === 0
@@ -72,6 +80,7 @@ export function summarizeCostBasis(counts: CostBasisCounts): CostBasisSummary {
     perResponseRows: counts.perResponseRows,
     basis,
     preDedupeShare: total === 0 ? 0 : counts.preDedupeRows / total,
+    repairRun,
   };
 }
 
@@ -134,7 +143,13 @@ export function countCostBasis(store: Store, filters: MessageFilter = {}): CostB
 
 /** Convenience: the full summary for a filtered window. */
 export function costBasisFor(store: Store, filters: MessageFilter = {}): CostBasisSummary {
-  return summarizeCostBasis(countCostBasis(store, filters));
+  return summarizeCostBasis(countCostBasis(store, filters), repairHasRun(store));
+}
+
+/** Whether a dedupe repair has completed on this database (see `REPAIR_DEDUPE_COMPLETED_KEY`). */
+export function repairHasRun(store: Store): boolean {
+  const v = store.getMeta(REPAIR_DEDUPE_COMPLETED_KEY);
+  return typeof v === "string" && v.length > 0;
 }
 
 /** Translator shape shared by the CLI (`t`) and the template (`TranslateFn`). */
@@ -155,9 +170,13 @@ export function costBasisLabel(
 ): string | null {
   if (summary.basis === "per-response" || summary.basis === "empty") return null;
   const percent = Math.round(summary.preDedupeShare * 100);
+  // After a completed repair the remaining pre-dedupe rows are the ones with
+  // no transcript; the advice changes from "run the repair" to "nothing more
+  // can be recovered".
+  const suffix = summary.repairRun ? "Repaired" : "";
   return summary.basis === "pre-dedupe"
-    ? t(`${ns}:costBasis.allPreDedupe`, { rows: summary.preDedupeRows })
-    : t(`${ns}:costBasis.mixed`, {
+    ? t(`${ns}:costBasis.allPreDedupe${suffix}`, { rows: summary.preDedupeRows })
+    : t(`${ns}:costBasis.mixed${suffix}`, {
         rows: summary.preDedupeRows,
         total: summary.preDedupeRows + summary.perResponseRows,
         percent,

@@ -592,7 +592,9 @@
     "allPreDedupe": "此范围内计入的全部 {{rows}} 行均早于按响应计数修复（cost_basis = pre-dedupe），数值约被高估 2 倍。运行 `claude-stats repair dedupe` 以修正转录文件仍存在的 session。",
     "mixed": "此范围内计入的 {{total}} 行中有 {{rows}} 行（{{percent}}%）早于按响应计数修复（cost_basis = pre-dedupe），数值约被高估 2 倍。运行 `claude-stats repair dedupe` 以修正转录文件仍存在的 session。",
     "sessionPreDedupe": "此 session 按每个内容块计数一次（cost_basis = pre-dedupe）；其使用量约被高估 2 倍。如果其转录文件仍存在，请运行 `claude-stats repair dedupe`。",
-    "sessionMixed": "此 session 计入的 {{total}} 条消息中有 {{rows}} 条为 pre-dedupe（按每个内容块计数一次，约 2 倍）。如果其转录文件仍存在，请运行 `claude-stats repair dedupe`。"
+    "sessionMixed": "此 session 计入的 {{total}} 条消息中有 {{rows}} 条为 pre-dedupe（按每个内容块计数一次，约 2 倍）。如果其转录文件仍存在，请运行 `claude-stats repair dedupe`。",
+    "allPreDedupeRepaired": "此范围内全部 {{rows}} 条计入的行均早于按响应修正（cost_basis = pre-dedupe），数值约被放大 2 倍。修复已运行过；这些行已无 transcript 可供重新解析，因此这已是其可达到的最高准确度。",
+    "mixedRepaired": "此范围内 {{total}} 条计入的行中有 {{rows}} 条（{{percent}}%）早于按响应修正（cost_basis = pre-dedupe），数值约被放大 2 倍。修复已运行过；其余行已无 transcript 可供重新解析。"
   },
   "pricingDrift": {
     "unpricedCaveat": "（{{count}} 个模型 id 未定价 — 总计中已排除 {{tokens}} 个 token：{{models}}）",
