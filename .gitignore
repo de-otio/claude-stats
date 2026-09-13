@@ -51,3 +51,6 @@ cdk.out/
 # Locally generated dashboards embed account UUIDs, email, project paths and
 # session ids — never commit one.
 claude-stats-*.html
+
+# Per-session agent notes — local only
+session-insights/
