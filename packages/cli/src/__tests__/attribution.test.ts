@@ -755,7 +755,7 @@ describe("reattribute", () => {
       expect(c1.account_uuid).toBeNull();
 
       // no backup file created
-      expect(fs.existsSync(`${dbPath}.pre-reattribute-${T0 + 2 * HOUR}`)).toBe(false);
+      expect(fs.existsSync(`${dbPath}.pre-repair-reattribute-${T0 + 2 * HOUR}`)).toBe(false);
     } finally {
       store.close();
       fs.rmSync(dbPath, { force: true });
@@ -773,7 +773,7 @@ describe("reattribute", () => {
 
       const summary = reattribute(store, { dryRun: false, dbPath }, fixedClock(backupTs));
       expect(summary.dryRun).toBe(false);
-      expect(summary.backupPath).toBe(`${dbPath}.pre-reattribute-${backupTs}`);
+      expect(summary.backupPath).toBe(`${dbPath}.pre-repair-reattribute-${backupTs}`);
       expect(fs.existsSync(summary.backupPath!)).toBe(true);
       expect(summary.changed).toBe(1); // only the cli session
 
@@ -863,7 +863,7 @@ describe("reattribute", () => {
       expect(refused.attributedBefore).toBe(2);
       expect(refused.changed).toBe(0);
       expect(refused.backupPath).toBeNull();
-      expect(fs.existsSync(`${dbPath}.pre-reattribute-${refusedTs}`)).toBe(false);
+      expect(fs.existsSync(`${dbPath}.pre-repair-reattribute-${refusedTs}`)).toBe(false);
       expect(store.getSessions({ includeCI: true, includeDeleted: true }).every((s) => s.account_uuid === ACCOUNT_A_UUID)).toBe(true);
 
       // Dry-run reports a real run WOULD be refused.

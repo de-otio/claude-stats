@@ -18,13 +18,13 @@
  * filename use `now`.
  */
 import fs from "node:fs";
-import { paths } from "@claude-stats/core/paths";
 import type { Store } from "../store/index.js";
 import { collectAccountMap } from "@claude-stats/core/parser/telemetry";
 import { buildCliIntervals } from "./intervals.js";
 import { assignAccounts } from "./assign.js";
 import type { ExternalAccountInfo } from "./assign.js";
 import { resolveOwner } from "./ownership.js";
+import { backupDatabase } from "../repair/backup.js";
 
 export interface ReattributeOptions {
   dryRun?: boolean;
@@ -37,7 +37,7 @@ export interface ReattributeOptions {
   /**
    * Path to the live DB file, used to make the pre-reattribute backup. The
    * Store does not expose its path back, so the command layer passes it
-   * (defaults to `paths.statsDb`, the same default the Store constructor uses).
+   * (defaults to the store's own file, `store.dbPath`).
    */
   dbPath?: string;
 }
@@ -216,12 +216,15 @@ export function reattribute(
     };
   }
 
-  // Real run — back up the DB file first (sec#4).
-  const dbPath = opts.dbPath ?? paths.statsDb;
+  // Real run — back up the DB file first (sec#4). The store's OWN file, not
+  // `paths.statsDb`: with a test store that defaults to the user's live
+  // database, and every full test run left a 200 MB snapshot in their home
+  // directory. `backupDatabase` also uses VACUUM INTO, so the write-ahead log
+  // is included — copyFileSync silently missed it.
+  const dbPath = opts.dbPath ?? store.dbPath;
   let backupPath: string | null = null;
   if (fs.existsSync(dbPath)) {
-    backupPath = `${dbPath}.pre-reattribute-${now()}`;
-    fs.copyFileSync(dbPath, backupPath);
+    backupPath = backupDatabase(dbPath, "reattribute", now);
   }
 
   // Reset + reassign in ONE transaction (atomic). Window recompute runs
