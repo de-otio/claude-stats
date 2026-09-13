@@ -2,6 +2,35 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.23.1 — 2026-09-13
+
+### Fixed
+
+- **`claude-stats repair dedupe` no longer aborts when another process holds
+  the database.** On its first real run it died with `database is locked`:
+  the VS Code extension's collector and MCP servers from other sessions all
+  share the file, and one of them held a write transaction past the store's
+  five-second wait. The repair had done everything right up to that point —
+  backup written, lock released, work resumable — but a command the release
+  notes tell everyone to run should not need a second try. It now waits up to
+  thirty seconds for a competing writer and, if still busy, backs off and
+  retries the collection pass, which is checkpoint-driven and resumes with the
+  files not yet parsed. Anything other than a busy signal still fails
+  immediately.
+- **The cost-basis disclosure stops telling you to run a repair you have
+  already run.** Once a repair has completed, the rows still marked
+  `pre-dedupe` are exactly the ones with no transcript left, so the line now
+  says that instead — same numbers, honest advice. Per-session labels are
+  unchanged.
+- **Running the test suite no longer writes snapshots of your real database
+  into `~/.claude-stats/`.** Three code paths — the two repair commands and
+  the account re-attribution pass — took their backup source from the default
+  database path instead of from the store they were operating on. Under test
+  that store is a fixture, so every full run copied the live 200 MB file into
+  the home directory under a synthetic-clock name (`…-1700000005000` and the
+  like). Those files are safe to delete. All three now back up the store's own
+  file, with the write-ahead log included.
+
 ## 0.23.0 — 2026-09-12
 
 ### Fixed — reported cost changes for everyone
