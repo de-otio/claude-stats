@@ -125,9 +125,15 @@ a `costBasis` field on an MCP tool's response. See
 [output-guide.md](output-guide.md#cost-cost-basis-and-unpriced-models) for
 exactly where each surface shows it.
 
-Run `claude-stats repair dedupe` (see
-[`repair dedupe`](commands.md#repair-dedupe)) to re-parse and correct every
-session whose transcript still exists on disk. **It can only reach what's
+**You don't need to do anything.** New sessions are counted correctly
+automatically, and the pricing corrections apply to all of your history the
+moment you upgrade — cost is recomputed from stored tokens every time it is
+read, so no repair is needed for those. Only the per-entry token counts on
+rows collected *before* the upgrade stay inflated, and those are labelled.
+
+If you want those corrected as well, run `claude-stats repair dedupe` (see
+[`repair dedupe`](commands.md#repair-dedupe)). It is optional. It re-parses
+and corrects every session whose transcript still exists on disk. **It can only reach what's
 still on disk** — Claude Code prunes old transcripts on its own schedule,
 and a session whose file is already gone has no ground truth left to
 re-parse from. On the machine this fix was measured on, roughly 90% of

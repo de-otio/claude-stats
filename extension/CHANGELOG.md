@@ -63,8 +63,17 @@ when its range includes pre-dedupe rows and by roughly how much they are
 inflated.** The tool would rather show you a labelled wrong number than an
 unlabelled one.
 
-To correct history, run **`claude-stats repair dedupe`** (`--dry-run` first to
-see what it would touch). It writes a full backup of the database beside it
+**You do not have to do anything.** New data is counted correctly from the
+first collection after upgrading, and the two pricing corrections apply to
+*all* history immediately — cost is computed from stored tokens at read time,
+so every existing Opus 4.7 and Fable 5.1 row is repriced the moment 0.23.0
+opens the database. The only thing that stays inflated without action is the
+per-entry token count on rows collected before the upgrade, and those are
+labelled wherever they appear.
+
+If you want that history corrected too, run **`claude-stats repair dedupe`**
+(`--dry-run` first to see what it would touch). It is optional, safe to skip,
+and safe to run later. It writes a full backup of the database beside it
 (`VACUUM INTO`, so the write-ahead log is included — the previous backup helper
 copied only the main file and silently missed everything since the last
 checkpoint), then re-parses every session whose transcript still exists and
