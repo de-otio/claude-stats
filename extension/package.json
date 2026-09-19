@@ -18,8 +18,8 @@
     "vscode": "^1.85.0"
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.2.0",
-    "onnxruntime-node": "1.24.3"
+    "@huggingface/transformers": "^4.3.0",
+    "onnxruntime-node": "1.30.0"
   },
   "overrides": {
     "sharp": "^0.35.3",
