@@ -2,6 +2,36 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.23.2 — 2026-09-23
+
+### Fixed — reported cost goes up for sessions that used subagents
+
+- **Subagent usage is counted again** ([#90](https://github.com/de-otio/claude-stats/issues/90)).
+  Current Claude Code writes a subagent's transcript under its parent
+  session's own directory, `<project>/<sessionId>/subagents/`, and the
+  scanner only looked one level up, in `<project>/subagents/`. No subagent
+  token was recorded, so every cost, token and session figure was understated
+  for any session that used the Agent/Task tool — by how much depends on how
+  much the session delegated; on one contributor's machine the missing
+  subagent usage added about half again to those sessions' cost. Both layouts
+  are now scanned, with the same symlink refusal at every level.
+- Each subagent becomes its own session (`agent-<id>`), linked to its parent
+  and counted in the parent's project. Entries in the new layout carry the
+  parent's session id, so this is done explicitly: a subagent never merges
+  into or overwrites its parent's row. Subagents take their parent's
+  interactive flag, so they appear in the default (non-CI) views.
+- Nothing to run. The next collection picks up every subagent transcript
+  still on disk and re-prices the five-hour usage windows once. Transcripts
+  Claude Code has already cleaned up cannot be recovered.
+
+### Dependencies
+
+- `@huggingface/transformers` 4.3.0 and `onnxruntime-node` 1.30.0 (upstream
+  now pins both together). The extension's `sharp` and `adm-zip` overrides are
+  gone — upstream's own pins cover them — and the CLI's `sharp` floor moves to
+  0.35.4 for a libheif advisory. Shipped trees audit clean; see
+  `doc/user-doc/known-advisories.md`.
+
 ## 0.23.1 — 2026-09-13
 
 ### Fixed
