@@ -18,7 +18,7 @@ import { parseSessionFile } from "@claude-stats/core/parser/session";
 import type { MessageRecord } from "@claude-stats/core/types";
 import * as pathsMod from "@claude-stats/core/paths";
 import { Store } from "../store/index.js";
-import { collect, USAGE_WINDOW_BASIS_KEY } from "../aggregator/index.js";
+import { collect, USAGE_WINDOW_BASIS, USAGE_WINDOW_BASIS_KEY } from "../aggregator/index.js";
 import { getFileStats } from "../scanner/index.js";
 import { hashFirstKb } from "@claude-stats/core/parser/session";
 import { repairDedupe, RepairLockHeldError, REPAIR_DEDUPE_LOCK_KEY } from "../repair/dedupe.js";
@@ -287,7 +287,7 @@ describe("repairDedupe", () => {
     // rows and stamps the basis marker, so the repair has to force a reprice
     // rather than trust the marker.
     await collect(store, {}, now);
-    expect(store.getMeta(USAGE_WINDOW_BASIS_KEY)).toBe("v23");
+    expect(store.getMeta(USAGE_WINDOW_BASIS_KEY)).toBe(USAGE_WINDOW_BASIS);
     const windowTokens = () =>
       store.getUsageWindows().reduce((n, w) => n + (w.tokensByModel["claude-opus-5"] ?? 0), 0);
     const perResponse = USAGE.input_tokens + USAGE.output_tokens;
@@ -307,7 +307,7 @@ describe("repairDedupe", () => {
 
     // usage_windows was repriced against the repaired rows: the repaired
     // session counts once per response, the orphan still counts every entry.
-    expect(store.getMeta(USAGE_WINDOW_BASIS_KEY)).toBe("v23");
+    expect(store.getMeta(USAGE_WINDOW_BASIS_KEY)).toBe(USAGE_WINDOW_BASIS);
     expect(windowTokens()).toBe(perResponse * (RESPONSES + 4));
   });
 

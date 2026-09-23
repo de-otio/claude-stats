@@ -360,6 +360,97 @@ describe("collect", () => {
     expect(child!.is_subagent).toBe(1);
     expect(child!.parent_session_id).toBeNull();
   });
+
+  // Issue #90: current Claude Code writes subagent transcripts under
+  // <project>/<sessionId>/subagents/, and every entry in them carries the
+  // PARENT's sessionId.
+  describe("nested <sessionId>/subagents/ layout", () => {
+    const parentId = "0f0e0d0c-0000-4000-8000-000000000090";
+
+    function subagentLine(uuid: string, outputTokens: number): string {
+      return makeSessionLine({
+        sessionId: parentId,
+        uuid,
+        isSidechain: true,
+        agentId: "a1",
+        parentUuid: null,
+        message: {
+          model: "claude-opus-4-6",
+          stop_reason: "end_turn",
+          content: [],
+          usage: { input_tokens: 1, output_tokens: outputTokens, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+      });
+    }
+
+    function writeFixture(opts: { withParent: boolean }): { projDir: string; childFile: string } {
+      const projDir = path.join(projectsDir, "-proj-nested");
+      const nested = path.join(projDir, parentId, "subagents");
+      fs.mkdirSync(nested, { recursive: true });
+      if (opts.withParent) {
+        const queue = JSON.stringify({ type: "queue-operation", operation: "enqueue", sessionId: parentId, timestamp: 1_699_998_000_000 });
+        fs.writeFileSync(
+          path.join(projDir, `${parentId}.jsonl`),
+          [queue, makeUserLine(parentId), makeSessionLine({ sessionId: parentId, uuid: "parent-a" })].join("\n") + "\n"
+        );
+      }
+      const childFile = path.join(nested, "agent-a1.jsonl");
+      fs.writeFileSync(childFile, [subagentLine("sub-1", 10), subagentLine("sub-2", 20)].join("\n") + "\n");
+      fs.writeFileSync(path.join(nested, "agent-a1.meta.json"), JSON.stringify({ agentType: "general-purpose" }));
+      return { projDir, childFile };
+    }
+
+    it("stores the subagent as its own session linked to the parent, leaving the parent intact", async () => {
+      writeFixture({ withParent: true });
+      await collect(store);
+
+      const all = store.getSessions({ includeCI: true, includeDeleted: true });
+      expect(all).toHaveLength(2);
+      const parent = all.find(s => s.session_id === parentId)!;
+      const child = all.find(s => s.session_id === "agent-a1")!;
+
+      expect(parent.is_subagent).toBe(0);
+      expect(parent.output_tokens).toBe(50);
+      expect(child.is_subagent).toBe(1);
+      expect(child.parent_session_id).toBe(parentId);
+      expect(child.output_tokens).toBe(30);
+      expect(store.getSessionMessages("agent-a1").map(m => m.uuid).sort()).toEqual(["sub-1", "sub-2"]);
+      expect(store.getSessionMessages(parentId).map(m => m.uuid)).not.toContain("sub-1");
+      expect(store.getChildSessions(parentId).map(s => s.session_id)).toEqual(["agent-a1"]);
+      // Exact parent id still resolves unambiguously.
+      expect(store.findSession(parentId)!.session_id).toBe(parentId);
+    });
+
+    it("inherits the parent's interactivity so default totals include the subagent", async () => {
+      writeFixture({ withParent: true });
+      await collect(store);
+
+      const defaults = store.getSessions();
+      expect(defaults.map(s => s.session_id).sort()).toEqual(["agent-a1", parentId].sort());
+      expect(defaults.reduce((n, s) => n + s.output_tokens, 0)).toBe(80);
+    });
+
+    it("keeps the parent link but not interactivity when the parent transcript is gone", async () => {
+      writeFixture({ withParent: false });
+      await collect(store);
+
+      const child = store.getSessions({ includeCI: true, includeDeleted: true }).find(s => s.session_id === "agent-a1")!;
+      expect(child.parent_session_id).toBe(parentId);
+      expect(child.is_interactive).toBe(0);
+    });
+
+    it("keeps the subagent identity on an incremental (append) collect", async () => {
+      const { childFile } = writeFixture({ withParent: true });
+      await collect(store);
+      fs.appendFileSync(childFile, subagentLine("sub-3", 5) + "\n");
+      await collect(store);
+
+      const all = store.getSessions({ includeCI: true, includeDeleted: true });
+      expect(all).toHaveLength(2);
+      expect(all.find(s => s.session_id === "agent-a1")!.output_tokens).toBe(35);
+      expect(all.find(s => s.session_id === parentId)!.output_tokens).toBe(50);
+    });
+  });
 });
 
 // ── message_hourly incremental maintenance (Build 2 Phase 1, Stream A) ─────────

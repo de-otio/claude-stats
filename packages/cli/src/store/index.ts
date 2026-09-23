@@ -3995,6 +3995,14 @@ export class Store {
     return row?.session_id ?? null;
   }
 
+  /** True when the session exists and is interactive (exact id, no prefix match). */
+  isSessionInteractive(sessionId: string): boolean {
+    const row = this.db
+      .prepare("SELECT is_interactive FROM sessions WHERE session_id = ? LIMIT 1")
+      .get(sessionId) as { is_interactive: number } | undefined;
+    return row?.is_interactive === 1;
+  }
+
   /** Get child (subagent) sessions for a given parent session. */
   getChildSessions(parentSessionId: string): SessionRow[] {
     const stmt = this.db.prepare(

@@ -14,10 +14,20 @@ export interface SessionFile {
   projectPath: string; // decoded project path
   projectDir: string; // raw encoded directory name
   isSubagent: boolean;
+  /**
+   * The parent session's id, when the layout itself names it: set for
+   * subagent files under `<project>/<sessionId>/subagents/`, null otherwise.
+   * Entries in those files carry the PARENT's `sessionId`, so the aggregator
+   * uses this to give the subagent its own session row instead of merging it
+   * into the parent's.
+   */
+  parentSessionId: string | null;
 }
 
 /** Discover all session JSONL files under ~/.claude/projects/.
- *  Includes subagent JSONL files in subagents/ subdirectories. */
+ *  Includes subagent JSONL files in both layouts Claude Code has used:
+ *  `<project>/subagents/*.jsonl` (older) and
+ *  `<project>/<sessionId>/subagents/*.jsonl` (current). */
 export function discoverSessionFiles(): SessionFile[] {
   const result: SessionFile[] = [];
 
@@ -48,26 +58,45 @@ export function discoverSessionFiles(): SessionFile[] {
     const projectPath = decodeProjectPath(projectDir);
 
     // Top-level session files
-    collectJsonlFiles(projectDirPath, projectPath, projectDir, false, result);
+    collectJsonlFiles(projectDirPath, projectPath, projectDir, false, null, result);
 
-    // Subagent files
+    // Subagent files, older layout: <project>/subagents/
     const subagentsDir = path.join(projectDirPath, "subagents");
-    let subagentsStat: fs.Stats | null = null;
-    try {
-      subagentsStat = fs.lstatSync(subagentsDir);
-    } catch {
-      subagentsStat = null;
+    if (isRealDirectory(subagentsDir)) {
+      collectJsonlFiles(subagentsDir, projectPath, projectDir, true, null, result);
     }
-    if (
-      subagentsStat &&
-      !subagentsStat.isSymbolicLink() &&
-      subagentsStat.isDirectory()
-    ) {
-      collectJsonlFiles(subagentsDir, projectPath, projectDir, true, result);
+
+    // Subagent files, current layout: <project>/<sessionId>/subagents/.
+    // Collected after the top-level files so a parent session is stored
+    // before its children within one collect run.
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(projectDirPath);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry === "subagents") continue;
+      const sessionDirPath = path.join(projectDirPath, entry);
+      if (!isRealDirectory(sessionDirPath)) continue;
+      const nestedSubagentsDir = path.join(sessionDirPath, "subagents");
+      if (!isRealDirectory(nestedSubagentsDir)) continue;
+      collectJsonlFiles(nestedSubagentsDir, projectPath, projectDir, true, entry, result);
     }
   }
 
   return result;
+}
+
+/** True for a directory that is not a symlink. Same defence as above: never
+ *  traverse a symlinked directory, at any level. */
+function isRealDirectory(dirPath: string): boolean {
+  try {
+    const stat = fs.lstatSync(dirPath);
+    return !stat.isSymbolicLink() && stat.isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function collectJsonlFiles(
@@ -75,6 +104,7 @@ function collectJsonlFiles(
   projectPath: string,
   projectDir: string,
   isSubagent: boolean,
+  parentSessionId: string | null,
   result: SessionFile[]
 ): void {
   let entries: string[];
@@ -103,6 +133,7 @@ function collectJsonlFiles(
       projectPath,
       projectDir,
       isSubagent,
+      parentSessionId,
     });
   }
 }

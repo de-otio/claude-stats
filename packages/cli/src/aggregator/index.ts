@@ -4,9 +4,11 @@
  * Implements incremental collection with crash-safe checkpoints.
  * See doc/analysis/02-collection-strategy.md.
  */
+import path from "path";
 import { discoverSessionFiles, getFileStats } from "../scanner/index.js";
 import { getGitRemoteUrl } from "../git.js";
 import { parseSessionFile, hashFirstKb } from "@claude-stats/core/parser/session";
+import type { ParseResult } from "@claude-stats/core/parser/session";
 import { checkSchema } from "../schema/monitor.js";
 import { estimateCost } from "@claude-stats/core/pricing";
 import { collectAccountMap } from "@claude-stats/core/parser/telemetry";
@@ -187,7 +189,9 @@ export async function collect(
 
       // Set subagent flag from scanner; resolve parentUuid → parentSessionId
       parsed.session.isSubagent = sf.isSubagent;
-      if (parsed.parentUuid) {
+      if (sf.parentSessionId) {
+        adoptNestedSubagentIdentity(store, sf.filePath, sf.parentSessionId, parsed);
+      } else if (parsed.parentUuid) {
         parsed.session.parentSessionId = store.resolveParentSessionId(parsed.parentUuid);
       }
 
@@ -424,14 +428,47 @@ export async function collect(
 }
 
 /**
+ * Give a subagent file from the `<project>/<sessionId>/subagents/` layout its
+ * own session identity.
+ *
+ * Every entry in those files carries the PARENT's `sessionId`, so left alone
+ * the subagent would upsert over the parent's session row and its messages
+ * would be counted as the parent's. Instead the session is keyed by the file's
+ * own name (`agent-<agentId>`) — which cannot prefix-match a parent id, so
+ * `findSession`'s prefix lookup stays unambiguous — and linked to the parent
+ * through the directory name rather than `parentUuid` (whose first value in
+ * these files points inside the subagent's own transcript).
+ *
+ * Subagent transcripts never contain a queue-operation, so the parser marks
+ * them non-interactive and every default (interactive-only) query would drop
+ * them. They are part of their parent's session, so they inherit its flag.
+ */
+function adoptNestedSubagentIdentity(
+  store: Store,
+  filePath: string,
+  parentSessionId: string,
+  parsed: ParseResult
+): void {
+  const session = parsed.session!;
+  const sessionId = path.basename(filePath, ".jsonl");
+  session.sessionId = sessionId;
+  session.parentSessionId = parentSessionId;
+  session.isInteractive =
+    session.isInteractive || store.isSessionInteractive(parentSessionId);
+  for (const m of parsed.messages) m.sessionId = sessionId;
+  for (const e of parsed.apiErrorEvents) e.sessionId = sessionId;
+}
+
+/**
  * `metadata` key recording which cost basis the stored `usage_windows` dollars
  * were computed under. Bump {@link USAGE_WINDOW_BASIS} when anything that moves
  * a stored dollar figure changes; clear the key to force one full recompute
  * (which is what a repair pass should do after it corrects `messages`).
  */
 export const USAGE_WINDOW_BASIS_KEY = "usage_windows_basis";
-/** v23 = corrected pricing rows + the usage-carrier row model. */
-export const USAGE_WINDOW_BASIS = "v23";
+/** v23 = corrected pricing rows + the usage-carrier row model.
+ *  v24 = subagent transcripts under `<sessionId>/subagents/` collected (#90). */
+export const USAGE_WINDOW_BASIS = "v24";
 
 /**
  * Recompute EVERY usage window from the current `messages` table, once per

@@ -20,7 +20,7 @@ The richest data source. Each line is a JSON object representing a message in th
 
 **Update pattern:** Written to in real-time during a session. Files range from a few KB to several MB depending on session length.
 
-**Subagent data:** Sessions using subagents store additional JSONL files in `subagents/` subdirectories within the session's project folder.
+**Subagent data:** Sessions using subagents store additional JSONL files in a `subagents/` directory. Current Claude Code writes them under the parent session's own directory, `<project>/<sessionId>/subagents/agent-<agentId>.jsonl` (with an `agent-<agentId>.meta.json` sidecar); older versions used `<project>/subagents/`. Entries in the nested layout carry the **parent's** `sessionId`, so the collector keys each subagent session by its file name (`agent-<agentId>`) and links it to the parent through the directory name.
 
 ## Secondary: History Index
 

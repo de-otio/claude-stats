@@ -6,7 +6,7 @@ How to parse, aggregate, and incrementally collect usage data from the local fil
 
 1. Enumerate directories under `~/.claude/projects/`
 2. For each project directory, find all `*.jsonl` files (these are sessions)
-3. Also scan `subagents/` subdirectories within each project for additional JSONL files (see [01-data-sources.md](01-data-sources.md))
+3. Also scan `<project>/<sessionId>/subagents/` (current layout) and `<project>/subagents/` (older layout) for subagent JSONL files (see [01-data-sources.md](01-data-sources.md))
 4. Optionally use `~/.claude/history.jsonl` as a quick index to map session IDs to projects without scanning the filesystem
 
 ## Parsing Session JSONL
