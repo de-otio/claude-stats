@@ -8,20 +8,48 @@ This file exists so that "we know, and here is the reasoning" is checkable
 rather than assumed. An advisory that is genuinely unreachable is still shipped
 code, and a reader deserves to see the argument rather than a reassurance.
 
-**Last reviewed:** 2026-09-06, for extension release 0.22.4.
+**Last reviewed:** 2026-09-23, for extension release 0.23.2.
 
-At that review GitHub reported **7 open** (6 high, 1 moderate): two in the
-shipped tree of the VSIX (`sharp`, `adm-zip`) and five in the shipped tree of
-the CLI (`fast-uri` ×4, `qs`). **All seven are fixed in 0.22.4**, and Dependabot
-now reports zero open. They are recorded below under "Resolved" rather than
-deleted, because the reasoning for *how* they were fixed is the part worth
-keeping.
+At this review `npm audit` reported **one** advisory in a shipped tree: `sharp`
+`< 0.35.4` (libheif) in the CLI's tree, fixed in 0.23.2 by raising the root
+override floor. The VSIX's shipped tree reports zero. Upstream also moved its
+pins, which made both of the extension's overrides redundant, so they were
+removed — see "Resolved in 0.23.2" below.
 
-The dev-only `brace-expansion` entry further down is **not** one of those seven.
-Dependabot never raised it, because the vulnerable copy is bundled inside the
+The dev-only `brace-expansion` entry further down is still open, and is still
+invisible to Dependabot, because the vulnerable copy is bundled inside the
 `aws-cdk-lib` tarball and Dependabot does not read inside bundles — only
 `npm audit` sees it. That difference is why the two tools disagree on the count,
 and it is the thing to remember before reconciling them again.
+
+---
+
+## Resolved in 0.23.2
+
+### `sharp` — libheif vulnerabilities, CLI tree (high)
+
+| | |
+|---|---|
+| Advisory | [GHSA-rgj7-g3m4-5g8c](https://github.com/advisories/GHSA-rgj7-g3m4-5g8c) (libheif: GHSA-g89c-p67h-r497, GHSA-2jg2-4ch7-h545) |
+| Was | `sharp@0.35.3`, affected range `< 0.35.4` |
+| Now | `sharp@0.35.4`, root `overrides` floor raised from `^0.35.3` to `^0.35.4` |
+| Reached via | `packages/cli` → `@huggingface/transformers@3.8.1` → `sharp` |
+
+The root tree already overrode `sharp` for the 0.22.4 advisories; the floor had
+simply been overtaken, as `qs`'s was. A patch step within 0.35.x. Verified:
+`sharp` and `transformers` import cleanly, libvips 8.18.6. The same reachability
+argument as the 0.22.4 entry applies — text embeddings only, no image path.
+
+### Extension overrides for `sharp` and `adm-zip` — removed as redundant
+
+`@huggingface/transformers@4.3.0` (Dependabot #88) now pins `sharp@^0.35.4`
+itself, and pins `onnxruntime-node` to exactly `1.30.0`, which in turn pins
+`adm-zip@^0.6.0`. Both overrides below had become no-ops, and an override that
+is doing nothing is a trap for the next reader, so they were deleted. Verified
+that removing them changes nothing: the lockfile is byte-identical, the shipped
+tree resolves `sharp@0.35.4` and `adm-zip@0.6.1`, `npm audit --prefix extension`
+finds zero, exactly one `onnxruntime-node` is installed, and `prepare-vsix.mjs`
+passes.
 
 ---
 
