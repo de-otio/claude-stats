@@ -2,6 +2,25 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.23.3 — 2026-09-26
+
+### Fixed — Claude Opus 5.5 usage showed $0
+
+- **Claude Opus 5.5 is priced.** `claude-opus-5-5` had no rate row, so the
+  point-release rule correctly refused to inherit Opus 5's rates, and every
+  Opus 5.5 request was costed at $0 as an unknown model. With Opus 5.5 as the
+  default Claude Code model, that zeroed almost the whole dashboard while the
+  token counts stayed correct. It is now priced at the published rates: $4
+  input, $20 output, $5 / $8 for 5-minute / 1-hour cache writes, and $0.20
+  for cache reads (0.05× input, not the usual 0.1×). Costs are computed when
+  they are read, so past Opus 5.5 usage is repriced as well.
+- **The pricing auto-refresh works again.** The redesigned pricing page put
+  the model table under a two-row header and added a tagline to each model
+  name, so the parser found no table and every weekly refresh failed without
+  saying so. It now reads the new layout (all 18 published models, each
+  identical to the shipped table as of 2026-09-26), and it never takes base
+  rates from the Batch or Fast-mode tables.
+
 ## 0.23.2 — 2026-09-23
 
 ### Fixed — reported cost goes up for sessions that used subagents

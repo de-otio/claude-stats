@@ -8,13 +8,18 @@ This file exists so that "we know, and here is the reasoning" is checkable
 rather than assumed. An advisory that is genuinely unreachable is still shipped
 code, and a reader deserves to see the argument rather than a reassurance.
 
-**Last reviewed:** 2026-09-23, for extension release 0.23.2.
+**Last reviewed:** 2026-09-26, for extension release 0.23.3.
 
-At this review `npm audit` reported **one** advisory in a shipped tree: `sharp`
-`< 0.35.4` (libheif) in the CLI's tree, fixed in 0.23.2 by raising the root
-override floor. The VSIX's shipped tree reports zero. Upstream also moved its
-pins, which made both of the extension's overrides redundant, so they were
-removed — see "Resolved in 0.23.2" below.
+At this review `npm audit --omit=dev` reported **zero** advisories in both
+shipped trees (the VSIX's and the CLI's). No dependency changed in 0.23.3, and
+the upstream pins are where 0.23.2 left them: `@huggingface/transformers@4.3.0`
+pins `sharp@^0.35.4` and `onnxruntime-node@1.30.0`, which pins `adm-zip@^0.6.0`.
+
+At the 0.23.2 review (2026-09-23) `npm audit` reported **one** advisory in a
+shipped tree: `sharp` `< 0.35.4` (libheif) in the CLI's tree, fixed in 0.23.2
+by raising the root override floor. Upstream also moved its pins, which made
+both of the extension's overrides redundant, so they were removed — see
+"Resolved in 0.23.2" below.
 
 The dev-only `brace-expansion` entry further down is still open, and is still
 invisible to Dependabot, because the vulnerable copy is bundled inside the
