@@ -347,6 +347,59 @@ describe("parsePricingTable", () => {
   });
 });
 
+describe("parsePricingTable — 2026-09 page layout", () => {
+  // Shape of the redesigned page, reduced from the live HTML: a group-header
+  // row above the real header, `Name` instead of `Model`, a tagline in the name
+  // cell, icon-font glyphs after some names, and a non-data "Additional models"
+  // row. The old parser gated on "Base Input" / "Output Tokens", found neither,
+  // and returned {} for every refresh.
+  const BASE_TABLE = `
+    <table>
+      <thead>
+        <tr><th colSpan="1">Model</th><th colSpan="2">Base tokens</th><th colSpan="3">Prompt caching</th></tr>
+        <tr><th>Name</th><th>Input</th><th>Output</th><th><button>5m writes</button></th><th>1h writes</th><th>Hits and refreshes</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div><a href="/docs/en/models/opus-5-5/overview">Claude Opus 5.5</a><span>For long-running agentic coding and knowledge work</span></div></td>
+          <td>$4 / MTok</td><td>$20 / MTok</td><td>$5 / MTok</td><td>$8 / MTok</td><td>$0.20 / MTok</td>
+        </tr>
+        <tr><td colSpan="6"> Additional models</td></tr>
+        <tr><td>Claude Opus 4.1 <span></span></td><td>$15 / MTok</td><td>$75 / MTok</td><td>$18.75 / MTok</td><td>$30 / MTok</td><td>$1.50 / MTok</td></tr>
+        <tr><td>Claude Haiku 3.5 <span></span></td><td>$0.80 / MTok</td><td>$4 / MTok</td><td>$1 / MTok</td><td>$1.60 / MTok</td><td>$0.08 / MTok</td></tr>
+      </tbody>
+    </table>`;
+  const BATCH_TABLE = `
+    <table><tr><th>Model</th><th>Batch input</th><th>Batch output</th></tr>
+    <tr><td>Claude Opus 5.5</td><td>$2 / MTok</td><td>$10 / MTok</td></tr></table>`;
+  const FAST_TABLE = `
+    <table><tr><th>Model</th><th>Input</th><th>Output</th></tr>
+    <tr><td>Claude Opus 5.5</td><td>$8 / MTok</td><td>$40 / MTok</td></tr></table>`;
+
+  it("finds the header below a group-header row and reads every rate", () => {
+    const models = parsePricingTable(BASE_TABLE + BATCH_TABLE + FAST_TABLE);
+    expect(Object.keys(models).sort()).toEqual(["claude-3-5-haiku", "claude-opus-4-1", "claude-opus-5-5"]);
+    expect(models["claude-opus-5-5"]).toEqual({
+      inputPerMillion: 4,
+      outputPerMillion: 20,
+      cacheReadPerMillion: 0.2,
+      cacheWritePerMillion: 5,
+      cacheWrite1hPerMillion: 8,
+      ttlRateBasis: "parsed",
+    });
+    expect(models["claude-opus-4-1"]!.inputPerMillion).toBe(15);
+  });
+
+  it("never takes base rates from the Batch or Fast-mode table", () => {
+    // Both satisfy a model/input/output column match, at half and double the
+    // base rate. With the base table missing, the answer is "nothing", not a
+    // confidently wrong figure.
+    expect(parsePricingTable(BATCH_TABLE + FAST_TABLE)).toEqual({});
+    // And ordering must not matter when the base table IS present.
+    expect(parsePricingTable(FAST_TABLE + BATCH_TABLE + BASE_TABLE)["claude-opus-5-5"]!.inputPerMillion).toBe(4);
+  });
+});
+
 describe("loadCachedPricing", () => {
   afterEach(() => {
     vi.mocked(fs.existsSync).mockRestore();

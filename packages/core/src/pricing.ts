@@ -56,6 +56,12 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
   // Fable 5 / Mythos 5 — the top capability tier, priced above Opus.
   "claude-fable-5":    { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 1.00, cacheWritePerMillion: 12.50, cacheWrite1hPerMillion: 20,   ttlRateBasis: "parsed" },
   "claude-mythos-5":   { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 1.00, cacheWritePerMillion: 12.50, cacheWrite1hPerMillion: 20,   ttlRateBasis: "parsed" },
+  // Claude Opus 5.5 — CHEAPER than Opus 5 on every rate, and its cache read is
+  // 0.05× input (0.20), not the standard 0.1×. Verified against the published
+  // page 2026-09-26. Without this row `claude-opus-5-5` hits the point-release
+  // refusal on `claude-opus-5` and costs $0 with `known: false` — which, as the
+  // default Claude Code model, zeroed almost the entire dashboard.
+  "claude-opus-5-5":   { inputPerMillion: 4,    outputPerMillion: 20, cacheReadPerMillion: 0.20, cacheWritePerMillion: 5,     cacheWrite1hPerMillion: 8,    ttlRateBasis: "parsed" },
   // Claude Opus 5 — same rates as Opus 4.8. Missing this row meant current-
   // generation Opus usage costed zero with `known: true` nowhere to be seen.
   "claude-opus-5":     { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed" },
@@ -101,7 +107,7 @@ export let PRICING: Record<string, ModelPricing> = { ...DEFAULT_PRICING };
  * shipped table only. Do not "fix" the overwrite — a fetched table verified
  * later than the shipped one should say so.
  */
-export let PRICING_VERIFIED_DATE = "2026-09-12";
+export let PRICING_VERIFIED_DATE = "2026-09-26";
 
 /**
  * Fill a rate row's TTL fields when the source did not carry them.

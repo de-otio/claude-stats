@@ -52,6 +52,7 @@ const ratesOf = (p: ModelPricing): Rates => [
 const TOP_5_1: Rates = [10, 12.5, 20, 0.25, 50];
 const TOP_5_0: Rates = [10, 12.5, 20, 1.0, 50];
 const OPUS_CURRENT: Rates = [5, 6.25, 10, 0.5, 25];
+const OPUS_5_5: Rates = [4, 5, 8, 0.2, 20];
 const OPUS_RETIRED: Rates = [15, 18.75, 30, 1.5, 75];
 const SONNET_5: Rates = [2, 2.5, 4, 0.2, 10];
 const HAIKU_4_5: Rates = [1, 1.25, 2, 0.1, 5];
@@ -69,6 +70,8 @@ describe("DEFAULT_PRICING rows added in this release", () => {
     ["claude-opus-4-7", OPUS_CURRENT],
     ["claude-fable-5-1", TOP_5_1],
     ["claude-mythos-5-1", TOP_5_1],
+    // Opus 5.5 — cheaper than Opus 5 on every rate, cache read at 0.05× input.
+    ["claude-opus-5-5", OPUS_5_5],
     // Their predecessors must be untouched — four of five rates are shared, and
     // the cache-hit cell is the entire defect.
     ["claude-fable-5", TOP_5_0],
@@ -111,8 +114,17 @@ describe("DEFAULT_PRICING rows added in this release", () => {
     expect(cost.cost).toBeCloseTo(36.75, 10);
   });
 
+  it("prices Opus 5.5 at its own rates, not Opus 5's and not zero", () => {
+    // Before its row existed `claude-opus-5-5` hit the point-release refusal on
+    // `claude-opus-5` and costed $0 with `known: false`.
+    const cost = estimateCost("claude-opus-5-5", 1_000_000, 1_000_000, 1_000_000, 1_000_000);
+    expect(cost.known).toBe(true);
+    // 4 + 20 + 0.20 + 5 = 29.20, against Opus 5's 36.75.
+    expect(cost.cost).toBeCloseTo(29.2, 10);
+  });
+
   it("stamps the shipped table's verification date", () => {
-    expect(PRICING_VERIFIED_DATE).toBe("2026-09-12");
+    expect(PRICING_VERIFIED_DATE).toBe("2026-09-26");
   });
 });
 
@@ -159,6 +171,7 @@ describe("resolvePricing suffix-shape rule", () => {
     ["claude-opus-5[1m]", OPUS_CURRENT, "context-window tier inherits"],
     ["claude-sonnet-5[1m]", SONNET_5, "context-window tier inherits"],
     ["claude-fable-5-1[1m]", TOP_5_1, "tier on top of a point release"],
+    ["claude-opus-5-5[1m]", OPUS_5_5, "tier on top of a point release"],
     // Dated snapshot — inherits.
     ["claude-haiku-4-5-20251001", HAIKU_4_5, "dated snapshot inherits"],
     ["claude-opus-4-8-20260601", OPUS_CURRENT, "dated snapshot inherits"],

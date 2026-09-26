@@ -142,25 +142,40 @@ export function parsePricingTable(html: string): Record<string, ModelPricing> {
   if (!tables) return models;
 
   for (const table of tables) {
-    // Check if this table has the pricing columns we expect
-    if (!table.includes("Base Input") && !table.includes("Output Tokens")) continue;
-
     // Extract rows
     const rowRegex = /<tr[\s>][\s\S]*?<\/tr>/gi;
     const rows = table.match(rowRegex);
     if (!rows || rows.length < 2) continue;
 
-    // Parse header to find column indices
-    const headerCells = extractCells(rows[0]!);
-    const colMap = mapColumns(headerCells);
-    if (colMap.model < 0 || colMap.input < 0 || colMap.output < 0) continue;
+    // The header is not necessarily the first row. The 2026-09 page redesign
+    // added a group-header row (`Model | Base tokens | Prompt caching`) above
+    // the real one (`Name | Input | Output | 5m writes | …`), and dropped the
+    // "Base Input" / "Output Tokens" strings this function used to gate on —
+    // so every table was skipped, every refresh returned `false` silently, and
+    // the fetched cache froze at its last good date.
+    const headerIndex = rows.findIndex((r) => {
+      const c = mapColumns(extractCells(r));
+      return c.model >= 0 && c.input >= 0 && c.output >= 0;
+    });
+    if (headerIndex < 0) continue;
+    const colMap = mapColumns(extractCells(rows[headerIndex]!));
+
+    // The Batch table (`Model | Batch input | Batch output`) and the Fast-mode
+    // table (`Model | Input | Output`) also satisfy the column match, at half
+    // and double the base rate. Only the base table carries cache columns (or,
+    // on the old layout, the "Base Input" label), so require one of those —
+    // otherwise a failure to parse the base table would fall through to a
+    // confidently wrong one.
+    const isBaseTable =
+      colMap.cacheRead >= 0 || colMap.cacheWrite5m >= 0 || colMap.cacheWrite1h >= 0 || /base input/i.test(table);
+    if (!isBaseTable) continue;
 
     // Parse data rows
-    for (let i = 1; i < rows.length; i++) {
+    for (let i = headerIndex + 1; i < rows.length; i++) {
       const cells = extractCells(rows[i]!);
       if (cells.length <= Math.max(colMap.model, colMap.input, colMap.output)) continue;
 
-      const modelName = stripHtml(cells[colMap.model]!);
+      const modelName = extractModelName(cells[colMap.model]!);
       if (!modelName.toLowerCase().startsWith("claude")) continue;
 
       const input = parseDollarAmount(cells[colMap.input]!);
@@ -207,6 +222,19 @@ function stripHtml(s: string): string {
 }
 
 /**
+ * The model's display name out of a name cell. The redesigned page puts a
+ * tagline in the same cell (`Claude Opus 5.5` + `For long-running agentic
+ * coding…`) and icon-font glyphs after some names, so the cell text is no
+ * longer the name. Tags become spaces first — stripping them outright glues
+ * `5.5` to `For`.
+ */
+function extractModelName(cell: string): string {
+  const text = cell.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  const m = text.match(/^Claude\s+[A-Za-z]+\s+\d+(?:\.\d+)?(?=\s|$|[^\w.])/i);
+  return m ? m[0] : text;
+}
+
+/**
  * Map header text to column indices.
  *
  * The two cache-write columns are matched on an EXPLICIT TTL marker, never on a
@@ -229,7 +257,7 @@ function mapColumns(headers: string[]): {
   let model = -1, input = -1, output = -1, cacheRead = -1, cacheWrite5m = -1, cacheWrite1h = -1;
   for (let i = 0; i < headers.length; i++) {
     const h = stripHtml(headers[i]!).toLowerCase();
-    if (h.includes("model")) model = i;
+    if (h.includes("model") || h === "name") model = i;
     else if (h.includes("base input") || (h.includes("input") && !h.includes("cache"))) input = i;
     else if (h.includes("output")) output = i;
     else if (h.includes("cache hit") || h.includes("cache read") || h.includes("refresh")) cacheRead = i;
