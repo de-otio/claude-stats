@@ -39,7 +39,7 @@
     "@anthropic-ai/sdk": "^0.128.0",
     "@types/node": "^26.6.2",
     "@types/vscode": "^1.138.0",
-    "@vitest/coverage-v8": "^4.1.9",
+    "@vitest/coverage-v8": "^5.0.2",
     "chart.js": "^4.5.1",
     "esbuild": "^0.28.2",
     "fast-check": "^4.10.2",
