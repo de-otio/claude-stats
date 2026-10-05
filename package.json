@@ -36,9 +36,9 @@
     "vite": "^8.2.1"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.128.0",
-    "@types/node": "^26.6.2",
-    "@types/vscode": "^1.138.0",
+    "@anthropic-ai/sdk": "^0.131.0",
+    "@types/node": "^26.6.4",
+    "@types/vscode": "^1.140.0",
     "@vitest/coverage-v8": "^4.1.9",
     "chart.js": "^4.5.1",
     "esbuild": "^0.28.2",
