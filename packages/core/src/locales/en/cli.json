@@ -200,7 +200,12 @@
     "ttlFitJson": "Machine-readable JSON output (the full TtlFitResult)",
     "context": "Where does the bill go to carrying context forward, not what's in context right now? Answers the same question as Claude Code's own /context — but over time, not at an instant, so don't expect a live breakdown",
     "contextPeriod": "Time period: day, week, month, or all (default: month)",
-    "contextJson": "Machine-readable JSON output (the full ContextCarryResult)"
+    "contextJson": "Machine-readable JSON output (the full ContextCarryResult)",
+    "agents": "Where does the spend go: the main conversation or subagents, which agent types, while which skill runs, and how deep in the spawn tree? Describes the spend; it does not judge it",
+    "agentsPeriod": "Time period: day, week, month, or all (default: month)",
+    "agentsLimit": "Named rows per list before the rest are folded into one remainder row (default: 10)",
+    "agentsJson": "Machine-readable JSON output (the full AgentCostReport)",
+    "exportIncludeAgentNames": "Also export agent type, spawn depth and spawn tool-call id (user-authored names; omitted by default)"
   },
   "collection": {
     "collecting": "Collecting...",
@@ -425,7 +430,8 @@
     "cannotCombineTrendDetail": "Cannot combine --trend and --detail",
     "invalidDateRange": "Invalid date range: {{message}}",
     "invalidPackPeriod": "Invalid pack period: {{message}}",
-    "invalidInvoiceCsv": "Could not read --invoice-csv {{path}}: {{message}}"
+    "invalidInvoiceCsv": "Could not read --invoice-csv {{path}}: {{message}}",
+    "invalidAgentsLimit": "Invalid --limit \"{{value}}\": use a whole number of 1 or more"
   },
   "archive": {
     "description": "Manage transcript archives.",
@@ -607,6 +613,37 @@
     "sessionMixed": "{{rows}} of {{total}} counted messages in this session are pre-dedupe (counted once per content block, roughly 2x). Run `claude-stats repair dedupe` if its transcript still exists.",
     "allPreDedupeRepaired": "All {{rows}} counted rows in this range predate the per-response fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. A repair has already run; these rows have no transcript left to re-parse, so this is as accurate as they can be.",
     "mixedRepaired": "{{rows}} of {{total}} counted rows ({{percent}}%) in this range predate the per-response fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. A repair has already run; the remaining rows have no transcript left to re-parse."
+  },
+  "agentCost": {
+    "title": "Agent and skill cost — where the spend goes, described not judged",
+    "coverageTitle": "Coverage:",
+    "totalLine": "Total: {{total}} across {{messages}} messages — main conversation {{main}} ({{mainShare}}), subagents {{subagent}} ({{subagentShare}}).",
+    "knownTypeLine": "Subagent spend with a recorded agent type: {{knownShare}} ({{known}} of {{subagent}}). The rest was recorded before agent types were captured, or the type was unavailable.",
+    "knownTypeNoSubagents": "No subagent spend in this window.",
+    "unpricedLine": "{{count}} message(s) use a model with no known rate and are counted as $0 above, so the totals are an under-estimate.",
+    "pricedAllLine": "Every message in this window was priced.",
+    "periodLineDay": "Known agent type share of subagent spend, by day: {{periods}}",
+    "periodLineWeek": "Known agent type share of subagent spend, by week (starting Monday): {{periods}}",
+    "periodItem": "{{start}} {{share}}",
+    "undatedLine": "{{cost}} of subagent spend has no timestamp and is not in the by-period line.",
+    "byTypeTitle": "By agent type (share of subagent spend):",
+    "typeRow": "{{name}} [{{kind}}]: {{cost}} ({{share}}) · {{messages}} messages",
+    "kindBuiltIn": "built-in",
+    "kindNamed": "user-named",
+    "kindUnrecorded": "not recorded",
+    "unrecordedName": "(unrecorded)",
+    "otherTypeRow": "(other: {{buckets}} more agent types): {{cost}} ({{share}}) · {{messages}} messages",
+    "byTypeEmpty": "No subagent spend in this window.",
+    "bySkillTitle": "During a skill's run (share of total spend):",
+    "skillNote": "Spend on messages written while the skill was active. Context the skill leaves behind that later turns keep paying for is measured by `claude-stats context`, not added here.",
+    "skillRow": "{{name}}: {{cost}} ({{share}}) · {{messages}} messages",
+    "otherSkillRow": "(other: {{buckets}} more skills): {{cost}} ({{share}}) · {{messages}} messages",
+    "bySkillEmpty": "No spend was recorded while a skill ran in this window.",
+    "byDepthTitle": "By spawn depth (share of subagent spend):",
+    "depthRow": "Depth {{depth}}: {{cost}} ({{share}}) · {{messages}} messages",
+    "depthUnrecorded": "Depth not recorded: {{cost}} ({{share}}) · {{messages}} messages",
+    "otherDepthRow": "(other: {{buckets}} more depths): {{cost}} ({{share}}) · {{messages}} messages",
+    "byDepthEmpty": "No subagent spend in this window."
   },
   "pricingDrift": {
     "unpricedCaveat": "({{count}} model ids unpriced — {{tokens}} tokens excluded from the total: {{models}})",

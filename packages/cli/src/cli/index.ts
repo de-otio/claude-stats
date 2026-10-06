@@ -554,6 +554,60 @@ export async function buildCli(): Promise<Command> {
     });
 
   program
+    .command("agents")
+    .description(t("cli:commands.agents"))
+    .option("--period <period>", t("cli:commands.agentsPeriod"), "month")
+    .option("--since <date>", t("cli:commands.sinceFlag"))
+    .option("--until <date>", t("cli:commands.untilFlag"))
+    .option("--project <path>", t("cli:commands.reportProject"))
+    .option("--account <uuid>", t("cli:commands.reportAccount"))
+    .option("--limit <n>", t("cli:commands.agentsLimit"), "10")
+    .option("--json", t("cli:commands.agentsJson"))
+    .action(async (opts: {
+      period?: string;
+      since?: string;
+      until?: string;
+      project?: string;
+      account?: string;
+      limit?: string;
+      json?: boolean;
+    }) => {
+      const { parseAgentsLimit, printAgentCost } = await import("../agentCost/format.js");
+      const limit = parseAgentsLimit(opts.limit);
+      if (limit === null) {
+        console.error(t("cli:errors.invalidAgentsLimit", { value: opts.limit ?? "" }));
+        process.exitCode = 1;
+        return;
+      }
+      loadCachedPricing();
+      const store = new Store();
+      try {
+        const { periodRange } = await import("../reporter/index.js");
+        const { buildAgentCostReport } = await import("../agentCost/index.js");
+        const effectivePeriod = (opts.period ?? "month") as "day" | "week" | "month" | "all";
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const range = periodRange({ period: effectivePeriod, since: opts.since, until: opts.until }, tz);
+        const report = buildAgentCostReport(store, {
+          since: range.since > 0 ? range.since : undefined,
+          until: range.until,
+          projectPath: opts.project,
+          accountUuid: opts.account,
+          limit,
+        });
+        printAgentCost(report, process.stdout, t, { json: opts.json === true });
+      } catch (err) {
+        if (err instanceof RangeError) {
+          console.error(t("cli:errors.invalidDateRange", { message: err.message }));
+          process.exitCode = 1;
+          return;
+        }
+        throw err;
+      } finally {
+        store.close();
+      }
+    });
+
+  program
     .command("spending")
     .description(t("cli:commands.spending"))
     .option("--period <period>", t("cli:commands.spendingPeriod"), "day")
@@ -807,7 +861,10 @@ export async function buildCli(): Promise<Command> {
     .option("--since <date>", t("cli:commands.sinceFlag"))
     .option("--until <date>", t("cli:commands.untilFlag"))
     .option("--timezone <tz>", t("cli:commands.reportTimezone"))
-    .action((opts: { format?: string; project?: string; period?: string; since?: string; until?: string; timezone?: string }) => {
+    .option("--include-agent-names", t("cli:commands.exportIncludeAgentNames"))
+    .action(async (opts: { format?: string; project?: string; period?: string; since?: string; until?: string; timezone?: string; includeAgentNames?: boolean }) => {
+      const { projectSessionForExport, csvNameCell } = await import("../agentCost/format.js");
+      const includeAgentNames = opts.includeAgentNames === true;
       const store = new Store();
       try {
         const { since, until } = periodRange(
@@ -830,6 +887,7 @@ export async function buildCli(): Promise<Command> {
             "claude_version", "entrypoint", "prompt_count",
             "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens",
             "account_uuid", "subscription_type",
+            ...(includeAgentNames ? ["agent_type", "spawn_depth", "spawn_tool_use_id"] : []),
           ];
           console.log(headers.join(","));
           for (const row of rows) {
@@ -848,11 +906,14 @@ export async function buildCli(): Promise<Command> {
                 row.cache_read_tokens,
                 row.account_uuid ?? "",
                 row.subscription_type ?? "",
+                ...(includeAgentNames
+                  ? [csvNameCell(row.agent_type), csvNameCell(row.spawn_depth), csvNameCell(row.spawn_tool_use_id)]
+                  : []),
               ].join(",")
             );
           }
         } else {
-          console.log(JSON.stringify(rows, null, 2));
+          console.log(JSON.stringify(rows.map((r) => projectSessionForExport(r, includeAgentNames)), null, 2));
         }
       } catch (err) {
         if (err instanceof RangeError) {
