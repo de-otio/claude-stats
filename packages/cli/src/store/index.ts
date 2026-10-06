@@ -3729,6 +3729,44 @@ export class Store {
   }
 
   /**
+   * Per-message rows for the agent & skill cost report
+   * (`packages/core/src/agentCost.ts`, glue in `../agentCost/index.ts`):
+   * CARRIER rows only (`usage_counted = 1` — a non-carrier's usage belongs to
+   * its group's carrier, so counting it would double a message count and, on a
+   * hand-edited row, the cost), joined to the session's V25 attribution
+   * columns.
+   *
+   * Same `buildMessageFilter`/`messageWhereJoin` route and the same filter
+   * subset as `getMessagesForHygiene`, so a window's agent-cost total selects
+   * the same carrier set the dashboard headline prices. Returns only what
+   * pricing and grouping need — never `session_id`, `uuid`, `project_path`,
+   * `prompt_text` or `file_paths`.
+   */
+  getMessagesForAgentCost(
+    filters: Pick<
+      MessageFilter,
+      "projectPath" | "repoUrl" | "accountUuid" | "since" | "until" | "includeCI" | "includeDeleted"
+    > = {},
+  ): AgentCostMessageStoreRow[] {
+    const f = this.buildMessageFilter(filters);
+    const sql = `
+      SELECT m.timestamp, m.model,
+             m.input_tokens, m.output_tokens,
+             m.cache_read_tokens, m.cache_creation_tokens,
+             m.ephemeral_5m_cache_tokens, m.ephemeral_1h_cache_tokens,
+             m.skill,
+             s.is_subagent, s.agent_type, s.spawn_depth
+      FROM messages m
+      JOIN sessions s ON s.session_id = m.session_id
+      WHERE ${this.messageWhereJoin(f)} AND m.usage_counted = 1
+      ORDER BY m.timestamp ASC, m.uuid ASC
+    `;
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(...f.params) as AgentCostMessageStoreRow[];
+  }
+
+  /**
    * Build the message-level seek WHERE clause + params shared by every energy
    * aggregation query. Uses the same `m.session_id IN (SELECT session_id FROM
    * sessions WHERE <session filters>)` membership subquery as
@@ -4845,6 +4883,30 @@ export interface HygieneMessageStoreRow {
    *  hand-edited JSONL or synced shard's non-string element needs) happens at
    *  each `toHygieneMessageRow` mapper, not here. */
   tools: string;
+}
+
+/**
+ * Row shape for `getMessagesForAgentCost` — one carrier message with the token
+ * columns `estimateCost` needs and its session's V25 attribution columns. No
+ * session id, uuid, path or prompt text, on purpose.
+ */
+export interface AgentCostMessageStoreRow {
+  timestamp: number | null;
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  ephemeral_5m_cache_tokens: number;
+  ephemeral_1h_cache_tokens: number;
+  /** `messages.skill` (V25); null = none recorded. */
+  skill: string | null;
+  /** `sessions.is_subagent`, 0/1. */
+  is_subagent: number;
+  /** `sessions.agent_type` (V25); null = not recorded. */
+  agent_type: string | null;
+  /** `sessions.spawn_depth` (V25); null = not recorded. */
+  spawn_depth: number | null;
 }
 
 export interface EnergyMessageRow {
