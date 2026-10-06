@@ -27,7 +27,7 @@ import { estimateCost } from "@claude-stats/core/pricing";
 import { requireTicketKey } from "@claude-stats/core/tickets";
 import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
-export const SCHEMA_VERSION = 24;
+export const SCHEMA_VERSION = 25;
 
 /**
  * SQL narrowing a session-id column to sessions attributed to one ticket key.
@@ -147,6 +147,7 @@ export class Store {
     if (current < 22) this.migrateToV22();
     if (current < 23) this.migrateToV23();
     if (current < 24) this.migrateToV24();
+    if (current < 25) this.migrateToV25();
 
     // Stamp the version FORWARD ONLY.
     //
@@ -975,6 +976,54 @@ export class Store {
   }
 
   /**
+   * V25 — agent attribution capture: which kind of agent ran a session, how
+   * deep in the spawn chain it sat, which tool call spawned it, and which skill
+   * was active for a message.
+   *
+   * Why: spend could be split by model and project but not by WHO spent it — a
+   * reviewer subagent, a built-in explorer, a skill's own work. Claude Code
+   * records this in a sibling `.meta.json` and in `attributionAgent` /
+   * `attributionSkill` entry fields; these columns are where it lands.
+   *
+   *  - `sessions.agent_type`, `sessions.spawn_tool_use_id` — shape-validated
+   *    identifiers (core/identifiers.ts). `sessions.spawn_depth` — a small
+   *    positive integer. `messages.skill` — a shape-validated identifier.
+   *  - ALL nullable, and NULL means "not recorded" — never "main agent" or
+   *    "no skill". A main-agent session and a subagent whose meta file is gone
+   *    are different facts and must stay distinguishable.
+   *  - No backfill here: existing rows stay NULL until the opt-in repair
+   *    re-parses surviving transcripts.
+   *  - The partial index serves "group sessions by agent type" without
+   *    indexing the (majority) NULL rows.
+   *
+   * Additive and idempotent (addColumn checks table_info; CREATE IF NOT EXISTS).
+   * Deliberately NOT part of `recomputeSessionAggregatesSql`: these are facts
+   * about the session, not aggregates of its messages.
+   */
+  private migrateToV25(): void {
+    // Same partial-fixture guard as V24: a database lacking either table has
+    // nothing to add a column to (every real store has both since V1).
+    const tables = this.db
+      .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('sessions', 'messages')")
+      .get() as { n: number };
+    if (tables.n < 2) return;
+    const addColumn = (table: string, column: string, def: string): void => {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === column)) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+      }
+    };
+    addColumn("sessions", "agent_type", "TEXT");
+    addColumn("sessions", "spawn_depth", "INTEGER");
+    addColumn("sessions", "spawn_tool_use_id", "TEXT");
+    addColumn("messages", "skill", "TEXT");
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_sessions_agent_type
+        ON sessions (agent_type) WHERE agent_type IS NOT NULL;
+    `);
+  }
+
+  /**
    * V14 — anchor pins. Durable, session-keyed ground-truth pins produced by the
    * attribution engine's anchor signal (live CLI sessions observed active under
    * the currently-read account). Persisted because the live-session files are
@@ -1213,8 +1262,9 @@ export class Store {
         account_uuid, organization_uuid, subscription_type,
         thinking_blocks, throttle_events, active_duration_ms, median_response_time_ms,
         parent_session_id, is_subagent,
+        agent_type, spawn_depth, spawn_tool_use_id,
         source_deleted, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (session_id) DO UPDATE SET
         -- COALESCE, not a bare overwrite: a re-parse whose entries carry no
         -- usable timestamp yields lastTimestamp=null, and writing that over a
@@ -1246,6 +1296,12 @@ export class Store {
         median_response_time_ms = excluded.median_response_time_ms,
         parent_session_id       = COALESCE(excluded.parent_session_id, sessions.parent_session_id),
         is_subagent             = MAX(sessions.is_subagent, excluded.is_subagent),
+        -- Latest-non-null-wins (V25): a NULL (no meta file this pass, an older
+        -- peer's shard) never erases a known value, and a newer valid value
+        -- replaces an older one — the meta file is re-read on every parse.
+        agent_type              = COALESCE(excluded.agent_type, sessions.agent_type),
+        spawn_depth             = COALESCE(excluded.spawn_depth, sessions.spawn_depth),
+        spawn_tool_use_id       = COALESCE(excluded.spawn_tool_use_id, sessions.spawn_tool_use_id),
         source_deleted          = excluded.source_deleted,
         updated_at              = excluded.updated_at
     `).run(
@@ -1279,6 +1335,9 @@ export class Store {
       record.medianResponseTimeMs,
       record.parentSessionId,
       record.isSubagent ? 1 : 0,
+      record.agentType ?? null,
+      record.spawnDepth ?? null,
+      record.spawnToolUseId ?? null,
       record.sourceDeleted ? 1 : 0,
       Date.now()
     );
@@ -1304,8 +1363,9 @@ export class Store {
         account_uuid, organization_uuid, subscription_type,
         thinking_blocks, throttle_events, active_duration_ms, median_response_time_ms,
         parent_session_id, is_subagent,
+        agent_type, spawn_depth, spawn_tool_use_id,
         source_deleted, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (session_id) DO UPDATE SET
         -- SQLite's SCALAR max() returns NULL if ANY argument is NULL, so a bare
         -- MAX(sessions.last_timestamp, excluded.last_timestamp) wipes a
@@ -1340,6 +1400,12 @@ export class Store {
         median_response_time_ms = COALESCE(sessions.median_response_time_ms, excluded.median_response_time_ms),
         parent_session_id       = COALESCE(excluded.parent_session_id, sessions.parent_session_id),
         is_subagent             = MAX(sessions.is_subagent, excluded.is_subagent),
+        -- Latest-non-null-wins (V25): a NULL (no meta file this pass, an older
+        -- peer's shard) never erases a known value, and a newer valid value
+        -- replaces an older one — the meta file is re-read on every parse.
+        agent_type              = COALESCE(excluded.agent_type, sessions.agent_type),
+        spawn_depth             = COALESCE(excluded.spawn_depth, sessions.spawn_depth),
+        spawn_tool_use_id       = COALESCE(excluded.spawn_tool_use_id, sessions.spawn_tool_use_id),
         source_deleted          = excluded.source_deleted,
         updated_at              = excluded.updated_at
     `).run(
@@ -1373,6 +1439,9 @@ export class Store {
       record.medianResponseTimeMs,
       record.parentSessionId,
       record.isSubagent ? 1 : 0,
+      record.agentType ?? null,
+      record.spawnDepth ?? null,
+      record.spawnToolUseId ?? null,
       record.sourceDeleted ? 1 : 0,
       Date.now()
     );
@@ -1413,8 +1482,8 @@ export class Store {
         service_tier, inference_geo, ephemeral_5m_cache_tokens, ephemeral_1h_cache_tokens,
         prompt_text, tool_error_count,
         is_turn_start, web_search_requests, web_fetch_requests, is_throttled,
-        message_id, usage_counted, cost_basis, effort, speed, thinking_tokens
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        message_id, usage_counted, cost_basis, effort, speed, thinking_tokens, skill
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (uuid) DO UPDATE SET
         model                       = excluded.model,
         ${keepIfNoUsage("input_tokens")},
@@ -1443,6 +1512,9 @@ export class Store {
         message_id                  = COALESCE(excluded.message_id, messages.message_id),
         effort                      = COALESCE(excluded.effort, messages.effort),
         speed                       = COALESCE(excluded.speed, messages.speed),
+        -- V25: a label, so COALESCE like effort/speed — a writer that does not
+        -- know the column (older peer's shard) must not clear it.
+        skill                       = COALESCE(excluded.skill, messages.skill),
         -- A re-parse is authoritative about its OWN basis, in both directions:
         -- this is how a repair clears 'pre-dedupe'. The worst-wins rule applies
         -- to the cross-device MERGE (sync-merge/merge.ts), not here.
@@ -1518,6 +1590,7 @@ export class Store {
         r.messageId ?? null, carried ? 1 : 0, r.costBasis ?? "pre-dedupe",
         r.effort ?? null, r.speed ?? null,
         zero ? null : (r.thinkingTokens ?? null),
+        r.skill ?? null,
       );
     }
   }
@@ -4519,6 +4592,12 @@ export interface SessionRow {
   throttle_events: number;
   active_duration_ms: number | null;
   median_response_time_ms: number | null;
+  /** Agent type from the subagent meta file / attributionAgent (schema V25); null = not recorded. */
+  agent_type?: string | null;
+  /** Depth in the spawn chain, 1..16 (schema V25); null = not recorded. */
+  spawn_depth?: number | null;
+  /** `toolu_…` id of the tool call that spawned this session (schema V25); null = not recorded. */
+  spawn_tool_use_id?: string | null;
 }
 
 export interface MessageRow {
@@ -4589,6 +4668,8 @@ export interface MessageRow {
    * REPORTED — ~32% of history predates the field — and must never be read as 0.
    */
   thinking_tokens?: number | null;
+  /** Skill active for this message (schema V25); null = not recorded. */
+  skill?: string | null;
 }
 
 /**

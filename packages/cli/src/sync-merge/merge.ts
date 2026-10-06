@@ -118,8 +118,23 @@ function minNullable(a: number | null, b: number | null): number | null {
 export function combineSession(a: MergedSession, b: MergedSession): MergedSession {
   // LWW base = the higher-clock record; descriptive fields come from it wholesale.
   const winner = compareClock(a.clock, b.clock) >= 0 ? a : b;
+  const loser = winner === a ? b : a;
   const session: SessionRow = { ...winner.session };
   const messages = unionMessages(a, b);
+
+  // Agent attribution (V25) is latest-non-null-wins, like the store's upsert:
+  // a higher-clock snapshot from a peer that predates V25 (or whose meta file
+  // was gone) carries NULL, and taking it wholesale would erase what the
+  // lower-clock side knew. Coalescing in clock order stays commutative,
+  // associative and idempotent.
+  // Assigned only when a value exists, so a row that never carried the key
+  // stays byte-identical to its never-combined form (idempotency).
+  const agentType = winner.session.agent_type ?? loser.session.agent_type;
+  if (agentType != null) session.agent_type = agentType;
+  const spawnDepth = winner.session.spawn_depth ?? loser.session.spawn_depth;
+  if (spawnDepth != null) session.spawn_depth = spawnDepth;
+  const spawnToolUseId = winner.session.spawn_tool_use_id ?? loser.session.spawn_tool_use_id;
+  if (spawnToolUseId != null) session.spawn_tool_use_id = spawnToolUseId;
 
   // Counters derive from the union; with no union to derive from, the last
   // known value wins. See PROJECTED_COUNTER_FIELDS.
@@ -255,7 +270,16 @@ function unionMessages(a: MergedSession, b: MergedSession): readonly MessageRow[
       // The higher-clock row wins the VALUES, but `cost_basis` is worst-wins:
       // a device that cannot vouch for a number must not have its doubt erased
       // by a newer snapshot that merely didn't know to record any.
-      byUuid.set(m.uuid, seen ? { ...m, cost_basis: worstBasis(seen, m) } : m);
+      // `skill` (V25) is latest-non-null-wins, same reason as the session's
+      // agent columns: a newer snapshot that predates the column must not erase it.
+      if (!seen) {
+        byUuid.set(m.uuid, m);
+        continue;
+      }
+      const merged: MessageRow = { ...m, cost_basis: worstBasis(seen, m) };
+      const skill = m.skill ?? seen.skill;
+      if (skill != null) merged.skill = skill;
+      byUuid.set(m.uuid, merged);
     }
   }
   return [...byUuid.values()].sort((x, y) => (x.uuid < y.uuid ? -1 : x.uuid > y.uuid ? 1 : 0));

@@ -15,9 +15,21 @@
  */
 
 import type { MessageRecord, SessionRecord } from "@claude-stats/core/types";
+import { validIdentifier, validSpawnDepth, validToolUseId } from "@claude-stats/core/identifiers";
 import type { DeviceId } from "@claude-stats/core/types/shard";
 import type { Store, MessageRow, SessionRow } from "../store/index.js";
 import type { MergedSession } from "./merge.js";
+
+/**
+ * Shape of the V23 `effort` / `speed` labels. MUST stay identical to
+ * `SHORT_TOKEN_RE` in packages/core/src/parser/session.ts (not exported there);
+ * a test asserts the two agree.
+ */
+export const SHORT_TOKEN_SHAPE = /^[a-z]{1,10}$/;
+
+function validShortToken(value: unknown): string | null {
+  return typeof value === "string" && SHORT_TOKEN_SHAPE.test(value) ? value : null;
+}
 
 function parseJsonArray<T>(json: string): T[] {
   try {
@@ -63,6 +75,11 @@ export function rowToSessionRecord(row: SessionRow): SessionRecord {
     throttleEvents: row.throttle_events,
     activeDurationMs: row.active_duration_ms,
     medianResponseTimeMs: row.median_response_time_ms,
+    // A shard is another device's output, so these are re-validated where they
+    // enter this device's store. Absent (a peer older than V25) reads as null.
+    agentType: validIdentifier(row.agent_type),
+    spawnDepth: validSpawnDepth(row.spawn_depth),
+    spawnToolUseId: validToolUseId(row.spawn_tool_use_id),
   };
 }
 
@@ -115,8 +132,9 @@ export function rowToMessageRecord(row: MessageRow): MessageRecord {
     // already has a counted one, so an un-upgraded peer's duplicates cannot
     // re-inflate a repaired group.
     usageCounted: (row.usage_counted ?? 1) !== 0,
-    effort: row.effort ?? null,
-    speed: row.speed ?? null,
+    effort: validShortToken(row.effort),
+    speed: validShortToken(row.speed),
+    skill: validIdentifier(row.skill),
     thinkingTokens: row.thinking_tokens ?? null,
     // Worst-wins is applied by the merge fold; an un-stamped row is doubt.
     costBasis: row.cost_basis === "per-response" ? "per-response" : "pre-dedupe",
