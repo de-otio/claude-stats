@@ -12,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { Store } from "../store/index.js";
+import { Store, SCHEMA_VERSION } from "../store/index.js";
 import type { ApiErrorEvent, SessionRecord } from "@claude-stats/core/types";
 
 function tmpDb(): string {
@@ -53,7 +53,7 @@ function event(overrides: Partial<ApiErrorEvent> & { uuid: string; sessionId: st
  * moves. It was written as a literal "22" and duly broke on V23; asserting the
  * store's own current version keeps the check about the migration.
  */
-const CURRENT_SCHEMA_VERSION = "23";
+const CURRENT_SCHEMA_VERSION = String(SCHEMA_VERSION);
 
 describe("schema V22 migration", () => {
   let dbPath: string;

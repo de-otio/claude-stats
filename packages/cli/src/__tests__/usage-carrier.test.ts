@@ -22,7 +22,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { parseSessionFile } from "@claude-stats/core/parser/session";
 import type { MessageRecord, SessionRecord } from "@claude-stats/core/types";
-import { Store } from "../store/index.js";
+import { Store, SCHEMA_VERSION } from "../store/index.js";
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
 
@@ -673,7 +673,7 @@ describe("V22 → V23 migration", () => {
       expect(row["cost_basis"]).toBe("pre-dedupe");
       expect(row["usage_counted"]).toBe(1);
     }
-    expect(rawMeta(dbPath, "schema_version")).toBe("23");
+    expect(rawMeta(dbPath, "schema_version")).toBe(String(SCHEMA_VERSION));
   });
 
   it("preserves the token values it migrates", () => {
@@ -745,6 +745,6 @@ describe("schema_version is stamped forward only", () => {
   it("still migrates a database from the past", () => {
     const dbPath = makeV22Db();
     storeWith(dbPath).close();
-    expect(rawMeta(dbPath, "schema_version")).toBe("23");
+    expect(rawMeta(dbPath, "schema_version")).toBe(String(SCHEMA_VERSION));
   });
 });

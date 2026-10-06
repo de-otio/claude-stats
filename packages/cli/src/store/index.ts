@@ -27,7 +27,7 @@ import { estimateCost } from "@claude-stats/core/pricing";
 import { requireTicketKey } from "@claude-stats/core/tickets";
 import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
-const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 /**
  * SQL narrowing a session-id column to sessions attributed to one ticket key.
@@ -146,6 +146,7 @@ export class Store {
     if (current < 21) this.migrateToV21();
     if (current < 22) this.migrateToV22();
     if (current < 23) this.migrateToV23();
+    if (current < 24) this.migrateToV24();
 
     // Stamp the version FORWARD ONLY.
     //
@@ -940,6 +941,40 @@ export class Store {
   }
 
   /**
+   * V24 — repair `sessions.tool_use_counts` and `sessions.models`, which were
+   * left out of the V18 projection.
+   *
+   * `upsertSessionIncremental` OVERWRITES both with the parser's result for
+   * the appended byte range only, and `recomputeSessionAggregates` never
+   * rebuilt them, so every session collected in more than one pass kept just
+   * its last chunk's tools and models. Measured on one contributor's database:
+   * the column held 51% of the tool calls the `messages` rows record (1,068 of
+   * 2,623 sessions short, 683 with an incomplete model list). A full parse of
+   * a resumed transcript erred the other way, re-counting replayed calls whose
+   * message rows belong to another session.
+   *
+   * Both columns are now part of the projection; this re-runs it once over
+   * every session. Sessions with no message rows keep their stored values, as
+   * for every other projected column.
+   */
+  private migrateToV24(): void {
+    // Nothing to project on a database that lacks either table (only partial
+    // fixtures do; every real store has both since V1).
+    const tables = this.db
+      .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('sessions', 'messages')")
+      .get() as { n: number };
+    if (tables.n < 2) return;
+    this.db.exec("BEGIN");
+    try {
+      this.recomputeSessionAggregatesSql(null);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
+  /**
    * V14 — anchor pins. Durable, session-keyed ground-truth pins produced by the
    * attribution engine's anchor signal (live CLI sessions observed active under
    * the currently-read account). Persisted because the live-session files are
@@ -976,6 +1011,10 @@ export class Store {
    * `is_turn_start` signal. Rows ingested before V18 have it as 0 for every
    * message, and blindly recomputing would report "0 prompts" for all history
    * rather than a stale-but-nonzero number.
+   *
+   * `tool_use_counts` and `models` are projected too (V24). Before that they
+   * kept whatever the last upsert wrote, which on the incremental path is only
+   * the newest chunk.
    */
   private recomputeSessionAggregatesSql(sessionIds: string[] | null): void {
     const scope = sessionIds === null
@@ -1001,7 +1040,17 @@ export class Store {
            prompt_count            = CASE
              WHEN (SELECT COALESCE(SUM(m.is_turn_start), 0) FROM messages m WHERE m.session_id = s.session_id) > 0
              THEN (SELECT SUM(m.is_turn_start) FROM messages m WHERE m.session_id = s.session_id)
-             ELSE s.prompt_count END
+             ELSE s.prompt_count END,
+           -- Canonical order (count DESC, name ASC) so this and the sync-merge
+           -- mirror (\`projectToolUseCounts\`) produce byte-identical JSON.
+           tool_use_counts         = (SELECT json_group_array(json_object('name', t.name, 'count', t.n) ORDER BY t.n DESC, t.name ASC)
+                                        FROM (SELECT j.value AS name, COUNT(*) AS n
+                                                FROM messages m, json_each(m.tools) j
+                                               WHERE m.session_id = s.session_id AND json_valid(m.tools) AND j.type = 'text'
+                                               GROUP BY j.value) t),
+           models                  = (SELECT json_group_array(d.model ORDER BY d.model ASC)
+                                        FROM (SELECT DISTINCT m.model FROM messages m
+                                               WHERE m.session_id = s.session_id AND m.model IS NOT NULL) d)
          WHERE EXISTS (SELECT 1 FROM messages m WHERE m.session_id = s.session_id) ${scope}`
       )
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -192,6 +192,40 @@ function projectCounters(
   session.throttle_events = throttleEvents;
   session.assistant_message_count = messages.length;
   session.prompt_count = turnStarts > 0 ? turnStarts : fallbackPromptCount;
+  session.tool_use_counts = projectToolUseCounts(messages);
+  session.models = projectModels(messages);
+}
+
+function parseStringArray(json: string): string[] {
+  try {
+    const v: unknown = JSON.parse(json);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * `tool_use_counts` from the messages' `tools`, in the SQL projection's
+ * canonical form: `[{"name":…,"count":…}]`, count DESC then name ASC, so both
+ * writers produce the same bytes.
+ */
+export function projectToolUseCounts(messages: readonly Pick<MessageRow, "tools">[]): string {
+  const counts = new Map<string, number>();
+  for (const m of messages) {
+    for (const name of parseStringArray(m.tools)) counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  const sorted = [...counts].sort(([an, ac], [bn, bc]) => bc - ac || byCodePoint(an, bn));
+  return JSON.stringify(sorted.map(([name, count]) => ({ name, count })));
+}
+
+/** Distinct non-null `model` values, name ASC — the SQL projection's form. */
+export function projectModels(messages: readonly Pick<MessageRow, "model">[]): string {
+  const models = new Set<string>();
+  for (const m of messages) if (m.model != null) models.add(m.model);
+  return JSON.stringify([...models].sort(byCodePoint));
 }
 
 /**
