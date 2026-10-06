@@ -19,6 +19,12 @@
  *         no transcript stay `'pre-dedupe'` and are reported. Auto-backup,
  *         advisory lock; --dry-run = no write.
  *
+ *   repair agent-attribution [--dry-run]
+ *       — one-time re-parse of surviving transcripts so existing sessions gain
+ *         agent type / spawn details and messages gain their skill. Gated on
+ *         metadata `agent_attribution_backfill = v25`. Auto-backup (0600),
+ *         shared advisory lock; --dry-run = counts only, no write.
+ *
  * Thin command layer (cli/** is excluded from coverage — keep logic in
  * covered modules): parse args → call the covered repair function and print.
  *
@@ -29,6 +35,7 @@ import { Store } from "../store/index.js";
 import { repairProjectPaths } from "../repair/project-paths.js";
 import { reextractTicketLinks } from "../repair/ticket-links.js";
 import { repairDedupe, RepairLockHeldError } from "../repair/dedupe.js";
+import { repairAgentAttribution } from "../repair/agentAttribution.js";
 import { loadConfig, ticketProjectKeys } from "../config.js";
 import { t } from "../i18n.js";
 import { formatTokens } from "../reporter/index.js";
@@ -61,6 +68,66 @@ export function registerRepairCommands(program: Command): void {
     .action(async (opts: { dryRun?: boolean }) => {
       await runRepairDedupe(opts.dryRun ?? false);
     });
+
+  repair
+    .command("agent-attribution")
+    .description(t("cli:repair.agentAttribution.description"))
+    .option("--dry-run", t("cli:repair.agentAttribution.dryRunOption"))
+    .action(async (opts: { dryRun?: boolean }) => {
+      await runRepairAgentAttribution(opts.dryRun ?? false);
+    });
+}
+
+async function runRepairAgentAttribution(dryRun: boolean): Promise<void> {
+  const store = new Store();
+  try {
+    let summary;
+    try {
+      summary = await repairAgentAttribution(
+        store,
+        { dryRun, ticketAllowlist: ticketProjectKeys(loadConfig()) },
+        Date.now,
+      );
+    } catch (err) {
+      if (err instanceof RepairLockHeldError) {
+        console.error(
+          t("cli:repair.agentAttribution.lockHeld", {
+            pid: err.holder.pid,
+            started: new Date(err.holder.startedAt).toLocaleString(),
+          }),
+        );
+        process.exitCode = 1;
+        return;
+      }
+      throw err;
+    }
+
+    if (summary.alreadyDone) {
+      console.log(t("cli:repair.agentAttribution.alreadyDone"));
+      return;
+    }
+    console.log(
+      summary.dryRun
+        ? t("cli:repair.agentAttribution.dryRunHeader")
+        : t("cli:repair.agentAttribution.doneHeader"),
+    );
+    if (summary.backupPath) {
+      console.log(t("cli:repair.agentAttribution.backupWritten", { path: summary.backupPath }));
+    }
+    // Counts only — never agent-type or skill names.
+    console.log(
+      t(summary.dryRun ? "cli:repair.agentAttribution.dryRunSummary" : "cli:repair.agentAttribution.summary", {
+        files: summary.files,
+        sessions: summary.sessionsGainingAgentType,
+        messages: summary.messagesGainingSkill,
+      }),
+    );
+    if (summary.parseErrors > 0) {
+      console.warn(t("cli:repair.agentAttribution.parseErrors", { count: summary.parseErrors }));
+    }
+  } finally {
+    store.close();
+  }
 }
 
 async function runRepairDedupe(dryRun: boolean): Promise<void> {

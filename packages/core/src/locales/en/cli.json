@@ -406,6 +406,18 @@
       "remainingNote": "Rows that remain pre-dedupe have no transcript to re-parse; every cost surface discloses when a range includes them.",
       "parseErrors": "⚠  {{count}} parse errors quarantined during the re-parse.",
       "lockHeld": "Another usage-dedupe repair is running (pid {{pid}}, started {{started}}). Wait for it to finish, or delete the repair_dedupe_lock metadata row if that process is gone."
+    },
+    "agentAttribution": {
+      "description": "Re-parse every session whose transcript still exists so existing sessions gain their agent type and spawn details and existing messages gain the skill that was running. Runs once; sessions with no transcript keep no agent data.",
+      "dryRunOption": "Report how many files, sessions and messages would be updated without writing or creating a backup.",
+      "dryRunHeader": "Agent-attribution backfill (dry run) — no changes written:",
+      "doneHeader": "Agent-attribution backfill complete:",
+      "alreadyDone": "Agent-attribution backfill has already been run on this database; nothing to do.",
+      "backupWritten": "Backup written to {{path}}",
+      "summary": "{{files}} transcript files re-parsed, {{sessions}} sessions gained an agent type, {{messages}} messages gained a skill.",
+      "dryRunSummary": "{{files}} transcript files would be re-parsed, {{sessions}} sessions would gain an agent type, {{messages}} messages would gain a skill.",
+      "parseErrors": "⚠  {{count}} parse errors reported during the re-parse.",
+      "lockHeld": "Another repair is running (pid {{pid}}, started {{started}}). Wait for it to finish, or delete the repair_dedupe_lock metadata row if that process is gone."
     }
   },
   "errors": {

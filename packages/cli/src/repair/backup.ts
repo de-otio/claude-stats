@@ -23,6 +23,11 @@ import { DatabaseSync } from "node:sqlite";
 export function backupDatabase(dbPath: string, label: string, now: () => number): string | null {
   if (!fs.existsSync(dbPath)) return null;
   const backupPath = `${dbPath}.pre-repair-${label}-${now()}`;
+  // The copy holds the whole personal plane: owner-only from the first byte.
+  // `VACUUM INTO` accepts an existing EMPTY file, so create it 0600 ourselves
+  // rather than letting SQLite create it with the umask's mode. (`wx`: never
+  // overwrite or reuse a file that is already there.)
+  fs.writeFileSync(backupPath, "", { flag: "wx", mode: 0o600 });
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
     // The path is our own construction (the store's file plus a suffix we
@@ -31,8 +36,19 @@ export function backupDatabase(dbPath: string, label: string, now: () => number)
     // filesystem path are still escaped, because a home directory can carry
     // one.
     db.exec(`VACUUM INTO '${backupPath.replace(/'/g, "''")}'`);
+  } catch (err) {
+    // Do not leave a stray empty file behind a failed snapshot.
+    try {
+      fs.rmSync(backupPath, { force: true });
+    } catch {
+      /* best effort */
+    }
+    throw err;
   } finally {
     db.close();
   }
+  // Belt and braces: pin the mode on whatever file is there now, in case the
+  // snapshot replaced the one created above.
+  fs.chmodSync(backupPath, 0o600);
   return backupPath;
 }
