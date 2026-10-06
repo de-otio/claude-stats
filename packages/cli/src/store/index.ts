@@ -1546,7 +1546,8 @@ export class Store {
 
     // Is some OTHER row already counting this response's usage?
     const carrierTaken = this.db.prepare(
-      `SELECT 1 FROM messages
+      `SELECT uuid, input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens AS magnitude
+         FROM messages
         WHERE session_id = ? AND message_id = ? AND usage_counted = 1 AND uuid != ?
         LIMIT 1`,
     );
@@ -1567,9 +1568,26 @@ export class Store {
         // `|` cannot occur in either half: session ids are uuids and
         // `message_id` is shape-validated to /^[A-Za-z0-9_-]{1,64}$/.
         const key = `${r.sessionId}|${r.messageId}`;
-        if (claimed.has(key) || carrierTaken.get(r.sessionId, r.messageId, r.uuid) !== undefined) {
+        const stored = claimed.has(key)
+          ? undefined
+          : (carrierTaken.get(r.sessionId, r.messageId, r.uuid) as
+              | { uuid: string; magnitude: number }
+              | undefined);
+        const incoming = r.inputTokens + r.outputTokens + r.cacheCreationTokens + r.cacheReadTokens;
+        if (claimed.has(key)) {
+          carried = false;
+        } else if (stored !== undefined && incoming <= stored.magnitude) {
+          // Ties keep the stored row: it is the EARLIER entry, which is the
+          // full parse's tiebreak too.
           carried = false;
         } else {
+          // Either no carrier yet, or this later half of a straddling group
+          // carries MORE usage than the one stored first. The carrier is the
+          // MAX-usage entry (see markUsageCarriers), so the stored row is
+          // demoted — otherwise an incremental collect and a byte-0 re-parse
+          // of the same bytes would pick different carriers (measured: 216
+          // groups, +0.015% cost on one real history after a re-parse).
+          if (stored !== undefined) demoteStored.run(stored.uuid);
           claimed.add(key);
         }
       }
