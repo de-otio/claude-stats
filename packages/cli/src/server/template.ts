@@ -27,6 +27,7 @@ import { renderCostQualityCard, COST_QUALITY_CSS } from "./costQualityCard.js";
 import { renderTicketAttributionCard, TICKET_CARD_CSS } from "./ticketCard.js";
 import { renderTicketTable, TICKET_TABLE_CSS } from "./ticketTable.js";
 import { escapeHtml } from "./utils.js";
+import { renderAgentCostCard } from "./agentCostCard.js";
 import { costBasisLabel } from "../reporter/cost-basis.js";
 import type { PolicyEvent } from "@claude-stats/core/types/insight";
 import { RECONCILIATION_CSS } from "./reconciliationPanel.js";
@@ -1726,6 +1727,11 @@ ${TICKET_TABLE_CSS}
     ${data.contextCarry ? `
     <div class="charts-grid">
       ${renderContextCarryEvidence(data.contextCarry, t, data.insights?.currency ?? "USD")}
+    </div>
+    ` : ""}
+    ${data.agentCost ? `
+    <div class="charts-grid">
+      ${renderAgentCostCard(data.agentCost, t, data.insights?.currency ?? "USD")}
     </div>
     ` : ""}
   </div>

@@ -19,6 +19,7 @@ import { resolveAccountFee, showTicketUi, type Config } from "../config.js";
 import { getTicketCostReport, type TicketCostReport } from "../ticketing/index.js";
 import { computeTtlFitForWindow } from "../ttlFit/index.js";
 import type { TtlFitResult } from "@claude-stats/core/ttlFit";
+import { buildAgentCostReport, type AgentCostReport } from "../agentCost/index.js";
 import { computeContextCarryForWindow } from "../contextCarry/index.js";
 import type { ContextCarryResult } from "@claude-stats/core/contextCarry";
 import type { AutoCompactFitResult } from "@claude-stats/core/autoCompactFit";
@@ -437,6 +438,16 @@ export interface DashboardData {
    * C2 only READS this field; the computation lives in `cli/src/contextCarry/`.
    */
   contextCarry?: DashboardContextCarry | null;
+  /**
+   * Cost by agent type, skill (during its run) and spawn depth over the
+   * current period/filters (agent-attribution D2). `null` until
+   * {@link attachInsights} runs (matching {@link ttlFit}'s precedent) or when
+   * the report could not be built. The report carries no session id, uuid or
+   * path; agent/skill names are the only strings in it and the card escapes
+   * every one. The card only READS this field; the computation lives in
+   * `cli/src/agentCost/`.
+   */
+  agentCost?: AgentCostReport | null;
 }
 
 /** One project's session-start baseline series, as {@link DashboardData.contextCarry}
@@ -1971,6 +1982,26 @@ export function attachInsights(
     };
   } catch {
     data.contextCarry = null;
+  }
+
+  // Own try, same isolation reasoning as `ttlFit`/`contextCarry`. Same window
+  // and filters as the rest of this function, so `coverage.totalCost` is the
+  // same message set the headline cost is summed over.
+  try {
+    const { since, until } = periodRange(opts, tz);
+    const isCustomRange = Boolean(opts.since && opts.until);
+    data.agentCost = buildAgentCostReport(store, {
+      since: since > 0 ? since : undefined,
+      until: isCustomRange ? until : undefined,
+      projectPath: opts.projectPath,
+      repoUrl: opts.repoUrl,
+      accountUuid: opts.accountUuid,
+      includeCI: opts.includeCI ?? true,
+      includeDeleted: opts.includeDeleted ?? true,
+      limit: 8,
+    });
+  } catch {
+    data.agentCost = null;
   }
   // Passive timeline annotation, not a comparison — `constraint-impact`/
   // `get_constraint_impact` is where the before/after analysis lives. Every

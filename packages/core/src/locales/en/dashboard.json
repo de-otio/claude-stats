@@ -478,6 +478,46 @@
       "impliedSwing": "Implied swing if this band also expired"
     }
   },
+  "agentCost": {
+    "title": "Agents & skills",
+    "empty": "No subagent spend or skill runs were recorded in this period.",
+    "coverage": {
+      "subagentShare": "Subagents account for {{share}} of spend ({{subagent}} of {{total}}).",
+      "knownType": "{{share}} of subagent spend has a recorded agent type.",
+      "unpriced": "{{messages}} messages use a model with no known rate and are counted at zero cost, so the figures here understate spend by an unknown amount."
+    },
+    "byAgentType": {
+      "title": "Spend by agent type",
+      "type": "Agent type",
+      "kind": "Kind",
+      "cost": "Cost",
+      "share": "Share of subagent spend",
+      "messages": "Messages",
+      "builtIn": "built-in",
+      "named": "user-named",
+      "unrecorded": "(unrecorded)",
+      "other": "{{buckets}} more agent types (combined)"
+    },
+    "bySkill": {
+      "title": "During a skill's run",
+      "note": "Spend on messages written while the skill was running. The context carried forward afterwards is not included.",
+      "skill": "Skill",
+      "cost": "Cost during run",
+      "share": "Share of total spend",
+      "messages": "Messages",
+      "other": "{{buckets}} more skills (combined)"
+    },
+    "bySpawnDepth": {
+      "title": "Spend by spawn depth",
+      "depth": "Depth",
+      "cost": "Cost",
+      "share": "Share of subagent spend",
+      "messages": "Messages",
+      "level": "{{depth}}",
+      "other": "{{buckets}} more depths (combined)",
+      "unrecorded": "(unrecorded)"
+    }
+  },
   "contextCarry": {
     "title": "Context carry",
     "distinctClause": "The average request carried about {{carried}} tokens of context to produce about {{distinct}} tokens of new content.",
