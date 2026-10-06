@@ -20,7 +20,10 @@
 import { util } from "@aws-appsync/utils";
 
 const MAX_TOOL_NAME_LENGTH = 64;
-const MAX_TOOL_ENTRIES = 64;
+// Keys are bucketed to the closed built-in list, "mcp" and "custom" before this
+// check, so it is a backstop, sized with room for the list to grow (a test pins
+// the headroom: one key too many rejects the whole sync batch).
+const MAX_TOOL_ENTRIES = 128;
 const MAX_MODEL_NAME_LENGTH = 128;
 const MAX_MODELS = 32;
 

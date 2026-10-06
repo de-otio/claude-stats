@@ -572,10 +572,23 @@ export async function buildCli(): Promise<Command> {
       limit?: string;
       json?: boolean;
     }) => {
-      const { parseAgentsLimit, printAgentCost } = await import("../agentCost/format.js");
+      const { AGENTS_PERIODS, parseAgentsLimit, parseAgentsPeriod, printAgentCost } = await import("../agentCost/format.js");
       const limit = parseAgentsLimit(opts.limit);
       if (limit === null) {
         console.error(t("cli:errors.invalidAgentsLimit", { value: opts.limit ?? "" }));
+        process.exitCode = 1;
+        return;
+      }
+      // An unknown --period would otherwise fall through `periodRange` as an
+      // all-time window. Reported through the same localized frame as the
+      // range errors `periodRange` throws below (whose detail is English too).
+      const effectivePeriod = parseAgentsPeriod(opts.period);
+      if (effectivePeriod === null) {
+        console.error(
+          t("cli:errors.invalidDateRange", {
+            message: `--period "${opts.period ?? ""}" must be one of ${AGENTS_PERIODS.join(", ")}`,
+          }),
+        );
         process.exitCode = 1;
         return;
       }
@@ -584,7 +597,6 @@ export async function buildCli(): Promise<Command> {
       try {
         const { periodRange } = await import("../reporter/index.js");
         const { buildAgentCostReport } = await import("../agentCost/index.js");
-        const effectivePeriod = (opts.period ?? "month") as "day" | "week" | "month" | "all";
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
         const range = periodRange({ period: effectivePeriod, since: opts.since, until: opts.until }, tz);
         const report = buildAgentCostReport(store, {

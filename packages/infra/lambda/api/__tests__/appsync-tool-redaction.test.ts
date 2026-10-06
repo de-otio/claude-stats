@@ -274,6 +274,22 @@ describe("inlined built-in tool list is pinned to core", () => {
     expect(stored).toEqual(counts);
   });
 
+  it("MAX_TOOL_ENTRIES keeps >= 8 names of headroom over the bucketed key set", () => {
+    // Failure mode this guards: after bucketing, a client's toolUseCounts can
+    // hold every built-in name plus "mcp" and "custom". If that closed set ever
+    // exceeds MAX_TOOL_ENTRIES, syncAggregate rejects the WHOLE batch ("too many
+    // entries") for any user who has touched enough distinct tools — their org
+    // sync stops, silently from their side. The resolver is deployed separately
+    // from the client, so adding names to core's BUILT_IN_TOOL_NAMES must fail
+    // HERE, with room to spare, before a released client can send such a batch.
+    // Raise MAX_TOOL_ENTRIES (and deploy the resolver) before this goes red.
+    const m = /const\s+MAX_TOOL_ENTRIES\s*=\s*(\d+)\s*;/.exec(source("syncAggregate.js"));
+    expect(m, "syncAggregate.js must declare MAX_TOOL_ENTRIES as an integer literal").not.toBeNull();
+    const maxToolEntries = Number(m![1]);
+    const HEADROOM = 8;
+    expect(BUILT_IN_TOOL_NAMES.length + 2).toBeLessThanOrEqual(maxToolEntries - HEADROOM);
+  });
+
   it("myStats serves every core built-in verbatim (behaviour)", () => {
     const counts = Object.fromEntries(BUILT_IN_TOOL_NAMES.map((n) => [n, 1]));
     const out = myStats.response({ result: { items: [{ toolUseCounts: counts }] }, args: { period: "week" } }) as {

@@ -641,6 +641,75 @@ describe("a hostile shard row lands as NULL", () => {
   });
 });
 
+// ── applyMerged keeps session counters = projection of stored messages ───────
+
+describe("applyMerged re-projects session counters from the stored messages", () => {
+  it("a shard with two carriers for one (session, message_id) lands with projected counters", () => {
+    const { store, dbPath } = freshStore();
+    // The peer's shard claims BOTH entries of one response carry usage, and its
+    // session counters sum them (an un-upgraded or inconsistent peer).
+    const carrier = {
+      session_id: "c1",
+      message_id: "msg_dup1",
+      usage_counted: 1,
+      input_tokens: 100,
+      output_tokens: 40,
+      cache_read_tokens: 7,
+      cache_creation_tokens: 3,
+    };
+    applyMerged(store, [
+      {
+        clock: { wallMs: 1, counter: 0, originDevice: DEVICE_B },
+        session: hostileSessionRow({
+          session_id: "c1",
+          input_tokens: 200,
+          output_tokens: 80,
+          cache_read_tokens: 14,
+          cache_creation_tokens: 6,
+          assistant_message_count: 2,
+        }),
+        messages: [
+          hostileMessageRow({ ...carrier, uuid: "c1-a" }),
+          hostileMessageRow({ ...carrier, uuid: "c1-b", timestamp: 151 }),
+        ],
+      },
+    ]);
+
+    const msgs = store.getSessionMessages("c1");
+    expect(msgs).toHaveLength(2);
+    // upsertMessages demoted the second carrier...
+    expect(msgs.filter((m) => m.usage_counted === 1)).toHaveLength(1);
+    const sum = (k: "input_tokens" | "output_tokens" | "cache_read_tokens" | "cache_creation_tokens") =>
+      msgs.reduce((acc, m) => acc + m[k], 0);
+    // ...and the session row follows the stored rows, not the shard's sums.
+    const row = rawSession(dbPath, "c1");
+    expect(row?.["input_tokens"]).toBe(sum("input_tokens"));
+    expect(row?.["output_tokens"]).toBe(sum("output_tokens"));
+    expect(row?.["cache_read_tokens"]).toBe(sum("cache_read_tokens"));
+    expect(row?.["cache_creation_tokens"]).toBe(sum("cache_creation_tokens"));
+    // Pinned absolutely too, so a projection that double-counted the messages
+    // could not pass by agreeing with an equally wrong message sum.
+    expect([row?.["input_tokens"], row?.["output_tokens"], row?.["cache_read_tokens"], row?.["cache_creation_tokens"]])
+      .toEqual([100, 40, 7, 3]);
+    expect(row?.["assistant_message_count"]).toBe(2);
+  });
+
+  it("does not re-project sessions it skipped as this device's own", () => {
+    const { store, dbPath } = freshStore();
+    store.upsertSession(sessionRecord("own", { inputTokens: 999 }));
+    // A local message whose sum disagrees with the stored counter: a projection
+    // would rewrite it, so an untouched 999 proves the skip held.
+    store.upsertMessages([messageRecord("own-m", "own", { inputTokens: 5 })]);
+    const result = applyMerged(
+      store,
+      [{ clock: { wallMs: 1, counter: 0, originDevice: DEVICE_A }, session: hostileSessionRow({ session_id: "own" }), messages: [] }],
+      { selfDeviceId: DEVICE_A },
+    );
+    expect(result.skippedOwnDevice).toBe(1);
+    expect(rawSession(dbPath, "own")?.["input_tokens"]).toBe(999);
+  });
+});
+
 // ── SHORT_TOKEN_SHAPE must agree with the parser's SHORT_TOKEN_RE ────────────
 
 describe("effort/speed shape agrees with the parser", () => {

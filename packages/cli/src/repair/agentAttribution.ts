@@ -21,11 +21,10 @@
  *    removed, and the new columns only ever fill from NULL (the store
  *    COALESCEs them). Nothing about cost is touched: usage columns come out of
  *    the same parse that produced them, which the cost-neutral test pins.
- *  - **Quarantine is not duplicated.** `Store#addToQuarantine` is a plain
- *    INSERT, so a byte-0 re-parse would write every unparseable line a second
- *    time. During the pass the method is wrapped so a line already quarantined
- *    for the same file (same error and bytes, as a multiset — line numbers
- *    differ between an incremental and a full parse) is skipped.
+ *  - **Quarantine is not duplicated.** A byte-0 re-parse reports every
+ *    unparseable line again; `Store#addToQuarantine` records a line only when
+ *    the table does not already hold it (same file, error and bytes, as a
+ *    multiset — line numbers differ between an incremental and a full parse).
  *  - **Advisory lock** shared with the dedupe repair (same metadata key): both
  *    do byte-0 re-parses that bypass the collector's concurrent-parse guard,
  *    so they must exclude each other as well as themselves.
@@ -37,10 +36,8 @@
  * `--dry-run` writes nothing and takes no lock: it parses the candidate files
  * read-only and reports COUNTS only (never agent-type or skill names).
  */
-import { DatabaseSync } from "node:sqlite";
 import { validIdentifier } from "@claude-stats/core/identifiers";
 import { parseSessionFile } from "@claude-stats/core/parser/session";
-import type { ParseError } from "@claude-stats/core/types";
 import { discoverSessionFiles } from "../scanner/index.js";
 import type { SessionFile } from "../scanner/index.js";
 import { collect } from "../aggregator/index.js";
@@ -137,62 +134,6 @@ function derivedAgentType(sf: SessionFile, parsedAgentType: string | null | unde
   const fallback = validIdentifier(parsedAgentType ?? null);
   if (!sf.parentSessionId) return fallback;
   return readSubagentMeta(sf.filePath).agentType ?? fallback;
-}
-
-/**
- * Run `fn` with `store.addToQuarantine` filtered so an entry already in the
- * `quarantine` table (same file, error and raw bytes, counted as a multiset)
- * is not inserted again. Existing rows are read through a separate read-only
- * connection, lazily and once per file.
- */
-async function withQuarantineDedupe<T>(store: Store, dbPath: string, fn: () => Promise<T>): Promise<T> {
-  const reader = new DatabaseSync(dbPath, { readOnly: true });
-  reader.exec("PRAGMA busy_timeout = 30000");
-  const select = reader.prepare("SELECT raw_line, error FROM quarantine WHERE file_path = ?");
-  // Existing rows per (error, raw bytes) for one file, as a multiset. The line
-  // NUMBER is not part of the identity: a row written by an incremental parse
-  // numbers lines from the start of the appended slice, while this byte-0
-  // re-parse numbers them from the top of the file, so the same bad line
-  // arrives with a different number.
-  const keyOf = (raw: string, error: string) => `${error}\u0000${raw}`;
-  const existing = new Map<string, Map<string, number>>();
-  const forFile = (filePath: string): Map<string, number> => {
-    let m = existing.get(filePath);
-    if (!m) {
-      m = new Map();
-      for (const r of select.all(filePath) as Array<{ raw_line: string; error: string }>) {
-        const k = keyOf(r.raw_line, r.error);
-        m.set(k, (m.get(k) ?? 0) + 1);
-      }
-      existing.set(filePath, m);
-    }
-    return m;
-  };
-  const hadOwn = Object.prototype.hasOwnProperty.call(store, "addToQuarantine");
-  const previous = store.addToQuarantine;
-  store.addToQuarantine = (errors: ParseError[]): void => {
-    // One call is one parse of one file, so occurrences are tallied per call:
-    // a retried parse (busy abort, rolled-back transaction) starts from zero.
-    const seenThisCall = new Map<string, Map<string, number>>();
-    const fresh = errors.filter((e) => {
-      const have = forFile(e.filePath);
-      let seen = seenThisCall.get(e.filePath);
-      if (!seen) seenThisCall.set(e.filePath, (seen = new Map()));
-      const k = keyOf(e.rawLine, e.error);
-      const n = (seen.get(k) ?? 0) + 1;
-      seen.set(k, n);
-      // The n-th occurrence is new only when the table holds fewer than n.
-      return n > (have.get(k) ?? 0);
-    });
-    if (fresh.length > 0) previous.call(store, fresh);
-  };
-  try {
-    return await fn();
-  } finally {
-    if (hadOwn) store.addToQuarantine = previous;
-    else delete (store as Partial<Pick<Store, "addToQuarantine">>).addToQuarantine;
-    reader.close();
-  }
 }
 
 function countSkillRows(store: Store, sessionIds: readonly string[]): number {
@@ -312,11 +253,9 @@ export async function repairAgentAttribution(
       });
     }
 
-    const result = await withQuarantineDedupe(store, dbPath, () =>
-      withBusyRetry(() => collect(store, { ticketAllowlist: opts.ticketAllowlist }, now), {
-        onRetry: opts.onBusyRetry,
-      }),
-    );
+    const result = await withBusyRetry(() => collect(store, { ticketAllowlist: opts.ticketAllowlist }, now), {
+      onRetry: opts.onBusyRetry,
+    });
 
     // Complete pass: gate on, armed marker off.
     store.transaction(() => {

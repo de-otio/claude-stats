@@ -37,6 +37,7 @@ import {
   formatAgentCostLines,
   printAgentCost,
   parseAgentsLimit,
+  parseAgentsPeriod,
   projectSessionForExport,
   csvNameCell,
   EXPORT_SESSION_FIELDS,
@@ -237,6 +238,18 @@ describe("parseAgentsLimit", () => {
   });
   it.each(["0", "-3", "1.5", "abc", "", "1e3", "99999999999999999999", "0x10"])("rejects %j", (raw) => {
     expect(parseAgentsLimit(raw)).toBeNull();
+  });
+});
+
+describe("parseAgentsPeriod", () => {
+  it("absent flag is the command's default, month", () => {
+    expect(parseAgentsPeriod(undefined)).toBe("month");
+  });
+  it.each(["day", "week", "month", "all"])("accepts %j", (raw) => {
+    expect(parseAgentsPeriod(raw)).toBe(raw);
+  });
+  it.each(["", "year", "Month", " week", "weekly", "7d", "constructor", "__proto__"])("rejects %j", (raw) => {
+    expect(parseAgentsPeriod(raw)).toBeNull();
   });
 });
 
@@ -451,6 +464,17 @@ describe("claude-stats agents / export (CLI, end-to-end)", () => {
       expect(process.exitCode).toBe(1);
       expect(stdoutText()).toBe("");
       expect(String((errSpy.mock.calls as unknown[][])[0]?.[0])).toContain("Invalid --limit");
+    });
+
+    it.each(["year", "weekly", "", "Month"])("rejects --period %j with exit code 1 and no stdout", async (bad) => {
+      seeded();
+      await run(["agents", "--period", bad, "--json"]);
+      expect(process.exitCode).toBe(1);
+      // Not an all-time report under a wrong label: nothing is printed at all.
+      expect(stdoutText()).toBe("");
+      const msg = String((errSpy.mock.calls as unknown[][])[0]?.[0]);
+      expect(msg).toContain("Invalid date range");
+      expect(msg).toContain(`--period "${bad}"`);
     });
 
     it("--project narrows the window; an unmatched project yields an honest empty report", async () => {

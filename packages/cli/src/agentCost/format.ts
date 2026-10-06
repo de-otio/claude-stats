@@ -195,6 +195,21 @@ export function parseAgentsLimit(raw: string | undefined): number | undefined | 
   return Number.isSafeInteger(n) && n >= 1 ? n : null;
 }
 
+/** The `--period` values `periodRange` understands. */
+export const AGENTS_PERIODS = ["day", "week", "month", "all"] as const;
+export type AgentsPeriod = (typeof AGENTS_PERIODS)[number];
+
+/**
+ * Parse `--period`. `undefined` (flag absent) → `"month"`, the command's
+ * default; one of {@link AGENTS_PERIODS} → itself; anything else → `null`
+ * (invalid). Without this an unknown value fell through `periodRange` as an
+ * all-time window — a silently wrong report rather than an error.
+ */
+export function parseAgentsPeriod(raw: string | undefined): AgentsPeriod | null {
+  if (raw === undefined) return "month";
+  return (AGENTS_PERIODS as readonly string[]).includes(raw) ? (raw as AgentsPeriod) : null;
+}
+
 // ─── `claude-stats export` field allowlist ──────────────────────────────────
 
 /**

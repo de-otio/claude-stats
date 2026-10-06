@@ -954,9 +954,26 @@ export class Store {
    * a resumed transcript erred the other way, re-counting replayed calls whose
    * message rows belong to another session.
    *
-   * Both columns are now part of the projection; this re-runs it once over
-   * every session. Sessions with no message rows keep their stored values, as
-   * for every other projected column.
+   * Both columns are now part of the projection, and this migration re-runs
+   * the WHOLE projection once over every session — not only those two
+   * columns. Every counter `recomputeSessionAggregatesSql` owns (the four
+   * token columns, `thinking_blocks`, `assistant_message_count`, the
+   * server-tool and throttle counts, `prompt_count` where turn starts are
+   * recorded, `tool_use_counts`, `models`) is rewritten from `messages`.
+   *
+   * That is intended, and safe:
+   *  - A locally collected session was already projected by the collector
+   *    for every column except the two above, so for it the rest of the
+   *    rewrite is a no-op.
+   *  - A session that arrived through sync-merge was written with the
+   *    shard's own counters, and `upsertMessages` may then demote a duplicate
+   *    carrier for one (session, message_id), so its counters can disagree
+   *    with its message rows. The full re-projection corrects those.
+   *    (`applyMerged` re-projects the sessions it applies, inside its own
+   *    transaction, so the next sync does not break the invariant again.)
+   *  - It is idempotent: the projection is a pure function of `messages`.
+   * Sessions with no message rows keep their stored values, as for every
+   * projected column.
    */
   private migrateToV24(): void {
     // Nothing to project on a database that lacks either table (only partial
@@ -1792,14 +1809,64 @@ export class Store {
 
   // ─── Quarantine ─────────────────────────────────────────────────────────────
 
+  /**
+   * Record unparseable lines — without duplicating ones already recorded.
+   *
+   * One call is one parse of one byte range. A plain INSERT duplicated every
+   * quarantined line whenever the same bytes were parsed again: a byte-0
+   * re-parse (`repair agent-attribution`, `repair dedupe`), or a second
+   * collector that sees armed byte-0 checkpoints and so is not stopped by the
+   * collector's compare-and-swap guard (that guard only applies to
+   * `startOffset > 0`).
+   *
+   * Identity is (file_path, error, raw_line), counted as a MULTISET: for each
+   * key, this inserts only `max(0, batchCount - storedCount)` rows, so two
+   * identical bad lines in one parse stay two rows and re-parsing them adds
+   * none. The line NUMBER is deliberately not part of the identity: an
+   * incremental parse numbers lines from the start of its appended slice, a
+   * byte-0 re-parse from the top of the file, so the same bad line arrives
+   * with a different number.
+   *
+   * Accepted cost of that identity: when a bad line's exact bytes recur in a
+   * LATER incremental slice of the same file, the later copy is not recorded
+   * (the stored copy already accounts for it). Quarantine is a diagnostic
+   * record of distinct failures; a re-parse multiplying it was the worse
+   * error.
+   *
+   * Count-then-insert runs in one transaction — the caller's when one is open
+   * (the collector's per-file transaction already holds the write lock by the
+   * time it gets here), otherwise its own — so a concurrent writer cannot slip
+   * a copy in between the count and the insert.
+   */
   addToQuarantine(errors: ParseError[]): void {
-    const stmt = this.db.prepare(`
-      INSERT INTO quarantine (file_path, line_number, raw_line, error, timestamp, claude_version)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    for (const e of errors) {
-      stmt.run(e.filePath, e.lineNumber, e.rawLine, e.error, e.timestamp, e.claudeVersion ?? null);
-    }
+    if (errors.length === 0) return;
+    const run = (): void => {
+      const countStored = this.db.prepare(
+        "SELECT COUNT(*) AS n FROM quarantine WHERE file_path = ? AND error = ? AND raw_line = ?",
+      );
+      const insert = this.db.prepare(`
+        INSERT INTO quarantine (file_path, line_number, raw_line, error, timestamp, claude_version)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      // Group in batch order. JSON keys: unambiguous whatever bytes the line holds.
+      const groups = new Map<string, ParseError[]>();
+      for (const e of errors) {
+        const key = JSON.stringify([e.filePath, e.error, e.rawLine]);
+        const list = groups.get(key);
+        if (list) list.push(e);
+        else groups.set(key, [e]);
+      }
+      for (const list of groups.values()) {
+        const { filePath, error, rawLine } = list[0]!;
+        const stored = (countStored.get(filePath, error, rawLine) as { n: number }).n;
+        // The n-th occurrence is new only when the table holds fewer than n.
+        for (const e of list.slice(stored)) {
+          insert.run(e.filePath, e.lineNumber, e.rawLine, e.error, e.timestamp, e.claudeVersion ?? null);
+        }
+      }
+    };
+    if (this.db.isTransaction) run();
+    else this.transaction(run);
   }
 
   // ─── Account enrichment ─────────────────────────────────────────────────────

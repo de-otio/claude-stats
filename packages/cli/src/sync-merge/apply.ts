@@ -157,9 +157,25 @@ export interface ApplyResult {
 }
 
 /**
+ * Session ids per projection call. Each id is one bound `?`; SQLite's
+ * host-parameter limit is far above this, but a sync can apply thousands of
+ * sessions in one batch, so the list is chunked rather than bound whole.
+ */
+const RECOMPUTE_CHUNK = 500;
+
+/**
  * Upsert the merged winners into the store, one transaction for the whole batch
  * (all-or-nothing, matching the store's crash-recovery model). Idempotent:
  * re-applying the same merged set is a no-op beyond re-stamping `updated_at`.
+ *
+ * The session counters a shard carries are NOT trusted as stored. They are
+ * re-projected from the stored `messages` rows at the end of the batch, inside
+ * the same transaction. `upsertMessages` can store a different carrier set
+ * than the shard described (it demotes a second carrier for the same
+ * (session, message_id), from the shard or already in the local DB), so the
+ * shard's `input_tokens` etc. can disagree with the rows they summarise. The
+ * projection restores "session counters = projection of its messages", the
+ * same invariant the collector keeps and migration V24 repairs.
  */
 export function applyMerged(
   store: Store,
@@ -171,6 +187,7 @@ export function applyMerged(
   let skippedOwnDevice = 0;
 
   store.transaction(() => {
+    const appliedIds: string[] = [];
     for (const m of merged) {
       if (options.selfDeviceId && m.clock.originDevice === options.selfDeviceId) {
         skippedOwnDevice++;
@@ -181,7 +198,14 @@ export function applyMerged(
         store.upsertMessages(m.messages.map(rowToMessageRecord));
         messagesApplied += m.messages.length;
       }
+      appliedIds.push(m.session.session_id);
       sessionsApplied++;
+    }
+    // Joins this transaction (`recomputeSessionAggregates` does not open its
+    // own while one is active). Sessions with no message rows keep the shard's
+    // counters: the projection leaves them alone, as everywhere else.
+    for (let i = 0; i < appliedIds.length; i += RECOMPUTE_CHUNK) {
+      store.recomputeSessionAggregates(appliedIds.slice(i, i + RECOMPUTE_CHUNK));
     }
   });
 
