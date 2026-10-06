@@ -3,21 +3,21 @@
   "de": {
     "cli": 101,
     "common": 11,
-    "dashboard": 36,
+    "dashboard": 37,
     "extension": 13,
     "frontend": 22
   },
   "es": {
     "cli": 93,
     "common": 13,
-    "dashboard": 24,
+    "dashboard": 25,
     "extension": 11,
     "frontend": 12
   },
   "fr": {
     "cli": 109,
     "common": 18,
-    "dashboard": 33,
+    "dashboard": 36,
     "extension": 12,
     "frontend": 21
   },
@@ -38,7 +38,7 @@
   "pt-BR": {
     "cli": 96,
     "common": 15,
-    "dashboard": 26,
+    "dashboard": 27,
     "extension": 13,
     "frontend": 13
   },

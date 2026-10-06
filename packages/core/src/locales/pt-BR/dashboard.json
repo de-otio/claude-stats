@@ -742,5 +742,45 @@
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} IDs de modelo não corresponderam a nenhuma tarifa e foram excluídos do custo total ({{tokens}} tokens): {{models}}. Adicione uma linha de preço ou um override na configuração."
+  },
+  "agentCost": {
+    "title": "Agentes e skills",
+    "empty": "Nenhum gasto com subagentes ou execuções de skill foram registrados neste período.",
+    "coverage": {
+      "subagentShare": "Subagentes representam {{share}} do gasto ({{subagent}} de {{total}}).",
+      "knownType": "{{share}} do gasto com subagentes tem um tipo de agente registrado.",
+      "unpriced": "{{messages}} mensagens usam um modelo sem taxa conhecida e são contadas com custo zero, portanto os números aqui subestimam o gasto por uma quantia desconhecida."
+    },
+    "byAgentType": {
+      "title": "Gasto por tipo de agente",
+      "type": "Tipo de agente",
+      "kind": "Tipo",
+      "cost": "Custo",
+      "share": "Participação no gasto com subagentes",
+      "messages": "Mensagens",
+      "builtIn": "integrado",
+      "named": "nomeado pelo usuário",
+      "unrecorded": "(não registrado)",
+      "other": "{{buckets}} mais tipos de agente (combinados)"
+    },
+    "bySkill": {
+      "title": "Durante a execução de uma skill",
+      "note": "Gasto em mensagens escritas enquanto a skill estava em execução. O contexto transportado depois não é incluído.",
+      "skill": "Skill",
+      "cost": "Custo durante execução",
+      "share": "Participação no gasto total",
+      "messages": "Mensagens",
+      "other": "{{buckets}} mais skills (combinadas)"
+    },
+    "bySpawnDepth": {
+      "title": "Gasto por profundidade de geração",
+      "depth": "Profundidade",
+      "cost": "Custo",
+      "share": "Participação no gasto com subagentes",
+      "messages": "Mensagens",
+      "level": "{{depth}}",
+      "other": "{{buckets}} mais profundidades (combinadas)",
+      "unrecorded": "(não registrado)"
+    }
   }
 }

@@ -200,7 +200,12 @@
     "ttlFitJson": "機械可読な JSON 出力 (TtlFitResult 全体)",
     "context": "現在のコンテキストの中身ではなく、コンテキストを引き継ぐことにコストがどれだけかかっているかを示します。Claude Code の /context と同じ問いに答えますが、ある瞬間ではなく期間全体を対象とするため、リアルタイムの内訳は表示されません",
     "contextPeriod": "期間: day、week、month、または all (既定: month)",
-    "contextJson": "機械可読な JSON 出力 (ContextCarryResult 全体)"
+    "contextJson": "機械可読な JSON 出力 (ContextCarryResult 全体)",
+    "agents": "支出の流れを追跡します：メイン会話かサブエージェント、どのエージェントタイプ、どのスキルが実行中か、スポーン木のどの深さか。支出を説明します。判断しません。",
+    "agentsPeriod": "時間期間：日、週、月、またはすべて（デフォルト：月）",
+    "agentsLimit": "リスト内に表示する名前付き行数。残りはひとつの残りの行にまとめられます（デフォルト：10）",
+    "agentsJson": "機械可読のJSON出力（完全なAgentCostReport）",
+    "exportIncludeAgentNames": "エージェントタイプ、スポーン深さ、スポーンツール呼び出しIDもエクスポート（ユーザー作成の名前。デフォルトでは省略）"
   },
   "collection": {
     "collecting": "収集中...",
@@ -367,7 +372,8 @@
     "cannotCombineTrendDetail": "--trend と --detail は組み合わせられません",
     "invalidDateRange": "無効な日付範囲です: {{message}}",
     "invalidPackPeriod": "無効なパック期間です: {{message}}",
-    "invalidInvoiceCsv": "--invoice-csv {{path}} を読み取れませんでした: {{message}}"
+    "invalidInvoiceCsv": "--invoice-csv {{path}} を読み取れませんでした: {{message}}",
+    "invalidAgentsLimit": "無効な--limit \\\"{{value}}\\\"：1以上の整数を使用してください"
   },
   "repair": {
     "description": "通常の収集では遡って修正できない派生データを修復します。",
@@ -402,6 +408,18 @@
       "remainingNote": "pre-dedupe のまま残っている行には再解析するトランスクリプトがありません。範囲にこれらの行が含まれる場合、すべてのコスト表示でその旨が明示されます。",
       "parseErrors": "⚠  再解析中に {{count}} 件の解析エラーを隔離しました。",
       "lockHeld": "別の使用量重複排除修復が実行中です (pid {{pid}}、開始 {{started}})。完了を待つか、そのプロセスが既に存在しない場合は repair_dedupe_lock メタデータ行を削除してください。"
+    },
+    "agentAttribution": {
+      "description": "トランスクリプトがまだ存在するすべてのセッションを再解析し、既存セッションはエージェントタイプとスポーン詳細を獲得し、既存メッセージは実行中だったスキルを獲得します。1回だけ実行されます。トランスクリプトのないセッションはエージェントデータを保持しません。",
+      "dryRunOption": "バックアップの作成や書き込みを行わずに、何個のファイル、セッション、メッセージが更新されるかをレポートします。",
+      "dryRunHeader": "エージェント属性の埋め戻し（ドライ実行）— 変更なし：",
+      "doneHeader": "エージェント属性の埋め戻し完了：",
+      "alreadyDone": "エージェント属性の埋め戻しはすでにこのデータベースで実行されています。実行することはありません。",
+      "backupWritten": "バックアップは{{path}}に書き込まれました",
+      "summary": "{{files}}個のトランスクリプトファイルが再解析され、{{sessions}}個のセッションがエージェントタイプを獲得し、{{messages}}個のメッセージがスキルを獲得しました。",
+      "dryRunSummary": "{{files}}個のトランスクリプトファイルが再解析され、{{sessions}}個のセッションがエージェントタイプを獲得し、{{messages}}個のメッセージがスキルを獲得します。",
+      "parseErrors": "⚠  再解析中に{{count}}個の解析エラーが報告されました。",
+      "lockHeld": "別の修復が実行中です（pid {{pid}}、開始 {{started}}）。完了するまで待つか、そのプロセスが消えている場合はrepair_dedupe_lockメタデータ行を削除してください。"
     }
   },
   "archive": {
@@ -602,5 +620,36 @@
     "finding": "  {{model}} は {{matchedKey}} の料金を適用できませんでした ({{reason}}、{{table}} テーブル) — 料金行または設定のオーバーライドを追加してください",
     "none": "価格設定済みのすべてのモデル ID に料金が解決されました。",
     "statusLabel": "未価格設定のモデル"
+  },
+  "agentCost": {
+    "title": "エージェントとスキルコスト — 支出がどこに行くかを説明します。判断しません。",
+    "coverageTitle": "カバレッジ：",
+    "totalLine": "合計：{{messages}}個のメッセージ全体で{{total}} — メイン会話{{main}}（{{mainShare}}）、サブエージェント{{subagent}}（{{subagentShare}}）。",
+    "knownTypeLine": "記録されたエージェントタイプのサブエージェント支出：{{knownShare}}（{{subagent}}のうち{{known}}）。残りはエージェントタイプが取得される前に記録されたか、タイプが利用できませんでした。",
+    "knownTypeNoSubagents": "このウィンドウではサブエージェント支出はありません。",
+    "unpricedLine": "{{count}}個のメッセージは既知のレートのないモデルを使用しており、上記で$0として計算されるため、合計は過小評価です。",
+    "pricedAllLine": "このウィンドウのすべてのメッセージは価格設定されました。",
+    "periodLineDay": "既知のエージェントタイプのサブエージェント支出のシェア（日別）：{{periods}}",
+    "periodLineWeek": "既知のエージェントタイプのサブエージェント支出のシェア（週別、月曜日開始）：{{periods}}",
+    "periodItem": "{{start}} {{share}}",
+    "undatedLine": "{{cost}}のサブエージェント支出にはタイムスタンプがなく、期間別の行に含まれていません。",
+    "byTypeTitle": "エージェントタイプ別（サブエージェント支出のシェア）：",
+    "typeRow": "{{name}} [{{kind}}]：{{cost}}（{{share}}）· {{messages}}個のメッセージ",
+    "kindBuiltIn": "組み込み",
+    "kindNamed": "ユーザー名",
+    "kindUnrecorded": "記録なし",
+    "unrecordedName": "（記録なし）",
+    "otherTypeRow": "（その他：{{buckets}}個のエージェントタイプ）：{{cost}}（{{share}}）· {{messages}}個のメッセージ",
+    "byTypeEmpty": "このウィンドウではサブエージェント支出はありません。",
+    "bySkillTitle": "スキル実行中（総支出のシェア）：",
+    "skillNote": "スキルがアクティブな間に書き込まれたメッセージの支出。スキルが残したコンテキスト（後のターンが支払い続ける）は`claude-stats context`で測定され、ここには含まれません。",
+    "skillRow": "{{name}}：{{cost}}（{{share}}）· {{messages}}個のメッセージ",
+    "otherSkillRow": "（その他：{{buckets}}個のスキル）：{{cost}}（{{share}}）· {{messages}}個のメッセージ",
+    "bySkillEmpty": "このウィンドウではスキル実行中に支出は記録されませんでした。",
+    "byDepthTitle": "スポーン深さ別（サブエージェント支出のシェア）：",
+    "depthRow": "深さ{{depth}}：{{cost}}（{{share}}）· {{messages}}個のメッセージ",
+    "depthUnrecorded": "深さ記録なし：{{cost}}（{{share}}）· {{messages}}個のメッセージ",
+    "otherDepthRow": "（その他：{{buckets}}個の深さ）：{{cost}}（{{share}}）· {{messages}}個のメッセージ",
+    "byDepthEmpty": "このウィンドウではサブエージェント支出はありません。"
   }
 }

@@ -200,7 +200,12 @@
     "ttlFitJson": "Maschinenlesbare JSON-Ausgabe (das vollständige TtlFitResult)",
     "context": "Welcher Anteil der Kosten entfällt darauf, Kontext mitzuführen – nicht, was gerade im Kontext liegt? Beantwortet dieselbe Frage wie Claude Codes eigenes /context – aber über die Zeit, nicht zu einem Zeitpunkt; erwarte also keine Live-Aufschlüsselung",
     "contextPeriod": "Zeitraum: day, week, month oder all (Standard: month)",
-    "contextJson": "Maschinenlesbare JSON-Ausgabe (das vollständige ContextCarryResult)"
+    "contextJson": "Maschinenlesbare JSON-Ausgabe (das vollständige ContextCarryResult)",
+    "agents": "Wohin gehen die Kosten: in die Hauptkonversation oder zu Subagenten, welche Agententypen, während welcher Skill läuft und wie tief im Spawn-Baum? Beschreibt die Kosten; bewertet sie nicht",
+    "agentsPeriod": "Zeitraum: Tag, Woche, Monat oder alle (Standard: Monat)",
+    "agentsLimit": "Benannte Zeilen pro Liste, bevor der Rest in eine Restzeile zusammengefasst wird (Standard: 10)",
+    "agentsJson": "Maschinenlesbarer JSON-Output (der vollständige AgentCostReport)",
+    "exportIncludeAgentNames": "Außerdem Agententyp, Spawn-Tiefe und Spawn-Tool-Call-ID exportieren (benutzerdefinierte Namen; standardmäßig weggelassen)"
   },
   "collection": {
     "collecting": "Erfassung läuft...",
@@ -367,7 +372,8 @@
     "cannotCombineTrendDetail": "--trend und --detail können nicht kombiniert werden",
     "invalidDateRange": "Ungültiger Zeitraum: {{message}}",
     "invalidPackPeriod": "Ungültiger Paketzeitraum: {{message}}",
-    "invalidInvoiceCsv": "--invoice-csv {{path}} konnte nicht gelesen werden: {{message}}"
+    "invalidInvoiceCsv": "--invoice-csv {{path}} konnte nicht gelesen werden: {{message}}",
+    "invalidAgentsLimit": "Ungültig --limit \\\"{{value}}\\\": Verwenden Sie eine ganze Zahl von 1 oder mehr"
   },
   "repair": {
     "description": "Repariert abgeleitete Daten, die die normale Erfassung nicht rückwirkend beheben kann.",
@@ -402,6 +408,18 @@
       "remainingNote": "Zeilen, die pre-dedupe bleiben, haben kein Transkript zum erneuten Parsen; jede Kostenansicht weist darauf hin, wenn ein Zeitraum sie enthält.",
       "parseErrors": "⚠  {{count}} Parse-Fehler beim erneuten Parsen in Quarantäne verschoben.",
       "lockHeld": "Eine andere Usage-Dedupe-Reparatur läuft bereits (PID {{pid}}, gestartet {{started}}). Warten Sie, bis sie abgeschlossen ist, oder löschen Sie die Metadatenzeile repair_dedupe_lock, falls dieser Prozess nicht mehr existiert."
+    },
+    "agentAttribution": {
+      "description": "Jede Sitzung, deren Transkript noch vorhanden ist, neu analysieren, damit vorhandene Sitzungen ihren Agententyp und Spawn-Details erhalten und vorhandene Nachrichten den laufenden Skill erhalten. Läuft einmal; Sitzungen ohne Transkript behalten keine Agentendaten.",
+      "dryRunOption": "Berichten, wie viele Dateien, Sitzungen und Nachrichten aktualisiert würden, ohne zu schreiben oder ein Backup zu erstellen.",
+      "dryRunHeader": "Agent-Attribut-Nachfüllung (Testlauf) – keine Änderungen geschrieben:",
+      "doneHeader": "Agent-Attribut-Nachfüllung abgeschlossen:",
+      "alreadyDone": "Agent-Attribut-Nachfüllung wurde bereits auf dieser Datenbank ausgeführt; nichts zu tun.",
+      "backupWritten": "Backup geschrieben in {{path}}",
+      "summary": "{{files}} Transkript-Dateien neu analysiert, {{sessions}} Sitzungen erhielten einen Agententyp, {{messages}} Nachrichten erhielten einen Skill.",
+      "dryRunSummary": "{{files}} Transkript-Dateien würden neu analysiert, {{sessions}} Sitzungen würden einen Agententyp erhalten, {{messages}} Nachrichten würden einen Skill erhalten.",
+      "parseErrors": "⚠  {{count}} Parse-Fehler während der Neuanalyse gemeldet.",
+      "lockHeld": "Eine andere Reparatur läuft (pid {{pid}}, gestartet {{started}}). Warten Sie, bis sie beendet ist, oder löschen Sie die repair_dedupe_lock-Metadaten-Zeile, wenn dieser Prozess weg ist."
     }
   },
   "archive": {
@@ -602,5 +620,36 @@
     "finding": "  {{model}} hat den Tarif von {{matchedKey}} abgelehnt ({{reason}}, Tabelle {{table}}) — Pricing-Zeile oder Config-Override hinzufügen",
     "none": "Jede bepreiste Modell-ID wurde einem Tarif zugeordnet.",
     "statusLabel": "Modelle ohne Preis"
+  },
+  "agentCost": {
+    "title": "Agent- und Skill-Kosten – wohin die Kosten gehen, beschrieben, nicht bewertet",
+    "coverageTitle": "Abdeckung:",
+    "totalLine": "Gesamt: {{total}} über {{messages}} Nachrichten – Hauptkonversation {{main}} ({{mainShare}}), Subagenten {{subagent}} ({{subagentShare}}).",
+    "knownTypeLine": "Subagenten-Kosten mit erfasstem Agententyp: {{knownShare}} ({{known}} von {{subagent}}). Der Rest wurde aufgezeichnet, bevor Agententypen erfasst wurden, oder der Typ war nicht verfügbar.",
+    "knownTypeNoSubagents": "Keine Subagenten-Kosten in diesem Zeitfenster.",
+    "unpricedLine": "{{count}} Nachricht(en) verwenden ein Modell ohne bekannten Satz und werden oben als 0 $ gezählt, daher sind die Gesamtsummen eine Unterschätzung.",
+    "pricedAllLine": "Jede Nachricht in diesem Zeitfenster wurde bepreist.",
+    "periodLineDay": "Bekannter Agententyp-Anteil an Subagenten-Kosten, nach Tag: {{periods}}",
+    "periodLineWeek": "Bekannter Agententyp-Anteil an Subagenten-Kosten, nach Woche (ab Montag): {{periods}}",
+    "periodItem": "{{start}} {{share}}",
+    "undatedLine": "{{cost}} der Subagenten-Kosten hat keinen Zeitstempel und ist nicht in der Nach-Periode-Zeile.",
+    "byTypeTitle": "Nach Agententyp (Anteil an Subagenten-Kosten):",
+    "typeRow": "{{name}} [{{kind}}]: {{cost}} ({{share}}) · {{messages}} Nachrichten",
+    "kindBuiltIn": "eingebaut",
+    "kindNamed": "benutzerdefiniert",
+    "kindUnrecorded": "nicht aufgezeichnet",
+    "unrecordedName": "(nicht aufgezeichnet)",
+    "otherTypeRow": "(sonstige: {{buckets}} weitere Agententypen): {{cost}} ({{share}}) · {{messages}} Nachrichten",
+    "byTypeEmpty": "Keine Subagenten-Kosten in diesem Zeitfenster.",
+    "bySkillTitle": "Während der Ausführung eines Skills (Anteil an den Gesamtkosten):",
+    "skillNote": "Kosten für Nachrichten, die geschrieben wurden, während der Skill aktiv war. Der Kontext, den der Skill hinterlässt und für den später weiterhin bezahlt wird, wird von `claude-stats context` gemessen, nicht hier hinzugefügt.",
+    "skillRow": "{{name}}: {{cost}} ({{share}}) · {{messages}} Nachrichten",
+    "otherSkillRow": "(sonstige: {{buckets}} weitere Skills): {{cost}} ({{share}}) · {{messages}} Nachrichten",
+    "bySkillEmpty": "Während der Ausführung eines Skills in diesem Zeitfenster wurden keine Kosten aufgezeichnet.",
+    "byDepthTitle": "Nach Spawn-Tiefe (Anteil an Subagenten-Kosten):",
+    "depthRow": "Tiefe {{depth}}: {{cost}} ({{share}}) · {{messages}} Nachrichten",
+    "depthUnrecorded": "Tiefe nicht aufgezeichnet: {{cost}} ({{share}}) · {{messages}} Nachrichten",
+    "otherDepthRow": "(sonstige: {{buckets}} weitere Tiefen): {{cost}} ({{share}}) · {{messages}} Nachrichten",
+    "byDepthEmpty": "Keine Subagenten-Kosten in diesem Zeitfenster."
   }
 }

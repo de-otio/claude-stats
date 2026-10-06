@@ -200,7 +200,12 @@
     "ttlFitJson": "Sortie JSON lisible par machine (le TtlFitResult complet)",
     "context": "Quelle part de la facture correspond au report du contexte, et non à son contenu actuel ? Répond à la même question que la commande /context de Claude Code — mais dans la durée, pas à un instant donné : n'attendez donc pas une répartition en temps réel",
     "contextPeriod": "Période : day, week, month ou all (par défaut : month)",
-    "contextJson": "Sortie JSON exploitable par une machine (le ContextCarryResult complet)"
+    "contextJson": "Sortie JSON exploitable par une machine (le ContextCarryResult complet)",
+    "agents": "Où va la dépense : la conversation principale ou les sous-agents, quels types d'agents, pendant l'exécution de quelle compétence, et à quelle profondeur dans l'arborescence de spawn ? Décrit la dépense ; il ne la juge pas",
+    "agentsPeriod": "Période : jour, semaine, mois ou tout (par défaut : mois)",
+    "agentsLimit": "Lignes nommées par liste avant que le reste soit regroupé en une seule ligne restante (par défaut : 10)",
+    "agentsJson": "Sortie JSON lisible par machine (le rapport AgentCostReport complet)",
+    "exportIncludeAgentNames": "Exporter également le type d'agent, la profondeur de spawn et l'id d'appel d'outil spawn (noms créés par l'utilisateur ; omis par défaut)"
   },
   "collection": {
     "collecting": "Collecte en cours...",
@@ -370,7 +375,8 @@
     "cannotCombineTrendDetail": "Impossible de combiner --trend et --detail",
     "invalidDateRange": "Plage de dates invalide : {{message}}",
     "invalidPackPeriod": "Période de dossier invalide : {{message}}",
-    "invalidInvoiceCsv": "Impossible de lire --invoice-csv {{path}} : {{message}}"
+    "invalidInvoiceCsv": "Impossible de lire --invoice-csv {{path}} : {{message}}",
+    "invalidAgentsLimit": "--limit \\\"{{value}}\\\" invalide : utilisez un nombre entier égal à 1 ou plus"
   },
   "repair": {
     "description": "Réparer les données dérivées que la collecte normale ne peut pas corriger rétroactivement.",
@@ -405,6 +411,18 @@
       "remainingNote": "Les lignes restées en pre-dedupe n'ont aucune transcription à réanalyser ; chaque affichage de coût signale lorsqu'une plage les inclut.",
       "parseErrors": "⚠  {{count}} erreurs d'analyse mises en quarantaine pendant la réanalyse.",
       "lockHeld": "Une autre réparation du dédoublonnage d'usage est en cours (pid {{pid}}, démarrée {{started}}). Attendez qu'elle se termine, ou supprimez la ligne de métadonnées repair_dedupe_lock si ce processus n'existe plus."
+    },
+    "agentAttribution": {
+      "description": "Réanalyser chaque session dont la transcription existe toujours pour que les sessions existantes gagnent leur type d'agent et les détails de spawn et que les messages existants gagnent la compétence qui s'exécutait. S'exécute une fois ; les sessions sans transcription ne conservent pas de données d'agent.",
+      "dryRunOption": "Rapport sur le nombre de fichiers, de sessions et de messages qui seraient mis à jour sans écrire ni créer de sauvegarde.",
+      "dryRunHeader": "Remplissage de l'attribution d'agent (exécution d'essai) — aucune modification écrite :",
+      "doneHeader": "Remplissage de l'attribution d'agent complet :",
+      "alreadyDone": "Le remplissage de l'attribution d'agent a déjà été exécuté sur cette base de données ; rien à faire.",
+      "backupWritten": "Sauvegarde écrite dans {{path}}",
+      "summary": "{{files}} fichiers de transcription réanalysés, {{sessions}} sessions ont acquis un type d'agent, {{messages}} messages ont acquis une compétence.",
+      "dryRunSummary": "{{files}} fichiers de transcription seraient réanalysés, {{sessions}} sessions acquerraient un type d'agent, {{messages}} messages acquerraient une compétence.",
+      "parseErrors": "⚠  {{count}} erreurs d'analyse signalées lors de la réanalyse.",
+      "lockHeld": "Une autre réparation est en cours (pid {{pid}}, démarrée {{started}}). Attendez qu'elle se termine, ou supprimez la ligne de métadonnées repair_dedupe_lock si ce processus est parti."
     }
   },
   "archive": {
@@ -605,5 +623,36 @@
     "finding": "  {{model}} a refusé le tarif de {{matchedKey}} ({{reason}}, table {{table}}) — ajoutez une ligne de tarif ou une surcharge de configuration",
     "none": "Chaque identifiant de modèle tarifé a été associé à un tarif.",
     "statusLabel": "Modèles sans tarif"
+  },
+  "agentCost": {
+    "title": "Coût de l'agent et de la compétence — où va la dépense, décrite et non jugée",
+    "coverageTitle": "Couverture :",
+    "totalLine": "Total : {{total}} sur {{messages}} messages — conversation principale {{main}} ({{mainShare}}), sous-agents {{subagent}} ({{subagentShare}}).",
+    "knownTypeLine": "Dépense des sous-agents avec un type d'agent enregistré : {{knownShare}} ({{known}} sur {{subagent}}). Le reste a été enregistré avant que les types d'agent ne soient capturés, ou le type n'était pas disponible.",
+    "knownTypeNoSubagents": "Aucune dépense de sous-agent dans cette fenêtre.",
+    "unpricedLine": "{{count}} message(s) utilise(nt) un modèle sans tarif connu et sont comptabilisé(s) comme 0 $ ci-dessus, donc les totaux sont une sous-estimation.",
+    "pricedAllLine": "Chaque message de cette fenêtre a été tarifé.",
+    "periodLineDay": "Part connue du type d'agent des dépenses des sous-agents, par jour : {{periods}}",
+    "periodLineWeek": "Part connue du type d'agent des dépenses des sous-agents, par semaine (commençant le lundi) : {{periods}}",
+    "periodItem": "{{start}} {{share}}",
+    "undatedLine": "{{cost}} de dépense de sous-agent n'a pas d'horodatage et ne figure pas dans la ligne par période.",
+    "byTypeTitle": "Par type d'agent (part des dépenses des sous-agents) :",
+    "typeRow": "{{name}} [{{kind}}] : {{cost}} ({{share}}) · {{messages}} messages",
+    "kindBuiltIn": "intégré",
+    "kindNamed": "nommé par l'utilisateur",
+    "kindUnrecorded": "non enregistré",
+    "unrecordedName": "(non enregistré)",
+    "otherTypeRow": "(autre : {{buckets}} types d'agents supplémentaires) : {{cost}} ({{share}}) · {{messages}} messages",
+    "byTypeEmpty": "Aucune dépense de sous-agent dans cette fenêtre.",
+    "bySkillTitle": "Pendant l'exécution d'une compétence (part de la dépense totale) :",
+    "skillNote": "Dépense pour les messages écrits pendant que la compétence était active. Le contexte que la compétence laisse derrière elle et pour lequel les tours ultérieurs continuent à payer est mesuré par `claude-stats context`, pas ajouté ici.",
+    "skillRow": "{{name}} : {{cost}} ({{share}}) · {{messages}} messages",
+    "otherSkillRow": "(autre : {{buckets}} compétences supplémentaires) : {{cost}} ({{share}}) · {{messages}} messages",
+    "bySkillEmpty": "Aucune dépense n'a été enregistrée lors de l'exécution d'une compétence dans cette fenêtre.",
+    "byDepthTitle": "Par profondeur de spawn (part des dépenses des sous-agents) :",
+    "depthRow": "Profondeur {{depth}} : {{cost}} ({{share}}) · {{messages}} messages",
+    "depthUnrecorded": "Profondeur non enregistrée : {{cost}} ({{share}}) · {{messages}} messages",
+    "otherDepthRow": "(autre : {{buckets}} profondeurs supplémentaires) : {{cost}} ({{share}}) · {{messages}} messages",
+    "byDepthEmpty": "Aucune dépense de sous-agent dans cette fenêtre."
   }
 }

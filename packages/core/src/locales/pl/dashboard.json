@@ -746,5 +746,45 @@
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} identyfikatorów modeli nie ma przypisanej stawki i zostały wykluczone z łącznego kosztu ({{tokens}} tokenów): {{models}}. Dodaj wiersz cennika lub nadpisanie w konfiguracji."
+  },
+  "agentCost": {
+    "title": "Agenci i umiejętności",
+    "empty": "W tym okresie nie zarejęstrowano żadnych wydatków podagentów ani przebiegów umiejętności.",
+    "coverage": {
+      "subagentShare": "Podagenty stanowią {{share}} wydatków ({{subagent}} z {{total}}).",
+      "knownType": "{{share}} wydatków podagentów ma zarejestrowany typ agenta.",
+      "unpriced": "{{messages}} wiadomości z modeli bez znanych stawek są liczone na zero, zatem wartości tutaj niedoszacowują rzeczywiste wydatki o nieznaną sumę."
+    },
+    "byAgentType": {
+      "title": "Wydatki wg typu agenta",
+      "type": "Typ agenta",
+      "kind": "Rodzaj",
+      "cost": "Koszt",
+      "share": "Udział w wydatkach podagentów",
+      "messages": "Wiadomości",
+      "builtIn": "wbudowany",
+      "named": "zdefiniowany przez użytkownika",
+      "unrecorded": "(niezarejestrowany)",
+      "other": "{{buckets}} więcej typów agentów (połączone)"
+    },
+    "bySkill": {
+      "title": "Podczas uruchomienia umiejętności",
+      "note": "Wydatki na wiadomości napisane podczas uruchomienia umiejętności. Kontekst przeniesiony później nie jest uwzględniony.",
+      "skill": "Umiejętność",
+      "cost": "Koszt podczas uruchomienia",
+      "share": "Udział w całkowitych wydatkach",
+      "messages": "Wiadomości",
+      "other": "{{buckets}} więcej umiejętności (połączone)"
+    },
+    "bySpawnDepth": {
+      "title": "Wydatki wg poziomu spawnu",
+      "depth": "Poziom",
+      "cost": "Koszt",
+      "share": "Udział w wydatkach podagentów",
+      "messages": "Wiadomości",
+      "level": "{{depth}}",
+      "other": "{{buckets}} więcej poziomów (połączone)",
+      "unrecorded": "(niezarejestrowany)"
+    }
   }
 }

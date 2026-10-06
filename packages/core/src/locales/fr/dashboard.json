@@ -742,5 +742,45 @@
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} identifiants de modèle n'ont été associés à aucun tarif et sont exclus du coût total ({{tokens}} tokens) : {{models}}. Ajoutez une ligne de tarification ou une surcharge dans la configuration."
+  },
+  "agentCost": {
+    "title": "Agents et compétences",
+    "empty": "Aucune dépense de sous-agent ou exécution de compétence n'a été enregistrée au cours de cette période.",
+    "coverage": {
+      "subagentShare": "Les sous-agents représentent {{share}} des dépenses ({{subagent}} sur {{total}}).",
+      "knownType": "{{share}} des dépenses de sous-agent a un type d'agent enregistré.",
+      "unpriced": "{{messages}} messages utilisent un modèle sans tarif connu et sont comptabilisés à zéro coût, donc les chiffres ici sous-estiment les dépenses d'un montant inconnu."
+    },
+    "byAgentType": {
+      "title": "Dépenses par type d'agent",
+      "type": "Type d'agent",
+      "kind": "Catégorie",
+      "cost": "Coût",
+      "share": "Part des dépenses de sous-agent",
+      "messages": "Messages",
+      "builtIn": "intégré",
+      "named": "nommé par l'utilisateur",
+      "unrecorded": "(non enregistré)",
+      "other": "{{buckets}} autres types d'agent (combinés)"
+    },
+    "bySkill": {
+      "title": "Pendant l'exécution d'une compétence",
+      "note": "Dépenses sur les messages générés pendant l'exécution de la compétence. Le contexte transféré par la suite n'est pas inclus.",
+      "skill": "Compétence",
+      "cost": "Coût pendant l'exécution",
+      "share": "Part des dépenses totales",
+      "messages": "Messages",
+      "other": "{{buckets}} autres compétences (combinées)"
+    },
+    "bySpawnDepth": {
+      "title": "Dépenses par profondeur",
+      "depth": "Profondeur",
+      "cost": "Coût",
+      "share": "Part des dépenses de sous-agent",
+      "messages": "Messages",
+      "level": "{{depth}}",
+      "other": "{{buckets}} autres profondeurs (combinées)",
+      "unrecorded": "(non enregistré)"
+    }
   }
 }

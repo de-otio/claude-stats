@@ -738,5 +738,45 @@
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} Modell-IDs konnten keinem Tarif zugeordnet werden und sind von der Kostensumme ausgeschlossen ({{tokens}} Tokens): {{models}}. Fügen Sie eine Preiszeile oder eine Konfigurations-Überschreibung hinzu."
+  },
+  "agentCost": {
+    "title": "Agenten & Fähigkeiten",
+    "empty": "Keine Ausgaben für Subagenten oder Skill-Durchläufe wurden in diesem Zeitraum erfasst.",
+    "coverage": {
+      "subagentShare": "Subagenten machen {{share}} der Ausgaben aus ({{subagent}} von {{total}}).",
+      "knownType": "{{share}} der Subagenten-Ausgaben haben einen erfassten Agententyp.",
+      "unpriced": "{{messages}} Nachrichten verwenden ein Modell ohne bekannte Gebühren und werden mit Nullkosten gezählt, daher unterschätzen die Zahlen hier die Ausgaben um einen unbekannten Betrag."
+    },
+    "byAgentType": {
+      "title": "Ausgaben nach Agententyp",
+      "type": "Agententyp",
+      "kind": "Art",
+      "cost": "Kosten",
+      "share": "Anteil der Subagenten-Ausgaben",
+      "messages": "Nachrichten",
+      "builtIn": "integriert",
+      "named": "benutzerdefiniert",
+      "unrecorded": "(nicht erfasst)",
+      "other": "{{buckets}} weitere Agententypen (kombiniert)"
+    },
+    "bySkill": {
+      "title": "Während der Skill-Ausführung",
+      "note": "Ausgaben für Nachrichten, die während der Skill-Ausführung verfasst wurden. Der anschließend übernommene Kontext ist nicht enthalten.",
+      "skill": "Skill",
+      "cost": "Kosten während der Ausführung",
+      "share": "Anteil der Gesamtausgaben",
+      "messages": "Nachrichten",
+      "other": "{{buckets}} weitere Skills (kombiniert)"
+    },
+    "bySpawnDepth": {
+      "title": "Ausgaben nach Spawn-Tiefe",
+      "depth": "Tiefe",
+      "cost": "Kosten",
+      "share": "Anteil der Subagenten-Ausgaben",
+      "messages": "Nachrichten",
+      "level": "{{depth}}",
+      "other": "{{buckets}} weitere Tiefen (kombiniert)",
+      "unrecorded": "(nicht erfasst)"
+    }
   }
 }

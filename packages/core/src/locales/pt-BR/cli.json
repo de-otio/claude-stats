@@ -200,7 +200,12 @@
     "ttlFitJson": "Saída JSON legível por máquina (o TtlFitResult completo)",
     "context": "Quanto da fatura vai para carregar contexto adiante, em vez do que está no contexto agora? Responde à mesma pergunta que o /context do próprio Claude Code — mas ao longo do tempo, não em um instante, então não espere um detalhamento ao vivo",
     "contextPeriod": "Período de tempo: day, week, month ou all (padrão: month)",
-    "contextJson": "Saída JSON legível por máquina (o ContextCarryResult completo)"
+    "contextJson": "Saída JSON legível por máquina (o ContextCarryResult completo)",
+    "agents": "Para onde vai o gasto: para a conversa principal ou suagentes, quais tipos de agentes, durante qual skill, quão profundo na árvore de spawn? Descreve o gasto; não o julga",
+    "agentsPeriod": "Período de tempo: dia, semana, mês ou tudo (padrão: mês)",
+    "agentsLimit": "Linhas nomeadas a exibir por lista antes de agrupar o restante em uma linha de resto (padrão: 10)",
+    "agentsJson": "Saída JSON legível por máquina (o AgentCostReport completo)",
+    "exportIncludeAgentNames": "Também exportar tipo de agente, profundidade de spawn e id de chamada de ferramenta de spawn (nomes criados pelo usuário; omitido por padrão)"
   },
   "collection": {
     "collecting": "Coletando...",
@@ -370,7 +375,8 @@
     "cannotCombineTrendDetail": "Não é possível combinar --trend e --detail",
     "invalidDateRange": "Intervalo de datas inválido: {{message}}",
     "invalidPackPeriod": "Período de pacote inválido: {{message}}",
-    "invalidInvoiceCsv": "Não foi possível ler --invoice-csv {{path}}: {{message}}"
+    "invalidInvoiceCsv": "Não foi possível ler --invoice-csv {{path}}: {{message}}",
+    "invalidAgentsLimit": "Inválido --limit \"{{value}}\": use um número inteiro de 1 ou mais"
   },
   "repair": {
     "description": "Repara dados derivados que a coleta normal não consegue corrigir retroativamente.",
@@ -405,6 +411,18 @@
       "remainingNote": "As linhas que permanecem pre-dedupe não têm transcrição para reanalisar; todas as exibições de custo indicam quando um intervalo as inclui.",
       "parseErrors": "⚠  {{count}} erros de análise colocados em quarentena durante a reanálise.",
       "lockHeld": "Outro reparo de dedupe de uso está em execução (pid {{pid}}, iniciado em {{started}}). Aguarde a conclusão ou exclua a linha de metadados repair_dedupe_lock se esse processo não existir mais."
+    },
+    "agentAttribution": {
+      "description": "Re-analisar cada sessão cuja transcrição ainda existe para que sessões existentes ganhem seu tipo de agente e detalhes de spawn e mensagens existentes ganhem a skill que estava em execução. Executa uma vez; sessões sem transcrição não mantêm dados de agente.",
+      "dryRunOption": "Relatar quantos arquivos, sessões e mensagens seriam atualizados sem escrever ou criar backup.",
+      "dryRunHeader": "Preenchimento de atribuição de agente (execução seca) — nenhuma alteração escrita:",
+      "doneHeader": "Preenchimento de atribuição de agente concluído:",
+      "alreadyDone": "O preenchimento de atribuição de agente já foi executado neste banco de dados; nada a fazer.",
+      "backupWritten": "Backup escrito em {{path}}",
+      "summary": "{{files}} arquivos de transcrição re-analisados, {{sessions}} sessões ganharam tipo de agente, {{messages}} mensagens ganharam skill.",
+      "dryRunSummary": "{{files}} arquivos de transcrição seriam re-analisados, {{sessions}} sessões ganhariam tipo de agente, {{messages}} mensagens ganhariam skill.",
+      "parseErrors": "⚠  {{count}} erros de análise reportados durante a re-análise.",
+      "lockHeld": "Outro reparo está em execução (pid {{pid}}, iniciado {{started}}). Aguarde sua conclusão ou delete a linha de metadados repair_dedupe_lock se esse processo desapareceu."
     }
   },
   "archive": {
@@ -605,5 +623,36 @@
     "finding": "  {{model}} recusou a tarifa de {{matchedKey}} ({{reason}}, tabela {{table}}) — adicione uma linha de preço ou uma substituição na configuração",
     "none": "Todos os ids de modelo com preço foram resolvidos para uma tarifa.",
     "statusLabel": "Modelos sem preço"
+  },
+  "agentCost": {
+    "title": "Custo de agente e skill — para onde vai o gasto, descrito não avaliado",
+    "coverageTitle": "Cobertura:",
+    "totalLine": "Total: {{total}} em {{messages}} mensagens — conversa principal {{main}} ({{mainShare}}), suagentes {{subagent}} ({{subagentShare}}).",
+    "knownTypeLine": "Gasto de suagente com tipo de agente registrado: {{knownShare}} ({{known}} de {{subagent}}). O restante foi registrado antes que os tipos de agente fossem capturados ou o tipo não estava disponível.",
+    "knownTypeNoSubagents": "Nenhum gasto de suagente nesta janela.",
+    "unpricedLine": "{{count}} mensagem(ns) usa(m) modelo sem taxa conhecida e é(são) contada(s) como $0 acima, portanto os totais são uma subestimação.",
+    "pricedAllLine": "Cada mensagem nesta janela foi precificada.",
+    "periodLineDay": "Participação de tipo de agente conhecido no gasto de suagente, por dia: {{periods}}",
+    "periodLineWeek": "Participação de tipo de agente conhecido no gasto de suagente, por semana (começando na segunda-feira): {{periods}}",
+    "periodItem": "{{start}} {{share}}",
+    "undatedLine": "{{cost}} do gasto de suagente não possui timestamp e não está na linha por-período.",
+    "byTypeTitle": "Por tipo de agente (participação do gasto de suagente):",
+    "typeRow": "{{name}} [{{kind}}]: {{cost}} ({{share}}) · {{messages}} mensagens",
+    "kindBuiltIn": "integrado",
+    "kindNamed": "nomeado pelo usuário",
+    "kindUnrecorded": "não registrado",
+    "unrecordedName": "(não registrado)",
+    "otherTypeRow": "(outro: {{buckets}} mais tipos de agentes): {{cost}} ({{share}}) · {{messages}} mensagens",
+    "byTypeEmpty": "Nenhum gasto de suagente nesta janela.",
+    "bySkillTitle": "Durante a execução de uma skill (participação do gasto total):",
+    "skillNote": "Gasto em mensagens escritas enquanto a skill estava ativa. O contexto deixado pela skill, que turnos posteriores continuam pagando, é medido por `claude-stats context`, não adicionado aqui.",
+    "skillRow": "{{name}}: {{cost}} ({{share}}) · {{messages}} mensagens",
+    "otherSkillRow": "(outro: {{buckets}} mais skills): {{cost}} ({{share}}) · {{messages}} mensagens",
+    "bySkillEmpty": "Nenhum gasto foi registrado enquanto uma skill estava em execução nesta janela.",
+    "byDepthTitle": "Por profundidade de spawn (participação do gasto de suagente):",
+    "depthRow": "Profundidade {{depth}}: {{cost}} ({{share}}) · {{messages}} mensagens",
+    "depthUnrecorded": "Profundidade não registrada: {{cost}} ({{share}}) · {{messages}} mensagens",
+    "otherDepthRow": "(outro: {{buckets}} mais profundidades): {{cost}} ({{share}}) · {{messages}} mensagens",
+    "byDepthEmpty": "Nenhum gasto de suagente nesta janela."
   }
 }

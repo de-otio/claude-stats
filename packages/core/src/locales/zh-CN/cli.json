@@ -200,7 +200,12 @@
     "ttlFitJson": "机器可读的 JSON 输出（完整的 TtlFitResult）",
     "context": "费用中有多少花在了持续携带上下文上,而不是当前上下文里有什么?回答的问题与 Claude Code 自带的 /context 相同 —— 但是跨时间统计,而非某一瞬间,因此不要期望实时明细",
     "contextPeriod": "时间范围:day、week、month 或 all(默认:month)",
-    "contextJson": "机器可读的 JSON 输出(完整的 ContextCarryResult)"
+    "contextJson": "机器可读的 JSON 输出(完整的 ContextCarryResult)",
+    "agents": "指支出流向何处：主对话还是子代理，涉及哪些代理类型，在哪个技能运行时，以及在生成树中的深度有多深？描述支出情况；并非判断",
+    "agentsPeriod": "时间段：日、周、月或全部（默认值：月）",
+    "agentsLimit": "在其余行折叠到一个剩余行之前，每个列表中的命名行数（默认值：10）",
+    "agentsJson": "机器可读的 JSON 输出（完整的 AgentCostReport）",
+    "exportIncludeAgentNames": "还导出代理类型、生成深度和生成工具调用 ID（用户编写的名称；默认省略）"
   },
   "collection": {
     "collecting": "收集中...",
@@ -367,7 +372,8 @@
     "cannotCombineTrendDetail": "--trend 和 --detail 不能组合使用",
     "invalidDateRange": "无效的日期范围：{{message}}",
     "invalidPackPeriod": "无效的材料包时间段：{{message}}",
-    "invalidInvoiceCsv": "无法读取 --invoice-csv {{path}}：{{message}}"
+    "invalidInvoiceCsv": "无法读取 --invoice-csv {{path}}：{{message}}",
+    "invalidAgentsLimit": "无效的 --limit \\\"{{value}}\\\"：请使用 1 或更大的整数"
   },
   "repair": {
     "description": "修复常规采集无法追溯修正的派生数据。",
@@ -402,6 +408,18 @@
       "remainingNote": "仍为 pre-dedupe 的行没有可供重新解析的转录文件；当某个范围包含这些行时，所有成本界面都会予以说明。",
       "parseErrors": "⚠  重新解析期间隔离了 {{count}} 个解析错误。",
       "lockHeld": "另一个使用量去重修复正在运行（pid {{pid}}，启动于 {{started}}）。请等待其完成；如果该进程已不存在，请删除 repair_dedupe_lock 元数据行。"
+    },
+    "agentAttribution": {
+      "description": "重新解析仍然存在脚本的每个会话，使现有会话获得其代理类型和生成详情，现有消息获得运行的技能。只运行一次；没有脚本的会话不保留任何代理数据。",
+      "dryRunOption": "报告有多少文件、会话和消息将被更新，而无需写入或创建备份。",
+      "dryRunHeader": "代理归因回填（试运行）— 未写入任何更改：",
+      "doneHeader": "代理归因回填完成：",
+      "alreadyDone": "此数据库上已运行代理归因回填；无需执行任何操作。",
+      "backupWritten": "备份已写入 {{path}}",
+      "summary": "已重新解析 {{files}} 个脚本文件，{{sessions}} 个会话获得了代理类型，{{messages}} 条消息获得了技能。",
+      "dryRunSummary": "将重新解析 {{files}} 个脚本文件，{{sessions}} 个会话将获得代理类型，{{messages}} 条消息将获得技能。",
+      "parseErrors": "⚠  重新解析期间报告了 {{count}} 个解析错误。",
+      "lockHeld": "另一项修复正在运行（pid {{pid}}，启动于 {{started}}）。等待其完成，或如果该进程已消失，请删除 repair_dedupe_lock 元数据行。"
     }
   },
   "archive": {
@@ -602,5 +620,36 @@
     "finding": "  {{model}} 拒绝了 {{matchedKey}} 的费率（{{reason}}，{{table}} 表）— 请添加定价行或配置覆盖",
     "none": "所有已定价的模型 id 均已匹配到费率。",
     "statusLabel": "未定价模型"
+  },
+  "agentCost": {
+    "title": "代理和技能成本 — 支出流向何处，描述而非判断",
+    "coverageTitle": "覆盖范围：",
+    "totalLine": "总计：{{total}}，涉及 {{messages}} 条消息 — 主对话 {{main}}（{{mainShare}}），子代理 {{subagent}}（{{subagentShare}}）。",
+    "knownTypeLine": "具有记录代理类型的子代理支出：{{knownShare}}（{{known}} 项，共 {{subagent}} 项）。其余部分在捕获代理类型之前被记录，或类型不可用。",
+    "knownTypeNoSubagents": "此时间窗口内没有子代理支出。",
+    "unpricedLine": "{{count}} 条消息使用没有已知费率的模型，上面计为 $0，因此总计是低估的。",
+    "pricedAllLine": "此时间窗口内的每条消息都已定价。",
+    "periodLineDay": "已知代理类型的子代理支出占比，按日：{{periods}}",
+    "periodLineWeek": "已知代理类型的子代理支出占比，按周（从周一开始）：{{periods}}",
+    "periodItem": "{{start}} {{share}}",
+    "undatedLine": "{{cost}} 的子代理支出没有时间戳，不在按周期行中。",
+    "byTypeTitle": "按代理类型（子代理支出占比）：",
+    "typeRow": "{{name}} [{{kind}}]：{{cost}}（{{share}}）· {{messages}} 条消息",
+    "kindBuiltIn": "内置",
+    "kindNamed": "用户命名",
+    "kindUnrecorded": "未记录",
+    "unrecordedName": "（未记录）",
+    "otherTypeRow": "（其他：{{buckets}} 种更多代理类型）：{{cost}}（{{share}}）· {{messages}} 条消息",
+    "byTypeEmpty": "此时间窗口内没有子代理支出。",
+    "bySkillTitle": "在技能运行期间（总支出占比）：",
+    "skillNote": "技能激活时编写的消息支出。技能留下的上下文，稍后的轮次继续付费，由 `claude-stats context` 测量，此处不计入。",
+    "skillRow": "{{name}}：{{cost}}（{{share}}）· {{messages}} 条消息",
+    "otherSkillRow": "（其他：{{buckets}} 种更多技能）：{{cost}}（{{share}}）· {{messages}} 条消息",
+    "bySkillEmpty": "此时间窗口内，技能运行时未记录支出。",
+    "byDepthTitle": "按生成深度（子代理支出占比）：",
+    "depthRow": "深度 {{depth}}：{{cost}}（{{share}}）· {{messages}} 条消息",
+    "depthUnrecorded": "深度未记录：{{cost}}（{{share}}）· {{messages}} 条消息",
+    "otherDepthRow": "（其他：{{buckets}} 个更多深度）：{{cost}}（{{share}}）· {{messages}} 条消息",
+    "byDepthEmpty": "此时间窗口内没有子代理支出。"
   }
 }

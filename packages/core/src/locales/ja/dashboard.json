@@ -738,5 +738,45 @@
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} 件のモデル ID は料金が解決できなかったため、コスト合計から除外されています ({{tokens}} token): {{models}}。料金行を追加するか、設定で上書きしてください。"
+  },
+  "agentCost": {
+    "title": "エージェントとスキル",
+    "empty": "この期間でサブエージェントの支出またはスキル実行が記録されませんでした。",
+    "coverage": {
+      "subagentShare": "サブエージェントは支出の{{share}}を占めています({{total}}中の{{subagent}})。",
+      "knownType": "サブエージェント支出の{{share}}は記録されたエージェント型を持っています。",
+      "unpriced": "{{messages}}個のメッセージは既知のレートがないモデルを使用し、ゼロコストでカウントされるため、ここの数字は支出を未知の量だけ過小評価しています。"
+    },
+    "byAgentType": {
+      "title": "エージェント型別の支出",
+      "type": "エージェント型",
+      "kind": "種類",
+      "cost": "コスト",
+      "share": "サブエージェント支出の割合",
+      "messages": "メッセージ数",
+      "builtIn": "ビルトイン",
+      "named": "ユーザー命名",
+      "unrecorded": "(記録なし)",
+      "other": "他{{buckets}}個のエージェント型(統合)"
+    },
+    "bySkill": {
+      "title": "スキル実行中",
+      "note": "スキル実行中に記述されたメッセージの支出。その後に持ち越されたコンテキストは含まれていません。",
+      "skill": "スキル",
+      "cost": "実行中のコスト",
+      "share": "総支出の割合",
+      "messages": "メッセージ数",
+      "other": "他{{buckets}}個のスキル(統合)"
+    },
+    "bySpawnDepth": {
+      "title": "スポーン深度別の支出",
+      "depth": "深度",
+      "cost": "コスト",
+      "share": "サブエージェント支出の割合",
+      "messages": "メッセージ数",
+      "level": "{{depth}}",
+      "other": "他{{buckets}}個の深度(統合)",
+      "unrecorded": "(記録なし)"
+    }
   }
 }

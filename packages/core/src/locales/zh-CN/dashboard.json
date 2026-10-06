@@ -738,5 +738,45 @@
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} 个模型 ID 未能匹配到费率，已从费用总计中排除（{{tokens}} 个 token）：{{models}}。请添加定价行或配置覆盖项。"
+  },
+  "agentCost": {
+    "title": "代理与技能",
+    "empty": "此期间未记录任何子代理支出或技能运行。",
+    "coverage": {
+      "subagentShare": "子代理占支出的 {{share}}（{{subagent}}/{{total}}）。",
+      "knownType": "{{share}} 的子代理支出有已记录的代理类型。",
+      "unpriced": "{{messages}} 条消息使用的模型没有已知费率，按零成本计算，因此此处的数据低估了实际支出。"
+    },
+    "byAgentType": {
+      "title": "按代理类型分类的支出",
+      "type": "代理类型",
+      "kind": "类型",
+      "cost": "费用",
+      "share": "占子代理支出比例",
+      "messages": "消息数",
+      "builtIn": "内置",
+      "named": "用户命名",
+      "unrecorded": "（未记录）",
+      "other": "其他 {{buckets}} 个代理类型（合并）"
+    },
+    "bySkill": {
+      "title": "技能运行期间的支出",
+      "note": "技能运行期间的消息费用。运行结束后使用的上下文不计入此费用。",
+      "skill": "技能",
+      "cost": "运行期间的费用",
+      "share": "占总支出比例",
+      "messages": "消息数",
+      "other": "其他 {{buckets}} 项技能（合并）"
+    },
+    "bySpawnDepth": {
+      "title": "按生成深度分类的支出",
+      "depth": "深度",
+      "cost": "费用",
+      "share": "占子代理支出比例",
+      "messages": "消息数",
+      "level": "{{depth}}",
+      "other": "其他 {{buckets}} 个深度（合并）",
+      "unrecorded": "（未记录）"
+    }
   }
 }

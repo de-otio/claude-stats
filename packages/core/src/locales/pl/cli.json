@@ -200,7 +200,12 @@
     "ttlFitJson": "Wynik w formacie JSON do odczytu maszynowego (pełny TtlFitResult)",
     "context": "Jaka część rachunku przypada na przenoszenie kontekstu, a nie co znajduje się w kontekście w tej chwili? Odpowiada na to samo pytanie co /context w Claude Code — ale w czasie, nie w jednym momencie, więc nie oczekuj podziału na żywo",
     "contextPeriod": "Okres czasu: day, week, month lub all (domyślnie: month)",
-    "contextJson": "Wynik w formacie JSON do przetwarzania maszynowego (pełny ContextCarryResult)"
+    "contextJson": "Wynik w formacie JSON do przetwarzania maszynowego (pełny ContextCarryResult)",
+    "agents": "Gdzie trafia wydatek: do głównej konwersacji czy do subagentów, jakie typy agentów, które umiejętności były uruchamiane i jak głęboko w drzewie generowania? Opisuje wydatek; nie go ocenia",
+    "agentsPeriod": "Okres czasu: dzień, tydzień, miesiąc lub wszystko (domyślnie: miesiąc)",
+    "agentsLimit": "Nazwane wiersze na liście przed złożeniem reszty w jeden wiersz pozostałości (domyślnie: 10)",
+    "agentsJson": "Wyjście JSON czytelne dla maszyn (pełny AgentCostReport)",
+    "exportIncludeAgentNames": "Eksportuj również typ agenta, głębokość generowania i identyfikator wywołania narzędzia generowania (nazwy tworzone przez użytkownika; pominięte domyślnie)"
   },
   "collection": {
     "collecting": "Zbieranie...",
@@ -373,7 +378,8 @@
     "cannotCombineTrendDetail": "Nie można łączyć --trend i --detail",
     "invalidDateRange": "Nieprawidłowy zakres dat: {{message}}",
     "invalidPackPeriod": "Nieprawidłowy okres pakietu: {{message}}",
-    "invalidInvoiceCsv": "Nie można odczytać --invoice-csv {{path}}: {{message}}"
+    "invalidInvoiceCsv": "Nie można odczytać --invoice-csv {{path}}: {{message}}",
+    "invalidAgentsLimit": "Nieprawidłowy --limit \"{{value}}\": użyj liczby całkowitej 1 lub większej"
   },
   "repair": {
     "description": "Napraw dane pochodne, których normalne zbieranie nie potrafi poprawić z mocą wsteczną.",
@@ -408,6 +414,18 @@
       "remainingNote": "Wiersze pozostające pre-dedupe nie mają transkryptu do ponownego sparsowania; każdy widok kosztów informuje, gdy zakres je obejmuje.",
       "parseErrors": "⚠  {{count}} błędów parsowania poddano kwarantannie podczas ponownego parsowania.",
       "lockHeld": "Trwa inna naprawa deduplikacji zużycia (pid {{pid}}, uruchomiona {{started}}). Poczekaj na jej zakończenie lub usuń wiersz metadanych repair_dedupe_lock, jeśli ten proces już nie istnieje."
+    },
+    "agentAttribution": {
+      "description": "Ponownie przeanalizuj każdą sesję, której transkrypt nadal istnieje, aby sesje zyskały swój typ agenta i szczegóły generowania oraz wiadomości zyskały umiejętność, która była uruchamiana. Uruchamia się raz; sesje bez transkryptu nie zachowują danych agenta.",
+      "dryRunOption": "Zgłoś, ile plików, sesji i wiadomości byłoby zaktualizowanych bez pisania lub tworzenia kopii zapasowej.",
+      "dryRunHeader": "Uzupełnianie atrybutu agenta (próba jałowa) — nie zapisano zmian:",
+      "doneHeader": "Uzupełnianie atrybutu agenta ukończone:",
+      "alreadyDone": "Uzupełnianie atrybutu agenta zostało już uruchomione w tej bazie danych; nic do zrobienia.",
+      "backupWritten": "Kopia zapasowa zapisana do {{path}}",
+      "summary": "{{files}} pliki transkryptu ponownie przeanalizowane, {{sessions}} sesji zyskało typ agenta, {{messages}} wiadomości zyskało umiejętność.",
+      "dryRunSummary": "{{files}} pliki transkryptu byłyby ponownie przeanalizowane, {{sessions}} sesji byłoby zyskać typ agenta, {{messages}} wiadomości byłoby zyskać umiejętność.",
+      "parseErrors": "⚠  {{count}} błędy analizy zgłoszone podczas ponownej analizy.",
+      "lockHeld": "Inna naprawa jest uruchomiona (pid {{pid}}, rozpoczęta {{started}}). Poczekaj na jej zakończenie lub usuń wiersz metadanych repair_dedupe_lock, jeśli ten proces zniknął."
     }
   },
   "archive": {
@@ -608,5 +626,36 @@
     "finding": "  {{model}} odrzucił stawkę {{matchedKey}} ({{reason}}, tabela {{table}}) — dodaj wiersz cennika lub nadpisanie w konfiguracji",
     "none": "Każdy wyceniony identyfikator modelu dopasowano do stawki.",
     "statusLabel": "Modele bez ceny"
+  },
+  "agentCost": {
+    "title": "Koszt agenta i umiejętności — gdzie trafia wydatek, opisane nie oceniane",
+    "coverageTitle": "Pokrycie:",
+    "totalLine": "Razem: {{total}} w {{messages}} wiadomościach — główna konwersacja {{main}} ({{mainShare}}), subagenty {{subagent}} ({{subagentShare}}).",
+    "knownTypeLine": "Wydatek subagenta z zarejestrowanym typem agenta: {{knownShare}} ({{known}} z {{subagent}}). Reszta została zarejestrowana przed przechwyceniem typów agentów lub typ był niedostępny.",
+    "knownTypeNoSubagents": "Brak wydatków subagentów w tym oknie.",
+    "unpricedLine": "{{count}} wiadomości używa modelu bez znanej stawki i zalicza się jako $0 powyżej, zatem sumy są niedoszacowane.",
+    "pricedAllLine": "Każda wiadomość w tym oknie była wyceniona.",
+    "periodLineDay": "Udział znanego typu agenta w wydatkach subagenta, po dniach: {{periods}}",
+    "periodLineWeek": "Udział znanego typu agenta w wydatkach subagenta, po tygodniach (od poniedziałku): {{periods}}",
+    "periodItem": "{{start}} {{share}}",
+    "undatedLine": "{{cost}} wydatków subagenta nie ma znacznika czasu i nie znajduje się w wierszu podzielonym na okresy.",
+    "byTypeTitle": "Wg typu agenta (udział w wydatkach subagenta):",
+    "typeRow": "{{name}} [{{kind}}]: {{cost}} ({{share}}) · {{messages}} wiadomości",
+    "kindBuiltIn": "wbudowany",
+    "kindNamed": "o nazwie użytkownika",
+    "kindUnrecorded": "nie zarejestrowany",
+    "unrecordedName": "(nie zarejestrowany)",
+    "otherTypeRow": "(inne: {{buckets}} więcej typów agentów): {{cost}} ({{share}}) · {{messages}} wiadomości",
+    "byTypeEmpty": "Brak wydatków subagentów w tym oknie.",
+    "bySkillTitle": "Podczas uruchamiania umiejętności (udział w całkowitych wydatkach):",
+    "skillNote": "Wydatek na wiadomości napisane podczas aktywności umiejętności. Kontekst, który umiejętność pozostawia i za który później płacą się turny, jest mierzony przez `claude-stats context`, nie dodawany tutaj.",
+    "skillRow": "{{name}}: {{cost}} ({{share}}) · {{messages}} wiadomości",
+    "otherSkillRow": "(inne: {{buckets}} więcej umiejętności): {{cost}} ({{share}}) · {{messages}} wiadomości",
+    "bySkillEmpty": "Żaden wydatek nie został zarejestrowany podczas uruchamiania umiejętności w tym oknie.",
+    "byDepthTitle": "Wg głębokości generowania (udział w wydatkach subagenta):",
+    "depthRow": "Głębokość {{depth}}: {{cost}} ({{share}}) · {{messages}} wiadomości",
+    "depthUnrecorded": "Głębokość nie zarejestrowana: {{cost}} ({{share}}) · {{messages}} wiadomości",
+    "otherDepthRow": "(inne: {{buckets}} więcej głębokości): {{cost}} ({{share}}) · {{messages}} wiadomości",
+    "byDepthEmpty": "Brak wydatków subagentów w tym oknie."
   }
 }
