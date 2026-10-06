@@ -20,6 +20,7 @@ import type {
   ApiErrorEvent,
 } from "../types.js";
 import { sanitizePromptText } from "../sanitize.js";
+import { validIdentifier } from "../identifiers.js";
 
 export interface ParseResult {
   session: SessionRecord | null;
@@ -258,6 +259,7 @@ export async function parseSessionFile(
   let entrypoint: string | null = null;
   let gitBranch: string | null = null;
   let permissionMode: string | null = null;
+  let agentType: string | null = null;
   // Ground-truth project path from the session content itself. Preferred
   // over the caller-supplied `projectPath` (decoded from the directory
   // name), which is lossy for any path with a literal hyphen in a
@@ -328,6 +330,8 @@ export async function parseSessionFile(
     if (entry.gitBranch && !gitBranch) gitBranch = entry.gitBranch;
     if (entry.permissionMode && !permissionMode)
       permissionMode = entry.permissionMode;
+    // First VALID attributionAgent wins; an invalid value never blocks a later one.
+    if (agentType === null) agentType = validIdentifier(entry.attributionAgent);
     if (entry.cwd && !cwdFromContent) cwdFromContent = entry.cwd;
 
     const ts = toEpochMs(entry.timestamp);
@@ -596,6 +600,7 @@ export async function parseSessionFile(
           usageCounted: true,
           effort: validShape(entry.effort, SHORT_TOKEN_RE),
           speed: validShape(usage?.speed, SHORT_TOKEN_RE),
+          skill: validIdentifier(entry.attributionSkill),
           thinkingTokens: validTokenCount(usage?.output_tokens_details?.thinking_tokens),
           costBasis: messageId !== null || !hasUsage ? "per-response" : "pre-dedupe",
         });
@@ -664,6 +669,9 @@ export async function parseSessionFile(
         entrypoint: entrypoint ?? "cli",
         gitBranch,
         permissionMode,
+        agentType,
+        spawnDepth: null,
+        spawnToolUseId: null,
         isInteractive: hasQueueOperation,
         promptCount,
         assistantMessageCount,
