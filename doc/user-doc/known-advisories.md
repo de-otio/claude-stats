@@ -8,12 +8,34 @@ This file exists so that "we know, and here is the reasoning" is checkable
 rather than assumed. An advisory that is genuinely unreachable is still shipped
 code, and a reader deserves to see the argument rather than a reassurance.
 
-**Last reviewed:** 2026-09-26, for extension release 0.23.3.
+**Last reviewed:** 2026-10-06, for extension release 0.24.0.
 
-At this review `npm audit --omit=dev` reported **zero** advisories in both
-shipped trees (the VSIX's and the CLI's). No dependency changed in 0.23.3, and
-the upstream pins are where 0.23.2 left them: `@huggingface/transformers@4.3.0`
-pins `sharp@^0.35.4` and `onnxruntime-node@1.30.0`, which pins `adm-zip@^0.6.0`.
+At this review `npm audit --omit=dev` reported, before the fixes in 0.24.0:
+
+- **VSIX tree:** one high, `sharp` `< 0.35.5` (librsvg,
+  [GHSA-wq5f-xc86-pv6w](https://github.com/advisories/GHSA-wq5f-xc86-pv6w)).
+  Fixed by moving the extension lockfile to `sharp@0.35.5`, which
+  `@huggingface/transformers@4.3.0`'s `^0.35.4` pin admits — no override and
+  no parent bump; still exactly one `onnxruntime-node` (1.30.0). The tree now
+  audits **clean**.
+- **Root (CLI) tree:** `proxy-addr` 2.0.7 (critical,
+  [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h)),
+  reached through `@modelcontextprotocol/sdk` → `express` and bundled into the
+  MCP server, fixed by the lockfile (2.0.8); `sharp` as above, fixed by raising
+  the root override floor to `^0.35.5`.
+- **Root (CLI) tree, still open — five moderate:** `sprintf-js` (DoS via
+  unbounded precision specifiers,
+  [GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c)) and
+  the chain that pulls it in: `packages/cli`'s `@huggingface/transformers@3.8.1`
+  → `onnxruntime-node@1.21.0` → `global-agent` → `roarr` → `sprintf-js`. Not
+  in the VSIX: both bundles mark `@huggingface/transformers` and
+  `onnxruntime-node` external, and the extension resolves its own 4.3.0 /
+  1.30.0 at runtime. It affects a CLI run from a source checkout only. There is
+  no 3.x fix; the remedy is moving `packages/cli` to transformers 4.x, which is
+  a major-version change to the recap embeddings path and is left to its own
+  change.
+
+At the 0.23.3 review (2026-09-26) both shipped trees audited clean.
 
 At the 0.23.2 review (2026-09-23) `npm audit` reported **one** advisory in a
 shipped tree: `sharp` `< 0.35.4` (libheif) in the CLI's tree, fixed in 0.23.2

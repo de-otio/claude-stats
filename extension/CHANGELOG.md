@@ -48,6 +48,9 @@ All notable changes to the Claude Stats VS Code extension are documented here.
   `--include-agent-names`; every other field is unchanged.
 - **Pre-repair database backups are owner-only** (mode 0600), since the copy
   holds the whole local store.
+- **Dependencies:** `sharp` 0.35.5 (librsvg advisory) and `proxy-addr` 2.0.8
+  (bundled through the MCP SDK). The extension's shipped tree audits clean; see
+  `doc/user-doc/known-advisories.md`.
 
 ## 0.23.3 — 2026-09-26
 
