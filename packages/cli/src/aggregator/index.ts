@@ -23,6 +23,8 @@ import { collectLiveSessionPins } from "../attribution/anchors.js";
 import { resolveOwner } from "../attribution/ownership.js";
 import { runTicketExtraction } from "../ticketing/index.js";
 import { createCommitSubjectsCache } from "../recap/git.js";
+import { readSubagentMeta } from "./subagentMetaFile.js";
+import { validIdentifier } from "@claude-stats/core/identifiers";
 
 export interface CollectOptions {
   verbose?: boolean;
@@ -189,6 +191,7 @@ export async function collect(
 
       // Set subagent flag from scanner; resolve parentUuid → parentSessionId
       parsed.session.isSubagent = sf.isSubagent;
+      normalizeAgentAttribution(parsed.session);
       if (sf.parentSessionId) {
         adoptNestedSubagentIdentity(store, sf.filePath, sf.parentSessionId, parsed);
       } else if (parsed.parentUuid) {
@@ -442,6 +445,11 @@ export async function collect(
  * Subagent transcripts never contain a queue-operation, so the parser marks
  * them non-interactive and every default (interactive-only) query would drop
  * them. They are part of their parent's session, so they inherit its flag.
+ *
+ * Agent attribution comes from the sibling `agent-<id>.meta.json`, whose path
+ * is derived from `filePath` — the path the scanner found on disk — and never
+ * from a stored `source_file`. A valid meta `agentType` wins over the parser's
+ * `attributionAgent` fallback; an absent or invalid one leaves the fallback.
  */
 function adoptNestedSubagentIdentity(
   store: Store,
@@ -457,6 +465,25 @@ function adoptNestedSubagentIdentity(
     session.isInteractive || store.isSessionInteractive(parentSessionId);
   for (const m of parsed.messages) m.sessionId = sessionId;
   for (const e of parsed.apiErrorEvents) e.sessionId = sessionId;
+
+  const meta = readSubagentMeta(filePath);
+  session.agentType = meta.agentType ?? session.agentType ?? null;
+  session.spawnDepth = meta.spawnDepth;
+  session.spawnToolUseId = meta.spawnToolUseId;
+}
+
+/**
+ * Agent-attribution fields as the scanner's verdict allows them: a main
+ * session has none (whatever the transcript claimed), and a subagent keeps the
+ * parser's `attributionAgent` fallback until a meta file says otherwise. The
+ * spawn fields only ever come from a meta file, so they start null. `undefined`
+ * (a parser that sets nothing) becomes null; the fallback is re-checked with the
+ * same validator the parser uses, so nothing unvalidated reaches the store.
+ */
+function normalizeAgentAttribution(session: NonNullable<ParseResult["session"]>): void {
+  session.agentType = session.isSubagent ? validIdentifier(session.agentType) : null;
+  session.spawnDepth = null;
+  session.spawnToolUseId = null;
 }
 
 /**
