@@ -163,6 +163,18 @@
     "./types/pack": {
       "types": "./dist/types/pack.d.ts",
       "default": "./dist/types/pack.js"
+    },
+    "./identifiers": {
+      "types": "./dist/identifiers.d.ts",
+      "default": "./dist/identifiers.js"
+    },
+    "./subagentMeta": {
+      "types": "./dist/subagentMeta.d.ts",
+      "default": "./dist/subagentMeta.js"
+    },
+    "./agentCost": {
+      "types": "./dist/agentCost.d.ts",
+      "default": "./dist/agentCost.js"
     }
   },
   "scripts": {

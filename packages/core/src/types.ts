@@ -110,6 +110,15 @@ export interface RawSessionEntry {
    * at the parser boundary instead.
    */
   effort?: string;
+  /**
+   * Subagent type that produced this entry, at the ENTRY ROOT (schema V25).
+   * User- or plugin-authored for anything but the built-in types; validated
+   * with `validIdentifier` at the parser boundary. Fallback for the subagent
+   * `.meta.json` file, which wins when present.
+   */
+  attributionAgent?: unknown;
+  /** Skill running when this entry was written, at the ENTRY ROOT (schema V25). */
+  attributionSkill?: unknown;
   // queue-operation
   operation?: "enqueue" | "dequeue";
   // system
@@ -188,6 +197,16 @@ export interface SessionRecord {
   throttleEvents: number;
   activeDurationMs: number | null;
   medianResponseTimeMs: number | null;
+  /**
+   * Subagent type (schema V25): from the sibling `.meta.json`, else the first
+   * valid `attributionAgent`. Null on main sessions and when not recorded.
+   * Optional for back-compat with records built before V25.
+   */
+  agentType?: string | null;
+  /** Nesting depth of a subagent (1 = spawned by a main session), from `.meta.json`. */
+  spawnDepth?: number | null;
+  /** The parent's `tool_use` id that spawned this subagent, from `.meta.json`. */
+  spawnToolUseId?: string | null;
 }
 
 export interface MessageRecord {
@@ -272,6 +291,11 @@ export interface MessageRecord {
   thinkingTokens?: number | null;
   /** How this row's usage was counted — see {@link CostBasis}. */
   costBasis?: CostBasis;
+  /**
+   * Skill running when this entry was written (`attributionSkill`, schema V25),
+   * validated with `validIdentifier`. Null when none ran or not recorded.
+   */
+  skill?: string | null;
 }
 
 /**

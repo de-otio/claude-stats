@@ -55,7 +55,11 @@ export default defineConfig({
       // `@claude-stats/core` below — the bare alias is a prefix of this one and
       // would otherwise shadow it.
       "@claude-stats/core/engagedTime": path.resolve(__dirname, "packages/core/src/engagedTime.ts"),
-      "@claude-stats/core": path.resolve(__dirname, "packages/core/src/index.ts"),
+      // Same ordering rule as above: before the bare `@claude-stats/core`.
+      "@claude-stats/core/identifiers": path.resolve(__dirname, "packages/core/src/identifiers.ts"),
+      "@claude-stats/core/subagentMeta": path.resolve(__dirname, "packages/core/src/subagentMeta.ts"),
+      "@claude-stats/core/agentCost": path.resolve(__dirname, "packages/core/src/agentCost.ts"),
+      "@claude-stats/core":path.resolve(__dirname, "packages/core/src/index.ts"),
     },
   },
   test: {
