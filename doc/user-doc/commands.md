@@ -287,6 +287,7 @@ Export raw session data to JSON or CSV for use in other tools.
 
 ```
 claude-stats export [--format <fmt>] [--project <path>] [--period <period>]
+                    [--include-agent-names]
 ```
 
 | Option | Default | Description |
@@ -297,6 +298,7 @@ claude-stats export [--format <fmt>] [--project <path>] [--period <period>]
 | `--since <date>` | — | Explicit lower bound (`YYYY-MM-DD`, inclusive). Must be paired with `--until`; overrides `--period` when both are set |
 | `--until <date>` | — | Explicit upper bound (`YYYY-MM-DD`, inclusive). Must be paired with `--since` |
 | `--timezone <tz>` | System timezone | IANA timezone for period boundaries |
+| `--include-agent-names` | off | Also export `agent_type`, `spawn_depth` and `spawn_tool_use_id`. Agent types are names you or your tooling chose, so they are left out unless you ask |
 
 **Examples:**
 
@@ -316,6 +318,12 @@ claude_version, entrypoint, prompt_count,
 input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
 account_uuid, subscription_type
 ```
+
+Export writes an explicit list of session fields rather than every stored
+column. With `--include-agent-names`, the CSV gains `agent_type`,
+`spawn_depth` and `spawn_tool_use_id` after `subscription_type`, and the JSON
+rows gain the same three keys. Cells that start with `=`, `+`, `-` or `@` are
+prefixed with `'` so a spreadsheet does not evaluate them.
 
 ---
 
@@ -914,6 +922,61 @@ claude-stats context --period all --json
 
 ---
 
+## `agents`
+
+Where does the spend go: the main conversation or subagents, which agent
+types, while which skill was running, and how deep in the spawn chain? The
+report describes spend; it does not judge it, and its row order (cost
+descending, then name) is not a ranking.
+
+```
+claude-stats agents [--period <period>] [--since <date>] [--until <date>]
+                    [--project <path>] [--account <uuid>] [--limit <n>] [--json]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--period <period>` | `month` | `day`, `week`, `month`, or `all` |
+| `--since <date>` / `--until <date>` | — | Explicit bounds (`YYYY-MM-DD`), as for [`report`](#report) |
+| `--project <path>` | _(all projects)_ | Filter to one project |
+| `--account <uuid>` | _(all accounts)_ | Filter to one account |
+| `--limit <n>` | `10` | Named rows per list before the rest are folded into one "other" row, so totals still add up |
+| `--json` | off | Print the full report as JSON |
+
+The output starts with **coverage**: main-conversation versus subagent spend,
+the share of subagent spend whose agent type is recorded, and that share per
+day or week. Agent types were not captured before schema V25, so older spend
+reads as "(unrecorded)" until you run
+[`repair agent-attribution`](#repair-agent-attribution); the per-period line
+shows where capture began as a step. Then come:
+
+- **By agent type**: each type marked `built-in` or `user-named`, plus an
+  `(unrecorded)` row that is never folded into "other".
+- **During a skill's run**: spend on messages written while a skill was
+  active. Context a skill leaves behind that later turns keep paying for is
+  measured by [`context`](#context) and is not added here.
+- **By spawn depth**: subagent spend by depth in the spawn chain.
+
+Every message is priced the same way as the dashboard headline. Messages
+whose model has no known rate count as $0 and are reported, so the totals are
+then an under-estimate.
+
+**Example:**
+
+```sh
+# This month, top 5 rows per list
+claude-stats agents --limit 5
+
+# Last week for one project, as JSON
+claude-stats agents --period week --project ~/repos/example-app --json
+```
+
+The same report is available to MCP clients as
+[`get_agent_cost`](#mcp) and appears as the "Agents & skills" card in the
+dashboard.
+
+---
+
 ## `spending`
 
 Show a detailed cost breakdown for a period: total cost by model, top sessions, top tools by estimated token cost, MCP server costs, anomalous prompts, and cache efficiency.
@@ -1334,6 +1397,7 @@ exhaustive tool-count assertion in `mcp.test.ts` is what keeps this true.
 | `get_efficiency_hints` | Self-audit: your own wasted spend across six local patterns (cache churn, retry loops, abandoned spend, context bloat, re-entry burn, tier mismatch). Every finding names its rule, threshold, and the specific sessions it fired on |
 | `get_cache_ttl_fit` | Is this workload cheaper on the 5-minute or the 1-hour cache TTL? Idle-gap distribution, cache-write origin, per-model net cost, and one verdict always shown beside its margin. Equivalent to `claude-stats ttl-fit`; see [`ttl-fit`](#ttl-fit) above for how to read the verdict |
 | `get_context_carry` | How much of the bill is carrying context forward, and where does it concentrate? Size bands, tokens above a set of caps, reset/sawtooth shape, and the session-start prelude — every dollar figure a stated lower bound. Answers the same question as Claude Code's own `/context`, but over time. Equivalent to `claude-stats context`; see [`context`](#context) above. Omits `concentration`, `preludeByProject`, and `turns` (session ids / project paths / message uuids), and strips `sessionId` from `resets`/`cycles` — use the CLI or local dashboard for those. Also carries an allowlisted `autoCompactFit` block — the same `autoCompactWindow` recommendation `context` prints, with raw model ids stripped down to a `uniform`/`unknownModels` summary — see [output-guide.md](output-guide.md#auto-compact-window-fit) |
+| `get_agent_cost` | Where does the spend go: main conversation versus subagents, which agent types, while which skill ran, and at what spawn depth? Leads with a `coverage` block (how much subagent spend has a recorded agent type; older spend reads as unrecorded). Describes spend, never judges it. Equivalent to `claude-stats agents`; see [`agents`](#agents) above. Payload carries no session ids, message uuids or paths |
 | `generate_justification_pack` | Write the justification pack (HTML + CSV) for one month to local disk. Equivalent to `claude-stats pack --period <YYYY-MM>` |
 | `get_constraint_impact` | What a *declared* policy boundary (`config.policyEvents`) measurably cost or saved, per task class, on both sides |
 | `get_account_info` | Current login's seat/billing/org fields, plus every account this machine has observed. Never returns a raw email — only `emailPresent`/`emailHash` |
@@ -1557,6 +1621,40 @@ Rows that remain pre-dedupe have no transcript to re-parse; every cost surface d
 
 It is idempotent — a second run over already-repaired sessions finds nothing
 left `pre-dedupe` in scope and relabels nothing.
+
+### `repair agent-attribution`
+
+Re-parse every session whose transcript still exists so that existing
+sessions gain their **agent type, spawn depth and spawning tool-call id**
+and existing messages gain the **skill** that was running. Sessions collected
+after the V25 upgrade get these automatically; this repair fills in history.
+
+```
+claude-stats repair agent-attribution [--dry-run]
+```
+
+| Option | Description |
+|---|---|
+| `--dry-run` | Print how many transcript files, sessions and messages would be updated, without writing or creating a backup |
+
+It re-parses from the start of each surviving transcript through the normal
+collect path, so every existing cost and token column is left as it was. It
+runs once per database (it records `agent_attribution_backfill = v25` only
+after a complete pass; an interrupted run resumes), shares the lock used by
+`repair dedupe`, and takes a backup first, written owner-only (mode 0600)
+because it holds the whole local store. Output reports counts only, never
+agent or skill names:
+
+```
+Agent-attribution backfill complete:
+Backup written to ~/.claude-stats/stats.db.pre-repair-agent-attribution-1786550000000
+214 transcript files re-parsed, 96 sessions gained an agent type, 3 120 messages gained a skill.
+```
+
+Sessions whose transcript Claude Code has already deleted stay unrecorded and
+show as "(unrecorded)" in [`agents`](#agents).
+
+---
 
 ---
 

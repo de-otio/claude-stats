@@ -57,7 +57,9 @@ Deliberate properties:
 
 - **`ticketKey` is the only non-numeric field**, and it is
   pattern-validated in the resolver (rejecting anything that could smuggle
-  free text) — defence-in-depth exactly like `assertShallowCountMap` /
+  free text) — defence-in-depth exactly like `bucketToolCounts` (which
+  replaced the earlier `assertShallowCountMap`: it reduces tool names to
+  built-ins, `"mcp"` or `"custom"` rather than only checking shape) and
   `assertModelsList` in `syncAggregate.js`. Cap batch rows per request and
   keys per user-day (e.g. 200) to bound abuse.
 - **No evidence, no branch names, no session ids** cross the wire — evidence

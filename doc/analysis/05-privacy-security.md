@@ -105,6 +105,47 @@ of it:
 - **`evidence` never leaves via the justification pack**; ticket *keys* do,
   deliberately (see "The Justification Pack" below).
 
+## Agent Types, Spawn Details and Skills
+
+Schema V25 stores four nullable columns (NULL means "not recorded"):
+
+- `sessions.agent_type` — the subagent's type: a Claude Code built-in or a
+  name the user or their tooling chose (for example `my-reviewer`).
+- `sessions.spawn_depth` — how deep the subagent sits in the spawn chain.
+- `sessions.spawn_tool_use_id` — the id of the tool call that spawned it.
+- `messages.skill` — the skill that was active when the message was written
+  (for example `example-skill`).
+
+Agent types and skill names are **user-authored, not a closed vocabulary** —
+a team or employer name can end up in one — so they are treated like prompt
+text:
+
+- **Stored locally** and **carried by the personal plane** (end-to-end
+  encrypted backup/sync) only.
+- **Never sent to the org plane.** The aggregate payload has no field for any
+  of the four, and no aggregate of them is sent.
+- Every value passes a strict identifier validator on capture and again when
+  a synced snapshot is applied; an invalid value becomes NULL rather than
+  being truncated or stored raw. The subagent's `.meta.json` is read for
+  exactly three keys; its description, prompt and every other key are never
+  read.
+- `claude-stats export` leaves the agent type, spawn depth and spawning
+  tool-call id out unless `--include-agent-names` is passed; the MCP tool
+  `get_agent_cost` and the justification pack carry no session ids, uuids,
+  paths, or (for the pack) agent or skill names.
+
+**Tool names on the org plane.** Tool names are user-authored too: an MCP
+tool is `mcp__<server>__<tool>`, and the server name is whatever the user
+called it. The synced `toolUseCounts` therefore contains only a closed set of
+keys: a Claude Code built-in tool name as itself, any `mcp__*` name as
+`"mcp"`, and everything else as `"custom"`, with counts summed per bucket.
+The rule is enforced in three places so that no single stale writer can leak
+a raw name: on the client when the aggregate is built, in the AppSync
+`syncAggregate` resolver (`bucketToolCounts`, before its entry-count and
+key-length limits), and on the backend read side, so a legacy stored row is
+never served raw. The built-in list is defined in core and inlined in the
+resolver and worker, with a test pinning the copies together.
+
 ## Quarantine Table
 
 The resilience system (see [08-resilience.md](08-resilience.md)) stores unparseable JSONL lines in a `quarantine` table within the SQLite database for later reprocessing. These raw lines may contain prompt content or code. The quarantine table:
@@ -122,13 +163,14 @@ following leave the machine:
 - Token counts bucketed by day
 - Session counts and average durations
 - Model usage distribution
-- Tool usage counts
+- Tool usage counts (tool names reduced to built-in names, `mcp` or `custom` — see "Agent Types, Spawn Details and Skills")
 - Project identifier (hashed by default)
 - Developer identifier (team-assigned, not device ID)
 
 **Never synced to the org plane:**
 - Prompt content or response content (including the locally-stored
   `prompt_text` described above)
+- Agent types, skill names, spawn depth and spawn tool-call ids
 - Ticket links, and in particular `ticket_links.evidence`
 - File paths or code
 - Raw session JSONL data

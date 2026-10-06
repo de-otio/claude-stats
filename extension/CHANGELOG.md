@@ -2,6 +2,53 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.24.0 — 2026-10-06
+
+### Added — where the spend goes: agent types and skills
+
+- **Agent type, spawn depth and skill are recorded** (schema V25). Each
+  subagent session now stores its agent type (built-in such as `Explore`, or
+  a name you chose, such as `my-reviewer`), how deep it sits in the spawn
+  chain, and the id of the tool call that spawned it; each message stores the
+  skill that was running. Nothing is read from a subagent's description or
+  prompt. A missing value stays empty rather than being guessed, and a newer
+  sync snapshot from an older device never clears one that is known.
+- **`claude-stats repair agent-attribution`** fills these in for history that
+  was collected before this release, from the transcripts still on disk. It
+  runs once, takes a backup first, and `--dry-run` prints counts only.
+  Sessions whose transcript Claude Code has already deleted stay "unrecorded".
+- **`claude-stats agents`, the `get_agent_cost` MCP tool and an "Agents &
+  skills" dashboard card** show, for a period, the main-conversation versus
+  subagent split, how much of the subagent spend has a recorded agent type
+  (shown first, so the day capture began reads as a step), spend by agent
+  type, spend while a skill was running, and spend by spawn depth. They
+  describe spend; they do not judge it. The MCP payload carries no session
+  ids, message uuids or paths.
+
+### Fixed
+
+- **Session tool counts and model lists were incomplete** for sessions
+  collected in several passes: each pass overwrote them with only the newly
+  appended part of the transcript. They are now rebuilt from the session's
+  message rows, and a one-time migration (V24) recomputes every session, which
+  also corrects sessions merged in through sync. Token totals do not change.
+- **An incremental collect now picks the same usage carrier as a full
+  parse** when one response's entries straddle two collects. This moves a
+  tiny amount of cost (about 0.015% on one real history) on some sessions.
+- **Team tool counts were always empty.** The team aggregate read the wrong
+  shape of the stored tool counts, so nothing synced. They now sync, with each
+  tool name reduced to a Claude Code built-in name, `mcp` (any MCP tool) or
+  `custom`; MCP server names and your own tool names never leave the machine.
+  The backend resolver change that enforces the same rule ships separately.
+
+### Changed
+
+- **`export` emits an explicit list of session fields.** Agent type, spawn
+  depth and the spawning tool-call id are left out unless you pass
+  `--include-agent-names`; every other field is unchanged.
+- **Pre-repair database backups are owner-only** (mode 0600), since the copy
+  holds the whole local store.
+
 ## 0.23.3 — 2026-09-26
 
 ### Fixed — Claude Opus 5.5 usage showed $0
