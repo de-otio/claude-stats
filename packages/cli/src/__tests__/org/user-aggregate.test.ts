@@ -90,17 +90,51 @@ describe("projectUserAggregates", () => {
     expect(out[0]!.activeMinutes).toBe(15); // (600000+300000)/60000
   });
 
-  it("merges tool_use_counts across sessions and tolerates malformed columns", () => {
+  it("merges the legacy object form of tool_use_counts and tolerates malformed columns", () => {
     const out = projectUserAggregates(
       [
         makeRow({ tool_use_counts: JSON.stringify({ Read: 2, Edit: 1 }) }),
         makeRow({ tool_use_counts: JSON.stringify({ Read: 3 }) }),
         makeRow({ tool_use_counts: "not json" }),
-        makeRow({ tool_use_counts: "[]" }), // array, not a map → ignored
+        makeRow({ tool_use_counts: "[]" }), // empty array → contributes nothing
+        makeRow({ tool_use_counts: "" }),
+        makeRow({ tool_use_counts: "null" }),
       ],
       OPTS,
     );
-    expect(out[0]!.toolUseCounts).toEqual({ Read: 5, Edit: 1 });
+    expect(out[0]!.toolUseCounts).toEqual({ Edit: 1, Read: 5 });
+  });
+
+  // The array form is what the store writes (see tool-count-redaction.test.ts
+  // for the same path seeded through the real store); these pin edge cases of
+  // the parser that a store cannot produce.
+  it("reads the array form and skips entries with a bad name or count", () => {
+    const out = projectUserAggregates(
+      [
+        makeRow({
+          tool_use_counts: JSON.stringify([
+            { name: "Read", count: 2 },
+            { name: "mcp__globex-internal__search", count: 4 },
+            { name: "AcmeCorpDeploy", count: 1 },
+            { name: "Edit", count: -1 }, // negative → skipped
+            { name: "Edit", count: "3" }, // non-number → skipped
+            { name: 7, count: 1 }, // non-string name → skipped
+            null,
+            "Bash",
+          ]),
+        }),
+      ],
+      OPTS,
+    );
+    expect(out[0]!.toolUseCounts).toEqual({ Read: 2, custom: 1, mcp: 4 });
+  });
+
+  it("buckets the legacy object form too, including prototype-key names", () => {
+    const out = projectUserAggregates(
+      [makeRow({ tool_use_counts: '{"__proto__":2,"constructor":1,"mcp__AcmeCorp__q":5,"Bash":1}' })],
+      OPTS,
+    );
+    expect(out[0]!.toolUseCounts).toEqual({ Bash: 1, custom: 3, mcp: 5 });
   });
 
   it("unions and sorts models, and skips rows with no timestamp", () => {

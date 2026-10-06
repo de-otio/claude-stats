@@ -11,6 +11,37 @@ import { HttpRequest } from "@aws-sdk/protocol-http";
 import type { DynamoDBStreamEvent, DynamoDBRecord } from "aws-lambda";
 
 // ---------------------------------------------------------------------------
+// Tool-name redaction (read side). A copy of `@claude-stats/core/identifiers`'
+// BUILT_IN_TOOL_NAMES / bucketToolName, inlined so this Lambda keeps no runtime
+// dependency on core: the deployed bundle resolves only the packages it always
+// has. Pinned to core's list by appsync-tool-redaction.test.ts, like the two
+// AppSync resolvers' copies.
+// ---------------------------------------------------------------------------
+const BUILT_IN_TOOLS = {
+  Agent: true, Artifact: true, ArtifactComments: true, ArtifactData: true,
+  AskUserQuestion: true, Bash: true, BashOutput: true, CronCreate: true,
+  CronDelete: true, CronList: true, DesignSync: true, Edit: true,
+  EnterPlanMode: true, EnterWorktree: true, ExitPlanMode: true,
+  ExitWorktree: true, Glob: true, Grep: true, KillBash: true, KillShell: true,
+  LS: true, LSP: true, ListAgents: true, ListMcpResourcesTool: true,
+  Monitor: true, MultiEdit: true, NotebookEdit: true, NotebookRead: true,
+  PowerShell: true, PushNotification: true, REPL: true, Read: true,
+  ReadMcpResourceDirTool: true, ReadMcpResourceTool: true, ReportFindings: true,
+  ScheduleWakeup: true, SendMessage: true, ShareOnboardingGuide: true,
+  Skill: true, SlashCommand: true, Sleep: true, StructuredOutput: true,
+  Task: true, TaskCreate: true, TaskGet: true, TaskList: true,
+  TaskOutput: true, TaskStop: true, TaskUpdate: true, TeamCreate: true,
+  TeamDelete: true, TodoRead: true, TodoWrite: true, ToolSearch: true,
+  WebFetch: true, WebSearch: true, Workflow: true, Write: true,
+};
+
+/** Built-in name as itself, `mcp__*` as "mcp", anything else as "custom". */
+function bucketToolName(name: string): string {
+  if (Object.hasOwn(BUILT_IN_TOOLS, name)) return name;
+  return name.startsWith("mcp__") ? "mcp" : "custom";
+}
+
+// ---------------------------------------------------------------------------
 // aggregate-stats — org-plane fan-in worker.
 //
 // Trigger: the UserAggregates DynamoDB stream. Each changed row is one
@@ -361,7 +392,9 @@ function computeMemberAggregate(rows: DailyAggregate[]): MemberAggregate {
   let estimatedCost = 0;
   let activeMinutes = 0;
   const modelsUsed: Record<string, number> = {};
-  const toolCounts: Record<string, number> = {};
+  // Keyed by BUCKETED tool name (built-in name, "mcp" or "custom"). A Map, so
+  // a stored name such as `__proto__` or `constructor` can never corrupt it.
+  const toolCounts = new Map<string, number>();
   const projectMap = new Map<string, ProjectStats>();
 
   for (const r of rows) {
@@ -381,8 +414,13 @@ function computeMemberAggregate(rows: DailyAggregate[]): MemberAggregate {
       modelsUsed[model] = (modelsUsed[model] ?? 0) + 1;
     }
 
+    // Redact on read too: the syncAggregate resolver now stores bucketed names
+    // only, but a row written before that change must never reach TeamStats
+    // (and from there every team dashboard) with a raw MCP server name.
     for (const [tool, count] of Object.entries(r.toolUseCounts)) {
-      toolCounts[tool] = (toolCounts[tool] ?? 0) + count;
+      if (typeof count !== "number" || !Number.isFinite(count) || count < 0) continue;
+      const bucket = bucketToolName(tool);
+      toolCounts.set(bucket, (toolCounts.get(bucket) ?? 0) + count);
     }
 
     const pid = r.projectId ?? "(unlinked)";
@@ -401,8 +439,8 @@ function computeMemberAggregate(rows: DailyAggregate[]): MemberAggregate {
     }
   }
 
-  const topTools = Object.entries(toolCounts)
-    .sort((a, b) => b[1] - a[1])
+  const topTools = [...toolCounts]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
     .slice(0, 10)
     .map(([tool]) => tool);
 

@@ -14,6 +14,43 @@ import { util } from "@aws-appsync/utils";
 import * as ddb from "@aws-appsync/utils/dynamodb";
 
 /**
+ * Claude Code's built-in tool names — an INLINED copy of `BUILT_IN_TOOL_NAMES`
+ * in `packages/core/src/identifiers.ts` (AppSync JS resolvers are deployed
+ * unbundled and can import only `@aws-appsync/utils`). Pinned to the core
+ * list by `lambda/api/__tests__/appsync-tool-redaction.test.ts`. Look a name
+ * up with `=== true` so inherited keys never read as built-in.
+ */
+const BUILT_IN_TOOLS = {
+  Agent: true, Artifact: true, ArtifactComments: true, ArtifactData: true,
+  AskUserQuestion: true, Bash: true, BashOutput: true, CronCreate: true,
+  CronDelete: true, CronList: true, DesignSync: true, Edit: true,
+  EnterPlanMode: true, EnterWorktree: true, ExitPlanMode: true,
+  ExitWorktree: true, Glob: true, Grep: true, KillBash: true, KillShell: true,
+  LS: true, LSP: true, ListAgents: true, ListMcpResourcesTool: true,
+  Monitor: true, MultiEdit: true, NotebookEdit: true, NotebookRead: true,
+  PowerShell: true, PushNotification: true, REPL: true, Read: true,
+  ReadMcpResourceDirTool: true, ReadMcpResourceTool: true, ReportFindings: true,
+  ScheduleWakeup: true, SendMessage: true, ShareOnboardingGuide: true,
+  Skill: true, SlashCommand: true, Sleep: true, StructuredOutput: true,
+  Task: true, TaskCreate: true, TaskGet: true, TaskList: true,
+  TaskOutput: true, TaskStop: true, TaskUpdate: true, TeamCreate: true,
+  TeamDelete: true, TodoRead: true, TodoWrite: true, ToolSearch: true,
+  WebFetch: true, WebSearch: true, Workflow: true, Write: true,
+};
+
+/**
+ * The org-plane form of a tool name (mirrors `bucketToolName` in core). The
+ * write path (syncAggregate) already stores only bucketed names; applying it
+ * again here means a row stored before that redaction is never served raw.
+ */
+function bucketToolName(name) {
+  if (BUILT_IN_TOOLS[name] === true) {
+    return name;
+  }
+  return name.startsWith("mcp__") ? "mcp" : "custom";
+}
+
+/**
  * Compute the inclusive lower-bound period label for the requested window.
  * Period labels are ISO date strings (YYYY-MM-DD) so string comparison
  * sorts correctly.
@@ -80,15 +117,23 @@ export function response(ctx) {
       });
     }
 
-    // Track tool usage from toolUseCounts (stored as AWSJSON)
+    // Track tool usage from toolUseCounts (stored as AWSJSON). Every name is
+    // bucketed before it becomes a key, so `toolsMap` only ever holds built-in
+    // names, "mcp" and "custom" (which is also what makes a plain {} safe).
     if (b.toolUseCounts) {
       const tools =
         typeof b.toolUseCounts === "string"
           ? JSON.parse(b.toolUseCounts)
           : b.toolUseCounts;
-      Object.keys(tools).forEach((tool) => {
-        toolsMap[tool] = (toolsMap[tool] ?? 0) + tools[tool];
-      });
+      if (tools && typeof tools === "object") {
+        Object.keys(tools).forEach((tool) => {
+          const count = tools[tool];
+          if (typeof count === "number") {
+            const bucket = bucketToolName(tool);
+            toolsMap[bucket] = (toolsMap[bucket] ?? 0) + count;
+          }
+        });
+      }
     }
 
     // Track project breakdown

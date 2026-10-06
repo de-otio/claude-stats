@@ -27,6 +27,7 @@ import type { SessionRow } from "../store/index.js";
 import type { AggregateProjection } from "@claude-stats/core/types/shard";
 import type { AggregateSyncInput } from "@claude-stats/core/types/api";
 import { estimateCost } from "@claude-stats/core/pricing";
+import { bucketToolName } from "@claude-stats/core/identifiers";
 
 /** The period granularity of an aggregate bucket. Mirrors {@link AggregateProjection.periodKind}. */
 export type PeriodKind = AggregateProjection["periodKind"];
@@ -227,7 +228,16 @@ function compareStr(a: string, b: string): number {
 //
 // projectId is left null in this projection: the deployed key cannot hold more
 // than one project per day, so per-project fidelity is a separate follow-up
-// (it needs an SK-format change server-side; the table is currently empty).
+// (it needs an SK-format change server-side).
+//
+// Tool names are REDACTED here, before anything leaves the machine: a built-in
+// Claude Code tool name passes as itself, any `mcp__<server>__<tool>` becomes
+// "mcp" (the server name is whatever the user called it) and every other name
+// becomes "custom" — see `bucketToolName` in `@claude-stats/core/identifiers`.
+// Until this projection read the array form `sessions.tool_use_counts` is
+// actually stored in, every synced row carried `toolUseCounts: {}`; the fix and
+// the redaction land together because the fix alone would start sending raw
+// MCP server names.
 
 interface UserBucket {
   readonly period: string;
@@ -241,7 +251,8 @@ interface UserBucket {
   activeMs: number;
   estimatedCost: number;
   readonly models: Set<string>;
-  readonly toolUseCounts: Record<string, number>;
+  /** Keyed by BUCKETED tool name only (see `bucketToolName`). */
+  readonly toolUseCounts: Map<string, number>;
 }
 
 export interface UserAggregateOptions {
@@ -283,7 +294,7 @@ export function projectUserAggregates(
         activeMs: 0,
         estimatedCost: 0,
         models: new Set<string>(),
-        toolUseCounts: {},
+        toolUseCounts: new Map<string, number>(),
       };
       buckets.set(period, b);
     }
@@ -325,7 +336,7 @@ export function projectUserAggregates(
       cacheCreationTokens: b.cacheCreationTokens,
       cacheReadTokens: b.cacheReadTokens,
       activeMinutes: Math.round(b.activeMs / 60000),
-      toolUseCounts: b.toolUseCounts,
+      toolUseCounts: toolCountsObject(b.toolUseCounts),
       models: [...b.models].sort(),
       accountId: options.accountId,
       estimatedCost: Math.round(b.estimatedCost * 100) / 100,
@@ -334,19 +345,51 @@ export function projectUserAggregates(
     .sort((a, b) => compareStr(a.period, b.period));
 }
 
-/** Merge a session's `tool_use_counts` JSON column into an accumulating map. */
-function mergeToolCounts(into: Record<string, number>, raw: string): void {
+/**
+ * Merge a session's `tool_use_counts` JSON column into an accumulating map,
+ * bucketing every name through {@link bucketToolName} on the way in so no
+ * user-authored name (MCP server, custom tool) is ever a key.
+ *
+ * Reads the form the store actually writes — an array of `{name, count}`
+ * (`recomputeSessionAggregates`, schema V24) — and still tolerates the legacy
+ * object form `{name: count}`. Entries with a non-string name or a count that is
+ * not a finite non-negative number are skipped; a malformed column is skipped
+ * whole.
+ */
+function mergeToolCounts(into: Map<string, number>, raw: string): void {
   if (!raw) return;
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      for (const [tool, count] of Object.entries(parsed as Record<string, unknown>)) {
-        if (typeof count === "number" && Number.isFinite(count) && count >= 0) {
-          into[tool] = (into[tool] ?? 0) + count;
-        }
+    parsed = JSON.parse(raw);
+  } catch {
+    return; // malformed tool_use_counts column — skip
+  }
+  const add = (name: unknown, count: unknown): void => {
+    if (typeof name !== "string") return;
+    if (typeof count !== "number" || !Number.isFinite(count) || count < 0) return;
+    const bucket = bucketToolName(name);
+    into.set(bucket, (into.get(bucket) ?? 0) + count);
+  };
+  if (Array.isArray(parsed)) {
+    for (const entry of parsed) {
+      if (entry && typeof entry === "object") {
+        const e = entry as { name?: unknown; count?: unknown };
+        add(e.name, e.count);
       }
     }
-  } catch {
-    // malformed tool_use_counts column — skip
+  } else if (parsed && typeof parsed === "object") {
+    for (const [name, count] of Object.entries(parsed as Record<string, unknown>)) {
+      add(name, count);
+    }
   }
+}
+
+/**
+ * The payload form of a bucketed tally: a plain object sorted by name, so the
+ * projection stays byte-stable. Safe as a plain object only because every key
+ * is a built-in tool name, "mcp" or "custom" — never `__proto__` or another
+ * user-authored string.
+ */
+function toolCountsObject(counts: ReadonlyMap<string, number>): Record<string, number> {
+  return Object.fromEntries([...counts].sort(([a], [b]) => compareStr(a, b)));
 }

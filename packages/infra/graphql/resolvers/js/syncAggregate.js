@@ -7,10 +7,11 @@
  * cannot carry prompt_text, file_paths, or transcript content.
  *
  * Ownership enforced: userId is always ctx.identity.sub (never from client
- * input). `toolUseCounts` is defense-in-depth-validated (see
- * assertShallowCountMap) because AWSJSON is an untyped scalar — the schema
+ * input). `toolUseCounts` is defense-in-depth-validated AND redacted (see
+ * bucketToolCounts) because AWSJSON is an untyped scalar — the schema
  * type alone cannot stop a client from stuffing a string blob into it, so
- * the resolver rejects anything that isn't a flat {toolName: count} map.
+ * the resolver rejects anything that isn't a flat {toolName: count} map and
+ * stores only built-in tool names, "mcp" and "custom" as keys.
  *
  * Uses DynamoDB TransactWriteItems for atomicity with _version conditional
  * writes. Max 25 items per call. Returns SyncResult { itemsWritten,
@@ -24,23 +25,69 @@ const MAX_MODEL_NAME_LENGTH = 128;
 const MAX_MODELS = 32;
 
 /**
- * Reject any toolUseCounts value that isn't a flat map of short tool names
- * to small non-negative numbers. This is the resolver-side backstop for the
- * AWSJSON scalar's lack of structural typing (review F9).
+ * Claude Code's built-in tool names — an INLINED copy of `BUILT_IN_TOOL_NAMES`
+ * in `packages/core/src/identifiers.ts`. AppSync JS resolvers are deployed
+ * unbundled and can import only `@aws-appsync/utils`, so this is the one
+ * accepted second copy; `lambda/api/__tests__/appsync-tool-redaction.test.ts`
+ * pins it to the core list. Look a name up with `=== true` so inherited keys
+ * (`constructor`, `__proto__`, `toString`) never read as built-in.
  */
-function assertShallowCountMap(value) {
+const BUILT_IN_TOOLS = {
+  Agent: true, Artifact: true, ArtifactComments: true, ArtifactData: true,
+  AskUserQuestion: true, Bash: true, BashOutput: true, CronCreate: true,
+  CronDelete: true, CronList: true, DesignSync: true, Edit: true,
+  EnterPlanMode: true, EnterWorktree: true, ExitPlanMode: true,
+  ExitWorktree: true, Glob: true, Grep: true, KillBash: true, KillShell: true,
+  LS: true, LSP: true, ListAgents: true, ListMcpResourcesTool: true,
+  Monitor: true, MultiEdit: true, NotebookEdit: true, NotebookRead: true,
+  PowerShell: true, PushNotification: true, REPL: true, Read: true,
+  ReadMcpResourceDirTool: true, ReadMcpResourceTool: true, ReportFindings: true,
+  ScheduleWakeup: true, SendMessage: true, ShareOnboardingGuide: true,
+  Skill: true, SlashCommand: true, Sleep: true, StructuredOutput: true,
+  Task: true, TaskCreate: true, TaskGet: true, TaskList: true,
+  TaskOutput: true, TaskStop: true, TaskUpdate: true, TeamCreate: true,
+  TeamDelete: true, TodoRead: true, TodoWrite: true, ToolSearch: true,
+  WebFetch: true, WebSearch: true, Workflow: true, Write: true,
+};
+
+/**
+ * The org-plane form of a tool name (mirrors `bucketToolName` in core): a
+ * built-in name as itself, any `mcp__<server>__<tool>` as "mcp", anything
+ * else as "custom". A user-configured MCP server name is never stored.
+ */
+function bucketToolName(name) {
+  if (BUILT_IN_TOOLS[name] === true) {
+    return name;
+  }
+  return name.startsWith("mcp__") ? "mcp" : "custom";
+}
+
+/**
+ * Validate toolUseCounts and return it with every key REWRITTEN to its bucket
+ * (built-in name, "mcp" or "custom"), collisions summed. This is the
+ * resolver-side backstop for the AWSJSON scalar's lack of structural typing
+ * (review F9) and for clients that predate client-side redaction.
+ *
+ * Bucketing happens BEFORE the entry-count and key-length limits: an older
+ * client's raw `mcp__…` names would otherwise exceed them and reject the
+ * whole batch, stopping that user's org sync. Each raw value must still be a
+ * non-negative finite number. The tally is a plain `{}` safely here only
+ * because its keys are bucketed to the closed list, "mcp" or "custom" before
+ * insertion — no user-authored key ever reaches it.
+ *
+ * APPSYNC_JS 1.0.0: no `for`/`while`, no `++`, no `new`, no regex, no Date,
+ * no String()/Number() — Object.keys(...).forEach and startsWith only.
+ */
+function bucketToolCounts(value) {
   if (value === null || value === undefined) {
-    return;
+    return value;
   }
   const obj = typeof value === "string" ? JSON.parse(value) : value;
-  const keys = Object.keys(obj);
-  if (keys.length > MAX_TOOL_ENTRIES) {
-    util.error("toolUseCounts has too many entries", "ValidationError");
+  if (obj === null || typeof obj !== "object") {
+    util.error("toolUseCounts must be an object", "ValidationError");
   }
-  for (const key of keys) {
-    if (key.length > MAX_TOOL_NAME_LENGTH) {
-      util.error("toolUseCounts key too long", "ValidationError");
-    }
+  const bucketed = {};
+  Object.keys(obj).forEach((key) => {
     const v = obj[key];
     if (typeof v !== "number" || v < 0 || !Number.isFinite(v)) {
       util.error(
@@ -48,7 +95,19 @@ function assertShallowCountMap(value) {
         "ValidationError",
       );
     }
+    const bucket = bucketToolName(key);
+    bucketed[bucket] = (bucketed[bucket] ?? 0) + v;
+  });
+  const keys = Object.keys(bucketed);
+  if (keys.length > MAX_TOOL_ENTRIES) {
+    util.error("toolUseCounts has too many entries", "ValidationError");
   }
+  keys.forEach((key) => {
+    if (key.length > MAX_TOOL_NAME_LENGTH) {
+      util.error("toolUseCounts key too long", "ValidationError");
+    }
+  });
+  return bucketed;
 }
 
 function assertModelsList(models) {
@@ -58,11 +117,11 @@ function assertModelsList(models) {
   if (models.length > MAX_MODELS) {
     util.error("models list too long", "ValidationError");
   }
-  for (const m of models) {
+  models.forEach((m) => {
     if (typeof m !== "string" || m.length > MAX_MODEL_NAME_LENGTH) {
       util.error("model name too long", "ValidationError");
     }
-  }
+  });
 }
 
 export function request(ctx) {
@@ -80,7 +139,7 @@ export function request(ctx) {
   const now = util.time.nowEpochMilliSeconds();
 
   const transactItems = items.map((item) => {
-    assertShallowCountMap(item.toolUseCounts);
+    const toolUseCounts = bucketToolCounts(item.toolUseCounts);
     assertModelsList(item.models);
 
     const record = {
@@ -94,7 +153,7 @@ export function request(ctx) {
       cacheCreationTokens: item.cacheCreationTokens,
       cacheReadTokens: item.cacheReadTokens,
       activeMinutes: item.activeMinutes,
-      toolUseCounts: item.toolUseCounts,
+      toolUseCounts,
       models: item.models,
       accountId: item.accountId,
       estimatedCost: item.estimatedCost,

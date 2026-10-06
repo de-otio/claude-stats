@@ -252,6 +252,49 @@ describe("aggregate-stats handler (UserAggregates stream → weekly TeamStats)",
     expect(mockFetch).not.toHaveBeenCalled(); // write did not "succeed"
   });
 
+  it("buckets raw tool names from a LEGACY stored row: topTools shows 'mcp' / 'custom', never the raw name", async () => {
+    // A row written before the syncAggregate resolver started redacting.
+    const legacy = {
+      ...dayRow,
+      toolUseCounts: {
+        Read: 5,
+        "mcp__AcmeCorp__query": 4,
+        "mcp__globex-internal__search": 3,
+        "InitechDeploy": 2,
+        Edit: 1,
+      },
+    };
+    queueOneTeam({ weekDays: [legacy] });
+    await handler(event([streamRecord("INSERT", legacy)]));
+
+    const stats = updateCall().ExpressionAttributeValues[":stats"];
+    // mcp = 4 + 3 = 7 outranks Read (5); custom (2) outranks Edit (1).
+    expect(stats.topTools).toEqual(["mcp", "Read", "custom", "Edit"]);
+    const serialised = JSON.stringify(stats);
+    expect(serialised).not.toContain("AcmeCorp");
+    expect(serialised).not.toContain("globex");
+    expect(serialised).not.toContain("Initech");
+  });
+
+  it("a `__proto__` / `constructor` tool name does not corrupt the tallies", async () => {
+    // JSON.parse makes `__proto__` an OWN key, as a stored map can.
+    const toolUseCounts = JSON.parse('{"__proto__":6,"constructor":2,"Read":3,"toString":1}');
+    const row = { ...dayRow, toolUseCounts };
+    queueOneTeam({ weekDays: [row] });
+    await handler(event([streamRecord("INSERT", row)]));
+
+    const stats = updateCall().ExpressionAttributeValues[":stats"];
+    // All three prototype-key names collapse into one numeric "custom" tally (9).
+    expect(stats.topTools).toEqual(["custom", "Read"]);
+  });
+
+  it("orders tied tool counts by name (deterministic topTools)", async () => {
+    const row = { ...dayRow, toolUseCounts: { Write: 2, Bash: 2, Edit: 2 } };
+    queueOneTeam({ weekDays: [row] });
+    await handler(event([streamRecord("INSERT", row)]));
+    expect(updateCall().ExpressionAttributeValues[":stats"].topTools).toEqual(["Bash", "Edit", "Write"]);
+  });
+
   it("recomputes on REMOVE using the OldImage", async () => {
     queueOneTeam({ weekDays: [dayRow] }); // remaining rows re-summed
     await handler(event([streamRecord("REMOVE", dayRow)]));
