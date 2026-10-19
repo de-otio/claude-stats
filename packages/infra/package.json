@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@aws-crypto/sha256-js": "^5.2.0",
-    "@aws-sdk/s3-request-presigner": "^3.1148.0",
+    "@aws-sdk/s3-request-presigner": "^3.1152.0",
     "@claude-stats/core": "*",
     "source-map-support": "^0.5.21"
   },
