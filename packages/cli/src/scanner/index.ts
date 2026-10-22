@@ -8,6 +8,14 @@
 import fs from "fs";
 import path from "path";
 import { paths, decodeProjectPath } from "@claude-stats/core/paths";
+import { SUBAGENT_TRANSCRIPT_RE } from "../aggregator/subagentMetaFile.js";
+
+/**
+ * How many directory levels below a `subagents/` directory are searched. The
+ * real tree needs two (`workflows/<wf_id>/`); the cap only keeps a pathological
+ * tree from making the scan unbounded.
+ */
+const MAX_SUBAGENT_DEPTH = 4;
 
 export interface SessionFile {
   filePath: string;
@@ -16,18 +24,20 @@ export interface SessionFile {
   isSubagent: boolean;
   /**
    * The parent session's id, when the layout itself names it: set for
-   * subagent files under `<project>/<sessionId>/subagents/`, null otherwise.
-   * Entries in those files carry the PARENT's `sessionId`, so the aggregator
-   * uses this to give the subagent its own session row instead of merging it
-   * into the parent's.
+   * subagent files anywhere under `<project>/<sessionId>/subagents/` (including
+   * `workflows/<wf_id>/`), null otherwise. Entries in those files carry the
+   * PARENT's `sessionId`, so the aggregator uses this to give the subagent its
+   * own session row instead of merging it into the parent's.
    */
   parentSessionId: string | null;
 }
 
 /** Discover all session JSONL files under ~/.claude/projects/.
- *  Includes subagent JSONL files in both layouts Claude Code has used:
- *  `<project>/subagents/*.jsonl` (older) and
- *  `<project>/<sessionId>/subagents/*.jsonl` (current). */
+ *  Includes subagent JSONL files in the layouts Claude Code has used:
+ *  `<project>/subagents/*.jsonl` (older),
+ *  `<project>/<sessionId>/subagents/*.jsonl` (current) and
+ *  `<project>/<sessionId>/subagents/workflows/<wf_id>/agent-*.jsonl`
+ *  (Workflow-tool agents). */
 export function discoverSessionFiles(): SessionFile[] {
   const result: SessionFile[] = [];
 
@@ -63,7 +73,7 @@ export function discoverSessionFiles(): SessionFile[] {
     // Subagent files, older layout: <project>/subagents/
     const subagentsDir = path.join(projectDirPath, "subagents");
     if (isRealDirectory(subagentsDir)) {
-      collectJsonlFiles(subagentsDir, projectPath, projectDir, true, null, result);
+      collectSubagentFiles(subagentsDir, projectPath, projectDir, null, result, 0);
     }
 
     // Subagent files, current layout: <project>/<sessionId>/subagents/.
@@ -81,7 +91,7 @@ export function discoverSessionFiles(): SessionFile[] {
       if (!isRealDirectory(sessionDirPath)) continue;
       const nestedSubagentsDir = path.join(sessionDirPath, "subagents");
       if (!isRealDirectory(nestedSubagentsDir)) continue;
-      collectJsonlFiles(nestedSubagentsDir, projectPath, projectDir, true, entry, result);
+      collectSubagentFiles(nestedSubagentsDir, projectPath, projectDir, entry, result, 0);
     }
   }
 
@@ -99,13 +109,55 @@ function isRealDirectory(dirPath: string): boolean {
   }
 }
 
+/**
+ * Collect the transcripts under a `subagents/` directory, descending into real
+ * subdirectories (Workflow-tool agents live in `workflows/<wf_id>/`).
+ *
+ * The directory itself keeps its historical rule — any `*.jsonl`. Below it only
+ * `agent-<id>.jsonl` is taken: the aggregator keys a subagent's session id on
+ * the file basename, so a stray sidecar such as the workflow `journal.jsonl`
+ * would otherwise become one colliding session named `journal`.
+ */
+function collectSubagentFiles(
+  dir: string,
+  projectPath: string,
+  projectDir: string,
+  parentSessionId: string | null,
+  result: SessionFile[],
+  depth: number
+): void {
+  collectJsonlFiles(
+    dir,
+    projectPath,
+    projectDir,
+    true,
+    parentSessionId,
+    result,
+    depth === 0 ? undefined : (name) => SUBAGENT_TRANSCRIPT_RE.test(name)
+  );
+  if (depth >= MAX_SUBAGENT_DEPTH) return;
+
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const childPath = path.join(dir, entry);
+    if (!isRealDirectory(childPath)) continue;
+    collectSubagentFiles(childPath, projectPath, projectDir, parentSessionId, result, depth + 1);
+  }
+}
+
 function collectJsonlFiles(
   dir: string,
   projectPath: string,
   projectDir: string,
   isSubagent: boolean,
   parentSessionId: string | null,
-  result: SessionFile[]
+  result: SessionFile[],
+  acceptName?: (name: string) => boolean
 ): void {
   let entries: string[];
   try {
@@ -116,6 +168,7 @@ function collectJsonlFiles(
 
   for (const entry of entries) {
     if (!entry.endsWith(".jsonl")) continue;
+    if (acceptName && !acceptName(entry)) continue;
     const entryPath = path.join(dir, entry);
     // Skip symlinks: only include regular .jsonl files that live directly
     // under ~/.claude/projects/. A symlink could point anywhere on disk

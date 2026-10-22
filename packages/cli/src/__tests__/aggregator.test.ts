@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { DatabaseSync } from "node:sqlite";
-import { collect } from "../aggregator/index.js";
+import { collect, USAGE_WINDOW_BASIS, USAGE_WINDOW_BASIS_KEY } from "../aggregator/index.js";
 import { Store } from "../store/index.js";
 import * as pathsMod from "@claude-stats/core/paths";
 import os from "os";
@@ -449,6 +449,76 @@ describe("collect", () => {
       expect(all).toHaveLength(2);
       expect(all.find(s => s.session_id === "agent-a1")!.output_tokens).toBe(35);
       expect(all.find(s => s.session_id === parentId)!.output_tokens).toBe(50);
+    });
+
+    // Issue #115: Workflow-tool agents write to
+    // <sessionId>/subagents/workflows/<wf_id>/agent-<id>.jsonl, next to a
+    // journal.jsonl that carries no usage.
+    describe("Workflow-tool agents under subagents/workflows/<wf_id>/", () => {
+      function writeWorkflowFixture(): string {
+        const projDir = path.join(projectsDir, "-proj-nested");
+        const nested = path.join(projDir, parentId, "subagents");
+        const wf = path.join(nested, "workflows", "wf_1");
+        fs.mkdirSync(wf, { recursive: true });
+        const queue = JSON.stringify({ type: "queue-operation", operation: "enqueue", sessionId: parentId, timestamp: 1_699_998_000_000 });
+        fs.writeFileSync(
+          path.join(projDir, `${parentId}.jsonl`),
+          [queue, makeUserLine(parentId), makeSessionLine({ sessionId: parentId, uuid: "parent-a" })].join("\n") + "\n"
+        );
+        fs.writeFileSync(path.join(nested, "agent-a1.jsonl"), [subagentLine("sub-1", 10), subagentLine("sub-2", 20)].join("\n") + "\n");
+        const agentFile = path.join(wf, "agent-w1.jsonl");
+        fs.writeFileSync(agentFile, [subagentLine("wf-1", 7), subagentLine("wf-2", 3)].join("\n") + "\n");
+        fs.writeFileSync(path.join(wf, "agent-w1.meta.json"), JSON.stringify({ agentType: "general-purpose", spawnDepth: 2 }));
+        // The journal has no usage; it must not become a session of its own.
+        fs.writeFileSync(path.join(wf, "journal.jsonl"), JSON.stringify({ type: "step", sessionId: parentId, timestamp: 1_700_000_000_000 }) + "\n");
+        return agentFile;
+      }
+
+      it("counts the workflow agent as its own session linked to the parent, with its meta", async () => {
+        writeWorkflowFixture();
+        await collect(store);
+
+        const all = store.getSessions({ includeCI: true, includeDeleted: true });
+        expect(all.map(s => s.session_id).sort()).toEqual(["agent-a1", "agent-w1", parentId].sort());
+        const wf = all.find(s => s.session_id === "agent-w1")!;
+        expect(wf.is_subagent).toBe(1);
+        expect(wf.parent_session_id).toBe(parentId);
+        expect(wf.output_tokens).toBe(10);
+        expect(wf.agent_type).toBe("general-purpose");
+        expect(wf.spawn_depth).toBe(2);
+        expect(store.getSessionMessages("agent-w1").map(m => m.uuid).sort()).toEqual(["wf-1", "wf-2"]);
+        expect(store.getChildSessions(parentId).map(s => s.session_id).sort()).toEqual(["agent-a1", "agent-w1"]);
+        // Totals now include the workflow agent: 50 parent + 30 plain subagent + 10 workflow.
+        expect(store.getSessions().reduce((n, s) => n + s.output_tokens, 0)).toBe(90);
+      });
+
+      it("adds nothing on a second collect", async () => {
+        writeWorkflowFixture();
+        await collect(store);
+        const before = store.getSessions({ includeCI: true, includeDeleted: true }).map(s => [s.session_id, s.output_tokens]);
+        const second = await collect(store);
+
+        expect(second.filesProcessed).toBe(0);
+        expect(store.getSessions({ includeCI: true, includeDeleted: true }).map(s => [s.session_id, s.output_tokens])).toEqual(before);
+      });
+
+      it("re-prices old usage windows once when a DB from before the fix gains the files", async () => {
+        const agentFile = writeWorkflowFixture();
+        const hiding = `${agentFile}.hidden`;
+        fs.renameSync(agentFile, hiding);
+        await collect(store);
+        const costBefore = store.getUsageWindows().reduce((n, w) => n + w.totalCostEquivalent, 0);
+
+        // The state of a 0.24.0 DB: windows priced without the workflow agent,
+        // basis marker from that release.
+        fs.renameSync(hiding, agentFile);
+        store.setMeta(USAGE_WINDOW_BASIS_KEY, "v24");
+        await collect(store);
+
+        const costAfter = store.getUsageWindows().reduce((n, w) => n + w.totalCostEquivalent, 0);
+        expect(costAfter).toBeGreaterThan(costBefore);
+        expect(store.getMeta(USAGE_WINDOW_BASIS_KEY)).toBe(USAGE_WINDOW_BASIS);
+      });
     });
   });
 });

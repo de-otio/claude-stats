@@ -180,6 +180,119 @@ describe("discoverSessionFiles", () => {
     }
   });
 
+  describe("Workflow-tool agents under subagents/workflows/<wf_id>/", () => {
+    const parentId = "bd893f01-0000-4000-8000-000000000002";
+    let projDir: string;
+    let subagents: string;
+
+    beforeEach(() => {
+      projDir = path.join(projectsDir, "-Users-alice-proj");
+      subagents = path.join(projDir, parentId, "subagents");
+      fs.mkdirSync(subagents, { recursive: true });
+    });
+
+    const touch = (...segments: string[]) => {
+      const p = path.join(...segments);
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, "{}");
+      return p;
+    };
+    const names = (files: ReturnType<typeof discoverSessionFiles>) =>
+      files.map((f) => path.relative(projDir, f.filePath)).sort();
+
+    it("discovers agent transcripts and links them to the session directory", () => {
+      touch(subagents, "workflows", "wf_1", "agent-w1.jsonl");
+      touch(subagents, "workflows", "wf_1", "agent-w1.meta.json");
+
+      const files = discoverSessionFiles();
+      expect(files).toHaveLength(1);
+      expect(files[0]).toMatchObject({ isSubagent: true, parentSessionId: parentId, projectPath: "/Users/alice/proj" });
+      expect(path.basename(files[0]!.filePath)).toBe("agent-w1.jsonl");
+    });
+
+    it("does not collect journal.jsonl or any other non-agent jsonl below the first level", () => {
+      touch(subagents, "workflows", "wf_1", "agent-w1.jsonl");
+      touch(subagents, "workflows", "wf_1", "journal.jsonl");
+      touch(subagents, "workflows", "wf_1", "events.jsonl");
+      touch(subagents, "workflows", "journal.jsonl");
+
+      expect(names(discoverSessionFiles())).toEqual([
+        path.join(parentId, "subagents", "workflows", "wf_1", "agent-w1.jsonl"),
+      ]);
+    });
+
+    it("still collects any jsonl directly in subagents/", () => {
+      touch(subagents, "journal.jsonl");
+      touch(projDir, "subagents", "notes.jsonl");
+
+      expect(names(discoverSessionFiles())).toEqual([
+        path.join(parentId, "subagents", "journal.jsonl"),
+        path.join("subagents", "notes.jsonl"),
+      ]);
+    });
+
+    it("collects several workflow directories next to plain subagents, once each", () => {
+      touch(projDir, `${parentId}.jsonl`);
+      touch(subagents, "agent-plain.jsonl");
+      touch(subagents, "workflows", "wf_1", "agent-a.jsonl");
+      touch(subagents, "workflows", "wf_2", "agent-b.jsonl");
+      touch(subagents, "workflows", "wf_2", "agent-c.jsonl");
+
+      const files = discoverSessionFiles();
+      const subs = files.filter((f) => f.isSubagent);
+      expect(subs.map((f) => path.basename(f.filePath)).sort()).toEqual([
+        "agent-a.jsonl",
+        "agent-b.jsonl",
+        "agent-c.jsonl",
+        "agent-plain.jsonl",
+      ]);
+      expect(new Set(files.map((f) => f.filePath)).size).toBe(files.length);
+      expect(subs.every((f) => f.parentSessionId === parentId)).toBe(true);
+      // The parent is still stored before its children.
+      expect(files.findIndex((f) => !f.isSubagent)).toBeLessThan(files.findIndex((f) => f.isSubagent));
+    });
+
+    it("also searches below the older <project>/subagents/ layout, without a parent", () => {
+      touch(projDir, "subagents", "workflows", "wf_9", "agent-old.jsonl");
+
+      const files = discoverSessionFiles();
+      expect(files).toHaveLength(1);
+      expect(files[0]).toMatchObject({ isSubagent: true, parentSessionId: null });
+    });
+
+    it("stops at the depth cap", () => {
+      touch(subagents, "d1", "d2", "d3", "d4", "agent-edge.jsonl");
+      touch(subagents, "d1", "d2", "d3", "d4", "d5", "agent-too-deep.jsonl");
+
+      expect(names(discoverSessionFiles()).map((n) => path.basename(n))).toEqual(["agent-edge.jsonl"]);
+    });
+
+    it("refuses symlinks at workflows/, <wf_id>/ and agent-*.jsonl", () => {
+      const outsideDir = path.join(
+        os.tmpdir(),
+        `cs-scanner-outside-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      );
+      try {
+        touch(outsideDir, "wf_x", "agent-secret.jsonl");
+        touch(outsideDir, "agent-secret.jsonl");
+
+        // Symlinked workflows/ in one session.
+        fs.symlinkSync(outsideDir, path.join(subagents, "workflows"));
+        // Symlinked <wf_id>/ and agent file in a real workflows/ of another.
+        const other = path.join(projDir, "other-session", "subagents", "workflows");
+        fs.mkdirSync(other, { recursive: true });
+        fs.symlinkSync(path.join(outsideDir, "wf_x"), path.join(other, "wf_linked"));
+        const realWf = path.join(other, "wf_real");
+        fs.mkdirSync(realWf);
+        fs.symlinkSync(path.join(outsideDir, "agent-secret.jsonl"), path.join(realWf, "agent-linked.jsonl"));
+
+        expect(discoverSessionFiles()).toEqual([]);
+      } finally {
+        fs.rmSync(outsideDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   it("skips non-directory entries in the projects dir", () => {
     const notADir = path.join(projectsDir, "some-file.txt");
     fs.writeFileSync(notADir, "data");

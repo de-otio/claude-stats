@@ -494,8 +494,9 @@ function normalizeAgentAttribution(session: NonNullable<ParseResult["session"]>)
  */
 export const USAGE_WINDOW_BASIS_KEY = "usage_windows_basis";
 /** v23 = corrected pricing rows + the usage-carrier row model.
- *  v24 = subagent transcripts under `<sessionId>/subagents/` collected (#90). */
-export const USAGE_WINDOW_BASIS = "v24";
+ *  v24 = subagent transcripts under `<sessionId>/subagents/` collected (#90).
+ *  v25 = Workflow-tool agent transcripts under `subagents/workflows/` collected (#115). */
+export const USAGE_WINDOW_BASIS = "v25";
 
 /**
  * Recompute EVERY usage window from the current `messages` table, once per
