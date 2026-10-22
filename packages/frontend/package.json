@@ -12,14 +12,14 @@
   },
   "dependencies": {
     "@claude-stats/core": "*",
-    "@tanstack/react-query": "^5.104.3",
+    "@tanstack/react-query": "^5.104.4",
     "@tremor/react": "^3.18.0",
     "aws-amplify": "^6.22.2",
     "i18next": "^26.5.5",
     "i18next-browser-languagedetector": "^8.2.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-i18next": "^17.0.18",
+    "react-i18next": "^17.1.0",
     "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
@@ -30,7 +30,7 @@
     "@vitejs/plugin-react": "^6.1.2",
     "autoprefixer": "^10.6.1",
     "jsdom": "^30.1.3",
-    "postcss": "^8.5.30",
+    "postcss": "^8.5.31",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.5.0",
     "vite": "^8.2.1"
