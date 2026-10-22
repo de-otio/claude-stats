@@ -24,13 +24,22 @@ in-range moves:
   chain that 0.24.0 listed as open. It is now the same transformers and
   `onnxruntime-node` the extension ships.
 
+Dev-only advisories cleared after the release by raising the root `overrides`
+(neither is in a shipped tree):
+
+- `vite` floor raised to `^8.2.4` (six advisories, one high, dev-server
+  issues), resolving to 8.3.5.
+- `postcss-selector-parser` forced to `^7.1.6` (moderate, quadratic selector
+  parsing) although `tailwindcss@3` and `postcss-nested` ask for 6.x. The
+  frontend build emits a byte-identical stylesheet with the override, which is
+  the check to repeat if either package is bumped.
+
 The dev-only advisories that remain, none of which is in a shipped tree:
 
 - **`brace-expansion` (high), bundled inside `aws-cdk-lib`.** Unchanged from
   before; see below.
-- **`braces`, `micromatch`, `fast-glob`, `chokidar`, `postcss-nested` and
-  `postcss-selector-parser` (high / moderate), all through `tailwindcss@3`** in
-  the frontend's build. `braces` has **no patched release at all** (every
+- **`braces`, `micromatch`, `fast-glob` and `chokidar` (high), all through
+  `tailwindcss@3`** in the frontend's build. `braces` has **no patched release at all** (every
   version is in range), and the only npm-suggested remedy is Tailwind 4. The
   dashboard is built on `@tremor/react@3.18.7`, its latest stable release, which
   peers on `react ^18` and relies on Tailwind 3 theming, so Tailwind 4 and
