@@ -8,32 +8,36 @@ This file exists so that "we know, and here is the reasoning" is checkable
 rather than assumed. An advisory that is genuinely unreachable is still shipped
 code, and a reader deserves to see the argument rather than a reassurance.
 
-**Last reviewed:** 2026-10-06, for extension release 0.24.0.
+**Last reviewed:** 2026-10-22, for extension release 0.24.1.
 
-At this review `npm audit --omit=dev` reported, before the fixes in 0.24.0:
+At this review `npm audit --omit=dev` reported **zero** advisories in both
+shipped trees (the VSIX's and the CLI's), after these fixes, all lockfile or
+in-range moves:
 
-- **VSIX tree:** one high, `sharp` `< 0.35.5` (librsvg,
-  [GHSA-wq5f-xc86-pv6w](https://github.com/advisories/GHSA-wq5f-xc86-pv6w)).
-  Fixed by moving the extension lockfile to `sharp@0.35.5`, which
-  `@huggingface/transformers@4.3.0`'s `^0.35.4` pin admits — no override and
-  no parent bump; still exactly one `onnxruntime-node` (1.30.0). The tree now
-  audits **clean**.
-- **Root (CLI) tree:** `proxy-addr` 2.0.7 (critical,
-  [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h)),
-  reached through `@modelcontextprotocol/sdk` → `express` and bundled into the
-  MCP server, fixed by the lockfile (2.0.8); `sharp` as above, fixed by raising
-  the root override floor to `^0.35.5`.
-- **Root (CLI) tree, still open — five moderate:** `sprintf-js` (DoS via
-  unbounded precision specifiers,
-  [GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c)) and
-  the chain that pulls it in: `packages/cli`'s `@huggingface/transformers@3.8.1`
-  → `onnxruntime-node@1.21.0` → `global-agent` → `roarr` → `sprintf-js`. Not
-  in the VSIX: both bundles mark `@huggingface/transformers` and
-  `onnxruntime-node` external, and the extension resolves its own 4.3.0 /
-  1.30.0 at runtime. It affects a CLI run from a source checkout only. There is
-  no 3.x fix; the remedy is moving `packages/cli` to transformers 4.x, which is
-  a major-version change to the recap embeddings path and is left to its own
-  change.
+- `@modelcontextprotocol/sdk` raised to `^1.32.1` (was `<= 1.31.0`, four
+  advisories, high): it is bundled into the MCP server, so this one reached
+  users.
+- `hono` 4.13.13 (moderate, `serveStatic` path decoding), reached through the
+  MCP SDK.
+- `packages/cli`'s `@huggingface/transformers` moved from 3.8.1 to 4.3.1, which
+  removes the `onnxruntime-node` → `global-agent` → `roarr` → `sprintf-js`
+  chain that 0.24.0 listed as open. It is now the same transformers and
+  `onnxruntime-node` the extension ships.
+
+The dev-only advisories that remain, none of which is in a shipped tree:
+
+- **`brace-expansion` (high), bundled inside `aws-cdk-lib`.** Unchanged from
+  before; see below.
+- **`braces`, `micromatch`, `fast-glob`, `chokidar`, `postcss-nested` and
+  `postcss-selector-parser` (high / moderate), all through `tailwindcss@3`** in
+  the frontend's build. `braces` has **no patched release at all** (every
+  version is in range), and the only npm-suggested remedy is Tailwind 4. The
+  dashboard is built on `@tremor/react@3.18.7`, its latest stable release, which
+  peers on `react ^18` and relies on Tailwind 3 theming, so Tailwind 4 and
+  React 19 wait for Tremor. Dependabot's React 19 and Tailwind 4 major bumps are
+  therefore ignored in `.github/dependabot.yml` until then. These packages run
+  at build time on a developer machine or in CI over our own source; none
+  reaches the VSIX, the CLI or the deployed frontend bundle.
 
 At the 0.23.3 review (2026-09-26) both shipped trees audited clean.
 

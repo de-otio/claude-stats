@@ -132,12 +132,13 @@ describe("CLI i18n renders each supported locale (not fallback to en)", () => {
 });
 
 describe("the CLI keeps stdout free of non-payload output", () => {
-  // i18next >= 26 prints a Locize promo banner through console.info on init,
+  // i18next 25 printed a Locize promo banner through console.info on init,
   // and console.info writes to STDOUT. For this CLI stdout is a protocol
   // channel: `dashboard` and `export` emit JSON/CSV on it and `mcp` speaks
   // JSON-RPC over it, so one stray line makes the output unparseable. That
-  // regression shipped once — `claude-stats dashboard` emitted invalid JSON —
-  // and this guards `showSupportNotice: false` in core's initI18n.
+  // regression shipped once — `claude-stats dashboard` emitted invalid JSON.
+  // 26.3.6 dropped the banner; this guards against any i18next release
+  // writing to stdout on init again.
   //
   // It has to run the real binary in a child process. i18next latches the
   // banner behind a module-global set on first init, and setup.ts initializes
