@@ -25,6 +25,22 @@ updates:
     commit-message:
       prefix: "deps"
       include: scope
+    ignore:
+      # The dashboard is built on @tremor/react 3.x (its latest stable), which
+      # peers on react ^18 and ships Tailwind 3 theming. React 19 and Tailwind 4
+      # cannot be adopted until Tremor is replaced or releases a v4; a lone
+      # bump fails typecheck. Revisit when `@tremor/react` publishes a stable
+      # release with a newer peer range.
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
     groups:
       # Group routine non-major bumps so we don't drown in PRs.
       # Major bumps stay individual — the review workflow short-circuits

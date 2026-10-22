@@ -71,16 +71,11 @@ export function resetCurrentT(): void {
 export async function initI18n(options: I18nOptions): Promise<I18nInstance> {
   const instance = i18next.createInstance();
   await instance.init({
-    // i18next 25 prints a Locize promo banner via console.info on init, and
+    // i18next 25 printed a Locize promo banner via console.info on init, and
     // console.info writes to STDOUT — a protocol channel here: `dashboard` and
-    // `export` emit JSON/CSV there, and `mcp` speaks JSON-RPC over it. The
-    // banner made `claude-stats dashboard` unparseable.
-    //
-    // i18next 26.3.6 dropped the banner and this option along with it, so
-    // bumping core past that version turns this line into a type error. That
-    // is the intended signal: delete it then, don't cast around it. The
-    // frontend is already on 26 and needs no equivalent.
-    showSupportNotice: false,
+    // `export` emit JSON/CSV there, and `mcp` speaks JSON-RPC over it. 26.3.6
+    // dropped the banner, so nothing needs suppressing; the test that pins
+    // "init writes nothing to stdout" guards against it coming back.
     lng: options.lng ?? "en",
     fallbackLng: "en",
     ns: [...options.ns, "common"],
