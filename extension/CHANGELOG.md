@@ -2,6 +2,23 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.24.1 — 2026-10-22
+
+### Fixed
+
+- **Usage and cost from Workflow-tool agents were never counted.** Agents
+  started by the Workflow tool write their transcripts under
+  `<session>/subagents/workflows/<workflow>/`, a level the scanner did not
+  search, so their tokens and dollars were missing from every total, day, model
+  and agent view. They are now collected as subagent sessions of the session
+  that ran the workflow, with their agent type and spawn depth. Only
+  `agent-<id>.jsonl` files are taken from that level, so the workflow's
+  `journal.jsonl` is not mistaken for a session. On the next collect after the
+  upgrade the missing history is read from the transcripts still on disk and the
+  stored dollar figures for past days are recalculated once; no repair command
+  is needed. Days whose transcripts Claude Code has already deleted cannot be
+  recovered.
+
 ## 0.24.0 — 2026-10-06
 
 ### Added — where the spend goes: agent types and skills
