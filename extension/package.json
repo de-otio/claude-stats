@@ -18,7 +18,7 @@
     "vscode": "^1.85.0"
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.3.0",
+    "@huggingface/transformers": "^4.3.1",
     "onnxruntime-node": "1.30.0"
   },
   "categories": [
