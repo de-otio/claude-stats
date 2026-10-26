@@ -41,7 +41,7 @@
     "@types/node": "^26.6.5",
     "@types/vscode": "^1.140.0",
     "@vitest/coverage-v8": "^5.0.5",
-    "chart.js": "^4.5.1",
+    "chart.js": "^4.6.1",
     "esbuild": "^0.28.2",
     "fast-check": "^4.10.2",
     "tsx": "^4.23.15",
