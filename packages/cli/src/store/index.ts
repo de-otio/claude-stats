@@ -1309,8 +1309,24 @@ export class Store {
         subscription_type       = COALESCE(sessions.subscription_type, excluded.subscription_type),
         thinking_blocks         = excluded.thinking_blocks,
         throttle_events         = excluded.throttle_events,
-        active_duration_ms      = excluded.active_duration_ms,
-        median_response_time_ms = excluded.median_response_time_ms,
+        -- A re-parse from byte 0 of a TRIMMED transcript (Claude Code's local
+        -- GC) sees fewer lines, so its durations are smaller; the messages it
+        -- no longer shows are retained in \`messages\`. Durations are built from
+        -- every entry type, which \`messages\` (assistant only) cannot
+        -- reproduce, so they cannot be re-projected: when this parse saw
+        -- fewer messages than are stored (the trim signal) take MAX for the
+        -- total (never a sum, so re-parsing cannot inflate it) and keep the
+        -- stored median; otherwise take the new values, so a corrected duration
+        -- algorithm can still lower a stored figure on a full re-parse.
+        active_duration_ms      = CASE
+          WHEN excluded.assistant_message_count < sessions.assistant_message_count
+          THEN MAX(COALESCE(sessions.active_duration_ms, 0), COALESCE(excluded.active_duration_ms, 0))
+          ELSE excluded.active_duration_ms END,
+        median_response_time_ms = CASE
+          WHEN sessions.median_response_time_ms IS NOT NULL
+           AND excluded.assistant_message_count < sessions.assistant_message_count
+          THEN sessions.median_response_time_ms
+          ELSE excluded.median_response_time_ms END,
         parent_session_id       = COALESCE(excluded.parent_session_id, sessions.parent_session_id),
         is_subagent             = MAX(sessions.is_subagent, excluded.is_subagent),
         -- Latest-non-null-wins (V25): a NULL (no meta file this pass, an older
@@ -1563,7 +1579,8 @@ export class Store {
 
     // Is some OTHER row already counting this response's usage?
     const carrierTaken = this.db.prepare(
-      `SELECT uuid, input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens AS magnitude
+      `SELECT uuid, stop_reason,
+              input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens AS magnitude
          FROM messages
         WHERE session_id = ? AND message_id = ? AND usage_counted = 1 AND uuid != ?
         LIMIT 1`,
@@ -1588,14 +1605,20 @@ export class Store {
         const stored = claimed.has(key)
           ? undefined
           : (carrierTaken.get(r.sessionId, r.messageId, r.uuid) as
-              | { uuid: string; magnitude: number }
+              | { uuid: string; stop_reason: string | null; magnitude: number }
               | undefined);
         const incoming = r.inputTokens + r.outputTokens + r.cacheCreationTokens + r.cacheReadTokens;
         if (claimed.has(key)) {
           carried = false;
-        } else if (stored !== undefined && incoming <= stored.magnitude) {
-          // Ties keep the stored row: it is the EARLIER entry, which is the
-          // full parse's tiebreak too.
+        } else if (
+          stored !== undefined &&
+          (incoming < stored.magnitude ||
+            // Ties keep the stored row (the EARLIER entry, the full parse's
+            // tiebreak) unless only the incoming one has a stop_reason —
+            // markUsageCarriers prefers the finished entry on a tie.
+            (incoming === stored.magnitude &&
+              !(!stored.stop_reason && !!r.stopReason)))
+        ) {
           carried = false;
         } else {
           // Either no carrier yet, or this later half of a straddling group
