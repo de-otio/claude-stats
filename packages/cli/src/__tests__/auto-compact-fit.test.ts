@@ -619,7 +619,7 @@ function realRows(): HygieneMessageRow[] {
         ephemeral5mCacheTokens: 0,
         ephemeral1hCacheTokens: 0,
         toolErrorCount: 0,
-        tools: [],
+        tools: [], outputPlaceholder: false,
       });
       i++;
     }

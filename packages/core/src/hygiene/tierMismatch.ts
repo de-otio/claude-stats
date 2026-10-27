@@ -50,7 +50,7 @@ import { modelTier } from "../pricing.js";
 // up rendered inconsistently with the rest of the product (`abandonedSpend.ts`
 // reuses `formatMoney` from here for the same reason).
 import { formatPercent } from "../insight.js";
-import { groupBySession, messageCost, sumCost } from "./util.js";
+import { groupBySession, messageCost } from "./util.js";
 import type { HygieneFinding, HygieneMessageRow, HygieneThresholds, TierMismatchClassification } from "./types.js";
 
 /** Verdict for one class's top-vs-mid comparison. Every class with a
@@ -93,12 +93,32 @@ interface ClassedSession {
   cost: number;
 }
 
+/**
+ * R1: which measures here read output tokens? Turn count and tool-error rate
+ * (the parity VERDICT) read neither output nor stop reason, so flagged
+ * (placeholder-output) rows keep counting there. Cost, and the dominant-tier
+ * weighting built on cost, include output tokens, which on a flagged row are
+ * a placeholder; those measures price a flagged row with its output excluded
+ * (input and cache counts on such rows are real). This understates a flagged
+ * session's cost rather than inventing output, the conservative direction for
+ * an estimated-waste figure.
+ */
+function costExcludingPlaceholderOutput(m: HygieneMessageRow, overrides?: RateOverrides): number {
+  return messageCost(m.outputPlaceholder ? { ...m, outputTokens: 0 } : m, overrides);
+}
+
+function sumCostExcludingPlaceholderOutput(messages: readonly HygieneMessageRow[], overrides?: RateOverrides): number {
+  let total = 0;
+  for (const m of messages) total += costExcludingPlaceholderOutput(m, overrides);
+  return total;
+}
+
 function dominantTier(messages: readonly HygieneMessageRow[], overrides?: RateOverrides): "top" | "mid" | "low" | "unknown" {
   const costByTier = new Map<string, number>();
   for (const m of messages) {
     if (!m.model) continue;
     const tier = modelTier(m.model);
-    costByTier.set(tier, (costByTier.get(tier) ?? 0) + messageCost(m, overrides));
+    costByTier.set(tier, (costByTier.get(tier) ?? 0) + costExcludingPlaceholderOutput(m, overrides));
   }
   let best: "top" | "mid" | "low" | "unknown" = "unknown";
   let bestCost = -1;
@@ -156,7 +176,7 @@ export function computeTierParity(
       tier,
       turns: group.messages.length,
       toolErrors: group.messages.reduce((n, m) => n + m.toolErrorCount, 0),
-      cost: sumCost(group.messages, overrides),
+      cost: sumCostExcludingPlaceholderOutput(group.messages, overrides),
     });
   }
 

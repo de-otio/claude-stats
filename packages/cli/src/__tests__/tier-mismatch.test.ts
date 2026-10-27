@@ -39,7 +39,7 @@ function row(overrides: Partial<HygieneMessageRow> & { sessionId: string; uuid: 
     ephemeral5mCacheTokens: 0,
     ephemeral1hCacheTokens: 0,
     toolErrorCount: 0,
-    tools: [],
+    tools: [], outputPlaceholder: false,
     ...overrides,
   };
 }
@@ -88,6 +88,23 @@ function buildParitySessions(n: number, turnsPerSession = 5): {
 // ─── computeTierParity — the full table, including null results ────────────
 
 describe("computeTierParity", () => {
+  it("placeholder-output rows keep their turns and errors but are priced without output (R1)", () => {
+    const { rows, taskClassBySession } = buildParitySessions(T.minSessionsPerTier);
+    const heavy = rows.map((r) => (r.sessionId.startsWith("top-") ? { ...r, outputTokens: 50_000 } : r));
+    const flagged = heavy.map((r) => (r.sessionId.startsWith("top-") ? { ...r, outputPlaceholder: true } : r));
+    const zeroed = heavy.map((r) => (r.sessionId.startsWith("top-") ? { ...r, outputTokens: 0 } : r));
+    const f = computeTierParity(flagged, taskClassBySession, T)[0]!;
+    const unflagged = computeTierParity(heavy, taskClassBySession, T)[0]!;
+    // Turn-based measures are unchanged: flagged rows still count.
+    expect(f.nTop).toBe(T.minSessionsPerTier);
+    expect(f.avgTurnsTop).toBe(5);
+    expect(f.verdict).toBe(unflagged.verdict);
+    // Cost excludes the flagged rows' output: equals zero-output pricing and
+    // is strictly below pricing with the output counted.
+    expect(f.avgCostTop).toBeCloseTo(computeTierParity(zeroed, taskClassBySession, T)[0]!.avgCostTop!, 10);
+    expect(f.avgCostTop!).toBeLessThan(unflagged.avgCostTop!);
+  });
+
   it("verdicts PARITY when top and mid tiers show identical turns and zero errors, at n === the floor", () => {
     const { rows, taskClassBySession } = buildParitySessions(T.minSessionsPerTier);
     const comparisons = computeTierParity(rows, taskClassBySession, T);
