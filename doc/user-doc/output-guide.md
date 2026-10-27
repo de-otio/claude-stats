@@ -114,6 +114,17 @@ a number:
 The tiers sum to the headline tokens and cost. A cost row can differ by under
 one cent from the sum of its children because each leaf is rounded once.
 
+### Placeholder output on older subagent transcripts (MCP)
+
+`get_stats` and `get_agent_cost` carry `placeholderOutputShare`
+(`rowShare`, `costShare`, `note`). Claude Code before 2.1.307 wrote subagent
+transcripts whose output-token counts are mid-stream placeholders, so output is
+under-reported on those rows and subagent output cost is a lower bound.
+`rowShare` and `costShare` say how much of the window sits on such rows; the
+field is `null` when none do. It is a disclosure beside the totals, not a
+correction: no figure is adjusted, and it is not part of the sums that
+reconcile to the headline.
+
 ### Token formatting
 
 | Displayed | Actual range |
