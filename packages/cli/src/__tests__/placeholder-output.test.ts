@@ -177,6 +177,11 @@ describe("store-backed placeholder flag", () => {
     expect(hasBloat(store)).toBe(true);
   });
 
+  it("stop-reason distribution still counts a message whose session row is absent", () => {
+    store.upsertMessages([message("orphan-m0", "s-orphan", 0, 1_000, { stopReason: "end_turn" })]);
+    expect(store.getStopReasonCounts(["s-orphan"]).get("end_turn")).toBe(1);
+  });
+
   it("stop-reason distribution excludes placeholder rows with an empty-string stop reason", () => {
     seed(store, "s-old", "2.1.300", { stopReason: "" });
     seed(store, "s-new", "2.1.307", { stopReason: "end_turn" });

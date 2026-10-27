@@ -2272,7 +2272,7 @@ export class Store {
       SELECT m.stop_reason AS stop_reason, m.claude_version AS claude_version,
              s.is_subagent AS is_subagent, COUNT(*) as count
       FROM messages m
-      JOIN sessions s ON s.session_id = m.session_id
+      LEFT JOIN sessions s ON s.session_id = m.session_id
       WHERE m.stop_reason IS NOT NULL AND m.session_id IN (${placeholders})
       GROUP BY m.stop_reason, m.claude_version, s.is_subagent
     `);
