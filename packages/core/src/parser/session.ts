@@ -102,6 +102,31 @@ export async function extractCwdFromSessionFile(
   }
 }
 
+const API_REQUEST_PREFIX = '{"type":"api-request';
+
+/**
+ * True for the per-request records Claude Code 2.1.300+ writes beside the
+ * conversation: `api-request`, `api-request-shape`, `api-request-blob`.
+ *
+ * Nothing here reads them, they were 19% of transcript bytes on a real corpus,
+ * and they are the costliest lines to `JSON.parse` (p95 177 KB). A PREFIX test
+ * (the writer emits `type` first, with no whitespace) avoids the parse. Exact
+ * variants only: the character after `api-request` must be `"`, `-shape"` or
+ * `-blob"`, so an unrelated type that merely starts with those letters
+ * (`api-requests`, `api-request-x`) is still parsed. A line the prefix misses
+ * (reordered keys) is merely parsed and ignored as before, never mis-skipped.
+ * Shared with the archive mirror, so both skip the same lines.
+ */
+export function isApiRequestLine(line: string): boolean {
+  if (!line.startsWith(API_REQUEST_PREFIX)) return false;
+  const n = API_REQUEST_PREFIX.length;
+  return (
+    line.charCodeAt(n) === 34 /* " */ ||
+    line.startsWith('-shape"', n) ||
+    line.startsWith('-blob"', n)
+  );
+}
+
 /**
  * Yield every processable line of a session file from `startOffset`, one at a
  * time, buffering exactly ONE line.
@@ -137,7 +162,16 @@ async function* streamProcessableLines(
       currentOffset += lineBytes;
     }
     // Rule 6: discard the last line if it fails JSON parsing (partial write)
-    if (pending && isValidJson(pending.raw)) yield pending;
+    // An api-request* line is never parsed, so validity cannot be tested by
+    // parsing: a complete one ends in `}`, a write cut short almost never does.
+    if (
+      pending &&
+      (isApiRequestLine(pending.raw)
+        ? pending.raw.endsWith("}")
+        : isValidJson(pending.raw))
+    ) {
+      yield pending;
+    }
   } finally {
     rl.close();
     stream.destroy();
@@ -304,6 +338,13 @@ export async function parseSessionFile(
   for await (const { raw, offset } of streamProcessableLines(filePath, startOffset)) {
     lineNumber++;
     let entry: RawSessionEntry;
+
+    // Skipped before JSON.parse, but the offset advances exactly as for a
+    // parsed line, so incremental resume lands in the same place.
+    if (isApiRequestLine(raw)) {
+      lastGoodOffset = offset + Buffer.byteLength(raw, "utf8") + 1;
+      continue;
+    }
 
     try {
       entry = JSON.parse(raw) as RawSessionEntry;

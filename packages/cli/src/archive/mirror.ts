@@ -24,12 +24,24 @@
  *   copies the gap [mirrorSize, lastGoodOffset) and self-heals — instead of a
  *   silent permanent hole.
  *
+ *   S3 — The mirror is a copy of the source prefix MINUS the `api-request*`
+ *   lines (system prompts, tool definitions and, on 2.1.290-2.1.304, auto-mode
+ *   classifier context; nothing in claude-stats reads them). Once lines are
+ *   dropped, the mirror's size no longer equals the source offset it covers, so
+ *   S2's size-derived watermark cannot be used alone. A small `<mirror>.mark`
+ *   sidecar records `<sourceOffset> <mirrorBytes>`: the source offset archived
+ *   so far and the mirror size at that moment. A mirror longer than recorded
+ *   (a crash between append and mark write) is truncated back before the next
+ *   append, so the append stays idempotent; a mirror with no mark (written
+ *   before S3) keeps the old rule, size == offset.
+ *
  * Ordering contract: the caller MUST invoke `mirrorSessionRange` BEFORE it
  * writes the DB checkpoint. Archive-before-checkpoint means a crash between the
  * two re-does the archive append (idempotent — see S2) rather than skipping it.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isApiRequestLine } from "@claude-stats/core/parser/session";
 import { mirrorFilePath } from "./paths.js";
 
 /** How the collector classified this file's change since the last collect. */
@@ -74,25 +86,107 @@ function fileSize(p: string): number {
   }
 }
 
+/** Longest line prefix `isApiRequestLine` needs: `{"type":"api-request-shape"` is 27. */
+const HEAD_LEN = 32;
+const NL = 0x0a;
+
+/** Path of the watermark sidecar for a mirror file (not `.jsonl`: retention ignores it). */
+export function markFilePath(mirrorPath: string): string {
+  return `${mirrorPath}.mark`;
+}
+
+interface Mark {
+  readonly sourceOffset: number;
+  readonly mirrorBytes: number;
+}
+
+function readMark(markPath: string): Mark | null {
+  try {
+    const m = /^(\d+) (\d+)\s*$/.exec(fs.readFileSync(markPath, "utf8"));
+    if (!m) return null;
+    const sourceOffset = Number(m[1]);
+    const mirrorBytes = Number(m[2]);
+    return Number.isSafeInteger(sourceOffset) && Number.isSafeInteger(mirrorBytes)
+      ? { sourceOffset, mirrorBytes }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Atomic replace, so a crash never leaves a torn mark. */
+function writeMark(markPath: string, mark: Mark): void {
+  const tmp = `${markPath}.tmp`;
+  fs.writeFileSync(tmp, `${mark.sourceOffset} ${mark.mirrorBytes}\n`, { mode: FILE_MODE });
+  fs.renameSync(tmp, markPath);
+}
+
 /**
- * Copy source bytes [from, to) and append them to `destFd`. Streams in bounded
- * chunks so a large range never buffers the whole file. Returns bytes copied.
+ * Copy source bytes [from, to) and append them to `destFd`, dropping every
+ * `api-request*` line (S3). Streams in bounded chunks, so a large range, or a
+ * line larger than a chunk, never buffers whole: the decision is made from the
+ * first HEAD_LEN bytes of each line, held back across chunk boundaries, and
+ * then applies to the rest of that line. Returns bytes WRITTEN to the mirror.
  */
 function copyRange(sourcePath: string, from: number, to: number, destFd: number): number {
   if (to <= from) return 0;
   const srcFd = fs.openSync(sourcePath, "r");
   try {
     const buf = Buffer.allocUnsafe(COPY_CHUNK);
+    const head = Buffer.allocUnsafe(HEAD_LEN);
+    let headLen = 0;
+    // "head": the current line's first bytes are still being collected.
+    let mode: "head" | "keep" | "skip" = "head";
     let offset = from;
     let total = 0;
+    const emit = (b: Buffer, start: number, end: number): void => {
+      if (end <= start) return;
+      fs.writeSync(destFd, b, start, end - start);
+      total += end - start;
+    };
+    const skipsHead = (): boolean => isApiRequestLine(head.toString("latin1", 0, headLen));
+
     while (offset < to) {
       const want = Math.min(COPY_CHUNK, to - offset);
       const read = fs.readSync(srcFd, buf, 0, want, offset);
       if (read <= 0) break; // source shorter than expected — stop cleanly
-      fs.writeSync(destFd, buf, 0, read);
       offset += read;
-      total += read;
+      let i = 0;
+      while (i < read) {
+        if (mode === "head") {
+          const nl = buf.indexOf(NL, i);
+          const hasNl = nl >= 0 && nl < read;
+          const segEnd = hasNl ? nl : read;
+          const take = Math.min(segEnd - i, HEAD_LEN - headLen);
+          buf.copy(head, headLen, i, i + take);
+          headLen += take;
+          i += take;
+          if (hasNl && i === segEnd) {
+            // The line ended inside the head window; buf[i] is its newline.
+            if (!skipsHead()) {
+              emit(head, 0, headLen);
+              emit(buf, i, i + 1);
+            }
+            headLen = 0;
+            i += 1;
+          } else if (headLen === HEAD_LEN) {
+            mode = skipsHead() ? "skip" : "keep";
+            if (mode === "keep") emit(head, 0, headLen);
+            headLen = 0;
+          }
+          // else: the chunk ended mid-head; keep collecting from the next chunk.
+        } else {
+          const nl = buf.indexOf(NL, i);
+          const hasNl = nl >= 0 && nl < read;
+          const end = hasNl ? nl + 1 : read;
+          if (mode === "keep") emit(buf, i, end);
+          i = end;
+          if (hasNl) mode = "head";
+        }
+      }
     }
+    // The range ended inside a line's head window (no trailing newline).
+    if (mode === "head" && headLen > 0 && !skipsHead()) emit(head, 0, headLen);
     return total;
   } finally {
     fs.closeSync(srcFd);
@@ -118,13 +212,21 @@ export function mirrorSessionRange(archiveRoot: string, input: MirrorInput): Mir
     return { mirrorPath, bytesWritten: 0, priorWatermark: fileSize(mirrorPath), recopied: false, skipped: true };
   }
 
-  const watermark = fileSize(mirrorPath);
+  const markPath = markFilePath(mirrorPath);
+  const mirrorSize = fileSize(mirrorPath);
+  const mark = readMark(markPath);
+  // Source offset archived so far. With a mark it is the recorded one; without
+  // (a mirror from before S3, or none yet) the mirror is a byte-for-byte prefix
+  // and its size IS the offset.
+  const watermark = mark ? mark.sourceOffset : mirrorSize;
   const target = input.lastGoodOffset;
 
   // A rewrite (collector said so, OR the parsed end regressed below what we have
-  // already mirrored — which can only happen if the source was rewritten) means
-  // the mirror's prefix is stale. Truncate and re-copy [0, target).
-  const isRewrite = input.mode === "rewrite" || target < watermark;
+  // already mirrored — which can only happen if the source was rewritten, OR the
+  // mirror is shorter than the mark recorded: it was lost or tampered with)
+  // means the mirror's prefix is stale. Truncate and re-copy [0, target).
+  const isRewrite =
+    input.mode === "rewrite" || target < watermark || (mark !== null && mirrorSize < mark.mirrorBytes);
 
   try {
     fs.mkdirSync(path.dirname(mirrorPath), { recursive: true, mode: DIR_MODE });
@@ -133,6 +235,7 @@ export function mirrorSessionRange(archiveRoot: string, input: MirrorInput): Mir
       const fd = fs.openSync(mirrorPath, "w", FILE_MODE);
       try {
         const written = copyRange(input.sourceFilePath, 0, target, fd);
+        writeMark(markPath, { sourceOffset: target, mirrorBytes: written });
         return { mirrorPath, bytesWritten: written, priorWatermark: watermark, recopied: true, skipped: false };
       } finally {
         fs.closeSync(fd);
@@ -140,14 +243,18 @@ export function mirrorSessionRange(archiveRoot: string, input: MirrorInput): Mir
     }
 
     // Append path (covers both "new" and "append"). The range is [watermark,
-    // target) — driven by the mirror's own size, NOT the collector's
+    // target) — driven by the archive's own watermark, NOT the collector's
     // startOffset — so a previously failed append is filled in here (S2).
     if (target <= watermark) {
       return { mirrorPath, bytesWritten: 0, priorWatermark: watermark, recopied: false, skipped: true };
     }
+    // Drop any bytes a crashed or failed append left beyond the recorded size.
+    if (mark && mirrorSize > mark.mirrorBytes) fs.truncateSync(mirrorPath, mark.mirrorBytes);
+    const base = mark ? mark.mirrorBytes : mirrorSize;
     const fd = fs.openSync(mirrorPath, "a", FILE_MODE);
     try {
       const written = copyRange(input.sourceFilePath, watermark, target, fd);
+      writeMark(markPath, { sourceOffset: target, mirrorBytes: base + written });
       return { mirrorPath, bytesWritten: written, priorWatermark: watermark, recopied: false, skipped: false };
     } finally {
       fs.closeSync(fd);
