@@ -35,6 +35,12 @@ export interface ParseResult {
   /** Structured API-error/retry signals found in this range — see
    *  `ApiErrorEvent`'s doc comment (`../types.ts`) for the two mechanisms. */
   apiErrorEvents: ApiErrorEvent[];
+  /**
+   * `api-request*` lines the prefix test MISSED (reordered keys, whitespace) and
+   * that were skipped after parsing instead. Non-zero means the writer's line
+   * shape changed and the cheap prefix test needs updating.
+   */
+  unprefixedApiRequestLines: number;
 }
 
 /** Classify a terminal `isApiErrorMessage` entry's short error string, or a
@@ -184,16 +190,17 @@ async function* streamProcessableLines(
       }
       currentOffset += lineBytes;
     }
-    // Rule 6: discard the last line if it fails JSON parsing (partial write)
-    // An api-request* line is never parsed, so validity cannot be tested by
-    // parsing: a complete one ends in `}`, a write cut short almost never does.
-    if (
-      pending &&
-      (isApiRequestLine(pending.raw)
-        ? pending.raw.endsWith("}")
-        : isValidJson(pending.raw))
-    ) {
-      yield pending;
+    // Rule 6: discard the last line if it is a partial write. A line is
+    // complete only if a newline FOLLOWS it (bytes were read beyond its end):
+    // a closing `}` or valid JSON proves nothing, since a torn read of a
+    // nested object can end on either. An api-request* line is never parsed,
+    // so newline termination is its only test; any other line must ALSO parse.
+    if (pending) {
+      const terminated =
+        startOffset + stream.bytesRead > pending.offset + Buffer.byteLength(pending.raw, "utf8");
+      if (terminated && (isApiRequestLine(pending.raw) || isValidJson(pending.raw))) {
+        yield pending;
+      }
     }
   } finally {
     rl.close();
@@ -356,6 +363,7 @@ export async function parseSessionFile(
   let lastUserTimestamp: number | null = null;
   let lastPromptText: string | null = null;
   const apiErrorEvents: ApiErrorEvent[] = [];
+  let unprefixedApiRequestLines = 0;
 
   let lineNumber = 0;
   for await (const { raw, offset } of streamProcessableLines(filePath, startOffset)) {
@@ -388,6 +396,13 @@ export async function parseSessionFile(
 
     // Update last good offset after each successfully parsed line
     lastGoodOffset = offset + Buffer.byteLength(raw, "utf8") + 1;
+
+    // Tripwire: the prefix test missed an api-request* record (key order or
+    // whitespace changed). Skip it the same way, and count it so the drift shows.
+    if (typeof entry.type === "string" && entry.type.startsWith("api-request")) {
+      unprefixedApiRequestLines++;
+      continue;
+    }
 
     // Extract common envelope fields
     if (entry.sessionId && !sessionId) sessionId = entry.sessionId;
@@ -764,7 +779,7 @@ export async function parseSessionFile(
       }
     : null;
 
-  return { session, messages, errors, lastGoodOffset, firstKbHash, parentUuid, apiErrorEvents };
+  return { session, messages, errors, lastGoodOffset, firstKbHash, parentUuid, apiErrorEvents, unprefixedApiRequestLines };
 }
 
 /**

@@ -150,6 +150,59 @@ describe("mirrorSessionRange — excludes api-request lines (S3)", () => {
     expect(readMirror()).toBe(withoutApi(lines));
   });
 
+  it("a crash between the first copy and the mark write leaves no unfiltered fragment", () => {
+    // New mirror: the mark ({0,0}) is on disk BEFORE any filtered byte lands.
+    const lines = [convLine(0), apiLine("api-request", 300), convLine(1)];
+    fs.writeFileSync(sourcePath, join(lines));
+    mirrorSessionRange(archiveRoot, input("new", fs.statSync(sourcePath).size));
+    // Simulate the crash: copy done, final mark write lost -> the pre-copy mark.
+    fs.writeFileSync(markPath(), "0 0\n");
+    // A fragment of the unfiltered source is all the crash could have left.
+    const full = readMirror();
+    fs.writeFileSync(mirrorPath(), full + '{"type":"api-request","pa');
+
+    mirrorSessionRange(archiveRoot, input("append", fs.statSync(sourcePath).size));
+    expect(readMirror()).toBe(withoutApi(lines));
+    expect(readMirror()).not.toContain("api-request");
+  });
+
+  it("a deleted mark on a filtered mirror triggers a rewrite, not a mid-line resume", () => {
+    const lines = [convLine(0), apiLine("api-request", 400), convLine(1), apiLine("api-request-blob", 900), convLine(2)];
+    const firstTwo = join(lines.slice(0, 3));
+    fs.writeFileSync(sourcePath, firstTwo);
+    mirrorSessionRange(archiveRoot, input("new", Buffer.byteLength(firstTwo)));
+    fs.rmSync(markPath());
+    // Without the mark the size fallback points into the middle of the source.
+    expect(Buffer.byteLength(readMirror())).toBeLessThan(Buffer.byteLength(firstTwo));
+    const all = join(lines);
+    fs.writeFileSync(sourcePath, all);
+    const r = mirrorSessionRange(archiveRoot, input("append", Buffer.byteLength(all)));
+    expect(r.recopied).toBe(true);
+    expect(readMirror()).toBe(withoutApi(lines));
+  });
+
+  it("a watermark that is mid-line in the source takes the rewrite path", () => {
+    const lines = [convLine(0), apiLine("api-request", 400), convLine(1)];
+    fs.writeFileSync(sourcePath, join(lines));
+    mirrorSessionRange(archiveRoot, input("new", fs.statSync(sourcePath).size));
+    // Poison the mark with an offset inside the second line.
+    const mid = Buffer.byteLength(convLine(0)) + 1 + 10;
+    fs.writeFileSync(markPath(), `${mid} ${Buffer.byteLength(readMirror())}\n`);
+    const r = mirrorSessionRange(archiveRoot, input("append", fs.statSync(sourcePath).size));
+    expect(r.recopied).toBe(true);
+    expect(readMirror()).toBe(withoutApi(lines));
+  });
+
+  it("never truncates the mirror when the source has vanished", () => {
+    fs.writeFileSync(sourcePath, join([convLine(0)]));
+    mirrorSessionRange(archiveRoot, input("new", fs.statSync(sourcePath).size));
+    const before = readMirror();
+    fs.rmSync(sourcePath);
+    const r = mirrorSessionRange(archiveRoot, input("append", 9999));
+    expect(r.skipped).toBe(true);
+    expect(readMirror()).toBe(before);
+  });
+
   it("retention removes the mark together with an expired mirror", () => {
     fs.writeFileSync(sourcePath, join([convLine(0), apiLine("api-request", 10)]));
     mirrorSessionRange(archiveRoot, input("new", fs.statSync(sourcePath).size));

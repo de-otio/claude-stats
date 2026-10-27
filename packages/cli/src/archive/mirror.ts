@@ -114,6 +114,21 @@ function readMark(markPath: string): Mark | null {
   }
 }
 
+/** True when `offset` is 0 or the source byte just before it is a newline. */
+function atLineStart(sourcePath: string, offset: number): boolean {
+  if (offset === 0) return true;
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(sourcePath, "r");
+    const b = Buffer.alloc(1);
+    return fs.readSync(fd, b, 0, 1, offset - 1) === 1 && b[0] === NL;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+}
+
 /** Atomic replace, so a crash never leaves a torn mark. */
 function writeMark(markPath: string, mark: Mark): void {
   const tmp = `${markPath}.tmp`;
@@ -212,6 +227,11 @@ export function mirrorSessionRange(archiveRoot: string, input: MirrorInput): Mir
     return { mirrorPath, bytesWritten: 0, priorWatermark: fileSize(mirrorPath), recopied: false, skipped: true };
   }
 
+  // A vanished source must never cost us the mirror (the rewrite path truncates it).
+  if (!fs.existsSync(input.sourceFilePath)) {
+    return { mirrorPath, bytesWritten: 0, priorWatermark: fileSize(mirrorPath), recopied: false, skipped: true };
+  }
+
   const markPath = markFilePath(mirrorPath);
   const mirrorSize = fileSize(mirrorPath);
   const mark = readMark(markPath);
@@ -225,13 +245,24 @@ export function mirrorSessionRange(archiveRoot: string, input: MirrorInput): Mir
   // already mirrored — which can only happen if the source was rewritten, OR the
   // mirror is shorter than the mark recorded: it was lost or tampered with)
   // means the mirror's prefix is stale. Truncate and re-copy [0, target).
+  // A watermark that is not at a line start (source byte before it is not a
+  // newline) cannot be resumed from: copying would begin mid-line, and the
+  // line-prefix filter would let the remainder of an api-request line through.
+  // That happens when the mark was deleted from a filtered mirror (the size
+  // fallback then points into the middle of the source) or the source changed.
   const isRewrite =
-    input.mode === "rewrite" || target < watermark || (mark !== null && mirrorSize < mark.mirrorBytes);
+    input.mode === "rewrite" ||
+    target < watermark ||
+    (mark !== null && mirrorSize < mark.mirrorBytes) ||
+    !atLineStart(input.sourceFilePath, watermark);
 
   try {
     fs.mkdirSync(path.dirname(mirrorPath), { recursive: true, mode: DIR_MODE });
 
     if (isRewrite) {
+      // Mark first: a mirror that holds filtered content must never be without
+      // a mark, or a crash would let the size fallback misread it as a byte copy.
+      writeMark(markPath, { sourceOffset: 0, mirrorBytes: 0 });
       const fd = fs.openSync(mirrorPath, "w", FILE_MODE);
       try {
         const written = copyRange(input.sourceFilePath, 0, target, fd);
@@ -251,6 +282,11 @@ export function mirrorSessionRange(archiveRoot: string, input: MirrorInput): Mir
     // Drop any bytes a crashed or failed append left beyond the recorded size.
     if (mark && mirrorSize > mark.mirrorBytes) fs.truncateSync(mirrorPath, mark.mirrorBytes);
     const base = mark ? mark.mirrorBytes : mirrorSize;
+    // Adopting a markless mirror (or starting a new one): record where it
+    // stands BEFORE the first filtered byte lands, so no-mark never coexists
+    // with filtered content. A crash mid-copy is then undone by the truncate
+    // above on the next call.
+    if (!mark) writeMark(markPath, { sourceOffset: watermark, mirrorBytes: mirrorSize });
     const fd = fs.openSync(mirrorPath, "a", FILE_MODE);
     try {
       const written = copyRange(input.sourceFilePath, watermark, target, fd);

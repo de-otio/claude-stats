@@ -249,7 +249,11 @@ and is treated accordingly:
   claude-stats reads these lines, and they are the largest and most sensitive
   part of a transcript, so they are skipped by default (the same lines the
   collector skips before parsing). Mirrors written by earlier releases keep
-  whatever they already hold; new bytes are filtered.
+  whatever they already hold; new bytes are filtered. There is no one-shot
+  scrub of old mirrors, because the archive writer has no live caller in the
+  collector yet. The skip is a line-prefix test; if Claude Code changes the
+  line shape, `collect --verbose` reports how many such lines the collector
+  had to skip after a full parse, and the prefix test needs updating.
 - **Where:** `~/.claude-stats/archive/<encoded-project>/<session-id>.jsonl`,
   local only, beside a small `<session-id>.jsonl.mark` file that records how
   far into the source session the mirror has got (the mirror is no longer a

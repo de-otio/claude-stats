@@ -159,18 +159,48 @@ describe("parseSessionFile — api-request lines are skipped", () => {
 
   it("a torn (partial-write) final api-request line is withheld, not consumed", async () => {
     const complete = body([user(1_000), assistant(2_000, "msg_1")]);
-    const torn = '{"type":"api-request","params":{"model":"x"'; // no closing brace, no newline
+    // Cut right after a nested "}" — it ENDS in "}" but is not a finished line.
+    const torn = '{"type":"api-request","params":{"model":"x"}';
     fs.writeFileSync(file, complete + torn);
     const r = await parseSessionFile(file, "/proj", 0);
     expect(r.lastGoodOffset).toBe(Buffer.byteLength(complete));
     expect(r.errors).toEqual([]);
 
-    // Once the write completes, the next collect picks up from the same offset.
-    const done = '{"type":"api-request","params":{"model":"x"}}\n';
+    // Once the write completes, the next collect resumes at the line START and
+    // nothing (no fragment) reaches the quarantine.
+    const done = torn + ',"shapeHash":"s"}\n';
     fs.writeFileSync(file, complete + done);
     const next = await parseSessionFile(file, "/proj", r.lastGoodOffset);
     expect(next.lastGoodOffset).toBe(fs.statSync(file).size);
     expect(next.errors).toEqual([]);
+  });
+
+  it("a final line is complete only when newline-terminated, whatever its type", async () => {
+    const complete = body([user(1_000)]);
+    // Valid JSON, but no newline yet: withheld until the writer finishes the line.
+    fs.writeFileSync(file, complete + assistant(2_000, "msg_1"));
+    const r = await parseSessionFile(file, "/proj", 0);
+    expect(r.messages).toHaveLength(0);
+    expect(r.lastGoodOffset).toBe(Buffer.byteLength(complete));
+    fs.writeFileSync(file, complete + assistant(2_000, "msg_1") + "\n");
+    const next = await parseSessionFile(file, "/proj", r.lastGoodOffset);
+    expect(next.messages).toHaveLength(1);
+    expect(next.lastGoodOffset).toBe(fs.statSync(file).size);
+  });
+
+  it("tripwire: an api-request record the prefix test misses is skipped and counted", async () => {
+    const reordered = JSON.stringify({ uuid: "x", type: "api-request", timestamp: 1_500, params: { m: 1 } });
+    const spaced = '{ "type": "api-request-shape", "shapeHash": "h" }';
+    fs.writeFileSync(file, body([user(1_000), reordered, spaced, assistant(2_000, "msg_1")]));
+    const r = await parseSessionFile(file, "/proj", 0);
+    expect(isApiRequestLine(reordered)).toBe(false);
+    expect(r.unprefixedApiRequestLines).toBe(2);
+    expect(r.errors).toEqual([]);
+    expect(r.messages).toHaveLength(1);
+    expect(r.lastGoodOffset).toBe(fs.statSync(file).size);
+    // Prefixed lines never touch the counter.
+    fs.writeFileSync(file, body(interleaved()));
+    expect((await parseSessionFile(file, "/proj", 0)).unprefixedApiRequestLines).toBe(0);
   });
 
   it("a complete final api-request line advances the offset to end of file", async () => {
