@@ -20,6 +20,7 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: false,
+    globalSetup: [path.resolve(dirname, "../../vitest.global-home.ts")],
     // A CDK synth of the full app is seconds of CPU, not milliseconds, and
     // vitest's 5s default is a wall-clock budget. On a shared CI runner where
     // this suite competes with itself for two cores, synth-backed tests have
