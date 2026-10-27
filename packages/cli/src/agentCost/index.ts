@@ -22,7 +22,7 @@ import {
   type AgentCostReport,
   type AgentCostRow,
 } from "@claude-stats/core/agentCost";
-import { estimateCost, nonNegativeFiniteInt, type RateOverrides } from "@claude-stats/core/pricing";
+import { estimateCost, isLongContextRequest, nonNegativeFiniteInt, type RateOverrides } from "@claude-stats/core/pricing";
 import type { AgentCostMessageStoreRow, Store } from "../store/index.js";
 
 export type {
@@ -77,17 +77,21 @@ function toAgentCostRow(row: AgentCostMessageStoreRow, overrides: RateOverrides 
   let cost = 0;
   let priced = false;
   if (row.model) {
+    const input = nonNegativeFiniteInt(row.input_tokens);
+    const cacheRead = nonNegativeFiniteInt(row.cache_read_tokens);
+    const cacheCreation = nonNegativeFiniteInt(row.cache_creation_tokens);
     const r = estimateCost(
       row.model,
-      nonNegativeFiniteInt(row.input_tokens),
+      input,
       nonNegativeFiniteInt(row.output_tokens),
-      nonNegativeFiniteInt(row.cache_read_tokens),
-      nonNegativeFiniteInt(row.cache_creation_tokens),
+      cacheRead,
+      cacheCreation,
       overrides,
       {
         ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
         ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
       },
+      { longContext: isLongContextRequest(row.model, input, cacheRead, cacheCreation) },
     );
     cost = r.cost;
     priced = r.known;

@@ -9,7 +9,7 @@
  *
  * Design: doc/analysis/efficiency-hygiene/README.md.
  */
-import { estimateCost, nonNegativeFiniteInt, type RateOverrides } from "@claude-stats/core/pricing";
+import { estimateCost, isLongContextRequest, nonNegativeFiniteInt, type RateOverrides } from "@claude-stats/core/pricing";
 import {
   runHygieneDetectors,
   buildHygieneDigest,
@@ -112,7 +112,7 @@ function totalCostOf(rows: readonly HygieneMessageRow[], overrides?: RateOverrid
     total += estimateCost(r.model, r.inputTokens, r.outputTokens, r.cacheReadTokens, r.cacheCreationTokens, overrides, {
       ephemeral5mCacheTokens: r.ephemeral5mCacheTokens,
       ephemeral1hCacheTokens: r.ephemeral1hCacheTokens,
-    }).cost;
+    }, { longContext: isLongContextRequest(r.model, r.inputTokens, r.cacheReadTokens, r.cacheCreationTokens) }).cost;
   }
   return total;
 }

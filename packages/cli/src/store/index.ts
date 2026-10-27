@@ -23,13 +23,29 @@ import type {
   OwnerTarget,
   ApiErrorEvent,
 } from "@claude-stats/core/types";
-import { estimateCost } from "@claude-stats/core/pricing";
+import { estimateCost, longContextSqlExpr, longContextSqlExprHash } from "@claude-stats/core/pricing";
 import { isPlaceholderOutput } from "@claude-stats/core/hygiene";
 import { placeholderOutputSql } from "./placeholder-sql.js";
 import { requireTicketKey } from "@claude-stats/core/tickets";
 import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
-export const SCHEMA_VERSION = 26;
+export const SCHEMA_VERSION = 27;
+
+/**
+ * SQL (0/1) classifying a `messages` row as a long-context request, over the
+ * given table alias (`""` for an unaliased FROM). Built from the live rate
+ * table on every call: a pricing-cache refresh can change it, and the rollup
+ * watermark hashes the same expression.
+ */
+function lcSql(alias: string): string {
+  const p = alias ? `${alias}.` : "";
+  return longContextSqlExpr({
+    model: `${p}model`,
+    input: `${p}input_tokens`,
+    cacheRead: `${p}cache_read_tokens`,
+    cacheCreation: `${p}cache_creation_tokens`,
+  });
+}
 
 /**
  * SQL narrowing a session-id column to sessions attributed to one ticket key.
@@ -151,6 +167,7 @@ export class Store {
     if (current < 24) this.migrateToV24();
     if (current < 25) this.migrateToV25();
     if (current < 26) this.migrateToV26();
+    if (current < 27) this.migrateToV27();
 
     // Stamp the version FORWARD ONLY.
     //
@@ -484,7 +501,47 @@ export class Store {
       );
       CREATE INDEX IF NOT EXISTS idx_message_hourly_hour ON message_hourly (hour_utc);
     `);
-    // Partial fixtures without the source tables have nothing to roll up.
+    // No backfill here since V27: V27 drops and recreates this table with the
+    // `long_context` column in its primary key and runs the full rebuild, and
+    // every database passes through it. `recomputeMessageHourly` writes
+    // `long_context`, a column this V26 definition does not have.
+  }
+
+  /**
+   * V27 — long-context tier in the hourly rollup. `message_hourly` gains a
+   * `long_context` 0/1 column in its primary key, next to `effort`, so a cost
+   * read of the rollup can price each model's long-context requests at the tier
+   * rates. The classification is `longContextSqlExpr` (per request, from the
+   * live rate table), the same expression the raw readers use. Like V26 the
+   * table is a pure derived cache: dropped, recreated and rebuilt in full.
+   */
+  private migrateToV27(): void {
+    this.db.exec(`
+      DROP TABLE IF EXISTS message_hourly;
+      CREATE TABLE message_hourly (
+        hour_utc      INTEGER NOT NULL,
+        project_path  TEXT,
+        model         TEXT,
+        inference_geo TEXT,
+        effort        TEXT,
+        -- 1 when the request's prompt is over its model's long-context
+        -- threshold (see longContextSqlExpr), else 0.
+        long_context  INTEGER NOT NULL,
+        input_tokens          INTEGER NOT NULL,
+        output_tokens         INTEGER NOT NULL,
+        cache_read_tokens     INTEGER NOT NULL,
+        cache_creation_tokens INTEGER NOT NULL,
+        th_input_tokens          INTEGER NOT NULL,
+        th_output_tokens         INTEGER NOT NULL,
+        th_cache_read_tokens     INTEGER NOT NULL,
+        th_cache_creation_tokens INTEGER NOT NULL,
+        msg_count    INTEGER NOT NULL,
+        th_msg_count INTEGER NOT NULL,
+        min_ts       INTEGER,
+        PRIMARY KEY (hour_utc, project_path, model, inference_geo, effort, long_context)
+      );
+      CREATE INDEX IF NOT EXISTS idx_message_hourly_hour ON message_hourly (hour_utc);
+    `);
     const tables = this.db
       .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('sessions', 'messages')")
       .get() as { n: number };
@@ -1202,8 +1259,20 @@ export class Store {
    * (one `?` each, like getStopReasonCounts) — never string-interpolated. Runs
    * in a transaction so DELETE+INSERT are atomic.
    */
-  recomputeMessageHourly(hours?: number[]): void {
-    if (hours && hours.length === 0) return;
+  recomputeMessageHourly(requestedHours?: number[]): void {
+    if (requestedHours && requestedHours.length === 0) return;
+
+    // A partition recompute is only valid when the untouched hours were built
+    // under the CURRENT long-context classification. If the stored watermark
+    // carries a different hash (a new tiered model or threshold arrived with a
+    // pricing refresh), the untouched hours are stale: escalate to a full
+    // rebuild rather than stamping a stale rollup as fresh.
+    const stored = this.db
+      .prepare("SELECT value FROM metadata WHERE key = 'message_hourly_watermark'")
+      .get() as { value: string } | undefined;
+    const hours = requestedHours && stored && !stored.value.endsWith(`|lc=${longContextSqlExprHash()}`)
+      ? undefined
+      : requestedHours;
 
     // hour_utc = CAST(m.timestamp/3600000 AS INTEGER); NULL ts -> -1 sentinel.
     const hourExpr = "COALESCE(CAST(m.timestamp / 3600000 AS INTEGER), -1)";
@@ -1216,7 +1285,7 @@ export class Store {
     const hourFilter = hours ? ` AND ${hourExpr} IN (${placeholders})` : "";
     const insertSql = `
       INSERT INTO message_hourly
-        (hour_utc, project_path, model, inference_geo, effort,
+        (hour_utc, project_path, model, inference_geo, effort, long_context,
          input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
          th_input_tokens, th_output_tokens, th_cache_read_tokens, th_cache_creation_tokens,
          msg_count, th_msg_count, min_ts)
@@ -1226,6 +1295,7 @@ export class Store {
         m.model AS model,
         m.inference_geo AS inference_geo,
         m.effort AS effort,
+        ${lcSql("m")} AS long_context,
         SUM(m.input_tokens),
         SUM(m.output_tokens),
         SUM(m.cache_read_tokens),
@@ -1239,7 +1309,7 @@ export class Store {
         MIN(m.timestamp)
       FROM messages m
       WHERE EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = m.session_id)${hourFilter}
-      GROUP BY hour_utc, project_path, model, inference_geo, effort
+      GROUP BY hour_utc, project_path, model, inference_geo, effort, long_context
     `;
 
     this.transaction(() => {
@@ -1271,7 +1341,7 @@ export class Store {
       // written by an older build, which is the correct conservative outcome.
       this.db
         .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES ('message_hourly_watermark', ?)")
-        .run(this.messagesWatermark());
+        .run(this.rollupWatermark());
     });
   }
 
@@ -1285,7 +1355,19 @@ export class Store {
       .prepare("SELECT value FROM metadata WHERE key = 'message_hourly_watermark'")
       .get() as { value: string } | undefined;
     if (!wm) return false;
-    return wm.value === this.messagesWatermark();
+    return wm.value === this.rollupWatermark();
+  }
+
+  /**
+   * The full rollup watermark: the `messages` fingerprint plus a hash of the
+   * generated long-context classification. A rate-table change that alters the
+   * classification (a new tiered model, a new threshold) changes the hash, so
+   * the in-sync check fails and reads fall back to raw until the rollup is
+   * rebuilt (the next `recomputeMessageHourly`, which escalates to a full
+   * rebuild on a hash mismatch).
+   */
+  private rollupWatermark(): string {
+    return `${this.messagesWatermark()}|lc=${longContextSqlExprHash()}`;
   }
 
   /**
@@ -2296,7 +2378,7 @@ export class Store {
       const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens, undefined, {
         ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
         ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
-      });
+      }, { longContext: row.long_context === 1 });
       entry.cost += cost;
       entry.tokensByModel[row.model] = (entry.tokensByModel[row.model] ?? 0) + row.input_tokens + row.output_tokens;
       sessionCostMap.set(row.session_id, entry);
@@ -2447,6 +2529,7 @@ export class Store {
       SELECT
         model,
         effort,
+        long_context,
         SUM(input_tokens) AS input_tokens,
         SUM(output_tokens) AS output_tokens,
         SUM(cache_read_tokens) AS cache_read_tokens,
@@ -2459,7 +2542,7 @@ export class Store {
         0 AS ephemeral_1h_cache_tokens,
         SUM(msg_count) AS msg_count
       FROM message_hourly
-      GROUP BY model, effort
+      GROUP BY model, effort, long_context
     `);
     return stmt.all() as unknown as MessageEffortTotalRow[];
   }
@@ -2605,6 +2688,7 @@ export class Store {
       SELECT
         (m.timestamp / ${Store.BUCKET_MS}) * ${Store.BUCKET_MS} AS bucket_start,
         m.model AS model,
+        ${lcSql("m")} AS long_context,
         SUM(m.input_tokens) AS input_tokens,
         SUM(m.output_tokens) AS output_tokens,
         SUM(m.cache_read_tokens) AS cache_read_tokens,
@@ -2615,7 +2699,7 @@ export class Store {
         SUM(m.is_turn_start) AS prompt_count
       FROM messages m
       WHERE ${this.messageWhereExists(f)}
-      GROUP BY bucket_start, m.model
+      GROUP BY bucket_start, m.model, long_context
     `;
     const params = f.params;
     const stmt = this.db.prepare(sql);
@@ -2669,6 +2753,7 @@ export class Store {
       SELECT
         s.project_path AS project_path,
         m.model AS model,
+        ${lcSql("m")} AS long_context,
         SUM(m.input_tokens) AS input_tokens,
         SUM(m.output_tokens) AS output_tokens,
         SUM(m.cache_read_tokens) AS cache_read_tokens,
@@ -2680,7 +2765,7 @@ export class Store {
       FROM messages m
       JOIN sessions s ON s.session_id = m.session_id
       WHERE ${this.messageWhereJoin(f)}
-      GROUP BY s.project_path, m.model
+      GROUP BY s.project_path, m.model, long_context
     `;
     const params = f.params;
     const stmt = this.db.prepare(sql);
@@ -2699,6 +2784,7 @@ export class Store {
       SELECT
         m.model,
         m.effort,
+        ${lcSql("m")} AS long_context,
         SUM(m.input_tokens) AS input_tokens,
         SUM(m.output_tokens) AS output_tokens,
         SUM(m.cache_read_tokens) AS cache_read_tokens,
@@ -2708,7 +2794,7 @@ export class Store {
         COUNT(*) AS msg_count
       FROM messages m
       WHERE ${this.messageWhereExists(f)}
-      GROUP BY m.model, m.effort
+      GROUP BY m.model, m.effort, long_context
     `;
     const stmt = this.db.prepare(sql);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2740,6 +2826,7 @@ export class Store {
     const params = f.params;
     const sql = `
       SELECT s.account_uuid AS account_uuid, m.model AS model,
+        ${lcSql("m")} AS long_context,
         SUM(m.input_tokens) AS input_tokens,
         SUM(m.output_tokens) AS output_tokens,
         SUM(m.cache_read_tokens) AS cache_read_tokens,
@@ -2749,7 +2836,7 @@ export class Store {
       FROM messages m
       JOIN sessions s ON s.session_id = m.session_id
       WHERE ${this.messageWhereJoin(f)}
-      GROUP BY s.account_uuid, m.model
+      GROUP BY s.account_uuid, m.model, long_context
     `;
     const stmt = this.db.prepare(sql);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3770,6 +3857,7 @@ export class Store {
       const placeholders = batch.map(() => "?").join(",");
       const stmt = this.db.prepare(`
         SELECT session_id, model,
+          ${lcSql("")} AS long_context,
           SUM(input_tokens) AS input_tokens,
           SUM(output_tokens) AS output_tokens,
           SUM(cache_read_tokens) AS cache_read_tokens,
@@ -3778,7 +3866,7 @@ export class Store {
           SUM(ephemeral_1h_cache_tokens) AS ephemeral_1h_cache_tokens
         FROM messages
         WHERE session_id IN (${placeholders})${boundAnd}
-        GROUP BY session_id, model
+        GROUP BY session_id, model, long_context
       `);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rows = (stmt.all as (...args: any[]) => unknown[])(...batch, ...boundParams) as SessionMessageTotalRow[];
@@ -4766,6 +4854,7 @@ export class Store {
           ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
           ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
         },
+        { longContext: row.long_context === 1 },
       );
       costMap.set(row.session_id, current + cost);
     }
@@ -4973,6 +5062,10 @@ export interface TicketLinkRow {
 export interface SessionMessageTotalRow {
   session_id: string;
   model: string;
+  /** 1 when these are long-context requests (see `longContextSqlExpr`); pass
+   *  `{ longContext: row.long_context === 1 }` to `estimateCost`. A model has up
+   *  to two rows per session: one per tier. */
+  long_context: number;
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;
@@ -5020,6 +5113,11 @@ export interface MessageFilter {
 
 export interface MessageTotalRow {
   model: string;
+  /** 1 when these are long-context requests (see `longContextSqlExpr`); pass
+   *  `{ longContext: row.long_context === 1 }` to `estimateCost`. A model has up
+   *  to two rows per group: one per tier. Token readers sum across both; cost
+   *  readers price each row. */
+  long_context: number;
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;
@@ -5059,14 +5157,19 @@ export interface MessageEffortTotalRow extends MessageTotalRow {
 }
 
 /**
- * Collapse (model, effort) rows to one row per model: token sums add, so the
- * result equals the pre-V26 per-model `getMessageTotals`. First-seen model
- * order is kept.
+ * Collapse (model, effort) rows to one row per (model, long-context tier):
+ * token sums add, so for every model with no tier the result equals the
+ * pre-V26 per-model `getMessageTotals`. A model with a long-context tier keeps
+ * two rows (`long_context` 0 and 1) because each prices at its own rates;
+ * summing cost over the rows gives the model's cost, and a caller that DISPLAYS
+ * one entry per model must add the two rows' costs under the one model key.
+ * First-seen order is kept.
  */
 export function foldTotalsByModel(rows: readonly MessageEffortTotalRow[]): MessageTotalRow[] {
-  const byModel = new Map<string | null, MessageTotalRow>();
+  const byModel = new Map<string, MessageTotalRow>();
   for (const r of rows) {
-    const acc = byModel.get(r.model);
+    const key = `${r.model ?? ""}\u0000${r.model === null ? "n" : "s"}\u0000${r.long_context}`;
+    const acc = byModel.get(key);
     if (acc) {
       acc.input_tokens += r.input_tokens;
       acc.output_tokens += r.output_tokens;
@@ -5075,8 +5178,9 @@ export function foldTotalsByModel(rows: readonly MessageEffortTotalRow[]): Messa
       acc.ephemeral_5m_cache_tokens += r.ephemeral_5m_cache_tokens;
       acc.ephemeral_1h_cache_tokens += r.ephemeral_1h_cache_tokens;
     } else {
-      byModel.set(r.model, {
+      byModel.set(key, {
         model: r.model,
+        long_context: r.long_context,
         input_tokens: r.input_tokens,
         output_tokens: r.output_tokens,
         cache_read_tokens: r.cache_read_tokens,
@@ -5109,6 +5213,8 @@ export interface MessageProjectTotalRow extends MessageTotalRow {
 export interface AccountModelTotalRow {
   account_uuid: string | null;
   model: string;
+  /** See `MessageTotalRow.long_context`. */
+  long_context: number;
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;

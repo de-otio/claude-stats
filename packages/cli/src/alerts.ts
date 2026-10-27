@@ -38,6 +38,9 @@ export function checkThresholds(store: Store, config: Config): ThresholdCheck[] 
         mt.output_tokens,
         mt.cache_read_tokens,
         mt.cache_creation_tokens,
+        undefined,
+        undefined,
+        { longContext: mt.long_context === 1 },
       );
       if (result.known) {
         currentCost += result.cost;

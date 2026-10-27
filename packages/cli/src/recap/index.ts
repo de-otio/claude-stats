@@ -47,7 +47,7 @@ import {
 import type { CacheClient, SnapshotHashInputs } from './cache.js';
 import { wrapUntrusted } from '../mcp/index.js';
 import { sanitizePromptText } from '@claude-stats/core/sanitize';
-import { estimateCost } from '@claude-stats/core/pricing';
+import { estimateCost, isLongContextRequest } from '@claude-stats/core/pricing';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1050,6 +1050,9 @@ function buildDigestItem(
         row.output_tokens,
         row.cache_read_tokens,
         row.cache_creation_tokens,
+        undefined,
+        undefined,
+        { longContext: isLongContextRequest(row.model, row.input_tokens, row.cache_read_tokens, row.cache_creation_tokens) },
       );
       estimatedCost += cost;
       costByModel[row.model] = (costByModel[row.model] ?? 0) + cost;
