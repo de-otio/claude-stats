@@ -3002,6 +3002,7 @@ function buildContextAnalysis(
         ephemeral1hCacheTokens: 0,
         toolErrorCount: 0,
         tools: [],
+        outputPlaceholder: false, // context-position math only; output is not read
       };
       const position = (perSessionCount.get(msg.session_id) ?? 0) + 1;
       perSessionCount.set(msg.session_id, position);

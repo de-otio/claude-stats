@@ -55,6 +55,13 @@ export interface CollectResult {
    */
   ownerOverrides: number;
   parseErrors: number;
+  /**
+   * `api-request*` lines the parser's prefix test missed and skipped after a
+   * full parse. Non-zero means Claude Code changed the line shape (key order,
+   * spacing) and the prefix test is paying the parse cost again. Printed by
+   * `collect --verbose`.
+   */
+  unprefixedApiRequestLines: number;
   schemaChanges: string[];
 }
 
@@ -73,6 +80,7 @@ export async function collect(
     messagesStamped: 0,
     ownerOverrides: 0,
     parseErrors: 0,
+    unprefixedApiRequestLines: 0,
     schemaChanges: [],
   };
 
@@ -176,6 +184,7 @@ export async function collect(
 
     result.filesProcessed++;
     result.parseErrors += parsed.errors.length;
+    result.unprefixedApiRequestLines += parsed.unprefixedApiRequestLines;
 
     // Store everything in a single transaction for crash safety
     // Resolve repo URL once per project path. Use the parser's corrected
@@ -303,6 +312,13 @@ export async function collect(
           `${parsed.session.inputTokens.toLocaleString()} input tokens`
       );
     }
+  }
+
+  if (opts.verbose && result.unprefixedApiRequestLines > 0) {
+    console.log(
+      `[warning] ${result.unprefixedApiRequestLines} api-request line(s) escaped the prefix test ` +
+        `and were skipped after a full parse; the transcript line shape may have changed`
+    );
   }
 
   // Reconcile: mark checkpointed files that are no longer on disk as source_deleted.

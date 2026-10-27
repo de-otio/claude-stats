@@ -78,6 +78,14 @@ export interface HygieneMessageRow {
    * must never see a malformed value; it only ever sees `readonly string[]`.
    */
   tools: readonly string[];
+  /**
+   * True for a pre-2.1.307 subagent row with no stop reason, whose
+   * `outputTokens` is a mid-stream placeholder (`isPlaceholderOutput`, R1).
+   * REQUIRED for the same reason as the fields above: a forgotten store
+   * mapper must be a compile error, not a silently-false flag. Detectors that
+   * read output or turn counts skip flagged rows.
+   */
+  outputPlaceholder: boolean;
 }
 
 /**

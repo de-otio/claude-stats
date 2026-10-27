@@ -35,6 +35,7 @@ export type {
   TierMismatchClassification,
 } from "./types.js";
 export { DEFAULT_HYGIENE_THRESHOLDS } from "./types.js";
+export { isPlaceholderOutput, isVersionBefore, PLACEHOLDER_FIXED_IN, type PlaceholderOutputInput } from "./placeholderOutput.js";
 export { computeTierParity, detectTierMismatch, type TierParityComparison, type TierParityVerdict } from "./tierMismatch.js";
 // Shared row-grouping/costing helpers — re-exported so a sibling comparison
 // (constraint-impact) can build the same per-session shape from the same

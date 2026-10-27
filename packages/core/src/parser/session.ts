@@ -35,6 +35,12 @@ export interface ParseResult {
   /** Structured API-error/retry signals found in this range — see
    *  `ApiErrorEvent`'s doc comment (`../types.ts`) for the two mechanisms. */
   apiErrorEvents: ApiErrorEvent[];
+  /**
+   * `api-request*` lines the prefix test MISSED (reordered keys, whitespace) and
+   * that were skipped after parsing instead. Non-zero means the writer's line
+   * shape changed and the cheap prefix test needs updating.
+   */
+  unprefixedApiRequestLines: number;
 }
 
 /** Classify a terminal `isApiErrorMessage` entry's short error string, or a
@@ -102,6 +108,54 @@ export async function extractCwdFromSessionFile(
   }
 }
 
+/** Most bytes of an unparseable line kept in a parse-error record. */
+export const RAW_LINE_CAP_BYTES = 200;
+
+/**
+ * Cap a raw line for a parse-error record: at most `RAW_LINE_CAP_BYTES` bytes
+ * of it, cut on a UTF-8 character boundary (never through a multi-byte
+ * sequence). A bad line can be 100 KB+ of tool output; the quarantine is a
+ * diagnostic, and the head of the line plus its length says what failed. The
+ * length travels in the record's `error` text (no schema change), so
+ * `originalBytes` is null when the line fits and nothing was cut.
+ */
+export function capRawLine(raw: string): { text: string; originalBytes: number | null } {
+  // A UTF-8 byte is at most 3x a UTF-16 unit: short strings cannot exceed the cap.
+  if (raw.length * 3 <= RAW_LINE_CAP_BYTES) return { text: raw, originalBytes: null };
+  const buf = Buffer.from(raw, "utf8");
+  if (buf.length <= RAW_LINE_CAP_BYTES) return { text: raw, originalBytes: null };
+  let cut = RAW_LINE_CAP_BYTES;
+  // buf[cut] is the first byte dropped; if it is a continuation byte the cut is
+  // inside a character, so back up to that character's lead byte and drop it all.
+  while (cut > 0 && (buf[cut]! & 0xc0) === 0x80) cut--;
+  return { text: buf.toString("utf8", 0, cut), originalBytes: buf.length };
+}
+
+const API_REQUEST_PREFIX ='{"type":"api-request';
+
+/**
+ * True for the per-request records Claude Code 2.1.300+ writes beside the
+ * conversation: `api-request`, `api-request-shape`, `api-request-blob`.
+ *
+ * Nothing here reads them, they were 19% of transcript bytes on a real corpus,
+ * and they are the costliest lines to `JSON.parse` (p95 177 KB). A PREFIX test
+ * (the writer emits `type` first, with no whitespace) avoids the parse. Exact
+ * variants only: the character after `api-request` must be `"`, `-shape"` or
+ * `-blob"`, so an unrelated type that merely starts with those letters
+ * (`api-requests`, `api-request-x`) is still parsed. A line the prefix misses
+ * (reordered keys) is merely parsed and ignored as before, never mis-skipped.
+ * Shared with the archive mirror, so both skip the same lines.
+ */
+export function isApiRequestLine(line: string): boolean {
+  if (!line.startsWith(API_REQUEST_PREFIX)) return false;
+  const n = API_REQUEST_PREFIX.length;
+  return (
+    line.charCodeAt(n) === 34 /* " */ ||
+    line.startsWith('-shape"', n) ||
+    line.startsWith('-blob"', n)
+  );
+}
+
 /**
  * Yield every processable line of a session file from `startOffset`, one at a
  * time, buffering exactly ONE line.
@@ -136,8 +190,18 @@ async function* streamProcessableLines(
       }
       currentOffset += lineBytes;
     }
-    // Rule 6: discard the last line if it fails JSON parsing (partial write)
-    if (pending && isValidJson(pending.raw)) yield pending;
+    // Rule 6: discard the last line if it is a partial write. A line is
+    // complete only if a newline FOLLOWS it (bytes were read beyond its end):
+    // a closing `}` or valid JSON proves nothing, since a torn read of a
+    // nested object can end on either. An api-request* line is never parsed,
+    // so newline termination is its only test; any other line must ALSO parse.
+    if (pending) {
+      const terminated =
+        startOffset + stream.bytesRead > pending.offset + Buffer.byteLength(pending.raw, "utf8");
+      if (terminated && (isApiRequestLine(pending.raw) || isValidJson(pending.raw))) {
+        yield pending;
+      }
+    }
   } finally {
     rl.close();
     stream.destroy();
@@ -181,6 +245,11 @@ function usageMagnitude(m: MessageRecord): number {
   );
 }
 
+/** True when the entry carries a non-empty stop_reason (a finished response). */
+function hasStopReason(m: MessageRecord): boolean {
+  return m.stopReason != null && m.stopReason !== "";
+}
+
 /**
  * Strip the REPEATED usage from every non-carrier entry of a `message.id` group.
  *
@@ -215,7 +284,13 @@ function markUsageCarriers(messages: MessageRecord[]): void {
     if (group.length < 2) continue;
     let carrier = group[0]!;
     for (const m of group) {
-      if (usageMagnitude(m) > usageMagnitude(carrier)) carrier = m;
+      const mag = usageMagnitude(m);
+      const best = usageMagnitude(carrier);
+      // Ties: prefer an entry that has a stop_reason (the finished response)
+      // over a mid-stream placeholder; otherwise the earliest stays.
+      if (mag > best || (mag === best && !hasStopReason(carrier) && hasStopReason(m))) {
+        carrier = m;
+      }
     }
     for (const m of group) {
       if (m === carrier) continue;
@@ -299,20 +374,31 @@ export async function parseSessionFile(
   let lastUserTimestamp: number | null = null;
   let lastPromptText: string | null = null;
   const apiErrorEvents: ApiErrorEvent[] = [];
+  let unprefixedApiRequestLines = 0;
 
   let lineNumber = 0;
   for await (const { raw, offset } of streamProcessableLines(filePath, startOffset)) {
     lineNumber++;
     let entry: RawSessionEntry;
 
+    // Skipped before JSON.parse, but the offset advances exactly as for a
+    // parsed line, so incremental resume lands in the same place.
+    if (isApiRequestLine(raw)) {
+      lastGoodOffset = offset + Buffer.byteLength(raw, "utf8") + 1;
+      continue;
+    }
+
     try {
       entry = JSON.parse(raw) as RawSessionEntry;
     } catch (err) {
+      const capped = capRawLine(raw);
       errors.push({
         filePath,
         lineNumber,
-        rawLine: raw,
-        error: String(err),
+        rawLine: capped.text,
+        error: capped.originalBytes === null
+          ? String(err)
+          : `${String(err)} (line is ${capped.originalBytes} bytes; first ${RAW_LINE_CAP_BYTES} stored)`,
         timestamp: Date.now(),
         claudeVersion: claudeVersion ?? undefined,
       });
@@ -321,6 +407,13 @@ export async function parseSessionFile(
 
     // Update last good offset after each successfully parsed line
     lastGoodOffset = offset + Buffer.byteLength(raw, "utf8") + 1;
+
+    // Tripwire: the prefix test missed an api-request* record (key order or
+    // whitespace changed). Skip it the same way, and count it so the drift shows.
+    if (typeof entry.type === "string" && entry.type.startsWith("api-request")) {
+      unprefixedApiRequestLines++;
+      continue;
+    }
 
     // Extract common envelope fields
     if (entry.sessionId && !sessionId) sessionId = entry.sessionId;
@@ -703,7 +796,7 @@ export async function parseSessionFile(
       }
     : null;
 
-  return { session, messages, errors, lastGoodOffset, firstKbHash, parentUuid, apiErrorEvents };
+  return { session, messages, errors, lastGoodOffset, firstKbHash, parentUuid, apiErrorEvents, unprefixedApiRequestLines };
 }
 
 /**

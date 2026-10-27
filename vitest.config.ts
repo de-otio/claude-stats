@@ -71,6 +71,7 @@ export default defineConfig({
       "packages/infra/lambda/**/__tests__/**/*.test.ts",
     ],
     exclude: ["**/.claude/worktrees/**", "**/node_modules/**", "dist/**"],
+    globalSetup: ["./vitest.global-home.ts"],
     setupFiles: ["packages/cli/src/__tests__/setup.ts"],
     coverage: {
       provider: "v8",

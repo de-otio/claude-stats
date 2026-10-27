@@ -24,6 +24,7 @@ import type {
   ApiErrorEvent,
 } from "@claude-stats/core/types";
 import { estimateCost } from "@claude-stats/core/pricing";
+import { isPlaceholderOutput } from "@claude-stats/core/hygiene";
 import { requireTicketKey } from "@claude-stats/core/tickets";
 import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
@@ -1358,8 +1359,24 @@ export class Store {
         subscription_type       = COALESCE(sessions.subscription_type, excluded.subscription_type),
         thinking_blocks         = excluded.thinking_blocks,
         throttle_events         = excluded.throttle_events,
-        active_duration_ms      = excluded.active_duration_ms,
-        median_response_time_ms = excluded.median_response_time_ms,
+        -- A re-parse from byte 0 of a TRIMMED transcript (Claude Code's local
+        -- GC) sees fewer lines, so its durations are smaller; the messages it
+        -- no longer shows are retained in \`messages\`. Durations are built from
+        -- every entry type, which \`messages\` (assistant only) cannot
+        -- reproduce, so they cannot be re-projected: when this parse saw
+        -- fewer messages than are stored (the trim signal) take MAX for the
+        -- total (never a sum, so re-parsing cannot inflate it) and keep the
+        -- stored median; otherwise take the new values, so a corrected duration
+        -- algorithm can still lower a stored figure on a full re-parse.
+        active_duration_ms      = CASE
+          WHEN excluded.assistant_message_count < sessions.assistant_message_count
+          THEN MAX(COALESCE(sessions.active_duration_ms, 0), COALESCE(excluded.active_duration_ms, 0))
+          ELSE excluded.active_duration_ms END,
+        median_response_time_ms = CASE
+          WHEN sessions.median_response_time_ms IS NOT NULL
+           AND excluded.assistant_message_count < sessions.assistant_message_count
+          THEN sessions.median_response_time_ms
+          ELSE excluded.median_response_time_ms END,
         parent_session_id       = COALESCE(excluded.parent_session_id, sessions.parent_session_id),
         is_subagent             = MAX(sessions.is_subagent, excluded.is_subagent),
         -- Latest-non-null-wins (V25): a NULL (no meta file this pass, an older
@@ -1612,7 +1629,8 @@ export class Store {
 
     // Is some OTHER row already counting this response's usage?
     const carrierTaken = this.db.prepare(
-      `SELECT uuid, input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens AS magnitude
+      `SELECT uuid, stop_reason,
+              input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens AS magnitude
          FROM messages
         WHERE session_id = ? AND message_id = ? AND usage_counted = 1 AND uuid != ?
         LIMIT 1`,
@@ -1637,14 +1655,20 @@ export class Store {
         const stored = claimed.has(key)
           ? undefined
           : (carrierTaken.get(r.sessionId, r.messageId, r.uuid) as
-              | { uuid: string; magnitude: number }
+              | { uuid: string; stop_reason: string | null; magnitude: number }
               | undefined);
         const incoming = r.inputTokens + r.outputTokens + r.cacheCreationTokens + r.cacheReadTokens;
         if (claimed.has(key)) {
           carried = false;
-        } else if (stored !== undefined && incoming <= stored.magnitude) {
-          // Ties keep the stored row: it is the EARLIER entry, which is the
-          // full parse's tiebreak too.
+        } else if (
+          stored !== undefined &&
+          (incoming < stored.magnitude ||
+            // Ties keep the stored row (the EARLIER entry, the full parse's
+            // tiebreak) unless only the incoming one has a stop_reason —
+            // markUsageCarriers prefers the finished entry on a tie.
+            (incoming === stored.magnitude &&
+              !(!stored.stop_reason && !!r.stopReason)))
+        ) {
           carried = false;
         } else {
           // Either no carrier yet, or this later half of a straddling group
@@ -2317,19 +2341,26 @@ export class Store {
     if (sessionIds.length === 0) return new Map();
     const placeholders = sessionIds.map(() => "?").join(",");
     const stmt = this.db.prepare(`
-      SELECT stop_reason, COUNT(*) as count
-      FROM messages
-      WHERE stop_reason IS NOT NULL AND session_id IN (${placeholders})
-      GROUP BY stop_reason
-      ORDER BY count DESC
+      SELECT m.stop_reason AS stop_reason, m.claude_version AS claude_version,
+             s.is_subagent AS is_subagent, COUNT(*) as count
+      FROM messages m
+      LEFT JOIN sessions s ON s.session_id = m.session_id
+      WHERE m.stop_reason IS NOT NULL AND m.session_id IN (${placeholders})
+      GROUP BY m.stop_reason, m.claude_version, s.is_subagent
     `);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows = (stmt.all as (...args: any[]) => unknown[])(...sessionIds) as Array<{ stop_reason: string; count: number }>;
+    const rows = (stmt.all as (...args: any[]) => unknown[])(...sessionIds) as Array<{
+      stop_reason: string; claude_version: string | null; is_subagent: number; count: number;
+    }>;
+    // R1: pre-2.1.307 subagent rows with an empty stop reason are placeholders,
+    // not a stop-reason observation — excluded via the shared predicate.
     const result = new Map<string, number>();
     for (const row of rows) {
-      result.set(row.stop_reason, row.count);
+      if (isPlaceholderOutput({ isSubagent: row.is_subagent === 1, claudeVersion: row.claude_version, stopReason: row.stop_reason })) continue;
+      result.set(row.stop_reason, (result.get(row.stop_reason) ?? 0) + row.count);
     }
-    return result;
+    // Preserve the previous ORDER BY count DESC contract.
+    return new Map([...result.entries()].sort((a, b) => b[1] - a[1]));
   }
 
   // ─── Reporting queries ──────────────────────────────────────────────────────
@@ -3859,7 +3890,8 @@ export class Store {
              m.input_tokens, m.output_tokens,
              m.cache_read_tokens, m.cache_creation_tokens,
              m.ephemeral_5m_cache_tokens, m.ephemeral_1h_cache_tokens,
-             m.tool_error_count, m.tools
+             m.tool_error_count, m.tools,
+             m.claude_version, m.stop_reason, s.is_subagent
       FROM messages m
       JOIN sessions s ON s.session_id = m.session_id
       WHERE ${this.messageWhereJoin(f)}
@@ -3867,7 +3899,23 @@ export class Store {
     `;
     const stmt = this.db.prepare(sql);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (stmt.all as (...args: any[]) => unknown[])(...f.params) as HygieneMessageStoreRow[];
+    const raw = (stmt.all as (...args: any[]) => unknown[])(...f.params) as Array<
+      Omit<HygieneMessageStoreRow, "output_placeholder"> & {
+        claude_version: string | null;
+        stop_reason: string | null;
+        is_subagent: number;
+      }
+    >;
+    // R1: fill the placeholder flag here, once, from existing columns; the raw
+    // version/stop/subagent columns do not leave the store boundary.
+    return raw.map(({ claude_version, stop_reason, is_subagent, ...rest }) => ({
+      ...rest,
+      output_placeholder: isPlaceholderOutput({
+        isSubagent: is_subagent === 1,
+        claudeVersion: claude_version,
+        stopReason: stop_reason,
+      }),
+    }));
   }
 
   /**
@@ -5069,6 +5117,8 @@ export interface HygieneMessageStoreRow {
    *  hand-edited JSONL or synced shard's non-string element needs) happens at
    *  each `toHygieneMessageRow` mapper, not here. */
   tools: string;
+  /** `isPlaceholderOutput` over the row's own columns (R1). */
+  output_placeholder: boolean;
 }
 
 /**
