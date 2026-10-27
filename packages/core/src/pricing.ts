@@ -62,6 +62,12 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
   // refusal on `claude-opus-5` and costs $0 with `known: false` — which, as the
   // default Claude Code model, zeroed almost the entire dashboard.
   "claude-opus-5-5":   { inputPerMillion: 4,    outputPerMillion: 20, cacheReadPerMillion: 0.20, cacheWritePerMillion: 5,     cacheWrite1hPerMillion: 8,    ttlRateBasis: "parsed" },
+  // Claude Sonnet 5.5 and Haiku 5.5 — built-in rows so a first run, an offline
+  // machine or a failed pricing fetch does not cost them at $0 with
+  // `known: false`. Rates match the live pricing cache and the launch
+  // changelog (2026-10-27). Sonnet 5.5's cache read is 0.10× input.
+  "claude-sonnet-5-5": { inputPerMillion: 2,    outputPerMillion: 10, cacheReadPerMillion: 0.10, cacheWritePerMillion: 2.50,  cacheWrite1hPerMillion: 4,    ttlRateBasis: "parsed" },
+  "claude-haiku-5-5":  { inputPerMillion: 0.10, outputPerMillion: 0.50, cacheReadPerMillion: 0.01, cacheWritePerMillion: 0.125, cacheWrite1hPerMillion: 0.20, ttlRateBasis: "parsed" },
   // Claude Opus 5 — same rates as Opus 4.8. Missing this row meant current-
   // generation Opus usage costed zero with `known: true` nowhere to be seen.
   "claude-opus-5":     { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed" },

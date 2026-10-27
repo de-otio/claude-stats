@@ -125,6 +125,7 @@ export function pruneArchive(
     if (lastActivity >= cutoff) continue; // still within window → keep
     try {
       fs.rmSync(file, { force: true });
+      fs.rmSync(`${file}.mark`, { force: true }); // watermark sidecar (mirror.ts, S3)
       removedPaths.push(file);
     } catch {
       // best-effort: leave it for the next sweep

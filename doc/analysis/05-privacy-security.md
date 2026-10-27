@@ -236,12 +236,28 @@ file mtime and can misfire — see the
 materially different, higher-sensitivity data practice than the aggregated DB
 and is treated accordingly:
 
-- **What it stores:** the full raw `.jsonl` bytes for a session — user
+- **What it stores:** the raw `.jsonl` lines of a session — user
   prompts, assistant responses, tool calls and results, file contents that
   passed through the conversation. This is strictly more than the DB's
   `prompt_text` column (which holds only the user's own prompt text).
+- **What it leaves out:** the `api-request`, `api-request-shape` and
+  `api-request-blob` lines that Claude Code 2.1.300+ writes beside the
+  conversation. They carry each request's system prompt, tool definitions and
+  parameters, and entries from 2.1.290–2.1.304 also carry the auto-mode
+  classifier's context (permission rules, home directory, user identity,
+  trusted directories). The archive exists to replay usage, nothing in
+  claude-stats reads these lines, and they are the largest and most sensitive
+  part of a transcript, so they are skipped by default (the same lines the
+  collector skips before parsing). Mirrors written by earlier releases keep
+  whatever they already hold; new bytes are filtered. There is no one-shot
+  scrub of old mirrors, because the archive writer has no live caller in the
+  collector yet. The skip is a line-prefix test; if Claude Code changes the
+  line shape, `collect --verbose` reports how many such lines the collector
+  had to skip after a full parse, and the prefix test needs updating.
 - **Where:** `~/.claude-stats/archive/<encoded-project>/<session-id>.jsonl`,
-  local only.
+  local only, beside a small `<session-id>.jsonl.mark` file that records how
+  far into the source session the mirror has got (the mirror is no longer a
+  byte-for-byte copy, so its own size cannot say).
 - **Permissions:** archive directory created `0700`; each archive file
   `0600` — the same owner-only posture as the rest of `~/.claude-stats/`.
 - **Off by default.** Nothing is written until the user explicitly enables it
