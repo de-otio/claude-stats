@@ -118,7 +118,7 @@ describe("high-effort-low-output: threshold boundaries", () => {
 });
 
 describe("high-effort-low-output: work that is not polling", () => {
-  for (const tool of ["Edit", "Write", "MultiEdit", "NotebookEdit", "Agent", "StructuredOutput"]) {
+  for (const tool of ["Edit", "Write", "MultiEdit", "NotebookEdit", "Agent", "Task", "StructuredOutput"]) {
     it(`one ${tool} call anywhere in the run disqualifies it`, () => {
       expect(fire(rows(30, (i) => (i === 17 ? { tools: ["Bash", tool] } : {})))).toHaveLength(0);
     });

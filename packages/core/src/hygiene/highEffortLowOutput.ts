@@ -94,7 +94,14 @@ export function detectHighEffortLowOutput(
 ): HygieneFinding[] {
   const findings: HygieneFinding[] = [];
 
-  for (const group of groupBySession(rows.filter((r) => !isPreFixSubagentRow(r)))) {
+  // Run formation is order-sensitive, so do not trust the caller's order:
+  // sort by (timestamp, uuid), null timestamps first (the store's convention).
+  // Excluded rows are removed BEFORE runs form, so they neither break nor
+  // count toward a run.
+  const ordered = rows
+    .filter((r) => !isPreFixSubagentRow(r))
+    .sort((a, b) => (a.timestamp ?? -Infinity) - (b.timestamp ?? -Infinity) || (a.uuid < b.uuid ? -1 : a.uuid > b.uuid ? 1 : 0));
+  for (const group of groupBySession(ordered)) {
     for (const run of highEffortRuns(group.messages)) {
       if (run.length < thresholds.minRunTurns) continue;
       if (run.some((m) => m.tools.some((t) => DISQUALIFYING_TOOLS.has(t)))) continue;
