@@ -132,6 +132,10 @@ export function detectContextBloat(
   overrides?: RateOverrides,
 ): HygieneFinding[] {
   const findings: HygieneFinding[] = [];
+  // R1: deliberately NOT filtering `outputPlaceholder` rows. This rule reads
+  // input/cache counts only (never output_tokens or stop_reason), and those are
+  // real on placeholder rows; dropping them would merge adjacent increments
+  // into false larger ones and hide pre-2.1.307 subagent sessions.
   for (const group of groupBySession(rows)) {
     const messages = group.messages;
 

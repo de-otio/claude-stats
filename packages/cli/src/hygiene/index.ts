@@ -94,6 +94,7 @@ function toHygieneMessageRow(row: HygieneMessageStoreRow): HygieneMessageRow {
     ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
     toolErrorCount: row.tool_error_count,
     tools: parseTools(row.tools),
+    outputPlaceholder: row.output_placeholder,
   };
 }
 
