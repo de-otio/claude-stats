@@ -15,6 +15,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: false,
+    globalSetup: [path.resolve(__dirname, "../../vitest.global-home.ts")],
     setupFiles: ["./src/__tests__/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     exclude: ["**/node_modules/**", "dist/**"],
