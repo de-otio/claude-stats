@@ -71,7 +71,7 @@ function row(sessionId: string, i: number, totalContext: number, outputPlacehold
     sessionId, projectPath: "/w/alpha", uuid: `${sessionId}-m${i}`, timestamp: T0 + i * 60_000,
     model: "claude-sonnet-5", inputTokens: totalContext, outputTokens: 3,
     cacheReadTokens: 0, cacheCreationTokens: 0, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0,
-    toolErrorCount: 0, tools: [], outputPlaceholder,
+    toolErrorCount: 0, tools: [], outputPlaceholder, effort: null, isSubagent: false, claudeVersion: null,
   };
 }
 

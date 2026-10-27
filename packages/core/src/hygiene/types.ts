@@ -27,7 +27,8 @@ export type HygieneDetectorId =
   | "abandoned-spend"
   | "context-bloat"
   | "re-entry-burn"
-  | "tier-mismatch";
+  | "tier-mismatch"
+  | "high-effort-low-output";
 
 /**
  * The row shape every detector consumes: one per stored message, already
@@ -86,6 +87,17 @@ export interface HygieneMessageRow {
    * read output or turn counts skip flagged rows.
    */
   outputPlaceholder: boolean;
+  /**
+   * Reasoning-effort tier Claude Code reported for this turn (`messages.effort`,
+   * #125 D1/D2); `null` = not reported. Open vocabulary: compare with
+   * `compareEffort`, never a closed enum. REQUIRED so a forgotten store mapper
+   * is a compile error, not a silently-null column.
+   */
+  effort: string | null;
+  /** True for a row of a subagent session (`sessions.is_subagent`). REQUIRED. */
+  isSubagent: boolean;
+  /** Writer version (`messages.claude_version`); null = not recorded. REQUIRED. */
+  claudeVersion: string | null;
 }
 
 /**
@@ -230,6 +242,15 @@ export interface HygieneThresholds {
      */
     maxRelativeGap: number;
   };
+  highEffortLowOutput: {
+    /** Consecutive turns at effort >= `high` a run needs (V5(b): 20). */
+    minRunTurns: number;
+    /** Share of the run's turns that invoke at least one tool (V5(b): 0.8). */
+    minToolTurnShare: number;
+    /** Median output tokens per turn at/below which the run counts as low
+     *  output (V5(b): 500; the #125 plan's 300 was superseded by calibration). */
+    maxMedianOutputTokens: number;
+  };
 }
 
 /** Conservative defaults. Every number here is deliberately on the side of
@@ -241,4 +262,5 @@ export const DEFAULT_HYGIENE_THRESHOLDS: HygieneThresholds = {
   reEntryBurn: { minGapMs: 30 * 60 * 1000, minCacheCreationTokens: 20_000 },
   abandonedSpend: { minCost: 1, graceMs: 2 * 60 * 60 * 1000 },
   tierMismatch: { minSessionsPerTier: 8, maxRelativeGap: 0.15 },
+  highEffortLowOutput: { minRunTurns: 20, minToolTurnShare: 0.8, maxMedianOutputTokens: 500 },
 };
