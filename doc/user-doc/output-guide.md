@@ -93,6 +93,27 @@ tool that returns a cost total (`get_stats`, `list_sessions`,
 Each tool's own description states this in prose so an agent reads it before
 quoting a number — see [`mcp`](commands.md#mcp) for the tool list.
 
+### Spend by reasoning effort (MCP)
+
+`get_stats` splits the window by the reasoning-effort tier Claude Code recorded
+for each request: `byModel[].byEffort` (per model), `byEffort` (across models,
+with a `costShare`) and `effortCoverage`. Three things to read before quoting
+a number:
+
+- **`effort: null` is not a tier.** It is the messages for which Claude Code
+  reported no tier (older transcripts, or an entry without the field).
+  `effortCoverage.taggedCostShare` is the share of the window's cost outside
+  that bucket; when it is low, the split describes only part of the spend.
+- **The tier list is open.** `low`, `medium`, `high`, `xhigh` and `max` are in
+  use today; a tier a later Claude Code release adds appears under its own name.
+- **These are measurements, not prices.** A higher tier tends to use more
+  thinking and output tokens, which are priced as usual. The report shows what
+  was spent at each tier, not what a lower tier would have cost for the same
+  work.
+
+The tiers sum to the headline tokens and cost. A cost row can differ by under
+one cent from the sum of its children because each leaf is rounded once.
+
 ### Token formatting
 
 | Displayed | Actual range |

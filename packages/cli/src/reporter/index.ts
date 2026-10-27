@@ -3,7 +3,7 @@
  * Timestamps are stored as UTC; timezone conversion happens here at report time.
  * See doc/analysis/02-collection-strategy.md — Timezone Handling.
  */
-import type { Store, SessionRow, MessageRow, StatusInfo, SpendingReport } from "../store/index.js";
+import { foldTotalsByModel, type Store, type SessionRow, type MessageRow, type StatusInfo, type SpendingReport } from "../store/index.js";
 import type { SearchResult } from "../history/index.js";
 import type { DailyDigest, DailyDigestItem } from "../recap/index.js";
 import type { CostPerTaskReport } from "../cost-per-task/index.js";
@@ -556,7 +556,7 @@ export function printSummary(store: Store, opts: ReportOptions = {}): void {
     since: since > 0 ? since : undefined,
     until: isCustomRange ? until : undefined,
   };
-  const messageTotals = store.getMessageTotals(msgFilter);
+  const messageTotals = foldTotalsByModel(store.getMessageTotals(msgFilter));
   let totalCost = 0;
   let unknownTokens = 0;
   for (const mt of messageTotals) {
@@ -1368,7 +1368,7 @@ export interface StatusHealth {
 export function readStatusHealth(store: Store): StatusHealth {
   return {
     costBasis: costBasisFor(store),
-    pricingDrift: collectPricingDrift(store.getMessageTotals()),
+    pricingDrift: collectPricingDrift(foldTotalsByModel(store.getMessageTotals())),
   };
 }
 

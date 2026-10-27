@@ -355,13 +355,13 @@ describe("MCP tools", () => {
     expect(r["unpricedModels"]).toEqual([{ model: "claude-opus-5-1", tokens: 6_100 }]);
   });
 
-  it("get_session_detail exposes cost_basis and NOTHING ELSE from the V23 columns", async () => {
+  it("get_session_detail exposes cost_basis and effort (and NOTHING ELSE) from the V23 columns", async () => {
     const r = await call("get_session_detail", { sessionId: "new-1" });
     expect((r["session"] as Record<string, unknown>)["costBasis"]).toEqual({ basis: "per-response", preDedupeRows: 0, perResponseRows: 2 });
     const msgs = r["messages"] as Array<Record<string, unknown>>;
     expect(msgs.every((m) => m["costBasis"] === "per-response")).toBe(true);
     for (const m of msgs) {
-      for (const forbidden of ["messageId", "message_id", "usageCounted", "usage_counted", "effort", "speed", "thinkingTokens", "thinking_tokens"]) {
+      for (const forbidden of ["messageId", "message_id", "usageCounted", "usage_counted", "speed", "thinkingTokens", "thinking_tokens"]) {
         expect(m).not.toHaveProperty(forbidden);
       }
     }

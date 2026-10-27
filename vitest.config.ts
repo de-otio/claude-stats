@@ -59,6 +59,7 @@ export default defineConfig({
       "@claude-stats/core/identifiers": path.resolve(__dirname, "packages/core/src/identifiers.ts"),
       "@claude-stats/core/subagentMeta": path.resolve(__dirname, "packages/core/src/subagentMeta.ts"),
       "@claude-stats/core/agentCost": path.resolve(__dirname, "packages/core/src/agentCost.ts"),
+      "@claude-stats/core/effort": path.resolve(__dirname, "packages/core/src/effort.ts"),
       "@claude-stats/core":path.resolve(__dirname, "packages/core/src/index.ts"),
     },
   },

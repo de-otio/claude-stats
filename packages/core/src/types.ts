@@ -111,6 +111,13 @@ export interface RawSessionEntry {
    */
   effort?: string;
   /**
+   * Per-turn reasoning-effort tier, also at the ENTRY ROOT. Read first by the
+   * parser, with `effort` as the fallback (#125 D2, provisional: identical on
+   * all 2.1.300-310 data, and the billed value if 2.1.311 `ultrathink` makes
+   * them differ — doc/analysis/claude-code-2.1.311-review/checks/V5.md).
+   */
+  perTurnEffort?: string;
+  /**
    * Subagent type that produced this entry, at the ENTRY ROOT (schema V25).
    * User- or plugin-authored for anything but the built-in types; validated
    * with `validIdentifier` at the parser boundary. Fallback for the subagent

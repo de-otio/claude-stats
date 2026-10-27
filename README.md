@@ -79,9 +79,9 @@ list and that file ever disagree, the file wins.
 
 | Tool                 | Description                                                                    |
 | -------------------- | ------------------------------------------------------------------------------ |
-| `get_stats`          | Usage summary for a period — tokens, cost, sessions, cache efficiency, streaks |
+| `get_stats`          | Usage summary for a period — tokens, cost, sessions, cache efficiency, streaks; tokens and cost by model and by reasoning-effort tier (`byModel[].byEffort`, `byEffort`, `effortCoverage`) |
 | `list_sessions`      | Recent sessions with token counts and estimated cost                           |
-| `get_session_detail` | Messages and token usage for a specific session                                |
+| `get_session_detail` | Messages and token usage for a specific session, with each message's effort tier and an `effortMix` |
 | `list_projects`      | Per-project usage breakdown                                                    |
 | `get_status`         | Database health, session count, last collection time                           |
 | `search_history`     | Search prompt history by keyword                                               |

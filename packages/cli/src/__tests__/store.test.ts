@@ -1126,6 +1126,9 @@ describe("Store — message period filter (subquery seek parity)", () => {
       // opus: mA1(100) + mB_early(300) + mC1(500) = 900 in (mOrphan excluded)
       expect(byModel.get("claude-opus-4-6")).toEqual({
         model: "claude-opus-4-6",
+        // No effort recorded on these fixtures: one (model, null-effort) row each.
+        effort: null,
+        msg_count: 3,
         input_tokens: 100 + 300 + 500,
         output_tokens: 10 + 30 + 50,
         cache_read_tokens: 5 + 7 + 9,
@@ -1137,6 +1140,9 @@ describe("Store — message period filter (subquery seek parity)", () => {
       // sonnet: mA2(200) + mB_late(400)
       expect(byModel.get("claude-sonnet-4-6")).toEqual({
         model: "claude-sonnet-4-6",
+        // No effort recorded on these fixtures: one (model, null-effort) row each.
+        effort: null,
+        msg_count: 2,
         input_tokens: 200 + 400,
         output_tokens: 20 + 40,
         cache_read_tokens: 6 + 8,
@@ -1148,6 +1154,9 @@ describe("Store — message period filter (subquery seek parity)", () => {
       // null-model row aggregates under model = null
       expect(byModel.get("∅")).toEqual({
         model: null,
+        // No effort recorded on these fixtures: one (model, null-effort) row each.
+        effort: null,
+        msg_count: 1,
         input_tokens: 11,
         output_tokens: 1,
         cache_read_tokens: 1,

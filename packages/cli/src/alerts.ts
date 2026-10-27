@@ -2,7 +2,7 @@
  * Cost threshold alert checking.
  * Compares current period spending against configured thresholds.
  */
-import type { Store } from "./store/index.js";
+import { foldTotalsByModel, type Store } from "./store/index.js";
 import type { Config } from "./config.js";
 import { estimateCost } from "@claude-stats/core/pricing";
 import { periodStart } from "./reporter/index.js";
@@ -28,7 +28,7 @@ export function checkThresholds(store: Store, config: Config): ThresholdCheck[] 
     if (threshold === undefined) continue;
 
     const since = periodStart(period, tz);
-    const messageTotals = store.getMessageTotals({ since });
+    const messageTotals = foldTotalsByModel(store.getMessageTotals({ since }));
 
     let currentCost = 0;
     for (const mt of messageTotals) {

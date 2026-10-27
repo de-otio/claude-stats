@@ -175,6 +175,10 @@
     "./agentCost": {
       "types": "./dist/agentCost.d.ts",
       "default": "./dist/agentCost.js"
+    },
+    "./effort": {
+      "types": "./dist/effort.d.ts",
+      "default": "./dist/effort.js"
     }
   },
   "scripts": {
