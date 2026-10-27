@@ -245,6 +245,11 @@ function usageMagnitude(m: MessageRecord): number {
   );
 }
 
+/** True when the entry carries a non-empty stop_reason (a finished response). */
+function hasStopReason(m: MessageRecord): boolean {
+  return m.stopReason != null && m.stopReason !== "";
+}
+
 /**
  * Strip the REPEATED usage from every non-carrier entry of a `message.id` group.
  *
@@ -279,7 +284,13 @@ function markUsageCarriers(messages: MessageRecord[]): void {
     if (group.length < 2) continue;
     let carrier = group[0]!;
     for (const m of group) {
-      if (usageMagnitude(m) > usageMagnitude(carrier)) carrier = m;
+      const mag = usageMagnitude(m);
+      const best = usageMagnitude(carrier);
+      // Ties: prefer an entry that has a stop_reason (the finished response)
+      // over a mid-stream placeholder; otherwise the earliest stays.
+      if (mag > best || (mag === best && !hasStopReason(carrier) && hasStopReason(m))) {
+        carrier = m;
+      }
     }
     for (const m of group) {
       if (m === carrier) continue;
