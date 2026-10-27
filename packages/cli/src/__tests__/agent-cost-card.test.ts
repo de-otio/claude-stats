@@ -59,17 +59,19 @@ function report(over: Partial<AgentCostReport> = {}): AgentCostReport {
       periodGranularity: "day",
       byPeriod: [],
       undatedSubagentCost: 0,
+      effortTaggedShare: 0,
     },
     byAgentType: [
-      { agentType: "my-reviewer", builtIn: false, cost: 2, share: 0.5, messages: 2 },
-      { agentType: "Explore", builtIn: true, cost: 1, share: 0.25, messages: 1 },
-      { agentType: null, builtIn: false, cost: 1, share: 0.25, messages: 1 },
+      { agentType: "my-reviewer", builtIn: false, cost: 2, share: 0.5, messages: 2, byEffort: [] },
+      { agentType: "Explore", builtIn: true, cost: 1, share: 0.25, messages: 1, byEffort: [] },
+      { agentType: null, builtIn: false, cost: 1, share: 0.25, messages: 1, byEffort: [] },
     ],
     bySkill: [{ skill: "example-skill", costDuringRun: 1.5, share: 0.15, messages: 3 }],
     bySpawnDepth: [
       { depth: 1, cost: 3, share: 0.75, messages: 3 },
       { depth: null, cost: 1, share: 0.25, messages: 1 },
     ],
+    byEffort: [],
     other: { byAgentType: null, bySkill: null, bySpawnDepth: null },
     ...over,
   };
@@ -134,7 +136,7 @@ describe("renderAgentCostCard", () => {
     const html = renderAgentCostCard(
       report({
         other: {
-          byAgentType: { buckets: 3, cost: 0.4, share: 0.1, messages: 2 },
+          byAgentType: { buckets: 3, cost: 0.4, share: 0.1, messages: 2, byEffort: [] },
           bySkill: { buckets: 2, costDuringRun: 0.2, share: 0.02, messages: 1 },
           bySpawnDepth: { buckets: 1, cost: 0.1, share: 0.025, messages: 1 },
         },
@@ -155,6 +157,7 @@ describe("renderAgentCostCard", () => {
         byAgentType: [],
         bySkill: [],
         bySpawnDepth: [],
+        byEffort: [],
         other: { byAgentType: null, bySkill: null, bySpawnDepth: null },
       },
       t,
@@ -170,8 +173,8 @@ describe("renderAgentCostCard", () => {
     const html = renderAgentCostCard(
       report({
         byAgentType: [
-          { agentType: XSS_TEXT, builtIn: false, cost: 2, share: 0.5, messages: 2 },
-          { agentType: XSS_ATTR, builtIn: false, cost: 1, share: 0.25, messages: 1 },
+          { agentType: XSS_TEXT, builtIn: false, cost: 2, share: 0.5, messages: 2, byEffort: [] },
+          { agentType: XSS_ATTR, builtIn: false, cost: 1, share: 0.25, messages: 1, byEffort: [] },
         ],
         bySkill: [
           { skill: XSS_TEXT, costDuringRun: 1, share: 0.1, messages: 1 },
@@ -198,7 +201,7 @@ describe("renderAgentCostCard", () => {
         ...r,
         coverage: { ...r.coverage, unpricedMessages: 2 },
         other: {
-          byAgentType: { buckets: 1, cost: 0.1, share: 0.01, messages: 1 },
+          byAgentType: { buckets: 1, cost: 0.1, share: 0.01, messages: 1, byEffort: [] },
           bySkill: { buckets: 1, costDuringRun: 0.1, share: 0.01, messages: 1 },
           bySpawnDepth: null,
         },
@@ -222,7 +225,7 @@ describe("renderDashboard — Agents & skills card placement", () => {
   it("renders in the spending section when data.agentCost is set, and escapes names there too", () => {
     const data = withSpending({
       agentCost: report({
-        byAgentType: [{ agentType: XSS_TEXT, builtIn: false, cost: 2, share: 0.5, messages: 2 }],
+        byAgentType: [{ agentType: XSS_TEXT, builtIn: false, cost: 2, share: 0.5, messages: 2, byEffort: [] }],
         bySkill: [{ skill: XSS_ATTR, costDuringRun: 1, share: 0.1, messages: 1 }],
       }),
     });

@@ -136,6 +136,7 @@ describe("Store.getMessagesForAgentCost", () => {
         "agent_type",
         "cache_creation_tokens",
         "cache_read_tokens",
+        "effort",
         "ephemeral_1h_cache_tokens",
         "ephemeral_5m_cache_tokens",
         "input_tokens",
@@ -269,6 +270,35 @@ describe("buildAgentCostReport", () => {
     expect(windowed.coverage.messages).toBe(3);
     expect(windowed.coverage.totalCost).toBeCloseTo(headlineCost(store, window), 10);
     expect(windowed.coverage.totalCost).toBeCloseTo(3 * COST_PER_MESSAGE, 10);
+  });
+
+  it("splits spend by the stored effort tier and reconciles with the dashboard's byEffort", () => {
+    store.upsertSession(session(MAIN_ID));
+    store.upsertSession(session(SUB_TYPED_ID, { isSubagent: true, parentSessionId: MAIN_ID, agentType: "my-reviewer", spawnDepth: 1 }));
+    store.upsertMessages([
+      message("e-main-1", MAIN_ID, { timestamp: T0 + 1 * MIN, effort: "high" }),
+      message("e-main-2", MAIN_ID, { timestamp: T0 + 2 * MIN }),
+      message("e-sub-1", SUB_TYPED_ID, { timestamp: T0 + 3 * MIN, effort: "xhigh" }),
+      message("e-sub-2", SUB_TYPED_ID, { timestamp: T0 + 4 * MIN, effort: "xhigh" }),
+      message("e-sub-3", SUB_TYPED_ID, { timestamp: T0 + 5 * MIN, effort: "high" }),
+    ]);
+    const c = COST_PER_MESSAGE;
+    const r = buildAgentCostReport(store);
+    expect(r.byEffort.map((e) => [e.effort, e.messages])).toEqual([["high", 2], ["xhigh", 2], [null, 1]]);
+    expect(r.byEffort[0]!.mainCost).toBeCloseTo(c, 10);
+    expect(r.byEffort[0]!.subagentCost).toBeCloseTo(c, 10);
+    expect(r.byEffort[1]!.subagentCost).toBeCloseTo(2 * c, 10);
+    expect(r.byEffort[2]).toMatchObject({ effort: null, subagentCost: 0 });
+    expect(r.byEffort[2]!.mainCost).toBeCloseTo(c, 10);
+    expect(r.coverage.effortTaggedShare).toBeCloseTo(4 / 5, 12);
+    expect(r.byAgentType[0]!.byEffort.map((e) => e.effort)).toEqual(["high", "xhigh"]);
+
+    // Same tiers and the same dollars as get_stats' split of the same window.
+    const dash = buildDashboard(store, { period: "all" });
+    for (const e of r.byEffort) {
+      const d = dash.byEffort!.find((x) => x.effort === e.effort)!;
+      expect(Math.round(e.cost * 100) / 100).toBeCloseTo(d.estimatedCost, 10);
+    }
   });
 
   it("reports a model with no rate as unpriced at $0 and passes rate overrides through", () => {

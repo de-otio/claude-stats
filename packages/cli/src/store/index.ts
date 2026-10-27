@@ -3944,7 +3944,7 @@ export class Store {
              m.input_tokens, m.output_tokens,
              m.cache_read_tokens, m.cache_creation_tokens,
              m.ephemeral_5m_cache_tokens, m.ephemeral_1h_cache_tokens,
-             m.skill,
+             m.skill, m.effort,
              s.is_subagent, s.agent_type, s.spawn_depth
       FROM messages m
       JOIN sessions s ON s.session_id = m.session_id
@@ -5137,6 +5137,8 @@ export interface AgentCostMessageStoreRow {
   ephemeral_1h_cache_tokens: number;
   /** `messages.skill` (V25); null = none recorded. */
   skill: string | null;
+  /** `messages.effort`; null = not reported (#125). */
+  effort: string | null;
   /** `sessions.is_subagent`, 0/1. */
   is_subagent: number;
   /** `sessions.agent_type` (V25); null = not recorded. */
