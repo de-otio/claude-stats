@@ -102,7 +102,30 @@ export async function extractCwdFromSessionFile(
   }
 }
 
-const API_REQUEST_PREFIX = '{"type":"api-request';
+/** Most bytes of an unparseable line kept in a parse-error record. */
+export const RAW_LINE_CAP_BYTES = 200;
+
+/**
+ * Cap a raw line for a parse-error record: at most `RAW_LINE_CAP_BYTES` bytes
+ * of it, cut on a UTF-8 character boundary (never through a multi-byte
+ * sequence). A bad line can be 100 KB+ of tool output; the quarantine is a
+ * diagnostic, and the head of the line plus its length says what failed. The
+ * length travels in the record's `error` text (no schema change), so
+ * `originalBytes` is null when the line fits and nothing was cut.
+ */
+export function capRawLine(raw: string): { text: string; originalBytes: number | null } {
+  // A UTF-8 byte is at most 3x a UTF-16 unit: short strings cannot exceed the cap.
+  if (raw.length * 3 <= RAW_LINE_CAP_BYTES) return { text: raw, originalBytes: null };
+  const buf = Buffer.from(raw, "utf8");
+  if (buf.length <= RAW_LINE_CAP_BYTES) return { text: raw, originalBytes: null };
+  let cut = RAW_LINE_CAP_BYTES;
+  // buf[cut] is the first byte dropped; if it is a continuation byte the cut is
+  // inside a character, so back up to that character's lead byte and drop it all.
+  while (cut > 0 && (buf[cut]! & 0xc0) === 0x80) cut--;
+  return { text: buf.toString("utf8", 0, cut), originalBytes: buf.length };
+}
+
+const API_REQUEST_PREFIX ='{"type":"api-request';
 
 /**
  * True for the per-request records Claude Code 2.1.300+ writes beside the
@@ -349,11 +372,14 @@ export async function parseSessionFile(
     try {
       entry = JSON.parse(raw) as RawSessionEntry;
     } catch (err) {
+      const capped = capRawLine(raw);
       errors.push({
         filePath,
         lineNumber,
-        rawLine: raw,
-        error: String(err),
+        rawLine: capped.text,
+        error: capped.originalBytes === null
+          ? String(err)
+          : `${String(err)} (line is ${capped.originalBytes} bytes; first ${RAW_LINE_CAP_BYTES} stored)`,
         timestamp: Date.now(),
         claudeVersion: claudeVersion ?? undefined,
       });
