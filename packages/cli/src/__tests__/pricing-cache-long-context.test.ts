@@ -108,6 +108,93 @@ describe("a tier row the parser cannot read never becomes the base", () => {
   });
 });
 
+describe("malformed rows, label wording and implausible tiers", () => {
+  const BAD_BASE = row("Claude Haiku 5.5 (for prompts up to 100,000 tokens)", "contact sales", "n/a", "n/a", "n/a", "contact sales");
+
+  it("a malformed BASE row with a valid tier row yields no Haiku 5.5 entry (never tier-as-base), either order", () => {
+    for (const rows of [[BAD_BASE, HIGH], [HIGH, BAD_BASE]]) {
+      warn.mockClear();
+      const models = parsePricingTable(page(OPUS, ...rows));
+      expect(models["claude-haiku-5-5"]).toBeUndefined();
+      expect(Object.keys(models)).toEqual(["claude-opus-5-5"]);
+      expect(warn).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it.each([
+    ["Claude Haiku 5.5 (for prompts under 100K)"],
+    ["Claude Haiku 5.5 (for prompts ≤ 100K)"],
+    ["Claude Haiku 5.5 (for prompts &le; 100K)"],
+    ["Claude Haiku 5.5 (for prompts &lt;= 100K)"],
+    ["Claude Haiku 5.5 (100K or fewer tokens)"],
+    ["Claude Haiku 5.5 (for prompts up to 100,000 tokens)"],
+  ])("%s is a base row, not a tier", (label) => {
+    expect(longContextRowThreshold(label)).toBeNull();
+    // As a table row it is the base: the tier row alongside it still attaches.
+    const lowVariant = row(label, "$0.10 / MTok", "$0.125 / MTok", "$0.20 / MTok", "$0.01 / MTok", "$0.50 / MTok");
+    const h = parsePricingTable(page(lowVariant, HIGH))["claude-haiku-5-5"]!;
+    expect(h).toMatchObject(BASE);
+    expect(h.longContext!.rates).toEqual(TIER);
+  });
+
+  it.each([
+    ["Claude Haiku 5.5 (for prompts more than 200K)", 200_000],
+    ["Claude Haiku 5.5 (for prompts more than 200,000 tokens)", 200_000],
+    ["Claude Haiku 5.5 (for prompts &gt; 200K)", 200_000],
+    ["Claude Haiku 5.5 (for prompts above 200K)", 200_000],
+  ])("%s is a tier row with threshold %i", (label, threshold) => {
+    expect(longContextRowThreshold(label)).toBe(threshold);
+    const high = row(label, "$0.50 / MTok", "$0.625 / MTok", "$1 / MTok", "$0.05 / MTok", "$2.50 / MTok");
+    for (const rows of [[LOW, high], [high, LOW]]) {
+      const h = parsePricingTable(page(...rows))["claude-haiku-5-5"]!;
+      expect(h).toMatchObject(BASE);
+      expect(h.longContext!.thresholdTokens).toBe(threshold);
+    }
+  });
+
+  it("a tier row missing a cache column: base kept, no tier, logged, in BOTH row orders", () => {
+    const partial = row("Claude Haiku 5.5 (for prompts over 100,000 tokens)", "$0.50 / MTok", "$0.625 / MTok", "n/a", "$0.05 / MTok", "$2.50 / MTok");
+    for (const rows of [[LOW, partial], [partial, LOW]]) {
+      warn.mockClear();
+      const h = parsePricingTable(page(...rows))["claude-haiku-5-5"]!;
+      expect(h).toMatchObject(BASE);
+      expect(h.longContext).toBeUndefined();
+      expect(warn).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("a BASE row missing a cache column keeps the existing synthesized behaviour and still takes a full tier", () => {
+    const partialBase = row("Claude Haiku 5.5 (for prompts up to 100,000 tokens)", "$0.10 / MTok", "$0.125 / MTok", "n/a", "$0.01 / MTok", "$0.50 / MTok");
+    for (const rows of [[partialBase, HIGH], [HIGH, partialBase]]) {
+      const h = parsePricingTable(page(...rows))["claude-haiku-5-5"]!;
+      expect(h.ttlRateBasis).toBe("synthesized");
+      expect(h.cacheWrite1hPerMillion).toBeCloseTo(0.2, 12);
+      expect(h.longContext!.rates).toEqual(TIER);
+    }
+  });
+
+  it("a tier cheaper than its base in any column is rejected: base kept, logged, either order", () => {
+    // The "over" row carries prices below the base (misread or wrong table).
+    const swappedHigh = row("Claude Haiku 5.5 (for prompts over 100,000 tokens)", "$0.05 / MTok", "$0.0625 / MTok", "$0.10 / MTok", "$0.005 / MTok", "$0.25 / MTok");
+    // One column cheaper only (output below base 0.50).
+    const oneColumn = row("Claude Haiku 5.5 (for prompts over 100,000 tokens)", "$0.50 / MTok", "$0.625 / MTok", "$1 / MTok", "$0.05 / MTok", "$0.25 / MTok");
+    for (const tier of [swappedHigh, oneColumn]) {
+      for (const rows of [[LOW, tier], [tier, LOW]]) {
+        warn.mockClear();
+        const h = parsePricingTable(page(...rows))["claude-haiku-5-5"]!;
+        expect(h).toMatchObject(BASE);
+        expect(h.longContext).toBeUndefined();
+        expect(warn).toHaveBeenCalledTimes(1);
+      }
+    }
+  });
+
+  it("a tier equal to the base in some columns (not cheaper) is accepted", () => {
+    const equalIn = row("Claude Haiku 5.5 (for prompts over 100,000 tokens)", "$0.10 / MTok", "$0.625 / MTok", "$1 / MTok", "$0.05 / MTok", "$2.50 / MTok");
+    expect(parsePricingTable(page(LOW, equalIn))["claude-haiku-5-5"]!.longContext!.rates.inputPerMillion).toBe(0.10);
+  });
+});
+
 describe("applying a cache to the built-in table", () => {
   it("a cache row that has no tier (written before C2) keeps the built-in tier", () => {
     const old = { ...BASE, ttlRateBasis: "parsed" as const };

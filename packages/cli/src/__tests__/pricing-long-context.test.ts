@@ -181,7 +181,20 @@ describe("the SQL expression is the same classification as isLongContextRequest"
     const db = new DatabaseSync(":memory:");
     db.exec("CREATE TABLE t (model TEXT, i INTEGER, cr INTEGER, cc INTEGER)");
     const ins = db.prepare("INSERT INTO t VALUES (?, ?, ?, ?)");
-    const models = [HAIKU, `${HAIKU}[1m]`, "claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-4-5", "claude-nonesuch-9"];
+    const models = [
+      HAIKU,
+      `${HAIKU}[1m]`,
+      `${HAIKU}-20261001`, // dated snapshot
+      `anthropic.${HAIKU}`, // Bedrock (Mantle)
+      `us.anthropic.${HAIKU}-v1:0`, // Bedrock legacy, region-prefixed
+      `${HAIKU}@20261001`, // Vertex
+      `${HAIKU}-1`, // point-release: unpriced, but both classifiers flag it (it costs $0 either way)
+      `x-${HAIKU}`, // not a Haiku 5.5 id by prefix; same story
+      "claude-sonnet-5-5",
+      "claude-opus-5-5",
+      "claude-haiku-4-5",
+      "claude-nonesuch-9",
+    ];
     const cases: Array<[string, number, number, number]> = [];
     for (const m of models) {
       cases.push([m, 100_000, 0, 0], [m, 0, 100_000, 0], [m, 0, 0, 100_001], [m, 50_000, 25_000, 25_001], [m, 50_000, 25_000, 25_000]);
@@ -212,6 +225,53 @@ describe("the SQL expression is the same classification as isLongContextRequest"
     const rows = db.prepare(`SELECT ${expr} AS lc FROM t`).all() as Array<{ lc: number }>;
     expect(rows.map((r) => r.lc)).toEqual([1, 0, 0]);
     db.close();
+  });
+
+  it("the id forms the TS test covers all classify the same in SQL, one by one", () => {
+    const db = new DatabaseSync(":memory:");
+    const expr = longContextSqlExpr({ model: "m", input: "i", cacheRead: "cr", cacheCreation: "cc" });
+    for (const id of [`${HAIKU}[1m]`, `${HAIKU}-20261001`, `anthropic.${HAIKU}`, `${HAIKU}@20261001`, `us.anthropic.${HAIKU}-v1:0`]) {
+      for (const [i, cr, cc, want] of [[0, 150_000, 0, 1], [0, 100_000, 0, 0], [60_000, 30_000, 10_001, 1]] as const) {
+        const got = (db.prepare(`SELECT ${expr} AS lc FROM (SELECT ? AS m, ? AS i, ? AS cr, ? AS cc)`).get(id, i, cr, cc) as { lc: number }).lc;
+        expect(got, `${id} ${i}/${cr}/${cc}`).toBe(want);
+        expect(isLongContextRequest(id, i, cr, cc), `${id} ${i}/${cr}/${cc}`).toBe(want === 1);
+      }
+    }
+    db.close();
+  });
+
+  it("the hash covers the SET of tiered models and each threshold, not just one threshold", () => {
+    const h0 = longContextSqlExprHash();
+    const expr0 = longContextSqlExpr({ model: "m", input: "i", cacheRead: "cr", cacheCreation: "cc" });
+    const sonnet = lookupPricing("claude-sonnet-5-5")!;
+    const tier = (threshold: number) => ({
+      thresholdTokens: threshold,
+      rates: {
+        inputPerMillion: sonnet.inputPerMillion * 2,
+        outputPerMillion: sonnet.outputPerMillion * 2,
+        cacheReadPerMillion: sonnet.cacheReadPerMillion * 2,
+        cacheWritePerMillion: sonnet.cacheWritePerMillion * 2,
+        cacheWrite1hPerMillion: sonnet.cacheWrite1hPerMillion * 2,
+      },
+    });
+    try {
+      // A second tiered model, same threshold: the set changed.
+      applyPricingCache({ "claude-sonnet-5-5": { ...sonnet, longContext: tier(100_000) } }, ORIGINAL_VERIFIED_DATE);
+      const h1 = longContextSqlExprHash();
+      expect(h1).not.toBe(h0);
+      expect(longContextSqlExpr({ model: "m", input: "i", cacheRead: "cr", cacheCreation: "cc" })).not.toBe(expr0);
+      expect(isLongContextRequest("claude-sonnet-5-5", 0, 150_000, 0)).toBe(true);
+      expect(isLongContextRequest("claude-sonnet-5-5", 0, 100_000, 0)).toBe(false);
+
+      // The second model's own threshold moves: hash moves again.
+      applyPricingCache({ "claude-sonnet-5-5": { ...sonnet, longContext: tier(200_000) } }, ORIGINAL_VERIFIED_DATE);
+      const h2 = longContextSqlExprHash();
+      expect(h2).not.toBe(h1);
+      expect(h2).not.toBe(h0);
+    } finally {
+      applyPricingCache({}, ORIGINAL_VERIFIED_DATE);
+    }
+    expect(longContextSqlExprHash()).toBe(h0);
   });
 
   it("its hash is stable, and moves when the threshold moves", () => {

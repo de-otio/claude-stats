@@ -233,14 +233,31 @@ export function parsePricingTable(html: string): Record<string, ModelPricing> {
     if (Object.keys(models).length > 0) {
       for (const [prefix, tier] of Object.entries(tiers)) {
         const base = models[prefix];
-        if (base) base.longContext = tier;
-        else console.warn(`[claude-stats] pricing: long-context row for ${prefix} has no base row; ignored`);
+        if (!base) {
+          console.warn(`[claude-stats] pricing: long-context row for ${prefix} has no base row; ignored`);
+        } else if (!tierNotCheaperThanBase(base, tier.rates)) {
+          // A tier cheaper than the base in any column means the rows were
+          // misread (swapped, or the wrong table): keep the base, drop the tier.
+          console.warn(`[claude-stats] pricing: long-context row for ${prefix} is cheaper than its base row; ignored`);
+        } else {
+          base.longContext = tier;
+        }
       }
       break;
     }
   }
 
   return models;
+}
+
+function tierNotCheaperThanBase(base: ModelPricing, tier: NonNullable<ModelPricing["longContext"]>["rates"]): boolean {
+  return (
+    tier.inputPerMillion >= base.inputPerMillion &&
+    tier.outputPerMillion >= base.outputPerMillion &&
+    tier.cacheReadPerMillion >= base.cacheReadPerMillion &&
+    tier.cacheWritePerMillion >= base.cacheWritePerMillion &&
+    tier.cacheWrite1hPerMillion >= base.cacheWrite1hPerMillion
+  );
 }
 
 /**
@@ -251,7 +268,12 @@ export function parsePricingTable(html: string): Record<string, ModelPricing> {
  * else 100,000.
  */
 export function longContextRowThreshold(nameCell: string): number | null {
-  const text = nameCell.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  const text = nameCell
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&gt;/gi, ">")
+    .replace(/&[a-z]+;|&#\d+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   const m = text.match(/(?:\bover\b|\babove\b|\bmore than\b|\bgreater than\b|\bexceeding\b|>)\s*(\d[\d,]*(?:\.\d+)?)?\s*([kKmM])?/i);
   if (!m) return null;
   const n = m[1] ? parseFloat(m[1].replace(/,/g, "")) : NaN;

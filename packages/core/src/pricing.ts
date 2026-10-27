@@ -342,6 +342,12 @@ export function longContextSqlExprHash(): string {
  * True when this single request is in its model's long-context tier: the model
  * has a tier and `input + cacheRead + cacheCreation` is strictly greater than
  * its threshold. Exactly at the threshold is the base tier.
+ *
+ * Matches a tiered model by the key occurring in the id, exactly as
+ * `longContextSqlExpr` does (`instr`), so the per-message and aggregated
+ * classifications cannot disagree on any id, including one the suffix-shape
+ * rule refuses (a point-release such as `...-5-5-1`): that id is flagged by
+ * both, and prices at $0 / `known: false` either way.
  */
 export function isLongContextRequest(
   model: string,
@@ -349,9 +355,13 @@ export function isLongContextRequest(
   cacheRead: number,
   cacheCreation: number,
 ): boolean {
-  const lc = resolvePricing(model).pricing?.longContext;
-  if (!lc) return false;
-  return nonNegativeFiniteInt(input) + nonNegativeFiniteInt(cacheRead) + nonNegativeFiniteInt(cacheCreation) > lc.thresholdTokens;
+  if (typeof model !== "string") return false;
+  const prompt = nonNegativeFiniteInt(input) + nonNegativeFiniteInt(cacheRead) + nonNegativeFiniteInt(cacheCreation);
+  for (const [key, row] of Object.entries(PRICING)) {
+    const lc = row.longContext;
+    if (lc && prompt > lc.thresholdTokens && model.includes(key)) return true;
+  }
+  return false;
 }
 
 // ─── Model-id normalization (first-party / Bedrock / Vertex) ─────────────────
