@@ -9,6 +9,7 @@ import {
   type EffortTotalRow,
   type ModelEffortBreakdown,
 } from "./effort-breakdown.js";
+import { placeholderOutputShareFor, type PlaceholderOutputShare } from "./placeholder-share.js";
 import type { ReportOptions } from "../reporter/index.js";
 import { periodRange } from "../reporter/index.js";
 import {
@@ -130,6 +131,16 @@ export interface DashboardSummary {
    * the page. Optional for the same fixture reason as `costBasis`.
    */
   unpricedModels?: UnpricedModel[];
+  /**
+   * R1 disclosure: the share of this period's cost-bearing assistant rows (and
+   * of their estimated cost) written by Claude Code < 2.1.307 as subagent
+   * placeholder-output rows, whose output tokens are under-reported — so
+   * subagent output cost is a lower bound. `null` when the period has no such
+   * rows (a clean window needs no caveat; the key stays present). A separate
+   * raw read: NOT part of the headline reconciliation, changes no total.
+   * Optional for the same fixture reason as `costBasis`.
+   */
+  placeholderOutputShare?: PlaceholderOutputShare | null;
   totalDurationMs: number;
   // Plan ROI
   planFee: number;
@@ -1068,6 +1079,8 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   // ids it names are exactly the ones that contributed $0 above.
   const unpricedModels = collectPricingDrift(foldTotalsByModel(messageTotals)).unpricedModels;
   const costBasis = costBasisFor(store, msgFilter);
+  // R1 disclosure — its own raw read over the same window; never feeds a total.
+  const placeholderOutputShare = placeholderOutputShareFor(store, msgFilter);
 
   // ── Fill empty day buckets for the full period range so charts always show
   //    all days in the selected window, not just days that have sessions ────
@@ -1700,6 +1713,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       anyFallbackRates,
       costBasis,
       unpricedModels,
+      placeholderOutputShare,
       totalDurationMs,
       planFee,
       planMultiplier,

@@ -25,6 +25,7 @@ import type {
 } from "@claude-stats/core/types";
 import { estimateCost } from "@claude-stats/core/pricing";
 import { isPlaceholderOutput } from "@claude-stats/core/hygiene";
+import { placeholderOutputSql } from "./placeholder-sql.js";
 import { requireTicketKey } from "@claude-stats/core/tickets";
 import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
@@ -2333,6 +2334,43 @@ export class Store {
       w.totalCostEquivalent = Math.round(w.totalCostEquivalent * 10000) / 10000;
     }
     return windows;
+  }
+
+  /**
+   * Per-model token sums over the cost-bearing rows (`usage_counted = 1`) of a
+   * window, split by whether the row is a placeholder-output row (R1, plan
+   * A4). A DISCLOSURE read: separate from `getMessageTotals`, never feeds a
+   * headline, and always takes the raw path (no rollup has the subagent or
+   * version dimensions). Same filter builder and EXISTS membership as the
+   * totals, so it describes the same window. The flag is the SQL twin of
+   * `isPlaceholderOutput` (see `placeholder-sql.ts`).
+   */
+  getPlaceholderOutputTotals(filters: MessageFilter = {}): PlaceholderTotalRow[] {
+    const f = this.buildMessageFilter(filters);
+    const flag = placeholderOutputSql({
+      isSubagent: "ss.is_subagent",
+      claudeVersion: "m.claude_version",
+      stopReason: "m.stop_reason",
+    });
+    const sql = `
+      SELECT
+        m.model AS model,
+        ${flag} AS flagged,
+        COUNT(*) AS row_count,
+        SUM(m.input_tokens) AS input_tokens,
+        SUM(m.output_tokens) AS output_tokens,
+        SUM(m.cache_read_tokens) AS cache_read_tokens,
+        SUM(m.cache_creation_tokens) AS cache_creation_tokens,
+        SUM(m.ephemeral_5m_cache_tokens) AS ephemeral_5m_cache_tokens,
+        SUM(m.ephemeral_1h_cache_tokens) AS ephemeral_1h_cache_tokens
+      FROM messages m
+      LEFT JOIN sessions ss ON ss.session_id = m.session_id
+      WHERE ${this.messageWhereExists(f)} AND m.usage_counted = 1
+      GROUP BY m.model, flagged
+    `;
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(...f.params) as PlaceholderTotalRow[];
   }
 
   // ─── Stop reason distribution ──────────────────────────────────────────────
@@ -4991,6 +5029,20 @@ export interface MessageTotalRow {
    *  carry these per-model — its rows report `0`/`0`, which is mathematically
    *  identical to omitting the split (see `estimateCost`'s byte-identical
    *  rule), not a regression. See `plans/cache-ttl-fit/fallback-sites.md`. */
+  ephemeral_5m_cache_tokens: number;
+  ephemeral_1h_cache_tokens: number;
+}
+
+/** One (model, flagged) group of `getPlaceholderOutputTotals`. */
+export interface PlaceholderTotalRow {
+  model: string | null;
+  /** 1 when the group's rows are placeholder-output rows, else 0. */
+  flagged: number;
+  row_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
   ephemeral_5m_cache_tokens: number;
   ephemeral_1h_cache_tokens: number;
 }
