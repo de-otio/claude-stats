@@ -42,8 +42,12 @@ export type Archetype =
  * every use site in this slice (recording it needs a scanner/schema change +
  * backfill, §7-B); computing the frontier over `model × archetype` now keeps
  * that change purely additive later.
+ *
+ * An OPEN vocabulary (#125 D1): `xhigh` and `max` are already in use, so a
+ * closed union would turn the next tier into a compile error. Ordering lives in
+ * `@claude-stats/core` `effort.ts`.
  */
-export type EffortTier = 'low' | 'medium' | 'high';
+export type EffortTier = string;
 
 /**
  * INTERNAL intermediate for the efficiency module's pure functions (plan §1,

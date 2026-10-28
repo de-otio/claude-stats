@@ -1384,9 +1384,9 @@ exhaustive tool-count assertion in `mcp.test.ts` is what keeps this true.
 
 | Tool | Description |
 |---|---|
-| `get_stats` | Usage summary for a period — tokens, cost, sessions, cache efficiency |
+| `get_stats` | Usage summary for a period — tokens, cost, sessions, cache efficiency. Also `byModel`, and tokens and cost split by reasoning-effort tier (`byModel[].byEffort`, `byEffort`, `effortCoverage`) |
 | `list_sessions` | Recent sessions with token counts and estimated cost |
-| `get_session_detail` | Messages and token usage for a specific session |
+| `get_session_detail` | Messages and token usage for a specific session. Each message carries its `effort` tier; `effortMix` groups the session's messages and cost by tier |
 | `list_projects` | Per-project usage breakdown |
 | `get_status` | Database health, session count, last collection time |
 | `search_history` | Search prompt history by keyword |
@@ -1425,6 +1425,24 @@ Only `sessions` counts are session-scoped: a session is counted in the period
 it was active, and attributed to the day it *started*. Its tokens are always
 attributed to when they were actually sent, so a session spanning several days
 contributes one session count but per-day token counts.
+
+**Spend by reasoning effort:** `get_stats` also returns `byModel` (each model
+with its own `byEffort`), a top-level `byEffort`, and `effortCoverage`. An
+`effort` is the tier Claude Code recorded for a request — `low`, `medium`,
+`high`, `xhigh`, `max`, or a tier a later release adds; the set is open and
+unknown values pass through unchanged. Tiers are ordered low to high, then any
+other value A–Z, then `effort: null` last. `null` means Claude Code did not
+report a tier for those messages (older transcripts, or an entry without the
+field); it is a bucket, not a tier. Read `effortCoverage` first:
+`taggedCostShare` is the share of the window's cost on messages that carry a
+tier, `taggedMessageShare` the same by message count. The tiers sum to the
+headline tokens and cost, for `period: "all"` as for a bounded window, and
+`costShare` is each tier's share of the window's cost. Effort changes how many
+thinking and output tokens a turn uses, which are priced as usual — the figures
+show what was spent at each tier, not a per-tier price. `get_session_detail`
+adds `effortMix` (`effort`, `messages`, `estimatedCost` per tier) and an
+`effort` field on each message. `messages` counts stored message rows; one API
+response can be several rows.
 
 **Client configuration** — register via `claude mcp add`:
 

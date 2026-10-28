@@ -32,7 +32,7 @@ import {
   getPricingDriftFindings,
 } from "@claude-stats/core/pricing";
 import type { CostBasis } from "@claude-stats/core/types";
-import type { MessageFilter, MessageTotalRow, Store } from "../store/index.js";
+import { foldTotalsByModel, type MessageFilter, type MessageTotalRow, type Store } from "../store/index.js";
 import { REPAIR_DEDUPE_COMPLETED_KEY } from "../repair/dedupe.js";
 
 // ─── cost basis ──────────────────────────────────────────────────────────────
@@ -249,7 +249,7 @@ export function collectPricingDrift(
 
 /** The drift report for a filtered window, read through the store. */
 export function pricingDriftFor(store: Store, filters: MessageFilter = {}): PricingDriftReport {
-  return collectPricingDrift(store.getMessageTotals(filters));
+  return collectPricingDrift(foldTotalsByModel(store.getMessageTotals(filters)));
 }
 
 /** True when there is anything to say. */

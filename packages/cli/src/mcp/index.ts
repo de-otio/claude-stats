@@ -16,6 +16,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import type { Store } from "../store/index.js";
 import { buildDashboard, type DashboardData } from "../dashboard/index.js";
+import { buildEffortMix } from "../dashboard/effort-breakdown.js";
 import type { AutoCompactFitResult } from "@claude-stats/core/autoCompactFit";
 import { estimateCost } from "@claude-stats/core/pricing";
 import { searchHistory } from "../history/index.js";
@@ -287,6 +288,13 @@ export function createMcpServer(store: Store): McpServer {
       "same per-message data, so each breakdown sums exactly to the headline. Only `sessions` is session-scoped: a " +
       "session counts in every period it was active and is attributed to the day it STARTED, while its tokens are " +
       "attributed to when they were actually sent.\n\n" +
+      "REASONING EFFORT: `byModel[].byEffort`, the top-level `byEffort` and `effortCoverage` split the same window by " +
+      "the reasoning-effort tier Claude Code recorded for each request (`low`, `medium`, `high`, `xhigh`, `max`, or any " +
+      "tier a later release adds — the set is open). `effort: null` means Claude Code did not report a tier for those " +
+      "messages; it is a bucket, not a tier. Read `effortCoverage` first: `taggedCostShare` is the share of the " +
+      "window's cost on messages that carry a tier, so a low value means the split describes only part of the spend. " +
+      "Effort changes how many thinking and output tokens a turn uses, which are priced as usual; these figures show " +
+      "what was spent at each tier, not a per-tier price. The tiers sum to the headline.\n\n" +
       "PRICING-BASIS NOTE: cache-write cost now prices tokens recorded at the 1-hour cache TTL at their real 2x-input " +
       "rate (previously every cache write was priced at the 5-minute 1.25x rate, understating any 1-hour-TTL " +
       "workload) — a jump in reported cost is this correction, not new spend. This applies to any window with a " +
@@ -313,6 +321,9 @@ export function createMcpServer(store: Store): McpServer {
         // `summary` carries `costBasis` and `unpricedModels` (see
         // COST_BASIS_NOTE) alongside the figures they qualify.
         ...data.summary,
+        byModel: data.byModel,
+        byEffort: data.byEffort,
+        effortCoverage: data.effortCoverage,
         planAdvice: data.planUtilization
           ? {
               planUtilization: redactPlanUtilizationForMcp(data.planUtilization),
@@ -396,7 +407,8 @@ export function createMcpServer(store: Store): McpServer {
       "several messages (one per content block); only one of them carries the response's tokens, the others " +
       "report 0 and keep the tool data. `session.costBasis` says whether this session was counted that way " +
       "(`per-response`) or once per content block (`pre-dedupe`, roughly 2x inflated), and each message carries " +
-      "its own `costBasis` token.",
+      "its own `costBasis` token. Each message carries the `effort` tier Claude Code recorded for it (null = not " +
+      "reported), and `effortMix` groups the session's messages and cost by tier.",
     {
       sessionId: z.string().describe("Full or partial session ID"),
     },
@@ -416,11 +428,12 @@ export function createMcpServer(store: Store): McpServer {
           promptCount: session.prompt_count,
           costBasis: { basis: basis.basis, preDedupeRows: basis.preDedupeRows, perResponseRows: basis.perResponseRows },
         },
-        // Allowlist-built, field by field. ONLY `cost_basis` joins this
-        // payload from the V23 columns: `message_id`, `usage_counted`,
-        // `effort`, `speed` and `thinking_tokens` have no analytic in this
-        // release, and an allowlist that admits "we might use it later" is
-        // how it rots.
+        effortMix: buildEffortMix(messages),
+        // Allowlist-built, field by field. Of the V23 columns only
+        // `cost_basis` and `effort` join this payload (`effort` has an analytic
+        // since #125: `effortMix` above): `message_id`, `usage_counted`, `speed`
+        // and `thinking_tokens` have no analytic in this release, and an
+        // allowlist that admits "we might use it later" is how it rots.
         messages: messages.map((m) => {
           // m.prompt_text was already sanitised at parse time, but wrap with
           // an explicit untrusted-content marker so the caller agent is
@@ -441,6 +454,7 @@ export function createMcpServer(store: Store): McpServer {
             timestamp: m.timestamp,
             tools: m.tools,
             costBasis: m.cost_basis ?? "pre-dedupe",
+            effort: m.effort ?? null,
             ...(promptText !== null ? { promptText } : {}),
           };
         }),

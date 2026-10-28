@@ -28,7 +28,7 @@ import { isPlaceholderOutput } from "@claude-stats/core/hygiene";
 import { requireTicketKey } from "@claude-stats/core/tickets";
 import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 26;
 
 /**
  * SQL narrowing a session-id column to sessions attributed to one ticket key.
@@ -149,6 +149,7 @@ export class Store {
     if (current < 23) this.migrateToV23();
     if (current < 24) this.migrateToV24();
     if (current < 25) this.migrateToV25();
+    if (current < 26) this.migrateToV26();
 
     // Stamp the version FORWARD ONLY.
     //
@@ -441,9 +442,52 @@ export class Store {
       );
       CREATE INDEX IF NOT EXISTS idx_message_hourly_hour ON message_hourly (hour_utc);
     `);
-    // Idempotent one-shot backfill. The leading DELETE inside recomputeMessageHourly
-    // (full-rebuild branch) plus IF NOT EXISTS above make a crash-retry safe —
-    // a re-run rebuilds from current `messages` rather than double-counting.
+    // No backfill here since V26: V26 drops and recreates this table with the
+    // `effort` column in its primary key and runs the full rebuild, and every
+    // database passes through it. recomputeMessageHourly now writes `effort`,
+    // a column this V12 definition (and `messages.effort`, added at V23) does
+    // not have yet on a fresh database.
+  }
+
+  /**
+   * V26 — effort in the hourly rollup (#125 D4). `message_hourly` gains an
+   * `effort` column in its primary key, so the fully-unbounded `period:"all"`
+   * read can split by reasoning-effort tier and still reconcile with the
+   * headline. SQLite cannot alter a primary key and the table is a pure derived
+   * cache, so it is dropped, recreated and rebuilt in full; the leading DELETE
+   * inside recomputeMessageHourly makes a crash-retry safe.
+   */
+  private migrateToV26(): void {
+    this.db.exec(`
+      DROP TABLE IF EXISTS message_hourly;
+      CREATE TABLE message_hourly (
+        hour_utc      INTEGER NOT NULL,
+        project_path  TEXT,
+        model         TEXT,
+        inference_geo TEXT,
+        -- Reasoning-effort tier, NULL = not reported. Stored as its actual
+        -- value (no '' sentinel), like model/inference_geo.
+        effort        TEXT,
+        input_tokens          INTEGER NOT NULL,
+        output_tokens         INTEGER NOT NULL,
+        cache_read_tokens     INTEGER NOT NULL,
+        cache_creation_tokens INTEGER NOT NULL,
+        th_input_tokens          INTEGER NOT NULL,
+        th_output_tokens         INTEGER NOT NULL,
+        th_cache_read_tokens     INTEGER NOT NULL,
+        th_cache_creation_tokens INTEGER NOT NULL,
+        msg_count    INTEGER NOT NULL,
+        th_msg_count INTEGER NOT NULL,
+        min_ts       INTEGER,
+        PRIMARY KEY (hour_utc, project_path, model, inference_geo, effort)
+      );
+      CREATE INDEX IF NOT EXISTS idx_message_hourly_hour ON message_hourly (hour_utc);
+    `);
+    // Partial fixtures without the source tables have nothing to roll up.
+    const tables = this.db
+      .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('sessions', 'messages')")
+      .get() as { n: number };
+    if (tables.n < 2) return;
     this.recomputeMessageHourly();
   }
 
@@ -1171,11 +1215,16 @@ export class Store {
     const hourFilter = hours ? ` AND ${hourExpr} IN (${placeholders})` : "";
     const insertSql = `
       INSERT INTO message_hourly
+        (hour_utc, project_path, model, inference_geo, effort,
+         input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+         th_input_tokens, th_output_tokens, th_cache_read_tokens, th_cache_creation_tokens,
+         msg_count, th_msg_count, min_ts)
       SELECT
         ${hourExpr} AS hour_utc,
         (SELECT project_path FROM sessions s2 WHERE s2.session_id = m.session_id) AS project_path,
         m.model AS model,
         m.inference_geo AS inference_geo,
+        m.effort AS effort,
         SUM(m.input_tokens),
         SUM(m.output_tokens),
         SUM(m.cache_read_tokens),
@@ -1189,7 +1238,7 @@ export class Store {
         MIN(m.timestamp)
       FROM messages m
       WHERE EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = m.session_id)${hourFilter}
-      GROUP BY hour_utc, project_path, model, inference_geo
+      GROUP BY hour_utc, project_path, model, inference_geo, effort
     `;
 
     this.transaction(() => {
@@ -2317,13 +2366,17 @@ export class Store {
   // ─── Reporting queries ──────────────────────────────────────────────────────
 
   /**
-   * Per-model token totals. Dispatches to a rollup read when the request is
+   * Per-(model, effort) token totals: one row per model and reasoning-effort
+   * tier (`effort` null = not reported). Callers that want one row per model
+   * fold with `foldTotalsByModel`; the dashboard builds `byModel`, `byEffort`
+   * and the headline from this one read so they reconcile by construction.
+   * Dispatches to a rollup read when the request is
    * FULLY UNBOUNDED (no period and no session-scoped filter) — the 'all'-period
    * fast path, since period 'all' reaches the store with since===undefined.
    * Any bound (since/until/projectPath/repoUrl) falls back to the Build-1 seek
    * path (getMessageTotalsRaw), which is unchanged.
    */
-  getMessageTotals(filters: MessageFilter = {}): MessageTotalRow[] {
+  getMessageTotals(filters: MessageFilter = {}): MessageEffortTotalRow[] {
     // An account/entrypoint filter is a session-scoped bound just like
     // project/repo: it must take the raw seek path (getMessageTotalsRaw), never
     // the fully-unbounded message_hourly rollup (which has no session dimension
@@ -2347,14 +2400,15 @@ export class Store {
 
   /**
    * 'all'-period fast path: reproduce getMessageTotalsRaw({}) EXACTLY from the
-   * message_hourly rollup. Sums every bucket per model; model is stored as its
-   * actual value (null-model messages keep model NULL), matching raw's
-   * GROUP BY m.model which returns model:null for null-model messages.
+   * message_hourly rollup. Sums every bucket per (model, effort); both are
+   * stored as their actual values (null-model messages keep model NULL),
+   * matching raw's GROUP BY m.model, m.effort.
    */
-  private getMessageTotalsFromRollup(): MessageTotalRow[] {
+  private getMessageTotalsFromRollup(): MessageEffortTotalRow[] {
     const stmt = this.db.prepare(`
       SELECT
         model,
+        effort,
         SUM(input_tokens) AS input_tokens,
         SUM(output_tokens) AS output_tokens,
         SUM(cache_read_tokens) AS cache_read_tokens,
@@ -2364,11 +2418,12 @@ export class Store {
         -- omitting the split (estimateCost's byte-identical rule), i.e. no
         -- worse than pre-change behaviour. See fallback-sites.md.
         0 AS ephemeral_5m_cache_tokens,
-        0 AS ephemeral_1h_cache_tokens
+        0 AS ephemeral_1h_cache_tokens,
+        SUM(msg_count) AS msg_count
       FROM message_hourly
-      GROUP BY model
+      GROUP BY model, effort
     `);
-    return stmt.all() as unknown as MessageTotalRow[];
+    return stmt.all() as unknown as MessageEffortTotalRow[];
   }
 
   /**
@@ -2595,7 +2650,7 @@ export class Store {
     return (stmt.all as (...args: any[]) => unknown[])(...params) as MessageProjectTotalRow[];
   }
 
-  private getMessageTotalsRaw(filters: MessageFilter = {}): MessageTotalRow[] {
+  private getMessageTotalsRaw(filters: MessageFilter = {}): MessageEffortTotalRow[] {
     const f = this.buildMessageFilter(filters);
     const params = f.params;
     // EXISTS (not IN): preserves orphan-drop AND lets the m.timestamp filter
@@ -2605,19 +2660,21 @@ export class Store {
     const sql = `
       SELECT
         m.model,
+        m.effort,
         SUM(m.input_tokens) AS input_tokens,
         SUM(m.output_tokens) AS output_tokens,
         SUM(m.cache_read_tokens) AS cache_read_tokens,
         SUM(m.cache_creation_tokens) AS cache_creation_tokens,
         SUM(m.ephemeral_5m_cache_tokens) AS ephemeral_5m_cache_tokens,
-        SUM(m.ephemeral_1h_cache_tokens) AS ephemeral_1h_cache_tokens
+        SUM(m.ephemeral_1h_cache_tokens) AS ephemeral_1h_cache_tokens,
+        COUNT(*) AS msg_count
       FROM messages m
       WHERE ${this.messageWhereExists(f)}
-      GROUP BY m.model
+      GROUP BY m.model, m.effort
     `;
     const stmt = this.db.prepare(sql);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (stmt.all as (...args: any[]) => unknown[])(...params) as MessageTotalRow[];
+    return (stmt.all as (...args: any[]) => unknown[])(...params) as MessageEffortTotalRow[];
   }
 
   /**
@@ -4378,12 +4435,14 @@ export class Store {
     })();
 
     // 3. By model — reuse getMessageTotals
-    const byModel = this.getMessageTotals({
-      projectPath: filters.projectPath,
-      repoUrl: filters.repoUrl,
-      since: filters.since,
-      until: filters.until,
-    });
+    const byModel = foldTotalsByModel(
+      this.getMessageTotals({
+        projectPath: filters.projectPath,
+        repoUrl: filters.repoUrl,
+        since: filters.since,
+        until: filters.until,
+      }),
+    );
 
     // 4. By project
     const byProject = (() => {
@@ -4934,6 +4993,48 @@ export interface MessageTotalRow {
    *  rule), not a regression. See `plans/cache-ttl-fit/fallback-sites.md`. */
   ephemeral_5m_cache_tokens: number;
   ephemeral_1h_cache_tokens: number;
+}
+
+/**
+ * One (model, reasoning-effort tier) of in-window message totals — what
+ * `getMessageTotals` returns (#125). `effort` is null when Claude Code did not
+ * report a tier; it is a bucket, never a tier. `msg_count` counts every message
+ * row (carriers and demoted siblings alike), as the other `msg_count`s do.
+ */
+export interface MessageEffortTotalRow extends MessageTotalRow {
+  effort: string | null;
+  msg_count: number;
+}
+
+/**
+ * Collapse (model, effort) rows to one row per model: token sums add, so the
+ * result equals the pre-V26 per-model `getMessageTotals`. First-seen model
+ * order is kept.
+ */
+export function foldTotalsByModel(rows: readonly MessageEffortTotalRow[]): MessageTotalRow[] {
+  const byModel = new Map<string | null, MessageTotalRow>();
+  for (const r of rows) {
+    const acc = byModel.get(r.model);
+    if (acc) {
+      acc.input_tokens += r.input_tokens;
+      acc.output_tokens += r.output_tokens;
+      acc.cache_read_tokens += r.cache_read_tokens;
+      acc.cache_creation_tokens += r.cache_creation_tokens;
+      acc.ephemeral_5m_cache_tokens += r.ephemeral_5m_cache_tokens;
+      acc.ephemeral_1h_cache_tokens += r.ephemeral_1h_cache_tokens;
+    } else {
+      byModel.set(r.model, {
+        model: r.model,
+        input_tokens: r.input_tokens,
+        output_tokens: r.output_tokens,
+        cache_read_tokens: r.cache_read_tokens,
+        cache_creation_tokens: r.cache_creation_tokens,
+        ephemeral_5m_cache_tokens: r.ephemeral_5m_cache_tokens,
+        ephemeral_1h_cache_tokens: r.ephemeral_1h_cache_tokens,
+      });
+    }
+  }
+  return [...byModel.values()];
 }
 
 /** One 15-minute time bucket × model of in-window message totals. */

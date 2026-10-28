@@ -359,7 +359,7 @@ token columns zeroed.
 |---|---|---|---|
 | `message_id` | `TEXT` | yes | The raw `message.id` (e.g. `msg_xxxx`) shared by every transcript entry belonging to one API response. `NULL` on rows from before this column existed and were never re-parsed. |
 | `usage_counted` | `INTEGER` | no (`DEFAULT 1`) | `1` on the one row per `message_id` group that carries the response's real usage (the "carrier"); `0` on every other row in the group, whose token columns are zeroed. Every pre-V23 row reads back as `1` — it was, and still is, the only row for its `uuid`. |
-| `effort` | `TEXT` | yes | The entry-root `effort` field (e.g. `high`), when Claude Code reports one. Captured but has no analytic surface yet. |
+| `effort` | `TEXT` | yes | The reasoning-effort tier (`low`, `medium`, `high`, `xhigh`, `max`, or any later value — the set is open), when Claude Code reports one. Read from the entry-root `perTurnEffort`, falling back to `effort` (provisional: the two never differ on 2.1.300–2.1.310 data, and the per-turn value is the billed one if 2.1.311 makes them differ). Feeds `get_stats` `byEffort` and `get_session_detail` `effortMix` (V26 adds it to the hourly rollup). |
 | `speed` | `TEXT` | yes | `usage.speed` (e.g. `standard`, `fast`). Captured but **not priced** — fast-mode's published rate covers only input/output, not the cache rates that dominate volume, and no `estimateCost` call site can pass it yet. |
 | `thinking_tokens` | `INTEGER` | yes | `usage.output_tokens_details.thinking_tokens` — a subset of `output_tokens`. **Deliberately nullable**: the field is absent from roughly a third of history, and defaulting it to `0` would fabricate a 0% thinking share for transcripts that never reported one. Also `NULL` on every `usage_counted = 0` row. |
 | `cost_basis` | `TEXT` | **no** (`DEFAULT 'pre-dedupe'`) | `'per-response'` on a row the corrected, carrier-aware parser wrote or repaired; `'pre-dedupe'` on every row written before that fix (the V23 migration's backfill, and any row a sync partner with an older build still writes). The one column here that is deliberately **not** nullable: an unknown basis must read as "don't trust this row," not as an implied clean bill. |
@@ -374,6 +374,17 @@ one row, and [05-privacy-security.md](05-privacy-security.md) for how
 enrol new columns automatically and why `effort`/`speed`/`message_id`/
 `usage_counted` are therefore validated at the parser boundary before they
 ever reach this table.
+
+### V26 — `message_hourly.effort`
+
+`message_hourly` is the pre-aggregated hourly rollup behind the `period: "all"`
+fast path. V26 adds an `effort TEXT` column to it and to its primary key,
+`(hour_utc, project_path, model, inference_geo, effort)`, so the all-time read
+can split by reasoning-effort tier and still equal the headline. The table is a
+pure derived cache: the migration drops it, recreates it and rebuilds it from
+`messages` in full (a crash-retry is safe). `NULL` effort — "not reported" —
+is stored as `NULL`, not a sentinel. `getMessageTotals` returns one row per
+`(model, effort)` on both the rollup and the raw-seek path.
 
 ## Key Telemetry Event Names
 

@@ -2,7 +2,13 @@
  * Dashboard — builds pre-aggregated JSON for visualization tools.
  * See plans/11-dashboard-export.md for design.
  */
-import type { Store, SessionRow, MessageFilter, SpendingMessageRow } from "../store/index.js";
+import { foldTotalsByModel, type Store, type SessionRow, type MessageFilter, type SpendingMessageRow } from "../store/index.js";
+import {
+  buildEffortBreakdown,
+  type EffortCoverage,
+  type EffortTotalRow,
+  type ModelEffortBreakdown,
+} from "./effort-breakdown.js";
 import type { ReportOptions } from "../reporter/index.js";
 import { periodRange } from "../reporter/index.js";
 import {
@@ -212,12 +218,24 @@ export interface DashboardData {
       planning: number;
     };
   }>;
-  byModel: Array<{
-    model: string;
-    inputTokens: number;
-    outputTokens: number;
-    estimatedCost: number;
-  }>;
+  /**
+   * Per model, with the model's split by reasoning-effort tier inside
+   * (`byEffort`, #125). Σ over models equals the headline; Σ over a model's
+   * `byEffort` equals that model's row.
+   */
+  byModel: Array<Omit<ModelEffortBreakdown, "byEffort"> & { byEffort?: ModelEffortBreakdown["byEffort"] }>;
+  /**
+   * The same window split by reasoning-effort tier alone, across models. The
+   * tier set is open and `effort: null` (not reported) is a bucket, not a
+   * tier. Σ equals the headline tokens and cost.
+   *
+   * `byEffort` and `effortCoverage` (and `byModel[].byEffort`) are optional so
+   * `DashboardData` fixtures that predate them keep compiling; `buildDashboard`
+   * always populates them.
+   */
+  byEffort?: EffortTotalRow[];
+  /** How much of the window's cost and messages carry an effort tag at all. */
+  effortCoverage?: EffortCoverage;
   byEntrypoint: Array<{
     entrypoint: string;
     sessions: number;
@@ -1028,49 +1046,27 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   // ── Cost from per-message model data ─────────────────────────────────────
   const messageTotals = store.getMessageTotals(msgFilter);
 
-  let totalCost = 0;
   // The headline token totals come from this same read, so "tokens" and "cost"
   // are guaranteed to describe the same messages (see the note above `totalPrompts`).
-  let totalInput = 0;
-  let totalOutput = 0;
-  let totalCacheRead = 0;
-  let totalCacheCreate = 0;
+  // One read, one fold: `byModel`, `byEffort`, `effortCoverage` and the headline
+  // sums below all come from the same (model, effort) rows, so they reconcile
+  // by construction on the raw path and on the `period:"all"` rollup alike.
+  const effortBreakdown = buildEffortBreakdown(messageTotals);
+  const { byModel, byEffort, effortCoverage } = effortBreakdown;
+  const totalCost = effortBreakdown.headline.cost;
+  const totalInput = effortBreakdown.headline.inputTokens;
+  const totalOutput = effortBreakdown.headline.outputTokens;
+  const totalCacheRead = effortBreakdown.headline.cacheReadTokens;
+  const totalCacheCreate = effortBreakdown.headline.cacheCreationTokens;
   // Set when any priced message this period rested on a fallback rate (see
   // DashboardSummary.anyFallbackRates) — surfaced so the cost card's caveat
   // can say the figure is an estimate rather than asserting "actual metered
   // cost" over a partner platform's separately-priced usage.
-  let anyFallbackRates = false;
-  const byModel: DashboardData["byModel"] = [];
-  for (const mt of messageTotals) {
-    const result = estimateCost(
-      mt.model,
-      mt.input_tokens,
-      mt.output_tokens,
-      mt.cache_read_tokens,
-      mt.cache_creation_tokens,
-      undefined,
-      {
-        ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
-        ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
-      },
-    );
-    if (result.rateBasis === "first_party_fallback") anyFallbackRates = true;
-    totalCost += result.cost;
-    totalInput += mt.input_tokens;
-    totalOutput += mt.output_tokens;
-    totalCacheRead += mt.cache_read_tokens;
-    totalCacheCreate += mt.cache_creation_tokens;
-    byModel.push({
-      model: mt.model,
-      inputTokens: mt.input_tokens,
-      outputTokens: mt.output_tokens,
-      estimatedCost: Math.round(result.cost * 100) / 100,
-    });
-  }
+  const anyFallbackRates = effortBreakdown.headline.anyFallbackRates;
   // The two disclosures that qualify `totalCost` — see DashboardSummary.
   // Drift is collected over the SAME read the total was priced from, so the
   // ids it names are exactly the ones that contributed $0 above.
-  const unpricedModels = collectPricingDrift(messageTotals).unpricedModels;
+  const unpricedModels = collectPricingDrift(foldTotalsByModel(messageTotals)).unpricedModels;
   const costBasis = costBasisFor(store, msgFilter);
 
   // ── Fill empty day buckets for the full period range so charts always show
@@ -1728,6 +1724,8 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     byHour,
     byProject,
     byModel,
+    byEffort,
+    effortCoverage,
     byEntrypoint,
     stopReasons,
     byWindow,

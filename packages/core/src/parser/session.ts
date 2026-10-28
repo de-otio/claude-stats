@@ -691,7 +691,13 @@ export async function parseSessionFile(
           // Every entry starts as a carrier; `markUsageCarriers` demotes the
           // non-winners once the whole range has been read.
           usageCounted: true,
-          effort: validShape(entry.effort, SHORT_TOKEN_RE),
+          // D2 (#125): the per-turn value is the one billed when the two differ
+          // (2.1.311 `ultrathink`), `effort` is the fallback for older writers.
+          // PROVISIONAL: no 2.1.311 transcripts existed when this was set;
+          // on 2.1.300-310 the two never disagree (checks/V5.md section a).
+          effort:
+            validShape(entry.perTurnEffort, SHORT_TOKEN_RE) ??
+            validShape(entry.effort, SHORT_TOKEN_RE),
           speed: validShape(usage?.speed, SHORT_TOKEN_RE),
           skill: validIdentifier(entry.attributionSkill),
           thinkingTokens: validTokenCount(usage?.output_tokens_details?.thinking_tokens),
