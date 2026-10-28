@@ -31,7 +31,7 @@
     "brace-expansion": "^5.0.9",
     "@hono/node-server": "^2.0.5",
     "sharp": "^0.35.5",
-    "qs": "^6.16.0",
+    "qs": "^6.17.0",
     "fast-uri": "^3.1.6",
     "vite": "^8.2.4",
     "postcss-selector-parser": "^7.1.6"

@@ -956,6 +956,16 @@ shows where capture began as a step. Then come:
   active. Context a skill leaves behind that later turns keep paying for is
   measured by [`context`](#context) and is not added here.
 - **By spawn depth**: subagent spend by depth in the spawn chain.
+- **By reasoning effort**: spend per effort tier (`low`, `medium`, `high`,
+  `xhigh`, ...), split into main conversation and subagents, preceded by the
+  share of spend that carries an effort tag. `(not reported)` is spend from
+  messages Claude Code recorded no effort for (older versions); it is kept as
+  its own row, never folded into a tier. In `--json` and `get_agent_cost`,
+  each agent type also carries its own `byEffort` split, so you can see which
+  tier a given subagent ran at. This is spend *at* a tier, not a price
+  multiplier: effort changes token counts, which are priced as usual.
+  Subagents inherit the model's effort setting unless the Agent call passes
+  `effort`.
 
 Every message is priced the same way as the dashboard headline. Messages
 whose model has no known rate count as $0 and are reported, so the totals are
@@ -1397,7 +1407,7 @@ exhaustive tool-count assertion in `mcp.test.ts` is what keeps this true.
 | `get_efficiency_hints` | Self-audit: your own wasted spend across seven local patterns (cache churn, retry loops, abandoned spend, context bloat, re-entry burn, tier mismatch, high effort with low output). `high-effort-low-output` fires on a run of at least 20 consecutive turns at effort high or above, where at least 80% of turns call a tool, median output is at most 500 tokens, and the run contains no Edit, Write, MultiEdit, NotebookEdit, Agent or StructuredOutput call; it reports the run cost as measured spend (estimated waste 0), ignores turns with no reported effort, and ignores every subagent row written before Claude Code 2.1.307. Every finding names its rule, threshold, and the specific sessions it fired on. Subagent rows written by Claude Code before 2.1.307 that carry no stop reason have placeholder output tokens; `context-bloat` is unaffected (it reads input and cache counts only, which are real), `tier-mismatch` prices them without their output tokens, and the `report` stop-reason line leaves them out |
 | `get_cache_ttl_fit` | Is this workload cheaper on the 5-minute or the 1-hour cache TTL? Idle-gap distribution, cache-write origin, per-model net cost, and one verdict always shown beside its margin. Equivalent to `claude-stats ttl-fit`; see [`ttl-fit`](#ttl-fit) above for how to read the verdict |
 | `get_context_carry` | How much of the bill is carrying context forward, and where does it concentrate? Size bands, tokens above a set of caps, reset/sawtooth shape, and the session-start prelude — every dollar figure a stated lower bound. Answers the same question as Claude Code's own `/context`, but over time. Equivalent to `claude-stats context`; see [`context`](#context) above. Omits `concentration`, `preludeByProject`, and `turns` (session ids / project paths / message uuids), and strips `sessionId` from `resets`/`cycles` — use the CLI or local dashboard for those. Also carries an allowlisted `autoCompactFit` block — the same `autoCompactWindow` recommendation `context` prints, with raw model ids stripped down to a `uniform`/`unknownModels` summary — see [output-guide.md](output-guide.md#auto-compact-window-fit) |
-| `get_agent_cost` | Where does the spend go: main conversation versus subagents, which agent types, while which skill ran, and at what spawn depth? Leads with a `coverage` block (how much subagent spend has a recorded agent type; older spend reads as unrecorded). Describes spend, never judges it. Equivalent to `claude-stats agents`; see [`agents`](#agents) above. Payload carries no session ids, message uuids or paths |
+| `get_agent_cost` | Where does the spend go: main conversation versus subagents, which agent types, while which skill ran, and at what spawn depth? Leads with a `coverage` block (how much subagent spend has a recorded agent type, and `effortTaggedShare`, the share of spend with a recorded reasoning-effort tier; older spend reads as unrecorded). Also splits spend by effort tier (`byEffort`, and per agent type). Describes spend, never judges it. Equivalent to `claude-stats agents`; see [`agents`](#agents) above. Payload carries no session ids, message uuids or paths |
 | `generate_justification_pack` | Write the justification pack (HTML + CSV) for one month to local disk. Equivalent to `claude-stats pack --period <YYYY-MM>` |
 | `get_constraint_impact` | What a *declared* policy boundary (`config.policyEvents`) measurably cost or saved, per task class, on both sides |
 | `get_account_info` | Current login's seat/billing/org fields, plus every account this machine has observed. Never returns a raw email — only `emailPresent`/`emailHash` |
@@ -1443,6 +1453,19 @@ show what was spent at each tier, not a per-tier price. `get_session_detail`
 adds `effortMix` (`effort`, `messages`, `estimatedCost` per tier) and an
 `effort` field on each message. `messages` counts stored message rows; one API
 response can be several rows.
+
+**Placeholder-output disclosure:** `get_stats` and `get_agent_cost` return
+`placeholderOutputShare` — `{ rowShare, costShare, note }`. Subagent transcripts
+written by Claude Code before 2.1.307 carry a mid-stream placeholder in
+`output_tokens` (and an empty stop reason) on their assistant rows, so output is
+under-reported there and subagent output cost is a lower bound. `rowShare` is
+the share of the window's cost-bearing assistant rows that are such rows;
+`costShare` is the share of the window's estimated cost on them (0 when the
+window prices to $0); `note` is a fixed sentence. The field is `null` when the
+window has no such rows. It comes from a separate read of the same window and is
+a disclosure only: it changes no total and is not part of the breakdowns that
+sum to the headline. It holds numbers and the fixed sentence — no session ids,
+paths or project names.
 
 **Client configuration** — register via `claude mcp add`:
 

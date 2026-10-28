@@ -109,6 +109,24 @@ export function formatAgentCostLines(report: AgentCostReport, t: Translate): str
     );
   }
 
+  // Effort tier (#125): coverage first, then one line per tier, main vs subagent.
+  if (report.byEffort.length > 0) {
+    lines.push("", t("cli:agentCost.effortTitle"));
+    lines.push("  " + t("cli:agentCost.effortCoverageLine", { share: pct(c.effortTaggedShare) }));
+    for (const r of report.byEffort) {
+      lines.push(
+        "  " +
+          t("cli:agentCost.effortRow", {
+            name: r.effort ?? t("cli:agentCost.effortUnreportedName"),
+            cost: formatCost(r.cost),
+            main: formatCost(r.mainCost),
+            subagent: formatCost(r.subagentCost),
+            messages: formatCount(r.messages),
+          }),
+      );
+    }
+  }
+
   lines.push("", t("cli:agentCost.bySkillTitle"));
   if (report.bySkill.length === 0) {
     lines.push("  " + t("cli:agentCost.bySkillEmpty"));
