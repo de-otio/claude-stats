@@ -231,6 +231,7 @@ export function collectPricingDrift(
       mt.cache_creation_tokens,
       overrides,
       { ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens, ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens },
+      { longContext: mt.long_context === 1 },
     );
     if (r.known) continue;
     const tokens = mt.input_tokens + mt.output_tokens + mt.cache_read_tokens + mt.cache_creation_tokens;

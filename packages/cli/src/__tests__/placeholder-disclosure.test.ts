@@ -142,6 +142,26 @@ describe("placeholderOutputShare", () => {
     }
   });
 
+  it("costShare prices a long-context request at its tier (C2)", () => {
+    const store = new Store(":memory:");
+    try {
+      // Same token total on each side: one flagged Haiku 5.5 request over the
+      // 100K threshold (5x tier) vs two unflagged requests under it. Tiered:
+      // 5/(5+1). Without the tier both sides price alike: 1/2.
+      const haiku = "claude-haiku-5-5";
+      store.upsertSession(session("s-old", { isSubagent: true, models: [haiku] }));
+      store.upsertMessages([message("s-old-m0", "s-old", 0, { model: haiku, inputTokens: 120_000, outputTokens: 0 })]);
+      store.upsertSession(session("s-new", { claudeVersion: "2.1.307", isSubagent: true, models: [haiku] }));
+      store.upsertMessages([0, 1].map((i) =>
+        message(`s-new-m${i}`, "s-new", i, { claudeVersion: "2.1.307", stopReason: "end_turn", model: haiku, inputTokens: 60_000, outputTokens: 0 })));
+      const share = buildPlaceholderOutputShare(store.getPlaceholderOutputTotals({}))!;
+      expect(share.rowShare).toBeCloseTo(1 / 3, 4);
+      expect(share.costShare).toBeCloseTo(5 / 6, 4);
+    } finally {
+      store.close();
+    }
+  });
+
   it("is scoped to the query window and carries nothing but numbers and the fixed sentence", () => {
     const store = new Store(":memory:");
     try {

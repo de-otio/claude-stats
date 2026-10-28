@@ -447,12 +447,12 @@ describe("schema V26", () => {
 
     const reopened = new Store(dbPath);
     try {
-      expect(SCHEMA_VERSION).toBe(26);
+      expect(SCHEMA_VERSION).toBe(27); // V25 store passes through V26 and V27
       const check = new DatabaseSync(dbPath);
       const cols = check.prepare("PRAGMA table_info(message_hourly)").all() as Array<{ name: string; pk: number }>;
       expect(cols.find((c) => c.name === "effort")!.pk).toBeGreaterThan(0);
       const version = check.prepare("SELECT value FROM metadata WHERE key = 'schema_version'").get() as { value: string };
-      expect(version.value).toBe("26");
+      expect(version.value).toBe("27");
       const rolled = check
         .prepare("SELECT COUNT(DISTINCT effort) AS n, SUM(msg_count) AS m, SUM(effort IS NULL) AS nulls, COUNT(*) AS buckets FROM message_hourly")
         .get() as { n: number; m: number; nulls: number; buckets: number };

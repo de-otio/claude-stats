@@ -1,5 +1,5 @@
 /** Shared helpers for the efficiency-hygiene detectors. Pure, no I/O. */
-import { estimateCost, type CacheWriteSplit, type RateOverrides } from "../pricing.js";
+import { estimateCost, isLongContextRequest, type CacheWriteSplit, type RateOverrides } from "../pricing.js";
 import type { HygieneMessageRow } from "./types.js";
 
 /** One session's messages in the caller's row order — grouping never reorders.
@@ -51,7 +51,9 @@ export function messageCost(row: HygieneMessageRow, overrides?: RateOverrides): 
     ephemeral5mCacheTokens: row.ephemeral5mCacheTokens,
     ephemeral1hCacheTokens: row.ephemeral1hCacheTokens,
   };
-  return estimateCost(row.model, row.inputTokens, row.outputTokens, row.cacheReadTokens, row.cacheCreationTokens, overrides, ttlSplit).cost;
+  return estimateCost(row.model, row.inputTokens, row.outputTokens, row.cacheReadTokens, row.cacheCreationTokens, overrides, ttlSplit, {
+    longContext: isLongContextRequest(row.model, row.inputTokens, row.cacheReadTokens, row.cacheCreationTokens),
+  }).cost;
 }
 
 /** Sum of `messageCost` over a set of rows. */

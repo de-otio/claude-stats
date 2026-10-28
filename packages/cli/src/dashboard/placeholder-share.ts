@@ -53,6 +53,7 @@ export function buildPlaceholderOutputShare(
       g.cache_creation_tokens,
       rateOverrides,
       { ephemeral5mCacheTokens: g.ephemeral_5m_cache_tokens, ephemeral1hCacheTokens: g.ephemeral_1h_cache_tokens },
+      { longContext: g.long_context === 1 },
     );
     rows += g.row_count;
     cost += priced.cost;

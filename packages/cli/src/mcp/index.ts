@@ -18,7 +18,7 @@ import type { Store } from "../store/index.js";
 import { buildDashboard, type DashboardData } from "../dashboard/index.js";
 import { buildEffortMix } from "../dashboard/effort-breakdown.js";
 import type { AutoCompactFitResult } from "@claude-stats/core/autoCompactFit";
-import { estimateCost } from "@claude-stats/core/pricing";
+import { estimateCost, isLongContextRequest } from "@claude-stats/core/pricing";
 import { searchHistory } from "../history/index.js";
 import { sanitizePromptText } from "@claude-stats/core/sanitize";
 import type { ReportOptions } from "../reporter/index.js";
@@ -455,6 +455,9 @@ export function createMcpServer(store: Store): McpServer {
               m.output_tokens ?? 0,
               m.cache_read_tokens ?? 0,
               m.cache_creation_tokens ?? 0,
+              undefined,
+              undefined,
+              { longContext: isLongContextRequest(m.model ?? "unknown", m.input_tokens ?? 0, m.cache_read_tokens ?? 0, m.cache_creation_tokens ?? 0) },
             ),
             timestamp: m.timestamp,
             tools: m.tools,

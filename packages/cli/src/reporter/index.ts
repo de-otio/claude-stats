@@ -8,7 +8,7 @@ import type { SearchResult } from "../history/index.js";
 import type { DailyDigest, DailyDigestItem } from "../recap/index.js";
 import type { CostPerTaskReport } from "../cost-per-task/index.js";
 import { MIN_OBSERVABLE_FOR_MODEL_RATE } from "../cost-per-task/index.js";
-import { estimateCost, formatCost } from "@claude-stats/core/pricing";
+import { estimateCost, formatCost, isLongContextRequest } from "@claude-stats/core/pricing";
 import { formatMoney, formatPercent, confidenceCaveat } from "@claude-stats/core/insight";
 import { attributeToolCosts, groupByMcpServer, detectAnomalies } from "../spending.js";
 import { t } from "../i18n.js";
@@ -571,6 +571,7 @@ export function printSummary(store: Store, opts: ReportOptions = {}): void {
         ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
         ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
       },
+      { longContext: mt.long_context === 1 },
     );
     if (result.known) {
       totalCost += result.cost;
@@ -763,9 +764,17 @@ export function printSpendingReport(store: Store, opts: SpendingOptions = {}): v
     const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
-    });
+    }, { longContext: row.long_context === 1 });
     grandTotal += cost;
-    modelCosts.push({ model: row.model, cost, input: row.input_tokens, output: row.output_tokens });
+    // byModel carries one row per (model, long-context tier); show one line per model.
+    const existing = modelCosts.find((mc) => mc.model === row.model);
+    if (existing) {
+      existing.cost += cost;
+      existing.input += row.input_tokens;
+      existing.output += row.output_tokens;
+    } else {
+      modelCosts.push({ model: row.model, cost, input: row.input_tokens, output: row.output_tokens });
+    }
   }
   modelCosts.sort((a, b) => b.cost - a.cost);
 
@@ -796,7 +805,7 @@ export function printSpendingReport(store: Store, opts: SpendingOptions = {}): v
     const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
-    });
+    }, { longContext: mt.long_context === 1 });
     sessionCostMap.set(mt.session_id, (sessionCostMap.get(mt.session_id) ?? 0) + cost);
   }
 
@@ -849,6 +858,8 @@ export function printSpendingReport(store: Store, opts: SpendingOptions = {}): v
         a.message.model ?? "unknown",
         a.message.input_tokens, a.message.output_tokens,
         a.message.cache_read_tokens, a.message.cache_creation_tokens,
+        undefined, undefined,
+        { longContext: isLongContextRequest(a.message.model ?? "unknown", a.message.input_tokens, a.message.cache_read_tokens, a.message.cache_creation_tokens) },
       );
       const modelShort = a.message.model?.replace("claude-", "") ?? "unknown";
       console.log(`  ${i + 1}. "${preview}${a.message.prompt_text && a.message.prompt_text.length > 60 ? "\u2026" : ""}"  \u2014 ${formatTokens(a.totalTokens)} tokens (${formatCost(cost)})  ${modelShort}`);
@@ -1196,7 +1207,7 @@ export function printSessionList(store: Store, opts: ReportOptions = {}): void {
     const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
-    });
+    }, { longContext: mt.long_context === 1 });
     sessionCostMap.set(mt.session_id, prev + cost);
   }
 

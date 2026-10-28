@@ -18,7 +18,7 @@ import {
   type CostBasisSummary,
   type UnpricedModel,
 } from "../reporter/cost-basis.js";
-import { estimateCost, lookupPlanFee, PLAN_FEES } from "@claude-stats/core/pricing";
+import { estimateCost, isLongContextRequest, lookupPlanFee, PLAN_FEES } from "@claude-stats/core/pricing";
 import type { UsageWindow } from "@claude-stats/core/types";
 import { classifyUsageIntensity } from "@claude-stats/core/planMechanics";
 import { readClaudeAccount } from "../account.js";
@@ -1010,7 +1010,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     const { cost } = estimateCost(b.model, b.input_tokens, b.output_tokens, b.cache_read_tokens, b.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: b.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: b.ephemeral_1h_cache_tokens,
-    });
+    }, { longContext: b.long_context === 1 });
     const dateStr = b.bucket_start != null ? dayFmt.format(new Date(b.bucket_start)) : "unknown";
     const dayEntry = dayMap.get(dateStr) ?? { sessions: 0, prompts: 0, ...emptyTokens() };
     dayEntry.inputTokens += b.input_tokens;
@@ -1039,7 +1039,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     const { cost } = estimateCost(p.model, p.input_tokens, p.output_tokens, p.cache_read_tokens, p.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: p.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: p.ephemeral_1h_cache_tokens,
-    });
+    }, { longContext: p.long_context === 1 });
     const entry = projectMap.get(p.project_path) ?? {
       sessions: 0, prompts: 0, thinkingBlocks: 0,
       workProfile: { exploring: 0, editing: 0, running: 0, researching: 0, planning: 0 },
@@ -1265,7 +1265,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
-    });
+    }, { longContext: mt.long_context === 1 });
     entry.cost += cost;
     const tokens = mt.input_tokens + mt.output_tokens;
     if (tokens > entry.topModelTokens) {
@@ -1422,7 +1422,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens, undefined, {
         ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
         ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
-      });
+      }, { longContext: mt.long_context === 1 });
       entry.cost += cost;
       // Use mt.model as-is (matching the top-level byModel grouping key) so the
       // per-account split reconciles model-for-model with the headline split.
@@ -1906,6 +1906,7 @@ export function attachInsights(
             ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
             ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
           },
+          { longContext: mt.long_context === 1 },
         ).cost;
       }
       // Zero means the preceding window had no recorded spend, which is not a
@@ -2640,9 +2641,18 @@ function buildSpendingSection(
     const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
-    });
+    }, { longContext: row.long_context === 1 });
     grandTotal += cost;
-    modelCosts.push({ model: row.model, cost, input: row.input_tokens, output: row.output_tokens });
+    // report.byModel has one row per (model, long-context tier); the output
+    // keeps one entry per model.
+    const existing = modelCosts.find((mc) => mc.model === row.model);
+    if (existing) {
+      existing.cost += cost;
+      existing.input += row.input_tokens;
+      existing.output += row.output_tokens;
+    } else {
+      modelCosts.push({ model: row.model, cost, input: row.input_tokens, output: row.output_tokens });
+    }
   }
   const costByModel = modelCosts.map(mc => ({
     model: mc.model,
@@ -2659,6 +2669,8 @@ function buildSpendingSection(
       a.message.model ?? "unknown",
       a.message.input_tokens, a.message.output_tokens,
       a.message.cache_read_tokens, a.message.cache_creation_tokens,
+      undefined, undefined,
+      { longContext: isLongContextRequest(a.message.model ?? "unknown", a.message.input_tokens, a.message.cache_read_tokens, a.message.cache_creation_tokens) },
     );
     const flags: string[] = [];
     if (a.timesAvg > 2) flags.push("OUTLIER");

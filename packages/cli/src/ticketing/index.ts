@@ -310,6 +310,7 @@ export function getTicketCostReport(store: Store, filters: TicketReportFilters =
         ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
         ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
       },
+      { longContext: row.long_context === 1 },
     );
     if (priced.rateBasis === "first_party_fallback") anyFallbackRates = true;
     if (priced.known) {

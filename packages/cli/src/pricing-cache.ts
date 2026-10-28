@@ -135,6 +135,11 @@ export function displayNameToApiPrefix(displayName: string): string {
  */
 export function parsePricingTable(html: string): Record<string, ModelPricing> {
   const models: Record<string, ModelPricing> = {};
+  // Long-context tier rows ("Claude Haiku 5.5 (for prompts over 100,000
+  // tokens)") share the base row's model name. They are collected apart and
+  // attached to the base row after the table is read, so row order cannot
+  // matter and a tier row can never be taken as the base rates.
+  const tiers: Record<string, NonNullable<ModelPricing["longContext"]>> = {};
 
   // Extract all HTML tables
   const tableRegex = /<table[\s>][\s\S]*?<\/table>/gi;
@@ -178,15 +183,39 @@ export function parsePricingTable(html: string): Record<string, ModelPricing> {
       const modelName = extractModelName(cells[colMap.model]!);
       if (!modelName.toLowerCase().startsWith("claude")) continue;
 
+      const prefix = displayNameToApiPrefix(modelName);
+      const tierThreshold = longContextRowThreshold(cells[colMap.model]!);
+
       const input = parseDollarAmount(cells[colMap.input]!);
       const output = parseDollarAmount(cells[colMap.output]!);
-      if (input === null || output === null) continue;
+      if (input === null || output === null) {
+        if (tierThreshold !== null) console.warn(`[claude-stats] pricing: unreadable long-context row for ${prefix}; keeping base rates`);
+        continue;
+      }
 
       const cacheRead = cellAmount(cells, colMap.cacheRead);
       const cacheWrite = cellAmount(cells, colMap.cacheWrite5m);
       const cacheWrite1h = cellAmount(cells, colMap.cacheWrite1h);
 
-      const prefix = displayNameToApiPrefix(modelName);
+      if (tierThreshold !== null) {
+        // A tier row must carry every column: a missing one is never
+        // synthesized, because the base-rate multipliers do not apply to it.
+        if (cacheRead === null || cacheWrite === null || cacheWrite1h === null) {
+          console.warn(`[claude-stats] pricing: long-context row for ${prefix} is missing cache columns; keeping base rates`);
+          continue;
+        }
+        tiers[prefix] = {
+          thresholdTokens: tierThreshold,
+          rates: {
+            inputPerMillion: input,
+            outputPerMillion: output,
+            cacheReadPerMillion: cacheRead,
+            cacheWritePerMillion: cacheWrite,
+            cacheWrite1hPerMillion: cacheWrite1h,
+          },
+        };
+        continue;
+      }
       models[prefix] = {
         inputPerMillion: input,
         outputPerMillion: output,
@@ -201,10 +230,56 @@ export function parsePricingTable(html: string): Record<string, ModelPricing> {
     }
 
     // If we found models, stop — we found the right table
-    if (Object.keys(models).length > 0) break;
+    if (Object.keys(models).length > 0) {
+      for (const [prefix, tier] of Object.entries(tiers)) {
+        const base = models[prefix];
+        if (!base) {
+          console.warn(`[claude-stats] pricing: long-context row for ${prefix} has no base row; ignored`);
+        } else if (!tierNotCheaperThanBase(base, tier.rates)) {
+          // A tier cheaper than the base in any column means the rows were
+          // misread (swapped, or the wrong table): keep the base, drop the tier.
+          console.warn(`[claude-stats] pricing: long-context row for ${prefix} is cheaper than its base row; ignored`);
+        } else {
+          base.longContext = tier;
+        }
+      }
+      break;
+    }
   }
 
   return models;
+}
+
+function tierNotCheaperThanBase(base: ModelPricing, tier: NonNullable<ModelPricing["longContext"]>["rates"]): boolean {
+  return (
+    tier.inputPerMillion >= base.inputPerMillion &&
+    tier.outputPerMillion >= base.outputPerMillion &&
+    tier.cacheReadPerMillion >= base.cacheReadPerMillion &&
+    tier.cacheWritePerMillion >= base.cacheWritePerMillion &&
+    tier.cacheWrite1hPerMillion >= base.cacheWrite1hPerMillion
+  );
+}
+
+/**
+ * The long-context threshold a model-name cell declares, or `null` when the
+ * cell is an ordinary (base) row. A label like "for prompts over 100,000
+ * tokens" or "over 100K" is a tier row; "for prompts up to 100,000 tokens" is
+ * the base row. The threshold is read from the label when it carries a number,
+ * else 100,000.
+ */
+export function longContextRowThreshold(nameCell: string): number | null {
+  const text = nameCell
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&gt;/gi, ">")
+    .replace(/&[a-z]+;|&#\d+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const m = text.match(/(?:\bover\b|\babove\b|\bmore than\b|\bgreater than\b|\bexceeding\b|>)\s*(\d[\d,]*(?:\.\d+)?)?\s*([kKmM])?/i);
+  if (!m) return null;
+  const n = m[1] ? parseFloat(m[1].replace(/,/g, "")) : NaN;
+  if (!Number.isFinite(n) || n <= 0) return 100_000;
+  const mult = m[2] ? (m[2].toLowerCase() === "k" ? 1_000 : 1_000_000) : 1;
+  return Math.round(n * mult);
 }
 
 function extractCells(row: string): string[] {

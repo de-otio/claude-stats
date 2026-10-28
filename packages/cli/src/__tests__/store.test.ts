@@ -1128,6 +1128,7 @@ describe("Store — message period filter (subquery seek parity)", () => {
         model: "claude-opus-4-6",
         // No effort recorded on these fixtures: one (model, null-effort) row each.
         effort: null,
+        long_context: 0,
         msg_count: 3,
         input_tokens: 100 + 300 + 500,
         output_tokens: 10 + 30 + 50,
@@ -1142,6 +1143,7 @@ describe("Store — message period filter (subquery seek parity)", () => {
         model: "claude-sonnet-4-6",
         // No effort recorded on these fixtures: one (model, null-effort) row each.
         effort: null,
+        long_context: 0,
         msg_count: 2,
         input_tokens: 200 + 400,
         output_tokens: 20 + 40,
@@ -1156,6 +1158,7 @@ describe("Store — message period filter (subquery seek parity)", () => {
         model: null,
         // No effort recorded on these fixtures: one (model, null-effort) row each.
         effort: null,
+        long_context: 0,
         msg_count: 1,
         input_tokens: 11,
         output_tokens: 1,

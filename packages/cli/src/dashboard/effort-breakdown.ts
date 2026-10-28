@@ -17,7 +17,7 @@
  * parent is the rounded sum of its children's exact costs (it can differ from
  * the sum of its rounded children by under one cent per child).
  */
-import { estimateCost } from "@claude-stats/core/pricing";
+import { estimateCost, isLongContextRequest } from "@claude-stats/core/pricing";
 import { compareEffort } from "@claude-stats/core/effort";
 import type { MessageEffortTotalRow } from "../store/index.js";
 
@@ -128,6 +128,7 @@ export function buildEffortBreakdown(rows: readonly MessageEffortTotalRow[]): Ef
         ephemeral5mCacheTokens: r.ephemeral_5m_cache_tokens,
         ephemeral1hCacheTokens: r.ephemeral_1h_cache_tokens,
       },
+      { longContext: r.long_context === 1 },
     );
     if (priced.rateBasis === "first_party_fallback") anyFallbackRates = true;
     add(head, r, priced.cost);
@@ -216,6 +217,9 @@ export function buildEffortMix(messages: readonly EffortMixInput[]): EffortMixRo
       m.output_tokens ?? 0,
       m.cache_read_tokens ?? 0,
       m.cache_creation_tokens ?? 0,
+      undefined,
+      undefined,
+      { longContext: isLongContextRequest(m.model ?? "unknown", m.input_tokens ?? 0, m.cache_read_tokens ?? 0, m.cache_creation_tokens ?? 0) },
     ).cost;
     const t = tiers.get(effort) ?? { messages: 0, cost: 0 };
     t.messages += 1;

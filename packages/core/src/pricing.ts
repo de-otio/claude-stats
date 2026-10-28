@@ -28,6 +28,19 @@ export interface ModelPricing {
    * missing column degrades to an approximation rather than to `NaN`.
    */
   ttlRateBasis: "parsed" | "synthesized";
+  /**
+   * Long-context tier, for the models that have one (today only Haiku 5.5).
+   * A request whose prompt (`input + cache_read + cache_creation`) is STRICTLY
+   * greater than `thresholdTokens` is priced at `rates` for the WHOLE request,
+   * output included; exactly the threshold is the base tier. Absent means the
+   * model has no tier. Applied only when `estimateCost` is passed
+   * `{ longContext: true }`, which callers derive from `isLongContextRequest`
+   * (per message) or `longContextSqlExpr` (aggregated rows).
+   */
+  longContext?: {
+    thresholdTokens: number;
+    rates: Omit<ModelPricing, "longContext" | "ttlRateBasis">;
+  };
 }
 
 /**
@@ -67,7 +80,15 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
   // `known: false`. Rates match the live pricing cache and the launch
   // changelog (2026-10-27). Sonnet 5.5's cache read is 0.10× input.
   "claude-sonnet-5-5": { inputPerMillion: 2,    outputPerMillion: 10, cacheReadPerMillion: 0.10, cacheWritePerMillion: 2.50,  cacheWrite1hPerMillion: 4,    ttlRateBasis: "parsed" },
-  "claude-haiku-5-5":  { inputPerMillion: 0.10, outputPerMillion: 0.50, cacheReadPerMillion: 0.01, cacheWritePerMillion: 0.125, cacheWrite1hPerMillion: 0.20, ttlRateBasis: "parsed" },
+  // Haiku 5.5 is the one model with a long-context tier: a request whose prompt
+  // is over 100,000 tokens is priced at 5x every column, whole request (V6).
+  "claude-haiku-5-5":  {
+    inputPerMillion: 0.10, outputPerMillion: 0.50, cacheReadPerMillion: 0.01, cacheWritePerMillion: 0.125, cacheWrite1hPerMillion: 0.20, ttlRateBasis: "parsed",
+    longContext: {
+      thresholdTokens: 100_000,
+      rates: { inputPerMillion: 0.50, outputPerMillion: 2.50, cacheReadPerMillion: 0.05, cacheWritePerMillion: 0.625, cacheWrite1hPerMillion: 1 },
+    },
+  },
   // Claude Opus 5 — same rates as Opus 4.8. Missing this row meant current-
   // generation Opus usage costed zero with `known: true` nowhere to be seen.
   "claude-opus-5":     { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed" },
@@ -163,6 +184,39 @@ function withTtlRates(row: ModelPricing, fallback?: ModelPricing): ModelPricing 
 }
 
 /**
+ * Validate a row's long-context tier, and carry the shipped tier over when the
+ * source row has none.
+ *
+ * `pricing.json` files written before the tier existed hold a base-only
+ * Haiku 5.5 row, and the merge is whole-row, so without the inheritance a cache
+ * refresh would silently delete the tier. Inherit only when the base input rate
+ * agrees (same reasoning as the 1-hour rate in `withTtlRates`). A tier that is
+ * malformed is dropped: the base rates stay, tier rates never become base.
+ */
+function withLongContext(row: ModelPricing, fallback?: ModelPricing): ModelPricing {
+  const lc = row.longContext;
+  const valid =
+    !!lc &&
+    typeof lc === "object" &&
+    Number.isFinite(lc.thresholdTokens) &&
+    lc.thresholdTokens > 0 &&
+    !!lc.rates &&
+    [
+      lc.rates.inputPerMillion,
+      lc.rates.outputPerMillion,
+      lc.rates.cacheReadPerMillion,
+      lc.rates.cacheWritePerMillion,
+      lc.rates.cacheWrite1hPerMillion,
+    ].every((r) => typeof r === "number" && Number.isFinite(r) && r > 0);
+  if (valid) return row;
+  const { longContext: _drop, ...rest } = row;
+  if (fallback?.longContext && fallback.inputPerMillion === row.inputPerMillion) {
+    return { ...rest, longContext: fallback.longContext };
+  }
+  return rest;
+}
+
+/**
  * Rate-coherence bound for a parsed or fetched row.
  *
  * The fetch path picks its columns by heuristic over remote HTML. Without a
@@ -206,7 +260,7 @@ export function applyPricingCache(
     // A model id arrives from remote HTML; never let one reach the prototype.
     if (key === "__proto__") continue;
     if (!row || typeof row !== "object") continue;
-    const filled = withTtlRates(row, DEFAULT_PRICING[key]);
+    const filled = withLongContext(withTtlRates(row, DEFAULT_PRICING[key]), DEFAULT_PRICING[key]);
     // Incoherent → leave whatever `DEFAULT_PRICING` had for this key in place.
     // A key with no default is simply dropped, which surfaces as `known: false`
     // rather than as a confident figure from a rate we do not believe.
@@ -221,6 +275,94 @@ export function applyPricingCache(
 
 // Keys sorted longest-first so "claude-opus-4-6" matches before "claude-opus-4"
 let _sortedKeys = Object.keys(PRICING).sort((a, b) => b.length - a.length);
+
+// ─── Long-context classification (one source of truth for TS and SQL) ────────
+
+/** Escape a string for a single-quoted SQL literal. */
+function sqlLiteral(s: string): string {
+  return "'" + s.replace(/'/g, "''") + "'";
+}
+
+/**
+ * SQL that yields 1 when a request is in its model's long-context tier, else 0.
+ * Generated from the live rate table so a new tiered model or a changed
+ * threshold flows into every query and into the rollup watermark
+ * (`longContextSqlExprHash`).
+ *
+ * Models whose tiers share a threshold are grouped. A model matches when its
+ * key occurs in the id (`instr`), which covers first-party, dated, `[1m]`,
+ * Bedrock and Vertex forms. That is a superset of `resolvePricing`'s
+ * suffix-shape rule: an id the rule refuses (a point-release such as
+ * `...-5-5-1`) is flagged here but prices at $0 / `known: false` either way, so
+ * the two classifiers can disagree only on a request that costs nothing.
+ *
+ * With no tiered model it returns `"0"`.
+ */
+export function longContextSqlExpr(cols: {
+  model: string;
+  input: string;
+  cacheRead: string;
+  cacheCreation: string;
+}): string {
+  const byThreshold = new Map<number, string[]>();
+  for (const key of Object.keys(PRICING).sort()) {
+    const lc = PRICING[key]?.longContext;
+    if (!lc) continue;
+    const keys = byThreshold.get(lc.thresholdTokens) ?? [];
+    keys.push(key);
+    byThreshold.set(lc.thresholdTokens, keys);
+  }
+  if (byThreshold.size === 0) return "0";
+  const prompt = `(COALESCE(${cols.input},0) + COALESCE(${cols.cacheRead},0) + COALESCE(${cols.cacheCreation},0))`;
+  const arms = [...byThreshold.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([threshold, keys]) => {
+      const match = keys.map((k) => `instr(${cols.model}, ${sqlLiteral(k)}) > 0`).join(" OR ");
+      return `WHEN (${match}) AND ${prompt} > ${Math.trunc(threshold)} THEN 1`;
+    });
+  return `CASE ${arms.join(" ")} ELSE 0 END`;
+}
+
+/**
+ * Stable hash of the generated expression (over fixed column names). Stored in
+ * the rollup watermark: a rate-table change that alters the classification
+ * changes this value and forces a rebuild. FNV-1a, 32-bit, hex.
+ */
+export function longContextSqlExprHash(): string {
+  const expr = longContextSqlExpr({ model: "model", input: "i", cacheRead: "cr", cacheCreation: "cc" });
+  let h = 0x811c9dc5;
+  for (let i = 0; i < expr.length; i++) {
+    h ^= expr.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
+/**
+ * True when this single request is in its model's long-context tier: the model
+ * has a tier and `input + cacheRead + cacheCreation` is strictly greater than
+ * its threshold. Exactly at the threshold is the base tier.
+ *
+ * Matches a tiered model by the key occurring in the id, exactly as
+ * `longContextSqlExpr` does (`instr`), so the per-message and aggregated
+ * classifications cannot disagree on any id, including one the suffix-shape
+ * rule refuses (a point-release such as `...-5-5-1`): that id is flagged by
+ * both, and prices at $0 / `known: false` either way.
+ */
+export function isLongContextRequest(
+  model: string,
+  input: number,
+  cacheRead: number,
+  cacheCreation: number,
+): boolean {
+  if (typeof model !== "string") return false;
+  const prompt = nonNegativeFiniteInt(input) + nonNegativeFiniteInt(cacheRead) + nonNegativeFiniteInt(cacheCreation);
+  for (const [key, row] of Object.entries(PRICING)) {
+    const lc = row.longContext;
+    if (lc && prompt > lc.thresholdTokens && model.includes(key)) return true;
+  }
+  return false;
+}
 
 // ─── Model-id normalization (first-party / Bedrock / Vertex) ─────────────────
 
@@ -328,6 +470,9 @@ export type RateBasis = "first_party" | "configured" | "first_party_fallback";
 // a context-window tier id (`claude-opus-5[1m]` — 4.6-and-later models include
 // the full 1M window at standard pricing, confirmed both against the published
 // pricing page and by repricing against Claude Code's own `cost-state` rollup).
+// The exception is Haiku 5.5: a `claude-haiku-5-5[1m]` id resolves to the same
+// entry, long-context tier included, and a request over 100,000 prompt tokens
+// is priced at the tier rates (see `ModelPricing.longContext`).
 //
 // But a point-release id is also a string prefix extension of its predecessor's
 // (`claude-fable-5-1` starts with `claude-fable-5`), so plain prefix matching
@@ -625,8 +770,14 @@ export function estimateCost(
   cacheCreationTokens: number,
   overrides?: RateOverrides,
   ttlSplit?: CacheWriteSplit,
+  opts?: { longContext?: boolean },
 ): CostEstimate {
-  const { pricing, source, rateBasis } = resolvePricing(model, overrides);
+  const resolved = resolvePricing(model, overrides);
+  const { source, rateBasis } = resolved;
+  // A long-context request is priced at the tier rates in every column. A model
+  // with no tier ignores the flag (base rates, not an error).
+  const tier = opts?.longContext ? resolved.pricing?.longContext : undefined;
+  const pricing: ModelPricing | null = resolved.pricing && tier ? { ...resolved.pricing, ...tier.rates } : resolved.pricing;
   if (!pricing) {
     // Unknown model: report zero AND `known: false`. Callers must surface the
     // unknown share rather than letting it vanish into a total — a silently
