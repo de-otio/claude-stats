@@ -105,6 +105,9 @@ function toHygieneMessageRow(row: HygieneMessageStoreRow): HygieneMessageRow {
     toolErrorCount: row.tool_error_count,
     tools: parseTools(row.tools),
     outputPlaceholder: row.output_placeholder,
+    effort: row.effort,
+    isSubagent: row.is_subagent,
+    claudeVersion: row.claude_version,
   };
 }
 

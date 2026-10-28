@@ -15,6 +15,7 @@ import { detectContextBloat } from "./contextBloat.js";
 import { detectReEntryBurn } from "./reEntryBurn.js";
 import { detectAbandonedSpend } from "./abandonedSpend.js";
 import { detectTierMismatch } from "./tierMismatch.js";
+import { detectHighEffortLowOutput } from "./highEffortLowOutput.js";
 import {
   DEFAULT_HYGIENE_THRESHOLDS,
   type HygieneDetectorId,
@@ -36,6 +37,7 @@ export type {
 } from "./types.js";
 export { DEFAULT_HYGIENE_THRESHOLDS } from "./types.js";
 export { isPlaceholderOutput, isVersionBefore, PLACEHOLDER_FIXED_IN, type PlaceholderOutputInput } from "./placeholderOutput.js";
+export { detectHighEffortLowOutput } from "./highEffortLowOutput.js";
 export { computeTierParity, detectTierMismatch, type TierParityComparison, type TierParityVerdict } from "./tierMismatch.js";
 // Shared row-grouping/costing helpers — re-exported so a sibling comparison
 // (constraint-impact) can build the same per-session shape from the same
@@ -61,6 +63,7 @@ const TITLES: Record<HygieneDetectorId, string> = {
   "context-bloat": "Context bloat",
   "re-entry-burn": "Re-entry burn",
   "tier-mismatch": "Tier mismatch",
+  "high-effort-low-output": "High effort, low output",
 };
 
 export interface RunHygieneDetectorsOptions {
@@ -146,6 +149,7 @@ function mergeThresholds(overrides: RunHygieneDetectorsOptions["thresholds"]): H
     reEntryBurn: { ...DEFAULT_HYGIENE_THRESHOLDS.reEntryBurn, ...overrides.reEntryBurn },
     abandonedSpend: { ...DEFAULT_HYGIENE_THRESHOLDS.abandonedSpend, ...overrides.abandonedSpend },
     tierMismatch: { ...DEFAULT_HYGIENE_THRESHOLDS.tierMismatch, ...overrides.tierMismatch },
+    highEffortLowOutput: { ...DEFAULT_HYGIENE_THRESHOLDS.highEffortLowOutput, ...overrides.highEffortLowOutput },
   };
 }
 
@@ -177,6 +181,7 @@ export function runHygieneDetectors(
     ["abandoned-spend", detectAbandonedSpend(rows, t.abandonedSpend, opts.rateOverrides), true, undefined],
     ["context-bloat", detectContextBloat(rows, t.contextBloat, opts.rateOverrides), true, undefined],
     ["re-entry-burn", detectReEntryBurn(rows, reEntryBurnThresholds, opts.rateOverrides), true, undefined],
+    ["high-effort-low-output", detectHighEffortLowOutput(rows, t.highEffortLowOutput, opts.rateOverrides), true, undefined],
     [
       "tier-mismatch",
       tierMismatchComputed ? detectTierMismatch(rows, opts.taskClassBySession!, t.tierMismatch, opts.rateOverrides) : [],

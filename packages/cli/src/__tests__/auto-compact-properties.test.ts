@@ -274,7 +274,7 @@ describe("convergence: the adaptive floor is the difference between insufficient
       ephemeral5mCacheTokens: 0,
       ephemeral1hCacheTokens: 0,
       toolErrorCount: 0,
-      tools: [], outputPlaceholder: false,
+      tools: [], outputPlaceholder: false, effort: null, isSubagent: false, claudeVersion: null,
     };
   }
 
