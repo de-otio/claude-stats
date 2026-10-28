@@ -4018,7 +4018,7 @@ export class Store {
              m.cache_read_tokens, m.cache_creation_tokens,
              m.ephemeral_5m_cache_tokens, m.ephemeral_1h_cache_tokens,
              m.tool_error_count, m.tools,
-             m.claude_version, m.stop_reason, s.is_subagent
+             m.claude_version, m.stop_reason, s.is_subagent, m.effort
       FROM messages m
       JOIN sessions s ON s.session_id = m.session_id
       WHERE ${this.messageWhereJoin(f)}
@@ -4027,19 +4027,21 @@ export class Store {
     const stmt = this.db.prepare(sql);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = (stmt.all as (...args: any[]) => unknown[])(...f.params) as Array<
-      Omit<HygieneMessageStoreRow, "output_placeholder"> & {
-        claude_version: string | null;
+      Omit<HygieneMessageStoreRow, "output_placeholder" | "is_subagent"> & {
         stop_reason: string | null;
         is_subagent: number;
       }
     >;
-    // R1: fill the placeholder flag here, once, from existing columns; the raw
-    // version/stop/subagent columns do not leave the store boundary.
-    return raw.map(({ claude_version, stop_reason, is_subagent, ...rest }) => ({
+    // R1: fill the placeholder flag here, once, from existing columns. The
+    // stop reason does not leave the store boundary; the writer version and
+    // subagent flag do, because `high-effort-low-output` (#125) excludes EVERY
+    // pre-2.1.307 subagent row, a wider set than the placeholder predicate.
+    return raw.map(({ stop_reason, is_subagent, ...rest }) => ({
       ...rest,
+      is_subagent: is_subagent === 1,
       output_placeholder: isPlaceholderOutput({
         isSubagent: is_subagent === 1,
-        claudeVersion: claude_version,
+        claudeVersion: rest.claude_version,
         stopReason: stop_reason,
       }),
     }));
@@ -4071,7 +4073,7 @@ export class Store {
              m.input_tokens, m.output_tokens,
              m.cache_read_tokens, m.cache_creation_tokens,
              m.ephemeral_5m_cache_tokens, m.ephemeral_1h_cache_tokens,
-             m.skill,
+             m.skill, m.effort,
              s.is_subagent, s.agent_type, s.spawn_depth
       FROM messages m
       JOIN sessions s ON s.session_id = m.session_id
@@ -5280,6 +5282,12 @@ export interface HygieneMessageStoreRow {
   tools: string;
   /** `isPlaceholderOutput` over the row's own columns (R1). */
   output_placeholder: boolean;
+  /** `messages.claude_version`, the writer version; null = not recorded. */
+  claude_version: string | null;
+  /** `sessions.is_subagent`. */
+  is_subagent: boolean;
+  /** `messages.effort` (#125); null = Claude Code did not report one. */
+  effort: string | null;
 }
 
 /**
@@ -5298,6 +5306,8 @@ export interface AgentCostMessageStoreRow {
   ephemeral_1h_cache_tokens: number;
   /** `messages.skill` (V25); null = none recorded. */
   skill: string | null;
+  /** `messages.effort`; null = not reported (#125). */
+  effort: string | null;
   /** `sessions.is_subagent`, 0/1. */
   is_subagent: number;
   /** `sessions.agent_type` (V25); null = not recorded. */

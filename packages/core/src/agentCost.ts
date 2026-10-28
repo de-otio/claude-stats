@@ -23,6 +23,14 @@
  *    `Σ byAgentType.cost + other = coverage.subagentCost` and likewise for
  *    depth; `mainCost + subagentCost = totalCost`. Floating-point sums agree to
  *    rounding (summation order differs between a total and its buckets).
+ *  - **Effort conservation (#125).** Every row lands in exactly one
+ *    `byEffort` bucket (`null` = Claude Code reported no effort; a bucket,
+ *    never a tier), so per tier `mainCost + subagentCost = cost`,
+ *    `Σ byEffort.cost = coverage.totalCost`, and per agent type
+ *    `Σ byAgentType[i].byEffort.cost = byAgentType[i].cost` (the `other`
+ *    row likewise), hence for each tier the sum over `byAgentType` and
+ *    `other` equals `byEffort[tier].subagentCost`. The tier set is open: any
+ *    short token passes through verbatim, ordered by `compareEffort`.
  *  - **Order-independent.** Input rows are put into a canonical order before
  *    anything is summed, so a shuffled input yields an identical report, to
  *    the last bit.
@@ -36,6 +44,7 @@
  * while the skill was active. Context the skill left behind that later turns
  * keep paying for is `contextCarry`'s measurement and is not added here.
  */
+import { compareEffort, normaliseEffort } from "./effort.js";
 import { isBuiltInAgentType, validIdentifier, validSpawnDepth } from "./identifiers.js";
 
 // ─── Input ──────────────────────────────────────────────────────────────────
@@ -54,6 +63,9 @@ export interface AgentCostRow {
   spawnDepth: number | null;
   /** `messages.skill` (V25) — the skill running when the message was written. */
   skill: string | null;
+  /** `messages.effort` (V23) — reasoning-effort tier Claude Code recorded for
+   *  the message. `null` = not reported. Open vocabulary (#125 D1). */
+  effort: string | null;
   /** Epoch ms; `null` when the message has no timestamp. */
   timestamp: number | null;
   /** Equivalent-API dollars from `estimateCost`. `0` for an unpriced model. */
@@ -139,6 +151,28 @@ export interface AgentCostCoverage {
    *  `Σ byPeriod.subagentCost + undatedSubagentCost = subagentCost`. */
   byPeriod: AgentCostPeriodRow[];
   undatedSubagentCost: number;
+  /** Share of `totalCost` on rows with a non-null effort tag (#125 D3);
+   *  `0` when `totalCost` is `0`. Read it before `byEffort`. */
+  effortTaggedShare: number;
+}
+
+/** Cost of one effort tier inside a larger bucket (an agent type). */
+export interface EffortCostRow {
+  /** Reasoning-effort tier as Claude Code wrote it; `null` = not reported. */
+  effort: string | null;
+  cost: number;
+}
+
+/** One reasoning-effort tier across the whole window. */
+export interface EffortSplitRow {
+  effort: string | null;
+  /** Main-conversation spend at this tier. */
+  mainCost: number;
+  /** Subagent spend at this tier. */
+  subagentCost: number;
+  /** `mainCost + subagentCost`. */
+  cost: number;
+  messages: number;
 }
 
 export interface AgentTypeCostRow {
@@ -151,6 +185,8 @@ export interface AgentTypeCostRow {
   /** `cost / coverage.subagentCost`; `0` when that is `0`. */
   share: number;
   messages: number;
+  /** This agent type's cost split by effort tier; `Σ cost` = `cost`. */
+  byEffort: EffortCostRow[];
 }
 
 export interface SkillCostRow {
@@ -182,6 +218,11 @@ export interface AgentCostOther {
   messages: number;
 }
 
+/** {@link AgentCostOther} for `byAgentType`, with the folded rows' effort split. */
+export interface AgentTypeCostOther extends AgentCostOther {
+  byEffort: EffortCostRow[];
+}
+
 /** {@link AgentCostOther} for `bySkill`, with that list's field name. */
 export interface SkillCostOther {
   buckets: number;
@@ -195,6 +236,10 @@ export interface AgentCostReport {
   /** Every subagent row, by agent type. Includes the `null` bucket when any
    *  subagent row lacks a type. */
   byAgentType: AgentTypeCostRow[];
+  /** Every row, main and subagent, by reasoning-effort tier (#125); the
+   *  `effort: null` bucket is kept when any row lacks a tag. Ordered by
+   *  `compareEffort` (low .. max, other tiers A-Z, `null` last). */
+  byEffort: EffortSplitRow[];
   /** Spend while a skill runs, main and subagent rows alike. Rows with no
    *  skill are not listed (they are `totalCost − Σ costDuringRun − other`). */
   bySkill: SkillCostRow[];
@@ -202,7 +247,7 @@ export interface AgentCostReport {
   bySpawnDepth: SpawnDepthCostRow[];
   /** Remainders past `limit`; each `null` when nothing was folded. */
   other: {
-    byAgentType: AgentCostOther | null;
+    byAgentType: AgentTypeCostOther | null;
     bySkill: SkillCostOther | null;
     bySpawnDepth: AgentCostOther | null;
   };
@@ -215,6 +260,7 @@ interface CleanRow {
   agentType: string | null;
   spawnDepth: number | null;
   skill: string | null;
+  effort: string | null;
   timestamp: number | null;
   cost: number;
   priced: boolean;
@@ -235,6 +281,7 @@ function clean(row: AgentCostRow): CleanRow {
     agentType: validIdentifier(row.agentType),
     spawnDepth: validSpawnDepth(row.spawnDepth),
     skill: validIdentifier(row.skill),
+    effort: normaliseEffort(row.effort),
     timestamp: ts,
     cost,
     priced: row.priced !== false,
@@ -258,6 +305,7 @@ function compareRows(a: CleanRow, b: CleanRow): number {
     compareNullable(a.agentType, b.agentType) ||
     compareNullable(a.spawnDepth, b.spawnDepth) ||
     compareNullable(a.skill, b.skill) ||
+    compareEffort(a.effort, b.effort) ||
     compareNullable(a.timestamp, b.timestamp) ||
     a.cost - b.cost ||
     Number(a.priced) - Number(b.priced)
@@ -271,16 +319,29 @@ function share(part: number, whole: number): number {
 interface Tally {
   cost: number;
   messages: number;
+  /** Cost per effort tier within this bucket (`null` = no tag). */
+  byEffort: Map<string | null, number>;
 }
 
-function add<K>(map: Map<K, Tally>, key: K, cost: number): void {
-  const t = map.get(key);
-  if (t) {
-    t.cost += cost;
-    t.messages += 1;
-  } else {
-    map.set(key, { cost, messages: 1 });
+function addEffort(map: Map<string | null, number>, effort: string | null, cost: number): void {
+  map.set(effort, (map.get(effort) ?? 0) + cost);
+}
+
+function add<K>(map: Map<K, Tally>, key: K, cost: number, effort: string | null): void {
+  let t = map.get(key);
+  if (!t) {
+    t = { cost: 0, messages: 0, byEffort: new Map() };
+    map.set(key, t);
   }
+  t.cost += cost;
+  t.messages += 1;
+  addEffort(t.byEffort, effort, cost);
+}
+
+function effortRows(map: ReadonlyMap<string | null, number>): EffortCostRow[] {
+  return [...map.entries()]
+    .map(([effort, cost]) => ({ effort, cost }))
+    .sort((a, b) => compareEffort(a.effort, b.effort));
 }
 
 /** Cost descending, then key ascending with `null` last. */
@@ -292,8 +353,8 @@ function byCostThenKey<K extends string | number>(
 }
 
 interface Folded<K> {
-  kept: Array<{ key: K | null; cost: number; messages: number }>;
-  other: { buckets: number; cost: number; messages: number } | null;
+  kept: Array<{ key: K | null; cost: number; messages: number; byEffort: Map<string | null, number> }>;
+  other: { buckets: number; cost: number; messages: number; byEffort: Map<string | null, number> } | null;
 }
 
 /**
@@ -302,7 +363,12 @@ interface Folded<K> {
  * order, so the remainder is deterministic too.
  */
 function sortAndFold<K extends string | number>(map: Map<K | null, Tally>, limit: number | undefined): Folded<K> {
-  const entries = [...map.entries()].map(([key, t]) => ({ key, cost: t.cost, messages: t.messages }));
+  const entries = [...map.entries()].map(([key, t]) => ({
+    key,
+    cost: t.cost,
+    messages: t.messages,
+    byEffort: t.byEffort,
+  }));
   entries.sort(byCostThenKey);
   if (limit === undefined) return { kept: entries, other: null };
 
@@ -315,7 +381,11 @@ function sortAndFold<K extends string | number>(map: Map<K | null, Tally>, limit
       if (e.key !== null) named++;
       continue;
     }
-    other ??= { buckets: 0, cost: 0, messages: 0 };
+    other ??= { buckets: 0, cost: 0, messages: 0, byEffort: new Map() };
+    // Folded entries are visited in sorted order and each entry's tiers in
+    // insertion order (canonical, since input rows are pre-sorted), so the
+    // remainder's sums are deterministic.
+    for (const [tier, c] of e.byEffort) addEffort(other.byEffort, tier, c);
     other.buckets++;
     other.cost += e.cost;
     other.messages += e.messages;
@@ -366,16 +436,24 @@ export function computeAgentCost(rows: readonly AgentCostRow[], options: AgentCo
   let unpricedMessages = 0;
   let knownTypeCost = 0;
   let undatedSubagentCost = 0;
+  let effortTaggedCost = 0;
 
   const byType = new Map<string | null, Tally>();
   const bySkill = new Map<string | null, Tally>();
   const byDepth = new Map<number | null, Tally>();
+  const byEffortAll = new Map<string | null, { main: number; sub: number; messages: number }>();
   const byPeriod = new Map<number, { subagentCost: number; subagentMessages: number; knownTypeCost: number }>();
 
   for (const r of sorted) {
     totalCost += r.cost;
     if (!r.priced) unpricedMessages++;
-    if (r.skill !== null) add(bySkill, r.skill, r.cost);
+    if (r.skill !== null) add(bySkill, r.skill, r.cost, r.effort);
+    if (r.effort !== null) effortTaggedCost += r.cost;
+    const e = byEffortAll.get(r.effort) ?? { main: 0, sub: 0, messages: 0 };
+    if (r.isSubagent) e.sub += r.cost;
+    else e.main += r.cost;
+    e.messages++;
+    byEffortAll.set(r.effort, e);
 
     if (!r.isSubagent) {
       mainCost += r.cost;
@@ -386,8 +464,8 @@ export function computeAgentCost(rows: readonly AgentCostRow[], options: AgentCo
     subagentCost += r.cost;
     subagentMessages++;
     if (r.agentType !== null) knownTypeCost += r.cost;
-    add(byType, r.agentType, r.cost);
-    add(byDepth, r.spawnDepth, r.cost);
+    add(byType, r.agentType, r.cost, r.effort);
+    add(byDepth, r.spawnDepth, r.cost, r.effort);
 
     if (r.timestamp === null) {
       undatedSubagentCost += r.cost;
@@ -431,13 +509,24 @@ export function computeAgentCost(rows: readonly AgentCostRow[], options: AgentCo
       periodGranularity: granularity,
       byPeriod: periods,
       undatedSubagentCost,
+      effortTaggedShare: share(effortTaggedCost, totalCost),
     },
+    byEffort: [...byEffortAll.entries()]
+      .sort((a, b) => compareEffort(a[0], b[0]))
+      .map(([effort, e]) => ({
+        effort,
+        mainCost: e.main,
+        subagentCost: e.sub,
+        cost: e.main + e.sub,
+        messages: e.messages,
+      })),
     byAgentType: types.kept.map((e) => ({
       agentType: e.key,
       builtIn: e.key !== null && isBuiltInAgentType(e.key),
       cost: e.cost,
       share: share(e.cost, subagentCost),
       messages: e.messages,
+      byEffort: effortRows(e.byEffort),
     })),
     // `bySkill` never holds a `null` key (only rows with a skill are added),
     // so the cast only narrows the type.
@@ -454,14 +543,25 @@ export function computeAgentCost(rows: readonly AgentCostRow[], options: AgentCo
       messages: e.messages,
     })),
     other: {
-      byAgentType: types.other && { ...types.other, share: share(types.other.cost, subagentCost) },
+      byAgentType: types.other && {
+        buckets: types.other.buckets,
+        cost: types.other.cost,
+        share: share(types.other.cost, subagentCost),
+        messages: types.other.messages,
+        byEffort: effortRows(types.other.byEffort),
+      },
       bySkill: skills.other && {
         buckets: skills.other.buckets,
         costDuringRun: skills.other.cost,
         share: share(skills.other.cost, totalCost),
         messages: skills.other.messages,
       },
-      bySpawnDepth: depths.other && { ...depths.other, share: share(depths.other.cost, subagentCost) },
+      bySpawnDepth: depths.other && {
+        buckets: depths.other.buckets,
+        cost: depths.other.cost,
+        share: share(depths.other.cost, subagentCost),
+        messages: depths.other.messages,
+      },
     },
   };
 }

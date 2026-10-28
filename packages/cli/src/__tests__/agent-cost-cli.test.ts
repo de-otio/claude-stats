@@ -72,19 +72,25 @@ function fullReport(): AgentCostReport {
         { start: Date.UTC(2026, 0, 6), subagentCost: 3, subagentMessages: 4, knownTypeCost: 3, knownTypeShare: 1 },
       ],
       undatedSubagentCost: 0.5,
+      effortTaggedShare: 0.8,
     },
     byAgentType: [
-      { agentType: "my-reviewer", builtIn: false, cost: 2, share: 0.5, messages: 3 },
-      { agentType: "Explore", builtIn: true, cost: 1, share: 0.25, messages: 2 },
-      { agentType: null, builtIn: false, cost: 1, share: 0.25, messages: 1 },
+      { agentType: "my-reviewer", builtIn: false, cost: 2, share: 0.5, messages: 3, byEffort: [] },
+      { agentType: "Explore", builtIn: true, cost: 1, share: 0.25, messages: 2, byEffort: [] },
+      { agentType: null, builtIn: false, cost: 1, share: 0.25, messages: 1, byEffort: [] },
     ],
     bySkill: [{ skill: "example-skill", costDuringRun: 0.5, share: 0.05, messages: 2 }],
     bySpawnDepth: [
       { depth: 1, cost: 3, share: 0.75, messages: 4 },
       { depth: null, cost: 1, share: 0.25, messages: 2 },
     ],
+    byEffort: [
+      { effort: "high", mainCost: 5, subagentCost: 1, cost: 6, messages: 6 },
+      { effort: "xhigh", mainCost: 0, subagentCost: 2, cost: 2, messages: 3 },
+      { effort: null, mainCost: 1, subagentCost: 1, cost: 2, messages: 3 },
+    ],
     other: {
-      byAgentType: { buckets: 2, cost: 0.2, share: 0.05, messages: 1 },
+      byAgentType: { buckets: 2, cost: 0.2, share: 0.05, messages: 1, byEffort: [] },
       bySkill: { buckets: 1, costDuringRun: 0.1, share: 0.01, messages: 1 },
       bySpawnDepth: { buckets: 1, cost: 0.1, share: 0.02, messages: 1 },
     },
@@ -108,15 +114,25 @@ function emptyReport(): AgentCostReport {
       periodGranularity: "day",
       byPeriod: [],
       undatedSubagentCost: 0,
+      effortTaggedShare: 0,
     },
     byAgentType: [],
     bySkill: [],
     bySpawnDepth: [],
+    byEffort: [],
     other: { byAgentType: null, bySkill: null, bySpawnDepth: null },
   };
 }
 
 describe("formatAgentCostLines", () => {
+  it("prints one line per effort tier, main vs subagent, with the null bucket named", () => {
+    const text = formatAgentCostLines(fullReport(), t).join("\n");
+    expect(text).toContain("Spend with a recorded effort tier: 80.0%");
+    expect(text).toMatch(/high: \$6\.00 — main conversation \$5\.00, subagents \$1\.00 · 6 messages/);
+    expect(text).toMatch(/xhigh: \$2\.00 — main conversation \$0\.00, subagents \$2\.00/);
+    expect(text).toMatch(/\(not reported\): \$2\.00/);
+  });
+
   it("puts the coverage block before every breakdown", () => {
     const lines = formatAgentCostLines(fullReport(), t);
     const idx = (needle: string): number => lines.findIndex((l) => l.includes(needle));
@@ -411,7 +427,7 @@ describe("claude-stats agents / export (CLI, end-to-end)", () => {
       seeded();
       await run(["agents", "--period", "all", "--json"]);
       const data = JSON.parse(stdoutText()) as AgentCostReport;
-      expect(Object.keys(data).sort()).toEqual(["bySkill", "bySpawnDepth", "byAgentType", "coverage", "other"].sort());
+      expect(Object.keys(data).sort()).toEqual(["bySkill", "byEffort", "bySpawnDepth", "byAgentType", "coverage", "other"].sort());
       expect(data.coverage.subagentCost).toBeGreaterThan(0);
       expect(data.coverage.mainShare + data.coverage.subagentShare).toBeCloseTo(1, 10);
       const types = data.byAgentType.map((r) => r.agentType);
