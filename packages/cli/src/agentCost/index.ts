@@ -97,6 +97,7 @@ function toAgentCostRow(row: AgentCostMessageStoreRow, overrides: RateOverrides 
     agentType: row.agent_type ?? null,
     spawnDepth: row.spawn_depth ?? null,
     skill: row.skill ?? null,
+    effort: row.effort ?? null,
     timestamp: row.timestamp ?? null,
     cost,
     priced,

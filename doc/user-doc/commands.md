@@ -956,6 +956,16 @@ shows where capture began as a step. Then come:
   active. Context a skill leaves behind that later turns keep paying for is
   measured by [`context`](#context) and is not added here.
 - **By spawn depth**: subagent spend by depth in the spawn chain.
+- **By reasoning effort**: spend per effort tier (`low`, `medium`, `high`,
+  `xhigh`, ...), split into main conversation and subagents, preceded by the
+  share of spend that carries an effort tag. `(not reported)` is spend from
+  messages Claude Code recorded no effort for (older versions); it is kept as
+  its own row, never folded into a tier. In `--json` and `get_agent_cost`,
+  each agent type also carries its own `byEffort` split, so you can see which
+  tier a given subagent ran at. This is spend *at* a tier, not a price
+  multiplier: effort changes token counts, which are priced as usual.
+  Subagents inherit the model's effort setting unless the Agent call passes
+  `effort`.
 
 Every message is priced the same way as the dashboard headline. Messages
 whose model has no known rate count as $0 and are reported, so the totals are
@@ -1397,7 +1407,7 @@ exhaustive tool-count assertion in `mcp.test.ts` is what keeps this true.
 | `get_efficiency_hints` | Self-audit: your own wasted spend across six local patterns (cache churn, retry loops, abandoned spend, context bloat, re-entry burn, tier mismatch). Every finding names its rule, threshold, and the specific sessions it fired on. Subagent rows written by Claude Code before 2.1.307 that carry no stop reason have placeholder output tokens; `context-bloat` is unaffected (it reads input and cache counts only, which are real), `tier-mismatch` prices them without their output tokens, and the `report` stop-reason line leaves them out |
 | `get_cache_ttl_fit` | Is this workload cheaper on the 5-minute or the 1-hour cache TTL? Idle-gap distribution, cache-write origin, per-model net cost, and one verdict always shown beside its margin. Equivalent to `claude-stats ttl-fit`; see [`ttl-fit`](#ttl-fit) above for how to read the verdict |
 | `get_context_carry` | How much of the bill is carrying context forward, and where does it concentrate? Size bands, tokens above a set of caps, reset/sawtooth shape, and the session-start prelude — every dollar figure a stated lower bound. Answers the same question as Claude Code's own `/context`, but over time. Equivalent to `claude-stats context`; see [`context`](#context) above. Omits `concentration`, `preludeByProject`, and `turns` (session ids / project paths / message uuids), and strips `sessionId` from `resets`/`cycles` — use the CLI or local dashboard for those. Also carries an allowlisted `autoCompactFit` block — the same `autoCompactWindow` recommendation `context` prints, with raw model ids stripped down to a `uniform`/`unknownModels` summary — see [output-guide.md](output-guide.md#auto-compact-window-fit) |
-| `get_agent_cost` | Where does the spend go: main conversation versus subagents, which agent types, while which skill ran, and at what spawn depth? Leads with a `coverage` block (how much subagent spend has a recorded agent type; older spend reads as unrecorded). Describes spend, never judges it. Equivalent to `claude-stats agents`; see [`agents`](#agents) above. Payload carries no session ids, message uuids or paths |
+| `get_agent_cost` | Where does the spend go: main conversation versus subagents, which agent types, while which skill ran, and at what spawn depth? Leads with a `coverage` block (how much subagent spend has a recorded agent type, and `effortTaggedShare`, the share of spend with a recorded reasoning-effort tier; older spend reads as unrecorded). Also splits spend by effort tier (`byEffort`, and per agent type). Describes spend, never judges it. Equivalent to `claude-stats agents`; see [`agents`](#agents) above. Payload carries no session ids, message uuids or paths |
 | `generate_justification_pack` | Write the justification pack (HTML + CSV) for one month to local disk. Equivalent to `claude-stats pack --period <YYYY-MM>` |
 | `get_constraint_impact` | What a *declared* policy boundary (`config.policyEvents`) measurably cost or saved, per task class, on both sides |
 | `get_account_info` | Current login's seat/billing/org fields, plus every account this machine has observed. Never returns a raw email — only `emailPresent`/`emailHash` |

@@ -35,6 +35,7 @@ function row(overrides: Partial<AgentCostRow> = {}): AgentCostRow {
     agentType: null,
     spawnDepth: null,
     skill: null,
+    effort: null,
     timestamp: T0,
     cost: 1,
     priced: true,
@@ -73,6 +74,8 @@ const rowArb: fc.Arbitrary<AgentCostRow> = fc.record({
   agentType: nameArb,
   spawnDepth: fc.option(fc.integer({ min: 1, max: 4 }), { nil: null }),
   skill: nameArb,
+  // Includes an unknown tier and null: the vocabulary is open, null is a bucket.
+  effort: fc.option(fc.constantFrom("low", "medium", "high", "xhigh", "max", "turbo"), { nil: null }),
   timestamp: fc.option(fc.integer({ min: T0 - 120 * DAY, max: T0 + 120 * DAY }), { nil: null }),
   cost: fc.double({ min: 0, max: 50, noNaN: true, noDefaultInfinity: true }),
   priced: fc.boolean(),
@@ -108,6 +111,29 @@ function assertConserves(report: AgentCostReport, rows: readonly AgentCostRow[])
   const skillMsgs = sum(report.bySkill.map((r) => r.messages)) + (o.bySkill?.messages ?? 0);
   expect(close(skillCost, sum(skilled.map((r) => r.cost)))).toBe(true);
   expect(skillMsgs).toBe(skilled.length);
+
+  // Effort (#125): independent recomputation per tier from the raw rows.
+  const tiers = new Set(rows.map((r) => r.effort));
+  expect(new Set(report.byEffort.map((e) => e.effort))).toEqual(tiers);
+  expect(close(sum(report.byEffort.map((e) => e.cost)), c.totalCost)).toBe(true);
+  for (const e of report.byEffort) {
+    const main = rows.filter((r) => r.effort === e.effort && !r.isSubagent);
+    const subs = rows.filter((r) => r.effort === e.effort && r.isSubagent);
+    expect(close(e.mainCost, sum(main.map((r) => r.cost)))).toBe(true);
+    expect(close(e.subagentCost, sum(subs.map((r) => r.cost)))).toBe(true);
+    expect(close(e.cost, e.mainCost + e.subagentCost)).toBe(true);
+    expect(e.messages).toBe(main.length + subs.length);
+    // Σ over agent types (kept + folded) at this tier = the tier's subagent cost.
+    const perType =
+      sum(report.byAgentType.map((t) => t.byEffort.find((x) => x.effort === e.effort)?.cost ?? 0)) +
+      (o.byAgentType?.byEffort.find((x) => x.effort === e.effort)?.cost ?? 0);
+    expect(close(perType, e.subagentCost)).toBe(true);
+  }
+  for (const t of [...report.byAgentType, ...(o.byAgentType ? [o.byAgentType] : [])]) {
+    expect(close(sum(t.byEffort.map((x) => x.cost)), t.cost)).toBe(true);
+  }
+  const tagged = sum(rows.filter((r) => r.effort !== null).map((r) => r.cost));
+  expect(close(c.effortTaggedShare, c.totalCost > 0 ? tagged / c.totalCost : 0)).toBe(true);
 
   // Independent per-name recomputation — a `{}` tally keyed by `__proto__`
   // would lose this bucket's spend and fail here.
@@ -289,7 +315,7 @@ describe("computeAgentCost — by agent type", () => {
   it("puts untyped subagent spend in the (unrecorded) null bucket", () => {
     const report = computeAgentCost([sub(null, 2), sub(null, 1), sub("my-reviewer", 1)]);
     const unrecorded = report.byAgentType.find((r) => r.agentType === null);
-    expect(unrecorded).toEqual({ agentType: null, builtIn: false, cost: 3, share: 0.75, messages: 2 });
+    expect(unrecorded).toEqual({ agentType: null, builtIn: false, cost: 3, share: 0.75, messages: 2, byEffort: [{ effort: null, cost: 3 }] });
   });
 
   it("flags built-in agent types (Explore) apart from user-named ones (my-reviewer)", () => {
@@ -324,7 +350,7 @@ describe("computeAgentCost — by agent type", () => {
 
   it("reads a value that fails identifier validation as not recorded", () => {
     const report = computeAgentCost([sub("<img src=x onerror=alert(1)>", 2), sub("=cmd", 1)]);
-    expect(report.byAgentType).toEqual([{ agentType: null, builtIn: false, cost: 3, share: 1, messages: 2 }]);
+    expect(report.byAgentType).toEqual([{ agentType: null, builtIn: false, cost: 3, share: 1, messages: 2, byEffort: [{ effort: null, cost: 3 }] }]);
     expect(report.coverage.knownTypeCost).toBe(0);
   });
 });
@@ -363,7 +389,7 @@ describe("computeAgentCost — limit and other", () => {
       { limit: 2 },
     );
     expect(report.byAgentType.map((r) => r.agentType)).toEqual(["my-reviewer", "acme-critic", null]);
-    expect(report.other.byAgentType).toEqual({ buckets: 2, cost: 5, share: 5 / 15, messages: 2 });
+    expect(report.other.byAgentType).toEqual({ buckets: 2, cost: 5, share: 5 / 15, messages: 2, byEffort: [{ effort: null, cost: 5 }] });
     expect(report.other.bySkill).toBeNull();
     expect(report.other.bySpawnDepth).toBeNull();
   });
@@ -403,8 +429,10 @@ describe("computeAgentCost — degenerate inputs", () => {
         periodGranularity: "day",
         byPeriod: [],
         undatedSubagentCost: 0,
+        effortTaggedShare: 0,
       },
       byAgentType: [],
+      byEffort: [],
       bySkill: [],
       bySpawnDepth: [],
       other: { byAgentType: null, bySkill: null, bySpawnDepth: null },
@@ -438,5 +466,72 @@ describe("computeAgentCost — degenerate inputs", () => {
       return v;
     });
     expect(keys.filter((k) => /top|waste|offend|rank|worst|best/i.test(k))).toEqual([]);
+  });
+});
+
+describe("computeAgentCost — by effort tier (#125)", () => {
+  const rows: AgentCostRow[] = [
+    row({ cost: 4, effort: "high" }),
+    row({ cost: 1, effort: null }),
+    sub("my-reviewer", 6, { effort: "xhigh" }),
+    sub("my-reviewer", 2, { effort: "high" }),
+    sub("Explore", 3, { effort: "xhigh" }),
+    sub("Explore", 1, { effort: null }),
+    sub(null, 5, { effort: "turbo" }),
+  ];
+
+  it("splits main vs subagent per tier, ordered low..max, unknown tiers A-Z, null last", () => {
+    const { byEffort } = computeAgentCost(rows);
+    expect(byEffort.map((e) => e.effort)).toEqual(["high", "xhigh", "turbo", null]);
+    expect(byEffort[0]).toMatchObject({ effort: "high", mainCost: 4, subagentCost: 2, cost: 6, messages: 2 });
+    expect(byEffort[1]).toMatchObject({ effort: "xhigh", mainCost: 0, subagentCost: 9, cost: 9 });
+    expect(byEffort[2]).toMatchObject({ effort: "turbo", subagentCost: 5 });
+    // The null bucket is kept, never folded into a neighbour.
+    expect(byEffort[3]).toMatchObject({ effort: null, mainCost: 1, subagentCost: 1, cost: 2 });
+  });
+
+  it("reconciles each agent type's tiers to its cost, and the tiers to the subagent total", () => {
+    const r = computeAgentCost(rows);
+    const reviewer = r.byAgentType.find((t) => t.agentType === "my-reviewer")!;
+    expect(reviewer.cost).toBe(8);
+    expect(reviewer.byEffort).toEqual([
+      { effort: "high", cost: 2 },
+      { effort: "xhigh", cost: 6 },
+    ]);
+    const explore = r.byAgentType.find((t) => t.agentType === "Explore")!;
+    expect(explore.byEffort).toEqual([
+      { effort: "xhigh", cost: 3 },
+      { effort: null, cost: 1 },
+    ]);
+    // The unrecorded-type bucket also carries its tiers.
+    expect(r.byAgentType.find((t) => t.agentType === null)!.byEffort).toEqual([{ effort: "turbo", cost: 5 }]);
+    expect(sum(r.byEffort.map((e) => e.subagentCost))).toBe(r.coverage.subagentCost);
+    expect(sum(r.byEffort.map((e) => e.mainCost))).toBe(r.coverage.mainCost);
+  });
+
+  it("carries the folded types' tiers on the `other` row", () => {
+    const r = computeAgentCost(rows, { limit: 1 });
+    // Only my-reviewer ($8) is kept; Explore ($4) folds; the null type is never folded.
+    expect(r.byAgentType.map((t) => t.agentType)).toEqual(["my-reviewer", null]);
+    expect(r.other.byAgentType!.byEffort).toEqual([
+      { effort: "xhigh", cost: 3 },
+      { effort: null, cost: 1 },
+    ]);
+    expect(r.other.byAgentType!.cost).toBe(4);
+  });
+
+  it("reports the cost share carried by rows with an effort tag", () => {
+    const r = computeAgentCost(rows);
+    expect(r.coverage.effortTaggedShare).toBeCloseTo(20 / 22, 12);
+    expect(computeAgentCost([row({ cost: 3 })]).coverage.effortTaggedShare).toBe(0);
+    expect(computeAgentCost([row({ cost: 0, effort: "high" })]).coverage.effortTaggedShare).toBe(0);
+  });
+
+  it("reads a non-string or empty effort as the null bucket", () => {
+    const r = computeAgentCost([
+      row({ cost: 1, effort: "" }),
+      row({ cost: 1, effort: 7 as unknown as string }),
+    ]);
+    expect(r.byEffort).toEqual([{ effort: null, mainCost: 2, subagentCost: 0, cost: 2, messages: 2 }]);
   });
 });
