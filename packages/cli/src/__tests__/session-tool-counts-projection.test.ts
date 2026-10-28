@@ -296,5 +296,6 @@ describe("the SQL projection and the sync-merge mirror agree byte for byte", () 
       ),
       { numRuns: 60, seed: 24 },
     );
-  });
+    // 60 file-backed stores: ~5s under CI coverage, over vitest's 5s default.
+  }, 30_000);
 });
