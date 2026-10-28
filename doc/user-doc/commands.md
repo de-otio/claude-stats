@@ -1444,6 +1444,19 @@ adds `effortMix` (`effort`, `messages`, `estimatedCost` per tier) and an
 `effort` field on each message. `messages` counts stored message rows; one API
 response can be several rows.
 
+**Placeholder-output disclosure:** `get_stats` and `get_agent_cost` return
+`placeholderOutputShare` — `{ rowShare, costShare, note }`. Subagent transcripts
+written by Claude Code before 2.1.307 carry a mid-stream placeholder in
+`output_tokens` (and an empty stop reason) on their assistant rows, so output is
+under-reported there and subagent output cost is a lower bound. `rowShare` is
+the share of the window's cost-bearing assistant rows that are such rows;
+`costShare` is the share of the window's estimated cost on them (0 when the
+window prices to $0); `note` is a fixed sentence. The field is `null` when the
+window has no such rows. It comes from a separate read of the same window and is
+a disclosure only: it changes no total and is not part of the breakdowns that
+sum to the headline. It holds numbers and the fixed sentence — no session ids,
+paths or project names.
+
 **Client configuration** — register via `claude mcp add`:
 
 ```sh
