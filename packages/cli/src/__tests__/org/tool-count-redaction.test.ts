@@ -261,7 +261,8 @@ describe("org projection tool counts — seeded through the store", () => {
       }),
       { numRuns: 40, seed: 0x5eed_b4 },
     );
-  });
+    // 40 seeded stores: close to vitest's 5s default under CI coverage.
+  }, 30_000);
 
   it("a `__proto__` / `constructor` tool name is counted as custom without corrupting the tally", () => {
     const sessions: SeedSession[] = [
