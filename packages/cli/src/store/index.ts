@@ -2438,6 +2438,7 @@ export class Store {
       SELECT
         m.model AS model,
         ${flag} AS flagged,
+        ${lcSql("m")} AS long_context,
         COUNT(*) AS row_count,
         SUM(m.input_tokens) AS input_tokens,
         SUM(m.output_tokens) AS output_tokens,
@@ -2448,7 +2449,7 @@ export class Store {
       FROM messages m
       LEFT JOIN sessions ss ON ss.session_id = m.session_id
       WHERE ${this.messageWhereExists(f)} AND m.usage_counted = 1
-      GROUP BY m.model, flagged
+      GROUP BY m.model, flagged, long_context
     `;
     const stmt = this.db.prepare(sql);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -5131,11 +5132,13 @@ export interface MessageTotalRow {
   ephemeral_1h_cache_tokens: number;
 }
 
-/** One (model, flagged) group of `getPlaceholderOutputTotals`. */
+/** One (model, flagged, long-context tier) group of `getPlaceholderOutputTotals`. */
 export interface PlaceholderTotalRow {
   model: string | null;
   /** 1 when the group's rows are placeholder-output rows, else 0. */
   flagged: number;
+  /** 1 when the group's requests price at the model's long-context tier, else 0. */
+  long_context: number;
   row_count: number;
   input_tokens: number;
   output_tokens: number;
