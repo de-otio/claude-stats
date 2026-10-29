@@ -135,6 +135,11 @@ export function rowToMessageRecord(row: MessageRow): MessageRecord {
     effort: validShortToken(row.effort),
     speed: validShortToken(row.speed),
     skill: validIdentifier(row.skill),
+    // V28 (E1): a shard is another device's output, so the request link is
+    // re-validated where it enters this device's store. An invalid or
+    // oversized value applies as NULL ("not recorded"), never stored raw —
+    // the same rule as `skill` above.
+    requestRef: validIdentifier(row.request_ref),
     thinkingTokens: row.thinking_tokens ?? null,
     // Worst-wins is applied by the merge fold; an un-stamped row is doubt.
     costBasis: row.cost_basis === "per-response" ? "per-response" : "pre-dedupe",

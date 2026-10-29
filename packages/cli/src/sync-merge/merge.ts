@@ -270,8 +270,9 @@ function unionMessages(a: MergedSession, b: MergedSession): readonly MessageRow[
       // The higher-clock row wins the VALUES, but `cost_basis` is worst-wins:
       // a device that cannot vouch for a number must not have its doubt erased
       // by a newer snapshot that merely didn't know to record any.
-      // `skill` (V25) is latest-non-null-wins, same reason as the session's
-      // agent columns: a newer snapshot that predates the column must not erase it.
+      // `skill` (V25) and `request_ref` (V28) are latest-non-null-wins, same
+      // reason as the session's agent columns: a newer snapshot that predates
+      // the column must not erase it.
       if (!seen) {
         byUuid.set(m.uuid, m);
         continue;
@@ -279,6 +280,13 @@ function unionMessages(a: MergedSession, b: MergedSession): readonly MessageRow[
       const merged: MessageRow = { ...m, cost_basis: worstBasis(seen, m) };
       const skill = m.skill ?? seen.skill;
       if (skill != null) merged.skill = skill;
+      // `request_ref` (V28, E1) folds the same way as `skill`: the
+      // higher-clock row's non-null value wins, and a newer snapshot that
+      // predates the column (or whose writer had no request line) carries
+      // NULL and must not erase what the older side knew. Latest-non-null-
+      // wins, so an older shard can never clear a newer value and vice versa.
+      const requestRef = m.request_ref ?? seen.request_ref;
+      if (requestRef != null) merged.request_ref = requestRef;
       byUuid.set(m.uuid, merged);
     }
   }

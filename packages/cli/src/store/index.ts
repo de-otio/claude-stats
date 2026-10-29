@@ -22,6 +22,7 @@ import type {
   OwnerRule,
   OwnerTarget,
   ApiErrorEvent,
+  ApiRequestFields,
 } from "@claude-stats/core/types";
 import { estimateCost, longContextSqlExpr, longContextSqlExprHash } from "@claude-stats/core/pricing";
 import { isPlaceholderOutput } from "@claude-stats/core/hygiene";
@@ -29,7 +30,7 @@ import { placeholderOutputSql } from "./placeholder-sql.js";
 import { requireTicketKey } from "@claude-stats/core/tickets";
 import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
-export const SCHEMA_VERSION = 27;
+export const SCHEMA_VERSION = 28;
 
 /**
  * SQL (0/1) classifying a `messages` row as a long-context request, over the
@@ -168,6 +169,7 @@ export class Store {
     if (current < 25) this.migrateToV25();
     if (current < 26) this.migrateToV26();
     if (current < 27) this.migrateToV27();
+    if (current < 28) this.migrateToV28();
 
     // Stamp the version FORWARD ONLY.
     //
@@ -547,6 +549,61 @@ export class Store {
       .get() as { n: number };
     if (tables.n < 2) return;
     this.recomputeMessageHourly();
+  }
+
+  /**
+   * V28 — per-request records from `api-request` lines (E1, O1 core).
+   *
+   * `api_requests` holds ONE row per `api-request` line Claude Code 2.1.300+
+   * writes beside the conversation: the request id, the store's session id of
+   * the file the line was first seen in, the agent id, the timestamp and the
+   * request shape hash. Sizes and names only — nothing inside `params` (which
+   * holds the system prompt and up to 272 KB of classifier context), the tail
+   * fields, or anything from `api-request-shape` / `api-request-blob` is ever
+   * read or stored. Exactly these five columns (E1 decision 7, shrunk with
+   * the E2 drop): no `cc_version`, `query_source_*`, `requested_ttl`.
+   *
+   * `messages.request_ref` links an assistant row to its request; NULL =
+   * not recorded. The link is a plain join key, NOT a foreign key, and
+   * `api_requests.session_id` carries no foreign key either: the request row
+   * records WHERE THE LINE WAS FIRST SEEN, never who spent — attribution
+   * comes from `messages.session_id` (Fable F5) — and `request_ref` can point
+   * at a row that does not exist on a peer device, because sync-merge does
+   * not carry `api_requests` (accepted for V28; any coverage figure computed
+   * from `request_ref` under-reports there).
+   *
+   * Additive + idempotent (addColumn checks table_info; CREATE IF NOT
+   * EXISTS), zero backfill: history gains request data only through the
+   * opt-in `repair request-records` command, exactly as V20/V22/V25 document
+   * for their transcript-derived columns. The partial index serves
+   * "join messages to their requests" without indexing the (majority) NULL
+   * rows.
+   */
+  private migrateToV28(): void {
+    // Same partial-fixture guard as V24/V25: a database lacking either table
+    // has nothing to add a column to (every real store has both since V1).
+    const tables = this.db
+      .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('sessions', 'messages')")
+      .get() as { n: number };
+    if (tables.n < 2) return;
+    const addColumn = (table: string, column: string, def: string): void => {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === column)) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+      }
+    };
+    addColumn("messages", "request_ref", "TEXT");
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS api_requests (
+        request_id  TEXT PRIMARY KEY,
+        session_id  TEXT NOT NULL,
+        agent_id    TEXT,
+        timestamp   INTEGER,
+        shape_hash  TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_messages_request_ref
+        ON messages (request_ref) WHERE request_ref IS NOT NULL;
+    `);
   }
 
   private migrateToV13(): void {
@@ -1648,8 +1705,9 @@ export class Store {
         service_tier, inference_geo, ephemeral_5m_cache_tokens, ephemeral_1h_cache_tokens,
         prompt_text, tool_error_count,
         is_turn_start, web_search_requests, web_fetch_requests, is_throttled,
-        message_id, usage_counted, cost_basis, effort, speed, thinking_tokens, skill
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        message_id, usage_counted, cost_basis, effort, speed, thinking_tokens, skill,
+        request_ref
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (uuid) DO UPDATE SET
         model                       = excluded.model,
         ${keepIfNoUsage("input_tokens")},
@@ -1681,6 +1739,10 @@ export class Store {
         -- V25: a label, so COALESCE like effort/speed — a writer that does not
         -- know the column (older peer's shard) must not clear it.
         skill                       = COALESCE(excluded.skill, messages.skill),
+        -- V28 (E1): same never-clear rule for the request link — a writer
+        -- that does not know the column (an older build, an un-upgraded
+        -- peer's shard) supplies NULL and must not erase a known value.
+        request_ref                 = COALESCE(excluded.request_ref, messages.request_ref),
         -- A re-parse is authoritative about its OWN basis, in both directions:
         -- this is how a repair clears 'pre-dedupe'. The worst-wins rule applies
         -- to the cross-device MERGE (sync-merge/merge.ts), not here.
@@ -1782,8 +1844,42 @@ export class Store {
         r.effort ?? null, r.speed ?? null,
         zero ? null : (r.thinkingTokens ?? null),
         r.skill ?? null,
+        r.requestRef ?? null,
       );
     }
+  }
+
+  /**
+   * Upsert per-request records (V28, E1). One row per `api-request` line,
+   * keyed by request id; `sessionId` is the store's session id of the file
+   * being parsed (never read from the line). `ON CONFLICT DO NOTHING` is
+   * first-writer-wins: a forked or resumed transcript can replay the same
+   * request line into a second file, and the rows are identical except
+   * `session_id`, which records only where the line was first seen.
+   *
+   * The collector calls this in the SAME transaction as the messages upsert,
+   * so a collect that runs between the request line and its response stores
+   * both halves atomically — a join by key does not care which run wrote
+   * which side.
+   */
+  upsertApiRequests(sessionId: string, rows: ApiRequestFields[]): void {
+    if (rows.length === 0) return;
+    const stmt = this.db.prepare(`
+      INSERT INTO api_requests (request_id, session_id, agent_id, timestamp, shape_hash)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (request_id) DO NOTHING
+    `);
+    for (const r of rows) {
+      stmt.run(r.requestId, sessionId, r.agentId, r.timestamp, r.shapeHash);
+    }
+  }
+
+  /** Row count of `api_requests` (V28) — repair summaries and diagnostics. */
+  countApiRequests(): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS n FROM api_requests")
+      .get() as { n: number };
+    return row.n;
   }
 
   /** Append-only upsert for `api_error_events` (V22). See `migrateToV22`'s
@@ -5030,6 +5126,13 @@ export interface MessageRow {
   thinking_tokens?: number | null;
   /** Skill active for this message (schema V25); null = not recorded. */
   skill?: string | null;
+  /**
+   * The `api-request` line this message answers (schema V28, E1); null = not
+   * recorded. An opaque random id with no content, so it rides the
+   * personal-plane export (E1 decision 6); on a peer device it can point at
+   * an `api_requests` row that does not exist locally.
+   */
+  request_ref?: string | null;
 }
 
 /**

@@ -270,8 +270,8 @@ describe("the other aggregated readers split by tier and price to the hand figur
 });
 
 describe("V27 migration", () => {
-  it("is schema 27 with long_context in the rollup primary key, next to effort", () => {
-    expect(SCHEMA_VERSION).toBe(27);
+  it("is schema 28 with long_context in the rollup primary key, next to effort", () => {
+    expect(SCHEMA_VERSION).toBe(28);
     const db = new DatabaseSync(dbPath);
     const cols = db.prepare("PRAGMA table_info(message_hourly)").all() as Array<{ name: string; pk: number }>;
     db.close();
@@ -311,7 +311,7 @@ describe("V27 migration", () => {
     try {
       const check = new DatabaseSync(dbPath);
       const version = check.prepare("SELECT value FROM metadata WHERE key = 'schema_version'").get() as { value: string };
-      expect(version.value).toBe("27");
+      expect(version.value).toBe("28");
       check.close();
       expect(splitCounts()).toEqual([{ long_context: 0, n: 1 }, { long_context: 1, n: 3 }]);
       const after = buildDashboard(reopened, { period: "all" }).summary.estimatedCost;

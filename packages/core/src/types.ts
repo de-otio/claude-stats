@@ -126,6 +126,13 @@ export interface RawSessionEntry {
   attributionAgent?: unknown;
   /** Skill running when this entry was written, at the ENTRY ROOT (schema V25). */
   attributionSkill?: unknown;
+  /**
+   * The `api-request` line this assistant entry answers (schema V28, E1): a
+   * random request id written at the ENTRY ROOT by Claude Code 2.1.300+.
+   * Several assistant entries (one per content block) share one `requestRef`.
+   * Validated with `validIdentifier` at the parser boundary.
+   */
+  requestRef?: unknown;
   // queue-operation
   operation?: "enqueue" | "dequeue";
   // system
@@ -303,6 +310,42 @@ export interface MessageRecord {
    * validated with `validIdentifier`. Null when none ran or not recorded.
    */
   skill?: string | null;
+  /**
+   * `requestRef` on the assistant entry (schema V28): the id of the
+   * `api-request` line this response answers, linking the message to its row
+   * in `api_requests`. Validated with `validIdentifier` where it enters; null
+   * when the entry carried none. Opaque — a random id with no content, which
+   * is why it may ride the personal-plane export.
+   */
+  requestRef?: string | null;
+}
+
+// ─── Per-request records (schema V28, E1) ─────────────────────────────────────
+
+/**
+ * The fixed set of fields read from an `api-request` line's HEAD — everything
+ * before `params` — without a full parse. `params` can hold the system prompt
+ * and up to 272 KB of classifier context, so it is never sliced, parsed or
+ * stored; neither are the tail fields (`cacheControl`, `requestDigest`,
+ * `keep`, `base`) nor anything in `api-request-shape` / `api-request-blob`.
+ *
+ * Every field is validated where it enters (`validIdentifier`, ISO→epoch-ms,
+ * 64-hex shape hash); an invalid value is null ("not recorded"), and an
+ * invalid `requestId` drops the row entirely (it is the primary key).
+ *
+ * `sessionId` is NOT part of this shape: the store stamps the session id of
+ * the file being parsed (`Store#upsertApiRequests(sessionId, rows)`), never a
+ * value read from the line.
+ */
+export interface ApiRequestFields {
+  /** The line's `id` — the `api_requests` primary key. */
+  requestId: string;
+  /** The line's `agentId`, or null when absent/invalid. */
+  agentId: string | null;
+  /** The line's `timestamp` as epoch-ms, or null when absent/unparseable. */
+  timestamp: number | null;
+  /** The line's `shapeHash` (64 lowercase hex), or null when absent/invalid. */
+  shapeHash: string | null;
 }
 
 /**
