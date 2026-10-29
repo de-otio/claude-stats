@@ -62,6 +62,20 @@ export interface CollectResult {
    * `collect --verbose`.
    */
   unprefixedApiRequestLines: number;
+  /**
+   * Plain `api-request` lines whose head could not be read (no `params` key in
+   * the first 2,048 characters, a head slice that did not parse, or an
+   * invalid `id`). Counted by the parser, never thrown; non-zero means the
+   * writer's line shape changed. Printed by `collect --verbose`.
+   */
+  apiRequestHeadMisses: number;
+  /**
+   * Plain `api-request` lines the bounded head reader was called on — rows
+   * read plus head misses (schema V28, E1). Reported so a caller (the
+   * `repair request-records` summary) can state the same count a dry run
+   * would read.
+   */
+  apiRequestsRead: number;
   schemaChanges: string[];
 }
 
@@ -81,6 +95,8 @@ export async function collect(
     ownerOverrides: 0,
     parseErrors: 0,
     unprefixedApiRequestLines: 0,
+    apiRequestHeadMisses: 0,
+    apiRequestsRead: 0,
     schemaChanges: [],
   };
 
@@ -185,6 +201,8 @@ export async function collect(
     result.filesProcessed++;
     result.parseErrors += parsed.errors.length;
     result.unprefixedApiRequestLines += parsed.unprefixedApiRequestLines;
+    result.apiRequestHeadMisses += parsed.apiRequestHeadMisses;
+    result.apiRequestsRead += parsed.apiRequests.length + parsed.apiRequestHeadMisses;
 
     // Store everything in a single transaction for crash safety
     // Resolve repo URL once per project path. Use the parser's corrected
@@ -256,6 +274,14 @@ export async function collect(
         store.upsertApiErrorEvents(parsed.apiErrorEvents);
       }
 
+      // V28 (E1): the per-request records read from `api-request` line heads,
+      // in the SAME transaction as the messages upsert. The session id is the
+      // store's own (post subagent-adoption) id of the file being parsed —
+      // never a value read from the request line.
+      if (parsed.apiRequests.length > 0 && parsed.session) {
+        store.upsertApiRequests(parsed.session.sessionId, parsed.apiRequests);
+      }
+
       if (parsed.errors.length > 0) {
         store.addToQuarantine(parsed.errors);
       }
@@ -318,6 +344,14 @@ export async function collect(
     console.log(
       `[warning] ${result.unprefixedApiRequestLines} api-request line(s) escaped the prefix test ` +
         `and were skipped after a full parse; the transcript line shape may have changed`
+    );
+  }
+
+  if (opts.verbose && result.apiRequestHeadMisses > 0) {
+    console.log(
+      `[warning] ${result.apiRequestHeadMisses} api-request line(s) had no readable head ` +
+        `(no params key in the first 2,048 characters, a malformed head, or an invalid id) ` +
+        `and were counted as head misses; the transcript line shape may have changed`
     );
   }
 

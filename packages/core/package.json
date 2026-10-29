@@ -34,6 +34,10 @@
       "types": "./dist/parser/session.d.ts",
       "default": "./dist/parser/session.js"
     },
+    "./parser/apiRequest": {
+      "types": "./dist/parser/apiRequest.d.ts",
+      "default": "./dist/parser/apiRequest.js"
+    },
     "./parser/telemetry": {
       "types": "./dist/parser/telemetry.d.ts",
       "default": "./dist/parser/telemetry.js"

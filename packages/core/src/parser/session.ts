@@ -18,9 +18,11 @@ import type {
   ToolUseCount,
   ParseError,
   ApiErrorEvent,
+  ApiRequestFields,
 } from "../types.js";
 import { sanitizePromptText } from "../sanitize.js";
 import { validIdentifier } from "../identifiers.js";
+import { isPlainApiRequestLine, readApiRequestFields } from "./apiRequest.js";
 
 export interface ParseResult {
   session: SessionRecord | null;
@@ -41,6 +43,19 @@ export interface ParseResult {
    * shape changed and the cheap prefix test needs updating.
    */
   unprefixedApiRequestLines: number;
+  /**
+   * Per-request records read from the HEAD of plain `api-request` lines
+   * (schema V28, E1) — a bounded read, never a full parse. The store stamps
+   * each with the session id of the file being parsed.
+   */
+  apiRequests: ApiRequestFields[];
+  /**
+   * Plain `api-request` lines whose head could not be read: no `params` key
+   * within the first 2,048 characters, a head slice that does not parse, or
+   * an invalid `id`. A miss is counted, never thrown and never quarantined —
+   * see `apiRequest.ts`. Non-zero means the writer's line shape changed.
+   */
+  apiRequestHeadMisses: number;
 }
 
 /** Classify a terminal `isApiErrorMessage` entry's short error string, or a
@@ -375,6 +390,11 @@ export async function parseSessionFile(
   let lastPromptText: string | null = null;
   const apiErrorEvents: ApiErrorEvent[] = [];
   let unprefixedApiRequestLines = 0;
+  // E1: per-request records from the heads of plain `api-request` lines, and
+  // the count of head misses. Both are reported on the result; the store
+  // receives the rows through the aggregator.
+  const apiRequests: ApiRequestFields[] = [];
+  let apiRequestHeadMisses = 0;
 
   let lineNumber = 0;
   for await (const { raw, offset } of streamProcessableLines(filePath, startOffset)) {
@@ -385,6 +405,17 @@ export async function parseSessionFile(
     // parsed line, so incremental resume lands in the same place.
     if (isApiRequestLine(raw)) {
       lastGoodOffset = offset + Buffer.byteLength(raw, "utf8") + 1;
+      // E1: a PLAIN `api-request` line additionally gets a bounded read of
+      // its head (the fixed field set before `params`) — never a full parse,
+      // so A1's saving survives. `-shape`/`-blob` stay skipped. A head miss
+      // is counted, never thrown: this branch sits outside the per-line
+      // try/catch, so a throw would abort the collect and the checkpoint
+      // would never advance past the line.
+      if (isPlainApiRequestLine(raw)) {
+        const fields = readApiRequestFields(raw);
+        if (fields === null) apiRequestHeadMisses++;
+        else apiRequests.push(fields);
+      }
       continue;
     }
 
@@ -700,6 +731,9 @@ export async function parseSessionFile(
             validShape(entry.effort, SHORT_TOKEN_RE),
           speed: validShape(usage?.speed, SHORT_TOKEN_RE),
           skill: validIdentifier(entry.attributionSkill),
+          // V28 (E1): the `api-request` line this entry answers. Validated
+          // where it enters; several entries of one response share it.
+          requestRef: validIdentifier(entry.requestRef),
           thinkingTokens: validTokenCount(usage?.output_tokens_details?.thinking_tokens),
           costBasis: messageId !== null || !hasUsage ? "per-response" : "pre-dedupe",
         });
@@ -796,7 +830,7 @@ export async function parseSessionFile(
       }
     : null;
 
-  return { session, messages, errors, lastGoodOffset, firstKbHash, parentUuid, apiErrorEvents, unprefixedApiRequestLines };
+  return { session, messages, errors, lastGoodOffset, firstKbHash, parentUuid, apiErrorEvents, unprefixedApiRequestLines, apiRequests, apiRequestHeadMisses };
 }
 
 /**
