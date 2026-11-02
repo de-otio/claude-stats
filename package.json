@@ -38,8 +38,8 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
-    "@types/node": "^26.6.5",
-    "@types/vscode": "^1.140.0",
+    "@types/node": "^26.6.6",
+    "@types/vscode": "^1.144.0",
     "@vitest/coverage-v8": "^5.0.5",
     "chart.js": "^4.6.1",
     "esbuild": "^0.28.2",
