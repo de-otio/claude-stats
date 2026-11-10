@@ -19,8 +19,8 @@
  * Do not narrow, rename, or add fields to the interfaces below outside that
  * handoff — B1/B3/C1/C2 are typed against this exact contract.
  */
-import { resolvePricing, nonNegativeFiniteInt, type ModelPricing, type RateOverrides } from "./pricing.js";
-import { groupBySession, sumCost, observedTtlOf } from "./hygiene/util.js";
+import { costOptionsKey, resolveRequestPricing, nonNegativeFiniteInt, type CostOptions, type ModelPricing, type RateOverrides } from "./pricing.js";
+import { groupBySession, sumCost, observedTtlOf, rowCostOptions } from "./hygiene/util.js";
 import type { HygieneMessageRow } from "./hygiene/types.js";
 
 // `observedTtlOf` is owned by `hygiene/util.ts` (A2) — re-exported here so a
@@ -276,8 +276,10 @@ export function computeTtlFit(
 
   const originCreation = new Map<TtlFitOrigin, number>(ORIGINS.map((o) => [o, 0]));
   const models = new Map<string, ModelAccumulator>();
-  // One `resolvePricing` per distinct raw model id, not per row.
-  const resolutions = new Map<string, { canonical: string; pricing: ModelPricing | null }>();
+  // One `resolveRequestPricing` per distinct (raw model id, pricing modifiers),
+  // not per row: a long-context, fast-mode or US-pinned request is priced at the
+  // rate it was billed at, so one model can hold several rate groups.
+  const resolutions = new Map<string, Resolution>();
 
   let excludedRows = 0;
   let unpricedRows = 0;
@@ -376,7 +378,7 @@ export function computeTtlFit(
         }
       }
 
-      const resolved = row.model === null ? null : resolveCached(resolutions, row.model, overrides);
+      const resolved = row.model === null ? null : resolveCached(resolutions, row.model, rowCostOptions(row), overrides);
       if (resolved === null || resolved.pricing === null) {
         // Null model, or a model this build has no rate for. The token volume
         // above is real and already counted; the cost half is not guessed at.
@@ -389,7 +391,11 @@ export function computeTtlFit(
       if (acc === undefined) {
         acc = {
           model: resolved.canonical,
-          pricing: resolved.pricing,
+          // The model's own (unmodified) rate row: what the D10 guard and the
+          // break-even ratio are read from. Every row of this model resolves to
+          // it or to a scaled/tiered variant of it.
+          pricing: resolved.basePricing ?? resolved.pricing,
+          groups: new Map(),
           recoveredReadTokens: 0,
           writeTokens: 0,
           writeTokens1h: 0,
@@ -401,21 +407,32 @@ export function computeTtlFit(
       acc.writeTokens += creationTokens;
       acc.writeTokens1h += write1h;
       acc.nearBoundaryReadTokens += nearBoundaryRead;
+      let group = acc.groups.get(resolved.groupKey);
+      if (group === undefined) {
+        group = { pricing: resolved.pricing, recoveredReadTokens: 0, writeTokens1h: 0, nearBoundaryReadTokens: 0 };
+        acc.groups.set(resolved.groupKey, group);
+      }
+      group.recoveredReadTokens += recoveredReadTokens;
+      group.writeTokens1h += write1h;
+      group.nearBoundaryReadTokens += nearBoundaryRead;
     }
   }
 
   const priced = [...models.values()]
     .sort((a, b) => b.writeTokens - a.writeTokens || (a.model < b.model ? -1 : a.model > b.model ? 1 : 0))
-    .map((acc) => ({ acc, rates: ttlRatesOf(acc.pricing, observedTtl) }));
+    .map((acc) => ({ acc, rates: ttlRatesOf(acc.pricing, observedTtl), parts: groupPremiums(acc, observedTtl) }));
 
-  const byModel: TtlFitModelRow[] = priced.map(({ acc, rates }) => {
+  const byModel: TtlFitModelRow[] = priced.map(({ acc, rates, parts }) => {
     // `extra` and `saved` are DERIVED from the resolved table — never the
     // shipped 1.15×/0.75× constants. On the shipped uniform structure they
     // reduce to exactly those (read 0.1× input, write5m 1.25×, write1h 2×:
     // write5m-read = 1.15× input, write1h-write5m = 0.75× input, break-even
     // 0.652), but a `rateOverrides` table or a re-fetched one moves them.
-    const extra = rates === null ? null : (acc.recoveredReadTokens * rates.readToWritePremium) / 1e6;
-    const saved = rates === null ? null : (acc.writeTokens1h * rates.oneHourPremium) / 1e6;
+    // Priced per rate group (long-context tier, fast, US geo): the model's
+    // dollars are the sum of its groups'. With one group this is exactly the
+    // single product it was before.
+    const extra = parts === null ? null : parts.reduce((s, { group, rates: r }) => s + (group.recoveredReadTokens * r.readToWritePremium) / 1e6, 0);
+    const saved = parts === null ? null : parts.reduce((s, { group, rates: r }) => s + (group.writeTokens1h * r.oneHourPremium) / 1e6, 0);
     return {
       model: acc.model,
       recoveredReadTokens: acc.recoveredReadTokens,
@@ -436,7 +453,8 @@ export function computeTtlFit(
   // volume would join `R`. Unpriced and rate-guarded models contribute nothing
   // — there is no rate to price their share with.
   const impliedSwing = priced.reduce(
-    (sum, { acc, rates }) => (rates === null ? sum : sum + (acc.nearBoundaryReadTokens * rates.readToWritePremium) / 1e6),
+    (sum, { parts }) =>
+      parts === null ? sum : sum + parts.reduce((s, { group, rates: r }) => s + (group.nearBoundaryReadTokens * r.readToWritePremium) / 1e6, 0),
     0,
   );
 
@@ -508,9 +526,19 @@ const TOO_CLOSE_COST_FRACTION = 0.05;
 type TtlFitOrigin = TtlFitOriginRow["origin"];
 const ORIGINS: readonly TtlFitOrigin[] = ["session-start", "mid-work", "resume-short", "resume-long"];
 
+/** The token volume of one model priced at one rate row (one set of pricing modifiers). */
+interface RateGroup {
+  pricing: ModelPricing;
+  recoveredReadTokens: number;
+  writeTokens1h: number;
+  nearBoundaryReadTokens: number;
+}
+
 interface ModelAccumulator {
   model: string;
+  /** The model's own rate row (no modifier); drives the D10 guard and `breakEvenRatio`. */
   pricing: ModelPricing;
+  groups: Map<string, RateGroup>;
   recoveredReadTokens: number;
   writeTokens: number;
   writeTokens1h: number;
@@ -569,19 +597,53 @@ function ttlRatesOf(p: ModelPricing, observedTtl: TtlFitResult["observedTtl"]): 
   return { readToWritePremium, oneHourPremium };
 }
 
+/** A row's resolution: the model's canonical id, its unmodified rate row, and
+ *  the rates THIS request is priced at (null = unknown model or refused). */
+interface Resolution {
+  canonical: string;
+  basePricing: ModelPricing | null;
+  pricing: ModelPricing | null;
+  groupKey: string;
+}
+
 function resolveCached(
-  cache: Map<string, { canonical: string; pricing: ModelPricing | null }>,
+  cache: Map<string, Resolution>,
   model: string,
+  opts: CostOptions,
   overrides: RateOverrides | undefined,
-): { canonical: string; pricing: ModelPricing | null } {
-  const hit = cache.get(model);
+): Resolution {
+  const key = `${model}\u0000${costOptionsKey(opts)}`;
+  const hit = cache.get(key);
   if (hit !== undefined) return hit;
-  const { canonical, pricing } = resolvePricing(model, overrides);
+  const { resolved, pricing } = resolveRequestPricing(model, opts, overrides);
   // Keyed by the CANONICAL id, so `claude-opus-5` and a Bedrock/Vertex id for
   // the same model are one row rather than three.
-  const entry = { canonical, pricing };
-  cache.set(model, entry);
+  const entry: Resolution = { canonical: resolved.canonical, basePricing: resolved.pricing, pricing, groupKey: costOptionsKey(opts) };
+  cache.set(key, entry);
   return entry;
+}
+
+/** One rate group with its D10-guarded premiums. */
+interface GroupPart {
+  group: RateGroup;
+  rates: TtlPremiums;
+}
+
+/**
+ * The model's rate groups with their premiums, or `null` when the model's
+ * pricing half must be `null` (D10): the base row fails the guard, or ANY
+ * group's rates do. A partial sum over the groups that pass would be a signed
+ * dollar figure that silently leaves some of the model's volume out.
+ */
+function groupPremiums(acc: ModelAccumulator, observedTtl: TtlFitResult["observedTtl"]): GroupPart[] | null {
+  if (ttlRatesOf(acc.pricing, observedTtl) === null) return null;
+  const parts: GroupPart[] = [];
+  for (const group of acc.groups.values()) {
+    const rates = ttlRatesOf(group.pricing, observedTtl);
+    if (rates === null) return null;
+    parts.push({ group, rates });
+  }
+  return parts;
 }
 
 /** Locale-independent minute label — a prior CI failure in this repo came from

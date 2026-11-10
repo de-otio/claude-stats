@@ -98,6 +98,8 @@ function toHygieneMessageRow(row: HygieneMessageStoreRow): HygieneMessageRow {
     effort: row.effort,
     isSubagent: row.is_subagent,
     claudeVersion: row.claude_version,
+    speed: row.speed,
+    inferenceGeo: row.inference_geo,
   };
 }
 
@@ -115,7 +117,11 @@ function totalCostOf(rows: readonly HygieneMessageRow[], overrides?: RateOverrid
     total += estimateCost(r.model, r.inputTokens, r.outputTokens, r.cacheReadTokens, r.cacheCreationTokens, overrides, {
       ephemeral5mCacheTokens: r.ephemeral5mCacheTokens,
       ephemeral1hCacheTokens: r.ephemeral1hCacheTokens,
-    }, { longContext: isLongContextRequest(r.model, r.inputTokens, r.cacheReadTokens, r.cacheCreationTokens) }).cost;
+    }, {
+      longContext: isLongContextRequest(r.model, r.inputTokens, r.cacheReadTokens, r.cacheCreationTokens),
+      speed: r.speed,
+      inferenceGeo: r.inferenceGeo,
+    }).cost;
   }
   return total;
 }

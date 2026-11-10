@@ -273,7 +273,9 @@
           "value": "~4 mL/kWh de volume de repositório engenheirado — não resíduo bruto. Ponderado entre descarte de RNAA conforme Posiva KBS-3 / Onkalo (~1.500× o volume bruto de combustível irradiado após contêiner de cobre, barreira de bentonita e espaçamento térmico dos túneis), RNMA (~5×) e RNBA (~3×), usando frações volumétricas da AIEA. Referências: caso de segurança Posiva 2012, SKB TR-11-01, IAEA Radioactive Waste Inventory."
         }
       }
-    }
+    },
+    "atLeast": "Pelo menos {{value}}",
+    "floorNote": "Fable e Mythos não têm valor de energia publicado, por isso são contabilizados com a taxa do Opus. Considere estes totais como um limite inferior."
   },
   "settings": {
     "configuration": "Configuração",
@@ -741,7 +743,8 @@
     "mixedRepaired": "{{rows}} de {{total}} linhas contabilizadas ({{percent}}%) neste intervalo são anteriores à correção por resposta (cost_basis = pre-dedupe) e estão infladas em aproximadamente 2x. Um reparo já foi executado; as linhas restantes não têm mais transcrição para reprocessar."
   },
   "pricingDrift": {
-    "unpricedCaveat": "{{count}} IDs de modelo não corresponderam a nenhuma tarifa e foram excluídos do custo total ({{tokens}} tokens): {{models}}. Adicione uma linha de preço ou um override na configuração."
+    "unpricedCaveat": "{{count}} IDs de modelo não corresponderam a nenhuma tarifa e foram excluídos do custo total ({{tokens}} tokens): {{models}}. Adicione uma linha de preço ou um override na configuração.",
+    "fastModeUnpriced": "{{count}} solicitações em modo rápido são precificadas pela tarifa padrão neste total; o custo cobrado delas é maior."
   },
   "agentCost": {
     "title": "Agentes e skills",

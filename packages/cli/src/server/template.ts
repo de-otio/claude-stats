@@ -443,6 +443,15 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         }))}</span>
       </div>`
     : "";
+  // Fast-mode disclosure (plan P1): the hourly rollup behind an unbounded
+  // period has no `speed` key, so fast-mode requests are priced at the standard
+  // rate there. Same register and place as the unpriced banner; absent when null.
+  const fastModeBanner = (count: number | null | undefined, cls: string) => count != null && count > 0
+    ? `<div class="summary-card ${cls}" style="grid-column: 1 / -1; text-align: left; padding: 0.5rem 0.75rem; border-color:#e0a458; background:rgba(224,164,88,0.08);">
+        <span style="font-size:0.75rem; color:#e0a458;">${escapeHtml(t("dashboard:pricingDrift.fastModeUnpriced", { count: fmtNum(count) }))}</span>
+      </div>`
+    : "";
+  const fastBanner = fastModeBanner(data.summary.fastModeUnpriced, "fast-mode-banner");
   // Escape a string for safe embedding inside a single-quoted JS string
   // literal in the inline <script> block. Translations routinely contain
   // apostrophes ("haven't", French "l'autre", Ukrainian "прив'язано") — left
@@ -1181,6 +1190,7 @@ ${TICKET_TABLE_CSS}
       ` : ""}
       ${costBasisBanner}
       ${unpricedBanner}
+      ${fastBanner}
       <div style="grid-column: 1 / -1;">
         ${renderCard(costAnswer, {
           id: "card-cost",
@@ -1615,6 +1625,7 @@ ${TICKET_TABLE_CSS}
   ${data.spending ? `
   ${sectionOpen("spending")}
     <div class="summary-bar" style="margin-bottom:1rem;">
+      ${fastModeBanner(data.spending.fastModeUnpriced, "fast-mode-banner fast-mode-banner-spending")}
       <div class="summary-card" style="border-color:#e15759;">
         <div class="label">Cache Hit Rate</div>
         <div class="value">${data.spending.cacheEfficiency.overallHitRate}%</div>
@@ -1743,11 +1754,12 @@ ${TICKET_TABLE_CSS}
     <div class="summary-bar">
       <div class="summary-card">
         <div class="label">${t("dashboard:energy.totalEnergy")}</div>
-        <div class="value">${formatEnergy(data.energy.totalEnergyWh)}</div>
+        <div class="value">${data.energy.floor ? t("dashboard:energy.atLeast", { value: formatEnergy(data.energy.totalEnergyWh) }) : formatEnergy(data.energy.totalEnergyWh)}</div>
+        ${data.energy.floor ? `<div class="energy-floor-note" style="font-size:0.55rem;color:#ff9966;margin-top:0.15rem;">${t("dashboard:energy.floorNote")}</div>` : ""}
       </div>
       <div class="summary-card">
         <div class="label">${t("dashboard:energy.totalCO2")}</div>
-        <div class="value">${formatCO2(data.energy.totalCO2Grams)}</div>
+        <div class="value">${data.energy.floor ? t("dashboard:energy.atLeast", { value: formatCO2(data.energy.totalCO2Grams) }) : formatCO2(data.energy.totalCO2Grams)}</div>
         <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${t("dashboard:energy.co2Range", { low: formatCO2(data.energy.co2GramsLow), high: formatCO2(data.energy.co2GramsHigh) })}</div>
       </div>
       <div class="summary-card">
@@ -3539,7 +3551,8 @@ CO₂_grams = total_kWh × grid_intensity</div>
           new Chart(ctx, {
             type: 'bar',
             data: {
-              labels: en.byModel.map(function (m) { return m.model; }),
+              // A trailing "≥" marks a model counted at a floor class (Fable, Mythos).
+              labels: en.byModel.map(function (m) { return m.floor ? m.model + ' ≥' : m.model; }),
               datasets: [{
                 label: 'Energy (kWh)',
                 data: en.byModel.map(function (m) { return m.energyWh / 1000; }),

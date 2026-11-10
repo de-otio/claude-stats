@@ -316,7 +316,8 @@
     "ticketAmbiguousNote": "{{count}} 个 session 存在歧义（关联到多个工单）。",
     "confidenceHigh": "高置信度",
     "confidenceMedium": "中置信度",
-    "confidenceLow": "低置信度"
+    "confidenceLow": "低置信度",
+    "fastModeUnpriced": "此总计中有 {{count}} 个快速模式请求按标准费率计价;其实际计费成本更高。"
   },
   "status": {
     "databaseSize": "数据库大小",

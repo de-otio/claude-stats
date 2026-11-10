@@ -315,7 +315,7 @@ describe("HIGH_THINKING", () => {
     uuid: "x", session_id: "s", model: "m", input_tokens: 0, output_tokens: 1_000,
     cache_read_tokens: 0, cache_creation_tokens: 0, thinking_blocks: 3, tools: "[]",
     prompt_text: null, timestamp: null, stop_reason: null,
-    thinking_tokens: null, usage_counted: 1,
+    thinking_tokens: null, usage_counted: 1, speed: null, inference_geo: null,
   };
   it("fires only above half the output, on carriers, and never on an unreported count", () => {
     // The old predicate (`thinking_blocks > 0`) would fire on every one of these.

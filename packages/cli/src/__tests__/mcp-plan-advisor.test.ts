@@ -203,11 +203,12 @@ describe("get_plan_mechanics_reference", () => {
   it("returns the full snapshot with verifiedDate and staleWarning", async () => {
     const result = await client.callTool({ name: "get_plan_mechanics_reference", arguments: {} });
     const data = textOf(result);
-    expect(data["verifiedDate"]).toBe("2026-07-03");
-    expect(data["staleWarning"]).toContain("2026-07-03");
+    expect(data["verifiedDate"]).toBe("2026-11-10");
+    expect(data["staleWarning"]).toContain("2026-11-10");
     expect(data["staleWarning"]).toContain("claude.com/pricing");
     expect(data).toHaveProperty("teamSeatRange");
     expect(data).toHaveProperty("enterpriseMinimums");
+    expect(data).toHaveProperty("fableAllowance");
     expect(data).toHaveProperty("seatPricing");
     expect(data).toHaveProperty("procurementMotion");
     expect(data).toHaveProperty("perUserMonthlyBenchmarks");
@@ -238,8 +239,8 @@ describe("size_seats", () => {
     expect(data["headcount"]).toBe(400);
     expect(data["technicalPopulation"]).toBe(200);
     expect(data["tierMixSource"]).toBe("anthropic-benchmark");
-    expect(data["verifiedDate"]).toBe("2026-07-03");
-    expect(data["staleWarning"]).toContain("2026-07-03");
+    expect(data["verifiedDate"]).toBe("2026-11-10");
+    expect(data["staleWarning"]).toContain("2026-11-10");
     expect(Array.isArray(data["rows"])).toBe(true);
     expect((data["rows"] as unknown[]).length).toBe(4); // default adoption scenarios
     expect(Array.isArray(data["openQuestions"])).toBe(true);

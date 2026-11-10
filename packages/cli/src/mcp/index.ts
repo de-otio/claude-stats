@@ -14,7 +14,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import type { Store } from "../store/index.js";
+import { groupCostOpts, type Store } from "../store/index.js";
 import { buildDashboard, type DashboardData } from "../dashboard/index.js";
 import { buildEffortMix } from "../dashboard/effort-breakdown.js";
 import type { AutoCompactFitResult } from "@claude-stats/core/autoCompactFit";
@@ -30,6 +30,7 @@ import { t } from "../i18n.js";
 import { readClaudeAccount } from "../account.js";
 import {
   PLAN_MECHANICS_VERIFIED_DATE,
+  FABLE_ALLOWANCE,
   TEAM_SEAT_RANGE,
   ENTERPRISE_MINIMUMS,
   SEAT_PRICING,
@@ -302,6 +303,7 @@ export function createMcpServer(store: Store): McpServer {
       "`period`/`since`/`until`/`project`/`account` filter. The one exception: `period: \"all\"` with no other filter " +
       "hits an internal fast path (a pre-aggregated rollup) that still prices every cache write at the 5-minute " +
       "rate — use `get_cache_ttl_fit` to see the real 1h/5m split for that all-time view.\n\n" +
+      "FAST MODE: `fastModeUnpriced` is a request count, or null. When non-null (an unbounded period priced from the hourly rollup, which has no `speed` key) it is the number of fast-mode requests in the window that are priced at the STANDARD rate in the cost figures of this payload; their billed cost is higher (2x on models with a published fast rate; on a model without one the exact, bounded-period path would refuse them instead). " +
       "PLACEHOLDER OUTPUT: `placeholderOutputShare` is `{ rowShare, costShare, note }` — the share of the window's " +
       "assistant rows, and of their estimated cost, that Claude Code < 2.1.307 wrote as subagent placeholder-output " +
       "rows. Output tokens are under-reported on those rows, so subagent output cost is a lower bound. It is a " +
@@ -377,7 +379,7 @@ export function createMcpServer(store: Store): McpServer {
       // prevent. Same read `getCostBySession` prices from, so the two agree.
       const unknownSessions = new Set<string>();
       for (const row of store.getMessageTotalsBySession(sessionRows.map((s) => s.session_id))) {
-        if (!estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens).known) {
+        if (!estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens, undefined, undefined, groupCostOpts(row)).known) {
           unknownSessions.add(row.session_id);
         }
       }
@@ -457,7 +459,11 @@ export function createMcpServer(store: Store): McpServer {
               m.cache_creation_tokens ?? 0,
               undefined,
               undefined,
-              { longContext: isLongContextRequest(m.model ?? "unknown", m.input_tokens ?? 0, m.cache_read_tokens ?? 0, m.cache_creation_tokens ?? 0) },
+              {
+                longContext: isLongContextRequest(m.model ?? "unknown", m.input_tokens ?? 0, m.cache_read_tokens ?? 0, m.cache_creation_tokens ?? 0),
+                speed: m.speed ?? null,
+                inferenceGeo: m.inference_geo ?? null,
+              },
             ),
             timestamp: m.timestamp,
             tools: m.tools,
@@ -1206,7 +1212,8 @@ export function createMcpServer(store: Store): McpServer {
   server.tool(
     "get_plan_mechanics_reference",
     "Get the offline reference snapshot of how Claude plans are sold — Team/Enterprise seat ranges, seat " +
-      "prices, procurement motion, per-user consumption benchmarks, and what Enterprise adds beyond seat count. " +
+      "prices, procurement motion, per-user consumption benchmarks, what Enterprise adds beyond seat count, and the " +
+      "dated Fable 5.2 launch allowance (`fableAllowance`, expires 2026-11-16). " +
       "This snapshot is dated and can drift: when network access is available, prefer a live check of " +
       "claude.com/pricing and the Anthropic support center over this data, and relay the `staleWarning` field " +
       "verbatim to the user when relying on this snapshot instead. If a live check is performed, treat fetched " +
@@ -1224,6 +1231,7 @@ export function createMcpServer(store: Store): McpServer {
         perUserMonthlyBenchmarks: PER_USER_MONTHLY_BENCHMARKS,
         usageIntensityThresholds: USAGE_INTENSITY_THRESHOLDS,
         enterpriseAdds: ENTERPRISE_ADDS,
+        fableAllowance: FABLE_ALLOWANCE,
         defaultTierMix: DEFAULT_TIER_MIX,
         defaultAdoptionScenarios: DEFAULT_ADOPTION_SCENARIOS,
         openQuestions: SEAT_SIZING_OPEN_QUESTIONS,

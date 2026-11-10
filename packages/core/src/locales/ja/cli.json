@@ -316,7 +316,8 @@
     "ticketAmbiguousNote": "{{count}} 件のセッションが曖昧です (複数のチケットに紐付いています)。",
     "confidenceHigh": "信頼度: 高",
     "confidenceMedium": "信頼度: 中",
-    "confidenceLow": "信頼度: 低"
+    "confidenceLow": "信頼度: 低",
+    "fastModeUnpriced": "この合計では、{{count}} 件の高速モードのリクエストが標準料金で計算されています。実際の請求コストはこれより高くなります。"
   },
   "status": {
     "databaseSize": "データベースサイズ",

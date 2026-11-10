@@ -23,13 +23,14 @@
  * Do not narrow, rename, or add fields to the interfaces below outside that
  * handoff — B1/B3/C1/C2 are typed against this exact contract.
  */
-import { resolvePricing, type RateOverrides } from "./pricing.js";
+import { costOptionsKey, resolveRequestPricing, type CostOptions, type RateOverrides } from "./pricing.js";
 import {
   contextIncrements,
   detectResets,
   firstRequestContext,
   groupBySession,
   messageCost,
+  rowCostOptions,
   sumCost,
   totalContext,
   type ContextIncrement,
@@ -188,6 +189,16 @@ export interface ContextCarryTurn {
    *  volume still counts toward `distinctTokensEstimate`, but no dollar
    *  figure is guessed at (same honest-degrade convention `ttlFit.ts` uses). */
   carryCost: number | null;
+  /**
+   * The cache-read rate (per MTok) this turn was priced at, PRESENT ONLY when
+   * it differs from `model`'s base rate: a long-context, fast-mode or US-pinned
+   * request is billed at a different rate than its model's row, and
+   * `computeAutoCompactFit` cannot recover that from `model` alone. `null`
+   * means the request was refused a price (fast mode on a model with no
+   * published fast rate). Absent on every standard request, so a window with no
+   * such requests serialises exactly as it did before.
+   */
+  adjustedCacheReadRate?: number | null;
 }
 
 /** One cycle (session-start-or-reset to the next reset, or to the end of the
@@ -489,17 +500,22 @@ export function computeContextCarry(
   const resetAfterRows = new Set<HygieneMessageRow>(resetEvents.map((e) => e.afterRow));
   const resetByBeforeRow = new Map<HygieneMessageRow, ResetEvent>(resetEvents.map((e) => [e.beforeRow, e]));
 
-  /** One `resolvePricing` per distinct raw model id, not per row. */
+  /** One `resolveRequestPricing` per distinct (raw model id, pricing modifiers), not per row. */
   const rateCache = new Map<string, number | null>();
-  const cacheReadRate = (model: string | null): number | null => {
+  const rateFor = (model: string | null, opts: CostOptions | undefined): number | null => {
     if (model === null) return null;
-    if (rateCache.has(model)) return rateCache.get(model) ?? null;
-    const { pricing } = resolvePricing(model, overrides);
+    const key = `${model}\u0000${costOptionsKey(opts)}`;
+    if (rateCache.has(key)) return rateCache.get(key) ?? null;
+    const { pricing } = resolveRequestPricing(model, opts, overrides);
     const rate =
       pricing === null || !Number.isFinite(pricing.cacheReadPerMillion) ? null : pricing.cacheReadPerMillion;
-    rateCache.set(model, rate);
+    rateCache.set(key, rate);
     return rate;
   };
+  /** The rate THIS request was billed at (long-context tier, fast mode, US geo). */
+  const cacheReadRate = (row: HygieneMessageRow): number | null => rateFor(row.model, rowCostOptions(row));
+  /** The model's base rate, with no modifier: what `ContextCarryTurn.adjustedCacheReadRate` is compared to. */
+  const baseCacheReadRate = (model: string | null): number | null => rateFor(model, undefined);
 
   // ── Pass 1: volume totals, size bands, caps, unpriced share, per-session
   // carried volume. Order-insensitive, so EVERY row counts here — including
@@ -524,7 +540,7 @@ export function computeContextCarry(
     carriedTokens += total;
     if (row.timestamp === null) excludedRows++;
 
-    const rate = cacheReadRate(row.model);
+    const rate = cacheReadRate(row);
     if (rate === null) {
       unpricedRows++;
       unpricedTokens += total;
@@ -587,7 +603,7 @@ export function computeContextCarry(
     for (let i = 0; i < n; i++) {
       const { inc, carryIncrement } = cyc.steps[i]!;
       const remaining = n - i; // INCLUSIVE of this turn — see the contract above.
-      const rate = cacheReadRate(inc.row.model);
+      const rate = cacheReadRate(inc.row);
       let carryCost: number | null = null;
       if (rate !== null) {
         let cost = (carryIncrement * remaining * rate) / 1e6;
@@ -605,6 +621,7 @@ export function computeContextCarry(
         increment: carryIncrement,
         remainingRequestsInCycle: remaining,
         carryCost,
+        ...(rate !== baseCacheReadRate(inc.row.model) ? { adjustedCacheReadRate: rate } : {}),
       });
     }
   }
@@ -638,7 +655,7 @@ export function computeContextCarry(
     const first = firstRequestContext(group);
     if (first === null) continue;
     firstRequests.push(first);
-    const rate = cacheReadRate(group.messages[0]!.model);
+    const rate = cacheReadRate(group.messages[0]!);
     if (rate !== null) preludeRateSum += rate;
     const startedAt = sessionStartedAt(group);
     // No usable timestamp anywhere in the session ⇒ nothing to place it on a

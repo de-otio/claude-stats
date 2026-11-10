@@ -1097,13 +1097,13 @@ describe("Store — message period filter (subquery seek parity)", () => {
     // Messages ----------------------------------------------------------------
     store.upsertMessages([
       // sA messages
-      mkMsg({ uuid: "mA1", sessionId: "sA", timestamp: T0 + 100, model: "claude-opus-4-6", input: 100, output: 10, cacheRead: 5, cacheCreation: 1, eph5m: 2, eph1h: 3, thinking: 1, inferenceGeo: "us", tools: ["Read"], promptText: "pa1" }),
+      mkMsg({ uuid: "mA1", sessionId: "sA", timestamp: T0 + 100, model: "claude-opus-4-6", input: 100, output: 10, cacheRead: 5, cacheCreation: 1, eph5m: 2, eph1h: 3, thinking: 1, inferenceGeo: "us-east-1", tools: ["Read"], promptText: "pa1" }),
       mkMsg({ uuid: "mA2", sessionId: "sA", timestamp: T0 + DAY + 200, model: "claude-sonnet-4-6", input: 200, output: 20, cacheRead: 6, cacheCreation: 2, eph5m: 0, eph1h: 0, thinking: 0, inferenceGeo: null, tools: [], promptText: null }),
       // sB messages — note mB_early at T0, BEFORE sB.first_timestamp (T0+600_000)
       mkMsg({ uuid: "mB_early", sessionId: "sB", timestamp: T0, model: "claude-opus-4-6", input: 300, output: 30, cacheRead: 7, cacheCreation: 3, eph5m: 0, eph1h: 0, thinking: 2, inferenceGeo: "eu", tools: ["Edit"], promptText: "pb0" }),
       mkMsg({ uuid: "mB_late", sessionId: "sB", timestamp: T0 + 650_000, model: "claude-sonnet-4-6", input: 400, output: 40, cacheRead: 8, cacheCreation: 4, eph5m: 1, eph1h: 1, thinking: 0, inferenceGeo: null, tools: [], promptText: null }),
       // sC message (day 3)
-      mkMsg({ uuid: "mC1", sessionId: "sC", timestamp: T0 + 3 * DAY, model: "claude-opus-4-6", input: 500, output: 50, cacheRead: 9, cacheCreation: 5, eph5m: 0, eph1h: 0, thinking: 0, inferenceGeo: "us", tools: [], promptText: null }),
+      mkMsg({ uuid: "mC1", sessionId: "sC", timestamp: T0 + 3 * DAY, model: "claude-opus-4-6", input: 500, output: 50, cacheRead: 9, cacheCreation: 5, eph5m: 0, eph1h: 0, thinking: 0, inferenceGeo: "us-east-1", tools: [], promptText: null }),
       // A NULL-model message in sA: included by Context/Totals, excluded by
       // Efficiency/Energy (m.model IS NOT NULL).
       mkMsg({ uuid: "mA_null", sessionId: "sA", timestamp: T0 + 300, model: null, input: 11, output: 1, cacheRead: 1, cacheCreation: 0 }),
@@ -1129,6 +1129,10 @@ describe("Store — message period filter (subquery seek parity)", () => {
         // No effort recorded on these fixtures: one (model, null-effort) row each.
         effort: null,
         long_context: 0,
+        // Not US-pinned (the fixture's geo is a region code, not "us") and no
+        // non-standard speed: one group per model, as before the pricing split.
+        us_geo: 0,
+        speed_class: null,
         msg_count: 3,
         input_tokens: 100 + 300 + 500,
         output_tokens: 10 + 30 + 50,
@@ -1144,6 +1148,10 @@ describe("Store — message period filter (subquery seek parity)", () => {
         // No effort recorded on these fixtures: one (model, null-effort) row each.
         effort: null,
         long_context: 0,
+        // Not US-pinned (the fixture's geo is a region code, not "us") and no
+        // non-standard speed: one group per model, as before the pricing split.
+        us_geo: 0,
+        speed_class: null,
         msg_count: 2,
         input_tokens: 200 + 400,
         output_tokens: 20 + 40,
@@ -1159,6 +1167,10 @@ describe("Store — message period filter (subquery seek parity)", () => {
         // No effort recorded on these fixtures: one (model, null-effort) row each.
         effort: null,
         long_context: 0,
+        // Not US-pinned (the fixture's geo is a region code, not "us") and no
+        // non-standard speed: one group per model, as before the pricing split.
+        us_geo: 0,
+        speed_class: null,
         msg_count: 1,
         input_tokens: 11,
         output_tokens: 1,
