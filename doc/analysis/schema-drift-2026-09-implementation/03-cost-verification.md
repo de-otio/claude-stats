@@ -30,7 +30,7 @@ Two independent measurements, different samples, same conclusion.
 | Check | Result |
 |---|---|
 | Assistant entries | 117,346, of which **76.3% repeat an already-seen `message.id`** (75.1% token-weighted); **0** entries lacked a `message.id` |
-| Our cost vs `cost-state.totalCostUSD`, 5 sessions | **$124.25 vs $60.52 = 2.05×** (per-session 1.65×–2.34×) |
+| Our cost vs `cost-state.totalCostUSD`, 5 sessions | **2.05×** (ours ÷ `cost-state`) (per-session 1.65×–2.34×) |
 | Raw vs `message.id`-deduped output tokens, one session | 46,404 → **26,876**; `cost-state` says **26,876** — exact match on all four token classes |
 | Deduped vs `cost-state`, other 4 sessions | within **0.3%–5%** (one −15% outlier: a session with subagents in a separate transcript) |
 

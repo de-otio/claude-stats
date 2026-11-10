@@ -15,7 +15,7 @@ one rank the engine already reserves but does not yet produce.
 The observation timeline attributes **forward** usage; single-account backfill
 (doc 03 §D.1) attributes pre-observation history **only when one account was ever
 seen**. Neither can split a machine's *historical* usage across **two or more**
-accounts (e.g. a personal Max plan and a work Team plan used before claude-stats
+accounts (e.g. a personal plan and a work plan used before claude-stats
 started observing). For that history the only honest signal is the **user's own
 knowledge**, expressed as a label.
 

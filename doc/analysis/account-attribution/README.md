@@ -84,7 +84,7 @@ every "present / absent / constant" claim was verified, not assumed.
 | Legacy switch-point backfill | yes | low–medium | medium | Phase 2 |
 | `service_tier` / `inference_geo` clustering | weak | **not usable here** (constant) | — | rejected |
 
-The plan-tier sub-question that motivated this ("is my work plan premium or
-standard?") is answered **directly, today** by one field —
-`oauthAccount.organizationRateLimitTier` — no attribution required. See
+The plan-tier sub-question ("is a work seat premium or standard?") is answered
+**directly, today** by one field — `oauthAccount.organizationRateLimitTier` —
+no attribution required. See
 [06](06-recommendation-and-rollout.md#immediate-win).

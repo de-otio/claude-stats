@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   email_hash          TEXT,            -- sha256(email); raw email never stored
   email_label         TEXT,            -- optional user-set display label
   organization_type   TEXT,            -- e.g. claude_max, team
-  rate_limit_tier     TEXT,            -- e.g. default_claude_max_20x
+  rate_limit_tier     TEXT,            -- e.g. default_claude_max_5x
   billing_type        TEXT,            -- e.g. stripe_subscription
   first_observed_at   INTEGER,
   last_observed_at    INTEGER

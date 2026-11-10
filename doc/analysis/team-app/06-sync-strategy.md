@@ -124,7 +124,7 @@ Users can add project-specific patterns via config:
   "sync": {
     "secretPatterns": [
       { "name": "Internal API", "pattern": "ACME-[A-Z0-9]{24}" },
-      { "name": "Internal URL", "pattern": "https://internal\\.acme\\.com/[^\\s]+" }
+      { "name": "Internal URL", "pattern": "https://internal\\.example\\.com/[^\\s]+" }
     ]
   }
 }
