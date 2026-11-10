@@ -273,7 +273,9 @@
           "value": "~4 mL/kWh gebautes Endlager-Volumen — nicht Rohabfall. Gewichtete Mischung aus HLW-Einlagerung nach Posiva KBS-3 / Onkalo (~1.500× Volumen des rohen abgebrannten Brennstoffs nach Kupferbehälter, Bentonit-Puffer und thermischer Tunnelabstandung), ILW (~5×) und LLW (~3×), basierend auf IAEA-Volumenanteilen. Quellen: Posiva 2012 Safety Case, SKB TR-11-01, IAEA Radioactive Waste Inventory."
         }
       }
-    }
+    },
+    "atLeast": "Mindestens {{value}}",
+    "floorNote": "Für Fable und Mythos gibt es keine veröffentlichten Energiewerte, daher werden sie mit dem Opus-Satz berechnet. Bitte betrachten Sie diese Summen als Untergrenze."
   },
   "settings": {
     "configuration": "Konfiguration",
@@ -737,7 +739,8 @@
     "mixedRepaired": "{{rows}} von {{total}} gezählten Zeilen ({{percent}} %) in diesem Zeitraum stammen aus der Zeit vor dem Per-Response-Fix (cost_basis = pre-dedupe) und sind um etwa das 2-Fache überhöht. Eine Reparatur wurde bereits ausgeführt; für die verbleibenden Zeilen ist kein Transkript mehr vorhanden, das erneut geparst werden könnte."
   },
   "pricingDrift": {
-    "unpricedCaveat": "{{count}} Modell-IDs konnten keinem Tarif zugeordnet werden und sind von der Kostensumme ausgeschlossen ({{tokens}} Tokens): {{models}}. Fügen Sie eine Preiszeile oder eine Konfigurations-Überschreibung hinzu."
+    "unpricedCaveat": "{{count}} Modell-IDs konnten keinem Tarif zugeordnet werden und sind von der Kostensumme ausgeschlossen ({{tokens}} Tokens): {{models}}. Fügen Sie eine Preiszeile oder eine Konfigurations-Überschreibung hinzu.",
+    "fastModeUnpriced": "{{count}} Anfragen im Fast-Modus sind in dieser Summe zum Standardtarif berechnet; die tatsächlich abgerechneten Kosten sind höher."
   },
   "agentCost": {
     "title": "Agenten & Fähigkeiten",

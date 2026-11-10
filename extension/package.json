@@ -2,7 +2,7 @@
   "name": "claude-stats-vscode",
   "displayName": "Claude Stats by de-otio",
   "description": "View Claude Code usage statistics in VS Code",
-  "version": "0.24.1",
+  "version": "0.25.0",
   "publisher": "de-otio",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -18,7 +18,7 @@
     "vscode": "^1.85.0"
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.3.1",
+    "@huggingface/transformers": "^4.3.2",
     "onnxruntime-node": "1.30.0"
   },
   "categories": [

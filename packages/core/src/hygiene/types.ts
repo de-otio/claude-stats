@@ -88,6 +88,15 @@ export interface HygieneMessageRow {
    */
   outputPlaceholder: boolean;
   /**
+   * `usage.speed` of the request (`standard`, `fast`), null when not reported.
+   * REQUIRED for the same reason as the fields above: priced by `messageCost`,
+   * so a forgotten store mapper must be a compile error, not a silent price at
+   * the standard rate on a fast-mode row.
+   */
+  speed: string | null;
+  /** `usage.inference_geo` (`us`, `global`, ...), null when not reported. REQUIRED, as `speed`. */
+  inferenceGeo: string | null;
+  /**
    * Reasoning-effort tier Claude Code reported for this turn (`messages.effort`,
    * #125 D1/D2); `null` = not reported. Open vocabulary: compare with
    * `compareEffort`, never a closed enum. REQUIRED so a forgotten store mapper

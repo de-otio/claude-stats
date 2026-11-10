@@ -110,6 +110,8 @@ function toHygieneMessageRow(row: HygieneMessageStoreRow): HygieneMessageRow {
     effort: row.effort,
     isSubagent: row.is_subagent,
     claudeVersion: row.claude_version,
+    speed: row.speed,
+    inferenceGeo: row.inference_geo,
   };
 }
 

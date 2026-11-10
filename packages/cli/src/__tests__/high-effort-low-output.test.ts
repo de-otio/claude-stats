@@ -37,6 +37,8 @@ function row(i: number, o: Partial<HygieneMessageRow> = {}): HygieneMessageRow {
     effort: "xhigh",
     isSubagent: false,
     claudeVersion: "2.1.311",
+    speed: null,
+    inferenceGeo: null,
     ...o,
   };
 }
