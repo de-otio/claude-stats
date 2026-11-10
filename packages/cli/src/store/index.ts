@@ -641,14 +641,15 @@ export class Store {
    * Additive + idempotent (addColumn checks table_info; CREATE IF NOT
    * EXISTS), zero backfill: history gains request data only through the
    * opt-in `repair request-records` command, exactly as V20/V22/V25 document
-   * for their transcript-derived columns. The partial index serves
-   * "join messages to their requests" without indexing the (majority) NULL
-   * rows.
+   * for their transcript-derived columns.
+   *
+   * No index on `messages.request_ref`: it measurably slows a cold collect
+   * and nothing reads it yet.
    */
   private migrateToV28(): void {
     // `api_requests` stands alone (no foreign key), so it is created even in a
     // partial fixture that lacks `sessions`/`messages`: `upsertApiRequests` is
-    // then always safe to call. Only the column and the index need `messages`.
+    // then always safe to call. Only the column needs `messages`.
     const hasMessages =
       (this.db
         .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'messages'")
@@ -666,15 +667,6 @@ export class Store {
     // half-applied V28 from ever being visible.
     this.db.exec("BEGIN IMMEDIATE");
     try {
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS api_requests (
-          request_id  TEXT PRIMARY KEY,
-          session_id  TEXT NOT NULL,
-          agent_id    TEXT,
-          timestamp   INTEGER,
-          shape_hash  TEXT
-        );
-      `);
       if (hasMessages && hasSessions) {
         const cols = this.db.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>;
         if (!cols.some((c) => c.name === "request_ref")) {
@@ -687,11 +679,18 @@ export class Store {
             if (!/duplicate column name/i.test(String((err as Error)?.message))) throw err;
           }
         }
-        this.db.exec(`
-          CREATE INDEX IF NOT EXISTS idx_messages_request_ref
-            ON messages (request_ref) WHERE request_ref IS NOT NULL;
-        `);
+        // The reader (the E3 request-to-message join) adds the index on
+        // messages(request_ref) in its own migration.
       }
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS api_requests (
+          request_id  TEXT PRIMARY KEY,
+          session_id  TEXT NOT NULL,
+          agent_id    TEXT,
+          timestamp   INTEGER,
+          shape_hash  TEXT
+        );
+      `);
       this.db.exec("COMMIT");
     } catch (err) {
       try {

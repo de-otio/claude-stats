@@ -108,10 +108,9 @@ describe("Store — V28 api_requests", () => {
     // No cc_version / query_source_* / requested_ttl — the shrunk stored list.
     const schemaSql = String(rawOne(dbPath, "SELECT sql FROM sqlite_master WHERE name = 'api_requests'")["sql"]);
     expect(schemaSql).not.toMatch(/cc_version|query_source|requested_ttl/i);
-    // The partial index on messages.request_ref exists, NULL rows excluded.
-    const idx = raw(dbPath, "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'messages' AND sql LIKE '%request_ref%'");
-    expect(idx).toHaveLength(1);
-    expect(String(idx[0]!["sql"])).toContain("WHERE request_ref IS NOT NULL");
+    // No index on messages.request_ref: the reader (E3's join) adds it.
+    const idx = raw(dbPath, "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'messages' AND sql LIKE '%request_ref%'");
+    expect(idx).toHaveLength(0);
   });
 
   it("upsertApiRequests stores every field", () => {
@@ -272,10 +271,7 @@ describe("Store — migration V27 → V28 (E1 §8.10)", () => {
   /** Rewind the populated store to a true V27 shape: no request_ref, no api_requests. */
   function rewindToV27(): void {
     const db = new DatabaseSync(dbPath);
-    // The partial index references the column — drop it first, as a true V27
-    // store would never have had it.
     db.exec(`
-      DROP INDEX IF EXISTS idx_messages_request_ref;
       ALTER TABLE messages DROP COLUMN request_ref;
       DROP TABLE api_requests;
       INSERT OR REPLACE INTO metadata (key, value) VALUES ('schema_version', '27');
@@ -292,7 +288,6 @@ describe("Store — migration V27 → V28 (E1 §8.10)", () => {
     expect(rawOne(dbPath, "SELECT value FROM metadata WHERE key = 'schema_version'")["value"]).toBe("27");
     expect(raw(dbPath, "PRAGMA table_info(messages)").map((c) => c["name"])).not.toContain("request_ref");
     expect(raw(dbPath, "SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'api_requests'")[0]!["n"]).toBe(0);
-    expect(raw(dbPath, "SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'idx_messages_request_ref'")[0]!["n"]).toBe(0);
 
     const store = new Store(dbPath);
     try {
@@ -315,10 +310,10 @@ describe("Store — migration V27 → V28 (E1 §8.10)", () => {
       // message_hourly untouched.
       expect(rawOne(dbPath, "SELECT COUNT(*) AS n, COALESCE(SUM(input_tokens), 0) AS i, COALESCE(SUM(output_tokens), 0) AS o FROM message_hourly"))
         .toEqual(rollupBefore);
-      // The table and the partial index exist with the §3 shape.
+      // The table exists with the §3 shape; no index was created.
       expect(raw(dbPath, "PRAGMA table_info(api_requests)").map((c) => c["name"]))
         .toEqual(["request_id", "session_id", "agent_id", "timestamp", "shape_hash"]);
-      expect(raw(dbPath, "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'index' AND name = 'idx_messages_request_ref'")[0]!["n"]).toBe(1);
+      expect(raw(dbPath, "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'index' AND sql LIKE '%request_ref%'")[0]!["n"]).toBe(0);
       // The dropped request data does NOT come back (no backfill in the migration).
       expect(store.countApiRequests()).toBe(0);
     } finally {
@@ -386,19 +381,19 @@ describe("Store — migration V27 → V28 (E1 §8.10)", () => {
   it("L4: a failure after the ALTER rolls the whole V28 back (no half-applied schema, version not stamped)", () => {
     seed();
     rewindToV27();
-    // Make the final CREATE INDEX fail: a TABLE with the index's name makes
-    // SQLite raise "there is already a table named ..." even with IF NOT EXISTS.
+    // Make the final CREATE TABLE fail: an INDEX named api_requests makes
+    // SQLite raise "there is already an index named ..." even with IF NOT EXISTS.
     const db = new DatabaseSync(dbPath);
-    db.exec("CREATE TABLE idx_messages_request_ref (x INTEGER)");
+    db.exec("CREATE INDEX api_requests ON messages (uuid)");
     db.close();
-    expect(() => new Store(dbPath)).toThrow(/idx_messages_request_ref/);
-    // Rolled back: the column the ALTER added, and the table, are gone again.
+    expect(() => new Store(dbPath)).toThrow(/api_requests/);
+    // Rolled back: the column the ALTER added is gone again, and no table exists.
     expect(raw(dbPath, "PRAGMA table_info(messages)").map((c) => c["name"])).not.toContain("request_ref");
-    expect(raw(dbPath, "SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'api_requests'")[0]!["n"]).toBe(0);
+    expect(raw(dbPath, "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'api_requests'")[0]!["n"]).toBe(0);
     expect(rawOne(dbPath, "SELECT value FROM metadata WHERE key = 'schema_version'")["value"]).toBe("27");
     // And once the obstacle is removed, the next open completes the migration.
     const fix = new DatabaseSync(dbPath);
-    fix.exec("DROP TABLE idx_messages_request_ref");
+    fix.exec("DROP INDEX api_requests");
     fix.close();
     const store = new Store(dbPath);
     store.close();
