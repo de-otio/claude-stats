@@ -1,63 +1,63 @@
 {
   "_comment": "Max values per (locale, namespace) allowed to be byte-identical to en. A RATCHET: the check fails when a namespace gets worse, never when it gets better. Regenerate with `node scripts/check-locale-parity.mjs --update-baseline` after filling locales.",
   "de": {
-    "cli": 112,
+    "cli": 101,
     "common": 11,
     "dashboard": 37,
     "extension": 13,
     "frontend": 22
   },
   "es": {
-    "cli": 104,
+    "cli": 93,
     "common": 13,
     "dashboard": 25,
     "extension": 11,
     "frontend": 12
   },
   "fr": {
-    "cli": 120,
+    "cli": 109,
     "common": 18,
     "dashboard": 36,
     "extension": 12,
     "frontend": 21
   },
   "ja": {
-    "cli": 99,
+    "cli": 88,
     "common": 8,
     "dashboard": 10,
     "extension": 10,
     "frontend": 1
   },
   "pl": {
-    "cli": 100,
+    "cli": 89,
     "common": 11,
     "dashboard": 25,
     "extension": 11,
     "frontend": 4
   },
   "pt-BR": {
-    "cli": 107,
+    "cli": 96,
     "common": 15,
     "dashboard": 27,
     "extension": 13,
     "frontend": 13
   },
   "ru": {
-    "cli": 100,
+    "cli": 89,
     "common": 8,
     "dashboard": 15,
     "extension": 10,
     "frontend": 2
   },
   "uk": {
-    "cli": 100,
+    "cli": 89,
     "common": 8,
     "dashboard": 15,
     "extension": 10,
     "frontend": 1
   },
   "zh-CN": {
-    "cli": 99,
+    "cli": 88,
     "common": 8,
     "dashboard": 15,
     "extension": 9,

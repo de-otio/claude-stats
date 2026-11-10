@@ -74,7 +74,8 @@ export interface CollectResult {
    * E1). Counted where the upsert happens — NOT per parsed line — so a row
    * dropped for lack of a session id is not counted as read. Reported so a
    * caller (the `repair request-records` summary) can state the same count a
-   * dry run would read (it adds `apiRequestHeadMisses` for the lines total).
+   * dry run would read (the lines total adds `apiRequestHeadMisses` and
+   * `apiRequestRowsDropped`).
    */
   apiRequestsRead: number;
   /**
