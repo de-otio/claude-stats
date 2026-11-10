@@ -253,7 +253,6 @@
     "cacheDetail": "{{read}} прочитано, {{created}} створено (ефективність {{efficiency}}%)",
     "costLine": "~{{cost}} (еквівалентна вартість API)",
     "costUnknown": "({{tokens}} токенів з невідомих моделей виключено)",
-    "fastModeUnpriced": "{{count}} запитів у швидкому режимі враховано в цій сумі за стандартним тарифом; їхня фактична вартість вища.",
     "planROI": "План {{planFee}}/міс → {{multiplier}}× отримано цінності API",
     "planPerUnit": "{{costPerPrompt}}/промпт   {{costPerSession}}/сесія",
     "velocityDetail": "{{tokPerMin}} ток/хв   {{promptsPerHr}} промптів/год   {{outputPerPrompt}} вихід/промпт",
@@ -321,7 +320,8 @@
     "ticketAmbiguousNote": "Неоднозначних сесій: {{count}} (пов'язані з кількома тікетами).",
     "confidenceHigh": "висока достовірність",
     "confidenceMedium": "середня достовірність",
-    "confidenceLow": "низька достовірність"
+    "confidenceLow": "низька достовірність",
+    "fastModeUnpriced": "У цій сумі запити в режимі fast ({{count}}) враховано за стандартним тарифом; їхня фактична вартість вища."
   },
   "status": {
     "databaseSize": "Розмір бази даних",

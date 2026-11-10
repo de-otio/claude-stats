@@ -253,7 +253,6 @@
     "cacheDetail": "{{read}} odczytane, {{created}} utworzone (efektywność {{efficiency}}%)",
     "costLine": "~{{cost}} (ekwiwalent kosztu API)",
     "costUnknown": "({{tokens}} tokenów z nieznanych modeli pominięto)",
-    "fastModeUnpriced": "{{count}} żądań w trybie szybkim jest w tej sumie liczonych według stawki standardowej; ich rzeczywisty koszt jest wyższy.",
     "planROI": "Plan {{planFee}}/mies → {{multiplier}}× wartości API otrzymanej",
     "planPerUnit": "{{costPerPrompt}}/prompt   {{costPerSession}}/sesja",
     "velocityDetail": "{{tokPerMin}} tok/min   {{promptsPerHr}} promptów/godz   {{outputPerPrompt}} wyjście/prompt",
@@ -321,7 +320,8 @@
     "ticketAmbiguousNote": "Niejednoznaczne sesje: {{count}} (powiązane z więcej niż jednym zgłoszeniem).",
     "confidenceHigh": "wysoka pewność",
     "confidenceMedium": "średnia pewność",
-    "confidenceLow": "niska pewność"
+    "confidenceLow": "niska pewność",
+    "fastModeUnpriced": "W tej sumie liczba żądań w trybie fast: {{count}} jest wyceniona według stawki standardowej; ich faktyczny koszt rozliczeniowy jest wyższy."
   },
   "status": {
     "databaseSize": "Rozmiar bazy danych",

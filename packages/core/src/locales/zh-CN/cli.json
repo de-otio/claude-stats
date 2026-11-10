@@ -253,7 +253,6 @@
     "cacheDetail": "读取 {{read}}，创建 {{created}}（效率 {{efficiency}}%）",
     "costLine": "~{{cost}}（等价 API 费用）",
     "costUnknown": "（已排除来自未知模型的 {{tokens}} 个 Token）",
-    "fastModeUnpriced": "此合计中有 {{count}} 个快速模式请求按标准费率计价，其实际计费更高。",
     "planROI": "{{planFee}}/月 套餐 → 获得 {{multiplier}}× API 价值",
     "planPerUnit": "{{costPerPrompt}}/提示词   {{costPerSession}}/会话",
     "velocityDetail": "{{tokPerMin}} Token/分   {{promptsPerHr}} 提示词/小时   {{outputPerPrompt}} 输出/提示词",
@@ -317,7 +316,8 @@
     "ticketAmbiguousNote": "{{count}} 个 session 存在歧义（关联到多个工单）。",
     "confidenceHigh": "高置信度",
     "confidenceMedium": "中置信度",
-    "confidenceLow": "低置信度"
+    "confidenceLow": "低置信度",
+    "fastModeUnpriced": "此总计中有 {{count}} 个快速模式请求按标准费率计价;其实际计费成本更高。"
   },
   "status": {
     "databaseSize": "数据库大小",

@@ -145,8 +145,6 @@
   },
   "energy": {
     "totalEnergy": "Całkowita energia",
-    "atLeast": "Co najmniej {{value}}",
-    "floorNote": "Dla Fable i Mythos nie opublikowano danych o zużyciu energii, więc liczone są według stawki Opus. Traktuj te sumy jako dolną granicę.",
     "totalCO2": "Emisja CO₂",
     "co2Range": "Niepewność ±55%: {{low}} – {{high}}",
     "region": "Region sieci energetycznej",
@@ -275,7 +273,9 @@
           "value": "~4 mL/kWh inżynieryjnej objętości repozytorium — nie surowe odpady. Ważone między składowaniem HLW według Posiva KBS-3 / Onkalo (~1 500× surowej objętości zużytego paliwa po pojemniku miedzianym, buforze bentonitowym i termicznym odstępie tuneli), ILW (~5×) i LLW (~3×), używając udziałów objętościowych MAEA. Referencje: Posiva 2012 safety case, SKB TR-11-01, IAEA Radioactive Waste Inventory."
         }
       }
-    }
+    },
+    "atLeast": "Co najmniej {{value}}",
+    "floorNote": "Dla modeli Fable i Mythos nie opublikowano danych o zużyciu energii, więc są liczone według stawki Opus. Traktuj te sumy jako dolną granicę."
   },
   "settings": {
     "configuration": "Konfiguracja",
@@ -748,7 +748,7 @@
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} identyfikatorów modeli nie ma przypisanej stawki i zostały wykluczone z łącznego kosztu ({{tokens}} tokenów): {{models}}. Dodaj wiersz cennika lub nadpisanie w konfiguracji.",
-    "fastModeUnpriced": "{{count}} żądań w trybie szybkim jest w tej sumie liczonych według stawki standardowej; ich rzeczywisty koszt jest wyższy."
+    "fastModeUnpriced": "Liczba żądań w trybie fast: {{count}}. W tej sumie są wyceniane według stawki standardowej, a ich rzeczywisty koszt jest wyższy."
   },
   "agentCost": {
     "title": "Agenci i umiejętności",

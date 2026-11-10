@@ -145,8 +145,6 @@
   },
   "energy": {
     "totalEnergy": "Énergie totale",
-    "atLeast": "Au moins {{value}}",
-    "floorNote": "Fable et Mythos n'ont aucune donnée d'énergie publiée ; ils sont donc comptés au taux d'Opus. Considérez ces totaux comme une borne inférieure.",
     "totalCO2": "Émissions de CO₂",
     "co2Range": "Incertitude ±55% : {{low}} – {{high}}",
     "region": "Région du réseau électrique",
@@ -275,7 +273,9 @@
           "value": "~4 mL/kWh de volume de dépôt conçu — pas de déchets bruts. Pondéré sur l'enfouissement de DHAVL selon Posiva KBS-3 / Onkalo (~1 500× le volume brut de combustible usé après conteneur en cuivre, tampon bentonite et espacement thermique des tunnels), DMAVL (~5×) et DFAVL (~3×), en utilisant les parts volumiques de l'AIEA. Références : dossier de sûreté Posiva 2012, SKB TR-11-01, IAEA Radioactive Waste Inventory."
         }
       }
-    }
+    },
+    "atLeast": "Au moins {{value}}",
+    "floorNote": "Fable et Mythos n'ont aucune donnée de consommation d'énergie publiée ; ils sont donc comptabilisés au tarif d'Opus. Considérez ces totaux comme une borne inférieure."
   },
   "settings": {
     "configuration": "Configuration",
@@ -744,7 +744,7 @@
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} identifiants de modèle n'ont été associés à aucun tarif et sont exclus du coût total ({{tokens}} tokens) : {{models}}. Ajoutez une ligne de tarification ou une surcharge dans la configuration.",
-    "fastModeUnpriced": "{{count}} requêtes en mode rapide sont comptées dans ce total au tarif standard ; leur coût facturé est plus élevé."
+    "fastModeUnpriced": "{{count}} requêtes en mode rapide sont facturées au tarif standard dans ce total ; leur coût facturé réel est plus élevé."
   },
   "agentCost": {
     "title": "Agents et compétences",

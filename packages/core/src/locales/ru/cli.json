@@ -253,7 +253,6 @@
     "cacheDetail": "{{read}} чтений, {{created}} создано ({{efficiency}}% эффективность)",
     "costLine": "~{{cost}} (эквивалентная стоимость API)",
     "costUnknown": "({{tokens}} токенов от неизвестных моделей исключено)",
-    "fastModeUnpriced": "{{count}} запросов в быстром режиме учтены в этой сумме по стандартному тарифу; их фактическая стоимость выше.",
     "planROI": "План {{planFee}}/мес → получено API-ценности в {{multiplier}}×",
     "planPerUnit": "{{costPerPrompt}}/запрос   {{costPerSession}}/сессия",
     "velocityDetail": "{{tokPerMin}} ток/мин   {{promptsPerHr}} запросов/час   {{outputPerPrompt}} вывод/запрос",
@@ -321,7 +320,8 @@
     "ticketAmbiguousNote": "Неоднозначных сессий: {{count}} (связаны более чем с одной задачей).",
     "confidenceHigh": "высокая достоверность",
     "confidenceMedium": "средняя достоверность",
-    "confidenceLow": "низкая достоверность"
+    "confidenceLow": "низкая достоверность",
+    "fastModeUnpriced": "Запросов в режиме fast mode: {{count}}. В этой сумме они оценены по стандартному тарифу, их фактическая стоимость выше."
   },
   "status": {
     "databaseSize": "Размер базы данных",

@@ -145,8 +145,6 @@
   },
   "energy": {
     "totalEnergy": "Energia total",
-    "atLeast": "Pelo menos {{value}}",
-    "floorNote": "Fable e Mythos não têm números de energia publicados, então são contados pela taxa do Opus. Trate estes totais como um limite inferior.",
     "totalCO2": "Emissões de CO₂",
     "co2Range": "Incerteza ±55%: {{low}} – {{high}}",
     "region": "Região da rede elétrica",
@@ -275,7 +273,9 @@
           "value": "~4 mL/kWh de volume de repositório engenheirado — não resíduo bruto. Ponderado entre descarte de RNAA conforme Posiva KBS-3 / Onkalo (~1.500× o volume bruto de combustível irradiado após contêiner de cobre, barreira de bentonita e espaçamento térmico dos túneis), RNMA (~5×) e RNBA (~3×), usando frações volumétricas da AIEA. Referências: caso de segurança Posiva 2012, SKB TR-11-01, IAEA Radioactive Waste Inventory."
         }
       }
-    }
+    },
+    "atLeast": "Pelo menos {{value}}",
+    "floorNote": "Fable e Mythos não têm valor de energia publicado, por isso são contabilizados com a taxa do Opus. Considere estes totais como um limite inferior."
   },
   "settings": {
     "configuration": "Configuração",
@@ -744,7 +744,7 @@
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} IDs de modelo não corresponderam a nenhuma tarifa e foram excluídos do custo total ({{tokens}} tokens): {{models}}. Adicione uma linha de preço ou um override na configuração.",
-    "fastModeUnpriced": "{{count}} requisições no modo rápido são cobradas neste total pela tarifa padrão; o custo faturado delas é maior."
+    "fastModeUnpriced": "{{count}} solicitações em modo rápido são precificadas pela tarifa padrão neste total; o custo cobrado delas é maior."
   },
   "agentCost": {
     "title": "Agentes e skills",

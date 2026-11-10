@@ -253,7 +253,6 @@
     "cacheDetail": "{{read}} 読取、{{created}} 作成（効率 {{efficiency}}%）",
     "costLine": "~{{cost}}（API 相当コスト）",
     "costUnknown": "（{{tokens}} トークンは不明モデルのため除外）",
-    "fastModeUnpriced": "このコストには、高速モードの {{count}} 件のリクエストが標準料金で計算されています。実際の請求額はそれより高くなります。",
     "planROI": "{{planFee}}/月 プラン → {{multiplier}}× の API 価値を受領",
     "planPerUnit": "{{costPerPrompt}}/プロンプト   {{costPerSession}}/セッション",
     "velocityDetail": "{{tokPerMin}} トークン/分   {{promptsPerHr}} プロンプト/時   {{outputPerPrompt}} 出力/プロンプト",
@@ -317,7 +316,8 @@
     "ticketAmbiguousNote": "{{count}} 件のセッションが曖昧です (複数のチケットに紐付いています)。",
     "confidenceHigh": "信頼度: 高",
     "confidenceMedium": "信頼度: 中",
-    "confidenceLow": "信頼度: 低"
+    "confidenceLow": "信頼度: 低",
+    "fastModeUnpriced": "この合計では、{{count}} 件の高速モードのリクエストが標準料金で計算されています。実際の請求コストはこれより高くなります。"
   },
   "status": {
     "databaseSize": "データベースサイズ",

@@ -145,8 +145,6 @@
   },
   "energy": {
     "totalEnergy": "総エネルギー",
-    "atLeast": "少なくとも {{value}}",
-    "floorNote": "Fable と Mythos にはエネルギー消費の公表値がないため、Opus の係数で計算しています。これらの合計は下限値として扱ってください。",
     "totalCO2": "CO₂ 排出量",
     "co2Range": "±55% 不確実性: {{low}} – {{high}}",
     "region": "電力系統リージョン",
@@ -275,7 +273,9 @@
           "value": "約 4 mL/kWh のエンジニアリング処分体積 — 原廃棄物ではありません。Posiva KBS-3 / Onkalo に基づく HLW 処分（銅キャニスタ、ベントナイト緩衝材、熱トンネル間隔を考慮すると使用済燃料原体積の約 1,500 倍）、ILW（約 5 倍）、LLW（約 3 倍）処分の加重平均、IAEA 体積シェア使用。参照: Posiva 2012 セーフティケース、SKB TR-11-01、IAEA Radioactive Waste Inventory。"
         }
       }
-    }
+    },
+    "atLeast": "{{value}} 以上",
+    "floorNote": "Fable と Mythos には公表されているエネルギー値がないため、Opus の係数で計算しています。これらの合計は下限値として扱ってください。"
   },
   "settings": {
     "configuration": "設定",
@@ -740,7 +740,7 @@
   },
   "pricingDrift": {
     "unpricedCaveat": "{{count}} 件のモデル ID は料金が解決できなかったため、コスト合計から除外されています ({{tokens}} token): {{models}}。料金行を追加するか、設定で上書きしてください。",
-    "fastModeUnpriced": "このコストには、高速モードの {{count}} 件のリクエストが標準料金で計算されています。実際の請求額はそれより高くなります。"
+    "fastModeUnpriced": "この合計では、{{count}} 件の fast モードのリクエストが標準レートで計算されています。実際の請求コストはこれより高くなります。"
   },
   "agentCost": {
     "title": "エージェントとスキル",
