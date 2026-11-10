@@ -38,7 +38,7 @@ export type {
 export { DEFAULT_HYGIENE_THRESHOLDS } from "./types.js";
 export { isPlaceholderOutput, isVersionBefore, PLACEHOLDER_FIXED_IN, type PlaceholderOutputInput } from "./placeholderOutput.js";
 export { detectHighEffortLowOutput } from "./highEffortLowOutput.js";
-export { computeTierParity, detectTierMismatch, type TierParityComparison, type TierParityVerdict } from "./tierMismatch.js";
+export { computeTierParity, detectTierMismatch, TIER_BOUNDARIES, type ComparedTier, type TierBoundary, type TierParityComparison, type TierParityVerdict } from "./tierMismatch.js";
 // Shared row-grouping/costing helpers — re-exported so a sibling comparison
 // (constraint-impact) can build the same per-session shape from the same
 // message rows without a second implementation to drift from this one.
