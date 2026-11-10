@@ -234,5 +234,8 @@
     "refresh": "Odśwież",
     "save": "Zapisz",
     "send": "Wyślij"
+  },
+  "reprice": {
+    "equalTokenVolumeNote": "Taka sama liczba tokenów — górna granica, jeśli model docelowy zużywa mniej tokenów na zadanie."
   }
 }

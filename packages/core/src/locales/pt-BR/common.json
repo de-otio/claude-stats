@@ -227,5 +227,8 @@
     "refresh": "Atualizar",
     "save": "Salvar",
     "send": "Enviar"
+  },
+  "reprice": {
+    "equalTokenVolumeNote": "Mesmo volume de tokens — um limite superior quando o modelo de destino usa menos tokens por tarefa."
   }
 }

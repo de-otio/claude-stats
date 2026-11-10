@@ -205,7 +205,14 @@
     "agentsPeriod": "Période : jour, semaine, mois ou tout (par défaut : mois)",
     "agentsLimit": "Lignes nommées par liste avant que le reste soit regroupé en une seule ligne restante (par défaut : 10)",
     "agentsJson": "Sortie JSON lisible par machine (le rapport AgentCostReport complet)",
-    "exportIncludeAgentNames": "Exporter également le type d'agent, la profondeur de spawn et l'id d'appel d'outil spawn (noms créés par l'utilisateur ; omis par défaut)"
+    "exportIncludeAgentNames": "Exporter également le type d'agent, la profondeur de spawn et l'id d'appel d'outil spawn (noms créés par l'utilisateur ; omis par défaut)",
+    "costPerTaskGroupBy": "Regrouper la répartition par : model (par défaut) ou model_effort (modèle et niveau d'effort de raisonnement)",
+    "reprice": "Retarifer les tokens d'une période aux tarifs d'un autre modèle (même volume de tokens, une borne supérieure)",
+    "repriceFrom": "Premier jour, AAAA-MM-JJ (inclus)",
+    "repriceTo": "Dernier jour, AAAA-MM-JJ (inclus)",
+    "repriceModel": "Modèle ayant servi les tokens (p. ex. claude-opus-5-5)",
+    "repriceAs": "Modèle aux tarifs duquel retarifer (p. ex. claude-fable-5-2)",
+    "repriceProject": "Uniquement ce chemin de projet"
   },
   "collection": {
     "collecting": "Collecte en cours...",
@@ -319,7 +326,10 @@
     "confidenceHigh": "confiance élevée",
     "confidenceMedium": "confiance moyenne",
     "confidenceLow": "confiance faible",
-    "fastModeUnpriced": "{{count}} requêtes en mode rapide sont facturées au tarif standard dans ce total ; leur coût réel facturé est plus élevé."
+    "fastModeUnpriced": "{{count}} requêtes en mode rapide sont facturées au tarif standard dans ce total ; leur coût réel facturé est plus élevé.",
+    "costPerTaskByModelEffort": "Par modèle et effort",
+    "costPerTaskNoEffort": "sans effort",
+    "costPerTaskEffortCoverage": "Part des dépenses avec effort renseigné : {{share}} (les lignes « sans effort » constituent le reste)"
   },
   "status": {
     "databaseSize": "Taille de la base",
@@ -377,7 +387,9 @@
     "invalidDateRange": "Plage de dates invalide : {{message}}",
     "invalidPackPeriod": "Période de dossier invalide : {{message}}",
     "invalidInvoiceCsv": "Impossible de lire --invoice-csv {{path}} : {{message}}",
-    "invalidAgentsLimit": "--limit \\\"{{value}}\\\" invalide : utilisez un nombre entier égal à 1 ou plus"
+    "invalidAgentsLimit": "--limit \\\"{{value}}\\\" invalide : utilisez un nombre entier égal à 1 ou plus",
+    "invalidGroupBy": "Valeur --group-by « {{value}} » non valide : utilisez model ou model_effort",
+    "invalidReprice": "Impossible de retarifer : {{message}}"
   },
   "repair": {
     "description": "Réparer les données dérivées que la collecte normale ne peut pas corriger rétroactivement.",
@@ -659,5 +671,28 @@
     "depthUnrecorded": "Profondeur non enregistrée : {{cost}} ({{share}}) · {{messages}} messages",
     "otherDepthRow": "(autre : {{buckets}} profondeurs supplémentaires) : {{cost}} ({{share}}) · {{messages}} messages",
     "byDepthEmpty": "Aucune dépense de sous-agent dans cette fenêtre."
+  },
+  "reprice": {
+    "title": "Retarification de {{model}} aux tarifs de {{asModel}} · du {{from}} au {{to}}",
+    "colCategory": "Catégorie",
+    "colActual": "Réel",
+    "colRepriced": "Avec {{asModel}}",
+    "input": "Entrée",
+    "output": "Sortie",
+    "cacheWrite5m": "Écriture cache (5 min)",
+    "cacheWrite1h": "Écriture cache (1 h)",
+    "cacheRead": "Lecture cache",
+    "total": "Total",
+    "rowsLine": "{{rows}} lignes de messages de {{model}}",
+    "noRows": "Aucun message pour {{model}} dans cette période.",
+    "unpricedCounterfactual": "{{rows}} lignes n'ont pas pu être tarifées avec {{asModel}} ({{reasons}}) et sont exclues de cette colonne. Leur coût réel : {{actualCost}}.",
+    "unpricedActual": "{{rows}} lignes n'ont pas pu être tarifées avec le modèle ayant servi la requête ({{reasons}}) et sont exclues de la colonne Réel.",
+    "comparable": "À périmètre identique (lignes tarifées des deux côtés) : réel {{actual}}, avec {{asModel}} {{repriced}}",
+    "unattributedWrite": "{{tokens}} tokens d'écriture cache sans répartition par TTL sont tarifés au tarif 5 minutes.",
+    "reason": {
+      "fastUnpriced": "mode rapide, aucun tarif rapide publié",
+      "speedUnknown": "valeur de vitesse non reconnue",
+      "unknownModel": "modèle inconnu"
+    }
   }
 }

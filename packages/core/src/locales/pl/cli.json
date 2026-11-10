@@ -205,7 +205,14 @@
     "agentsPeriod": "Okres czasu: dzień, tydzień, miesiąc lub wszystko (domyślnie: miesiąc)",
     "agentsLimit": "Nazwane wiersze na liście przed złożeniem reszty w jeden wiersz pozostałości (domyślnie: 10)",
     "agentsJson": "Wyjście JSON czytelne dla maszyn (pełny AgentCostReport)",
-    "exportIncludeAgentNames": "Eksportuj również typ agenta, głębokość generowania i identyfikator wywołania narzędzia generowania (nazwy tworzone przez użytkownika; pominięte domyślnie)"
+    "exportIncludeAgentNames": "Eksportuj również typ agenta, głębokość generowania i identyfikator wywołania narzędzia generowania (nazwy tworzone przez użytkownika; pominięte domyślnie)",
+    "costPerTaskGroupBy": "Grupuj zestawienie według: model (domyślnie) lub model_effort (model i poziom wysiłku rozumowania)",
+    "reprice": "Przelicz liczbę tokenów z danego okresu według stawek innego modelu (ta sama liczba tokenów, wartość górnego oszacowania)",
+    "repriceFrom": "Pierwszy dzień, RRRR-MM-DD (włącznie)",
+    "repriceTo": "Ostatni dzień, RRRR-MM-DD (włącznie)",
+    "repriceModel": "Model, który obsłużył tokeny (np. claude-opus-5-5)",
+    "repriceAs": "Model, według którego stawek je przeliczyć (np. claude-fable-5-2)",
+    "repriceProject": "Tylko ta ścieżka projektu"
   },
   "collection": {
     "collecting": "Zbieranie...",
@@ -321,7 +328,10 @@
     "confidenceHigh": "wysoka pewność",
     "confidenceMedium": "średnia pewność",
     "confidenceLow": "niska pewność",
-    "fastModeUnpriced": "W tej sumie liczba żądań w trybie fast: {{count}} jest wyceniona według stawki standardowej; ich faktyczny koszt rozliczeniowy jest wyższy."
+    "fastModeUnpriced": "W tej sumie liczba żądań w trybie fast: {{count}} jest wyceniona według stawki standardowej; ich faktyczny koszt rozliczeniowy jest wyższy.",
+    "costPerTaskByModelEffort": "Według modelu i wysiłku",
+    "costPerTaskNoEffort": "brak wysiłku",
+    "costPerTaskEffortCoverage": "Udział wydatków z oznaczonym wysiłkiem: {{share}} (wiersze „brak wysiłku\" to reszta)"
   },
   "status": {
     "databaseSize": "Rozmiar bazy danych",
@@ -380,7 +390,9 @@
     "invalidDateRange": "Nieprawidłowy zakres dat: {{message}}",
     "invalidPackPeriod": "Nieprawidłowy okres pakietu: {{message}}",
     "invalidInvoiceCsv": "Nie można odczytać --invoice-csv {{path}}: {{message}}",
-    "invalidAgentsLimit": "Nieprawidłowy --limit \"{{value}}\": użyj liczby całkowitej 1 lub większej"
+    "invalidAgentsLimit": "Nieprawidłowy --limit \"{{value}}\": użyj liczby całkowitej 1 lub większej",
+    "invalidGroupBy": "Nieprawidłowa wartość --group-by „{{value}}\": użyj model lub model_effort",
+    "invalidReprice": "Nie można przeliczyć: {{message}}"
   },
   "repair": {
     "description": "Napraw dane pochodne, których normalne zbieranie nie potrafi poprawić z mocą wsteczną.",
@@ -662,5 +674,28 @@
     "depthUnrecorded": "Głębokość nie zarejestrowana: {{cost}} ({{share}}) · {{messages}} wiadomości",
     "otherDepthRow": "(inne: {{buckets}} więcej głębokości): {{cost}} ({{share}}) · {{messages}} wiadomości",
     "byDepthEmpty": "Brak wydatków subagentów w tym oknie."
+  },
+  "reprice": {
+    "title": "Przeliczenie {{model}} według stawek {{asModel}} · {{from}} do {{to}}",
+    "colCategory": "Kategoria",
+    "colActual": "Rzeczywisty",
+    "colRepriced": "Według {{asModel}}",
+    "input": "Wejście",
+    "output": "Wyjście",
+    "cacheWrite5m": "Zapis cache (5 min)",
+    "cacheWrite1h": "Zapis cache (1 godz.)",
+    "cacheRead": "Odczyt cache",
+    "total": "Razem",
+    "rowsLine": "Wiersze wiadomości modelu {{model}}: {{rows}}",
+    "noRows": "Brak wiadomości dla {{model}} w tym okresie.",
+    "unpricedCounterfactual": "Liczba wierszy, których nie udało się wycenić według {{asModel}} ({{reasons}}): {{rows}}. Zostały pominięte w tej kolumnie. Ich rzeczywisty koszt: {{actualCost}}.",
+    "unpricedActual": "Liczba wierszy, których nie udało się wycenić według modelu, który je obsłużył ({{reasons}}): {{rows}}. Zostały pominięte w kolumnie rzeczywistej.",
+    "comparable": "Porównanie jak do jak (wiersze wycenione po obu stronach): rzeczywisty {{actual}}, według {{asModel}} {{repriced}}",
+    "unattributedWrite": "Tokeny zapisu cache bez podziału TTL: {{tokens}}. Wyceniono je według stawki 5-minutowej.",
+    "reason": {
+      "fastUnpriced": "tryb fast, brak opublikowanej stawki fast",
+      "speedUnknown": "nierozpoznana wartość prędkości",
+      "unknownModel": "nieznany model"
+    }
   }
 }
