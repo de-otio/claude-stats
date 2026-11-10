@@ -55,6 +55,32 @@ export function validIdentifier(value: unknown): string | null {
   return value;
 }
 
+/**
+ * Opaque machine-generated ids: Claude Code's `requestId` / `api-request.id`
+ * (UUIDs), `agentId` (17 lowercase hex characters, measured on 2,260 local
+ * subagent transcripts) and the hand-written ids test fixtures use
+ * (`req_1`, `agent-1`). A name-shaped value (`team.reviewer`, `name@team`,
+ * `plugin:skill`, `a/b`) is NOT opaque — it can carry text a person chose — so
+ * the class excludes `.`, `:`, `@` and `/`. The first character must be
+ * alphanumeric or `_`, which also rules out a leading `-` (CSV formula).
+ */
+export const OPAQUE_ID_RE = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/;
+
+/**
+ * An opaque id (see {@link OPAQUE_ID_RE}), or null. Used for
+ * `api_requests.request_id`, `messages.request_ref` and
+ * `api_requests.agent_id`, at the parser and at the sync-merge apply.
+ *
+ * `request_ref` is exported to the personal plane on the ground that it is a
+ * random id with no content (E1 decision 6) — this validator is what makes
+ * that ground true. `agent_id` is NOT exported and is not safe to export as it
+ * is: the format check cannot prove a value is random, so it must be bucketed
+ * before any export or MCP use.
+ */
+export function validOpaqueId(value: unknown): string | null {
+  return typeof value === "string" && OPAQUE_ID_RE.test(value) ? value : null;
+}
+
 /** A spawning `tool_use` id, or null. */
 export function validToolUseId(value: unknown): string | null {
   return typeof value === "string" && TOOL_USE_ID_RE.test(value) ? value : null;

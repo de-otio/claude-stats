@@ -130,7 +130,7 @@ export interface RawSessionEntry {
    * The `api-request` line this assistant entry answers (schema V28, E1): a
    * random request id written at the ENTRY ROOT by Claude Code 2.1.300+.
    * Several assistant entries (one per content block) share one `requestRef`.
-   * Validated with `validIdentifier` at the parser boundary.
+   * Validated with `validOpaqueId` at the parser boundary.
    */
   requestRef?: unknown;
   // queue-operation
@@ -313,7 +313,7 @@ export interface MessageRecord {
   /**
    * `requestRef` on the assistant entry (schema V28): the id of the
    * `api-request` line this response answers, linking the message to its row
-   * in `api_requests`. Validated with `validIdentifier` where it enters; null
+   * in `api_requests`. Validated with `validOpaqueId` where it enters; null
    * when the entry carried none. Opaque — a random id with no content, which
    * is why it may ride the personal-plane export.
    */
@@ -329,7 +329,7 @@ export interface MessageRecord {
  * stored; neither are the tail fields (`cacheControl`, `requestDigest`,
  * `keep`, `base`) nor anything in `api-request-shape` / `api-request-blob`.
  *
- * Every field is validated where it enters (`validIdentifier`, ISO→epoch-ms,
+ * Every field is validated where it enters (`validOpaqueId`, ISO→epoch-ms,
  * 64-hex shape hash); an invalid value is null ("not recorded"), and an
  * invalid `requestId` drops the row entirely (it is the primary key).
  *

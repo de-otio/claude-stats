@@ -21,7 +21,7 @@ import type {
   ApiRequestFields,
 } from "../types.js";
 import { sanitizePromptText } from "../sanitize.js";
-import { validIdentifier } from "../identifiers.js";
+import { validIdentifier, validOpaqueId } from "../identifiers.js";
 import { isPlainApiRequestLine, readApiRequestFields } from "./apiRequest.js";
 
 export interface ParseResult {
@@ -733,7 +733,7 @@ export async function parseSessionFile(
           skill: validIdentifier(entry.attributionSkill),
           // V28 (E1): the `api-request` line this entry answers. Validated
           // where it enters; several entries of one response share it.
-          requestRef: validIdentifier(entry.requestRef),
+          requestRef: validOpaqueId(entry.requestRef),
           thinkingTokens: validTokenCount(usage?.output_tokens_details?.thinking_tokens),
           costBasis: messageId !== null || !hasUsage ? "per-response" : "pre-dedupe",
         });

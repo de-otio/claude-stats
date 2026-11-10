@@ -26,7 +26,7 @@
  *
  * Pure: no I/O, no clock.
  */
-import { validIdentifier } from "../identifiers.js";
+import { validOpaqueId } from "../identifiers.js";
 import type { ApiRequestFields } from "../types.js";
 
 /**
@@ -48,6 +48,9 @@ const HEAD_LIMIT_CHARS = 2048;
 /** `shapeHash` is a SHA-256 hex digest. */
 const SHAPE_HASH_RE = /^[0-9a-f]{64}$/;
 
+/** The largest epoch-ms a JS Date can represent. */
+const MAX_EPOCH_MS = 8.64e15;
+
 /**
  * Epoch-ms for the head's `timestamp` (an ISO-8601 string in modern writers,
  * a number in older ones), else null. Mirrors `toEpochMs` in session.ts —
@@ -56,13 +59,17 @@ const SHAPE_HASH_RE = /^[0-9a-f]{64}$/;
  */
 function headTimestampMs(value: unknown): number | null {
   if (value == null) return null;
-  const ms =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Date.parse(value)
-        : NaN;
-  return isFinite(ms) ? ms : null;
+  if (typeof value === "number") {
+    // A number is accepted only as a plausible epoch-ms: a safe integer inside
+    // the Date range (±8.64e15), and not negative. Floats, negatives and
+    // 1e300 are "not recorded", never stored.
+    return Number.isSafeInteger(value) && value >= 0 && value <= MAX_EPOCH_MS ? value : null;
+  }
+  if (typeof value === "string") {
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) ? ms : null;
+  }
+  return null;
 }
 
 /**
@@ -72,7 +79,7 @@ function headTimestampMs(value: unknown): number | null {
  * than `HEAD_LIMIT_CHARS + 1` characters of the line, and the tail
  * (`cacheControl`, `requestDigest`, `keep`, `base`) is never sliced or parsed.
  *
- * Validation happens HERE, where the values enter: an invalid `id` drops the
+ * Validation happens HERE, where the values enter: an invalid (non-opaque) `id` drops the
  * row (it is the `api_requests` primary key), and invalid `agentId` /
  * `timestamp` / `shapeHash` become null ("not recorded") — never truncated
  * into a different value, never stored raw. Unknown extra keys in the head are
@@ -96,13 +103,15 @@ export function readApiRequestFields(raw: string): ApiRequestFields | null {
   const h = head as Record<string, unknown>;
 
   // An invalid id is no row at all: it would be the primary key.
-  const requestId = validIdentifier(h["id"]);
+  const requestId = validOpaqueId(h["id"]);
   if (requestId === null) return null;
 
   const shapeHash = h["shapeHash"];
   return {
     requestId,
-    agentId: validIdentifier(h["agentId"]),
+    // `agent_id` must be bucketed before any export or MCP use: the format
+    // check proves shape, not randomness (see `validOpaqueId`).
+    agentId: validOpaqueId(h["agentId"]),
     timestamp: headTimestampMs(h["timestamp"]),
     shapeHash:
       typeof shapeHash === "string" && SHAPE_HASH_RE.test(shapeHash)

@@ -115,6 +115,51 @@ describe("E1 §8.1 — adversarial content in params changes nothing", () => {
     // The assistant row links to the request that was really stored.
     expect(r.messages[0]!.requestRef).toBe("req_1");
   });
+
+  it("a payload only a bounded read survives: a FULL parse of the line would fail or return the evil values", async () => {
+    // (L2-review) The test above passes for an implementation that fully
+    // parses the line, because the adversarial text is escaped inside a
+    // string. These two lines are RAW: past the real `params` key they carry
+    // (a) a duplicate top-level `id` / `shapeHash` — JSON.parse is last-wins,
+    // so a full parse stores the evil values — and (b) a body that is not
+    // valid JSON at all, so a full parse throws. The head-only read gets the
+    // real values from both.
+    const real = apiRequestLine({ id: "req_real", shapeHash: REAL_HASH });
+    const cut = real.indexOf(',"params":');
+    const head = real.slice(0, cut);
+    const duplicateKeys =
+      head + ',"params":{"m":1},"id":"evil","shapeHash":"' + FAKE_HASH + '"}';
+    const notJson = head.replace("req_real", "req_real2") + ',"params":{"safeguards":"never closed ,"id":"evil"';
+
+    // Premises: the full parse of each line really differs from the head read.
+    expect((JSON.parse(duplicateKeys) as { id: string }).id).toBe("evil");
+    expect(() => JSON.parse(notJson)).toThrow();
+
+    const r = await parse([user(1_000), duplicateKeys, notJson]);
+    expect(r.apiRequests).toEqual([
+      { requestId: "req_real", agentId: "agent-1", timestamp: TS_MS, shapeHash: REAL_HASH },
+      { requestId: "req_real2", agentId: "agent-1", timestamp: TS_MS, shapeHash: REAL_HASH },
+    ]);
+    expect(r.apiRequestHeadMisses).toBe(0);
+    expect(r.errors).toEqual([]);
+  });
+
+  it("spies JSON.parse: no call receives the adversarial line's params region", async () => {
+    const safeguards = 'x ,"params": {"id":"evil"} ' + "y".repeat(50_000);
+    const line = apiRequestLine({ id: "req_spy", params: { safeguards } });
+    fs.writeFileSync(file, body([user(1_000), line]));
+    const parseSpy = vi.spyOn(JSON, "parse");
+    let r;
+    try {
+      r = await parseSessionFile(file, "/proj", 0);
+    } finally {
+      const calls = parseSpy.mock.calls.map((c) => String(c[0]));
+      parseSpy.mockRestore();
+      expect(r!.apiRequests[0]!.requestId).toBe("req_spy");
+      expect(calls.some((a) => a.includes("evil") || a.includes("safeguards"))).toBe(false);
+      expect(Math.max(...calls.map((a) => a.length))).toBeLessThanOrEqual(2049);
+    }
+  });
 });
 
 // ─── §8 test 2 — no full parse ────────────────────────────────────────────────
@@ -447,6 +492,40 @@ describe("E1 §8.8 — every field is validated where it enters", () => {
     expect(r.apiRequests[0]!.requestId).toBe("req_agent");
   });
 
+  it.each(["team.reviewer", "name@team", "plugin:skill", "a/b", "-lead", "a".repeat(65)])(
+    "a name-shaped agentId %p → NULL, row kept (L2: agent_id is an opaque id, not a name)",
+    async (agentId) => {
+      const r = await parse([apiRequestLine({ id: "req_agent2", agentId })]);
+      expect(r.apiRequests).toHaveLength(1);
+      expect(r.apiRequests[0]!.agentId).toBeNull();
+    },
+  );
+
+  it("the real id shapes pass: UUID request id and a 17-hex agentId", async () => {
+    const id = "6f1c2a9e-3b4d-4e5f-8a7b-0c1d2e3f4a5b";
+    const agentId = "a0123456789abcdef";
+    const r = await parse([apiRequestLine({ id, agentId })]);
+    expect(r.apiRequests[0]).toMatchObject({ requestId: id, agentId });
+  });
+
+  it.each(["team.reviewer", "name@team", "plugin:skill", "a/b"])(
+    "a name-shaped request id %p → no row (it would be the primary key)",
+    async (id) => {
+      const r = await parse([apiRequestLine({ id })]);
+      expect(r.apiRequests).toHaveLength(0);
+      expect(r.apiRequestHeadMisses).toBe(1);
+    },
+  );
+
+  it.each(["team.reviewer", "name@team", "plugin:skill", "a/b"])(
+    "a name-shaped assistant requestRef %p → NULL on the message",
+    async (ref) => {
+      const r = await parse([assistant(2_000, "msg_1", ref)]);
+      expect(r.messages).toHaveLength(1);
+      expect(r.messages[0]!.requestRef).toBeNull();
+    },
+  );
+
   it("an id with a space → no row at all (invalid PK), counted as a miss", async () => {
     const r = await parse([apiRequestLine({ id: "req 1" })]);
     expect(r.apiRequests).toHaveLength(0);
@@ -474,6 +553,26 @@ describe("E1 §8.8 — every field is validated where it enters", () => {
     expect(num.apiRequests[0]!.timestamp).toBe(1_700_000_000_000);
     const garbage = await parse([apiRequestLine({ id: "req_ts3", timestamp: "not a date" })]);
     expect(garbage.apiRequests[0]!.timestamp).toBeNull();
+  });
+
+  it.each([
+    ["negative", -1],
+    ["negative large", -1_700_000_000_000],
+    ["float", 1_700_000_000_000.5],
+    ["1e300", 1e300],
+    ["just past the Date range", 8.64e15 + 1],
+    ["unsafe integer", 2 ** 53],
+  ])("L3: a numeric timestamp that is %s → NULL, row kept", async (_name, ts) => {
+    const r = await parse([apiRequestLine({ id: "req_tsn", timestamp: ts })]);
+    expect(r.apiRequests).toHaveLength(1);
+    expect(r.apiRequests[0]!.timestamp).toBeNull();
+  });
+
+  it("L3: the numeric bounds are inclusive (0 and 8.64e15 pass)", async () => {
+    const zero = await parse([apiRequestLine({ id: "req_ts0", timestamp: 0 })]);
+    expect(zero.apiRequests[0]!.timestamp).toBe(0);
+    const max = await parse([apiRequestLine({ id: "req_tsmax", timestamp: 8.64e15 })]);
+    expect(max.apiRequests[0]!.timestamp).toBe(8.64e15);
   });
 });
 

@@ -121,7 +121,13 @@ function stamped(
 
 const HOSTILE_REQUEST_REFS = [
   "../../x",
-  "r".repeat(129), // IDENTIFIER_RE caps at 128
+  "r".repeat(65), // OPAQUE_ID_RE caps at 64
+  // Name-shaped values pass validIdentifier but are not opaque ids: the
+  // personal plane exports request_ref on the ground that it is random.
+  "team.reviewer",
+  "name@team",
+  "plugin:skill",
+  "a/b",
   "<script>alert(1)</script>",
   "/etc/passwd",
   "@evil",
