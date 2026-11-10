@@ -273,7 +273,9 @@
           "value": "~4 mL/kWh de volumen de repositorio diseñado — no residuos brutos. Ponderado entre eliminación de RAAVL según Posiva KBS-3 / Onkalo (~1.500× el volumen bruto de combustible gastado tras el contenedor de cobre, tampón de bentonita y espaciado térmico de túneles), RAMB (~5×) y RABB (~3×), usando cuotas volumétricas del OIEA. Referencias: caso de seguridad Posiva 2012, SKB TR-11-01, IAEA Radioactive Waste Inventory."
         }
       }
-    }
+    },
+    "atLeast": "Al menos {{value}}",
+    "floorNote": "Fable y Mythos no tienen una cifra de energía publicada, por lo que se cuentan con la tarifa de Opus. Considere estos totales como un límite inferior."
   },
   "settings": {
     "configuration": "Configuración",
@@ -741,7 +743,8 @@
     "mixedRepaired": "{{rows}} de {{total}} filas contadas ({{percent}}%) en este rango son anteriores a la corrección por respuesta (cost_basis = pre-dedupe) y están infladas aproximadamente 2x. Ya se ejecutó una reparación; las filas restantes no tienen transcripción que volver a analizar."
   },
   "pricingDrift": {
-    "unpricedCaveat": "{{count}} ids de modelo no se resolvieron a ninguna tarifa y se excluyen del coste total ({{tokens}} tokens): {{models}}. Añade una fila de precios o una anulación en la configuración."
+    "unpricedCaveat": "{{count}} ids de modelo no se resolvieron a ninguna tarifa y se excluyen del coste total ({{tokens}} tokens): {{models}}. Añade una fila de precios o una anulación en la configuración.",
+    "fastModeUnpriced": "{{count}} solicitudes en modo rápido se valoran a la tarifa estándar en este total; su costo facturado es mayor."
   },
   "agentCost": {
     "title": "Agentes y skills",

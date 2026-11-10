@@ -1,5 +1,5 @@
 /** Shared helpers for the efficiency-hygiene detectors. Pure, no I/O. */
-import { estimateCost, isLongContextRequest, type CacheWriteSplit, type RateOverrides } from "../pricing.js";
+import { estimateCost, isLongContextRequest, type CacheWriteSplit, type CostOptions, type RateOverrides } from "../pricing.js";
 import type { HygieneMessageRow } from "./types.js";
 
 /** One session's messages in the caller's row order — grouping never reorders.
@@ -33,6 +33,20 @@ export function groupBySession(rows: readonly HygieneMessageRow[]): SessionGroup
   return order.map((id) => groups.get(id)!);
 }
 
+/**
+ * The pricing modifiers of one message: its long-context tier (from its own
+ * token counts), its `speed` and its `inference_geo`. Every hygiene detector
+ * that prices or rates a row goes through this, so a request is priced at the
+ * rate it was billed at wherever it is read.
+ */
+export function rowCostOptions(row: HygieneMessageRow): CostOptions {
+  return {
+    longContext: row.model !== null && isLongContextRequest(row.model, row.inputTokens, row.cacheReadTokens, row.cacheCreationTokens),
+    speed: row.speed,
+    inferenceGeo: row.inferenceGeo,
+  };
+}
+
 /** Equivalent-API cost of one message's tokens; 0 for an unpriced model
  *  (never silently dropped from a sum — callers summing across a session with
  *  a mix of known/unknown models will under-count by the unknown share, which
@@ -51,9 +65,7 @@ export function messageCost(row: HygieneMessageRow, overrides?: RateOverrides): 
     ephemeral5mCacheTokens: row.ephemeral5mCacheTokens,
     ephemeral1hCacheTokens: row.ephemeral1hCacheTokens,
   };
-  return estimateCost(row.model, row.inputTokens, row.outputTokens, row.cacheReadTokens, row.cacheCreationTokens, overrides, ttlSplit, {
-    longContext: isLongContextRequest(row.model, row.inputTokens, row.cacheReadTokens, row.cacheCreationTokens),
-  }).cost;
+  return estimateCost(row.model, row.inputTokens, row.outputTokens, row.cacheReadTokens, row.cacheCreationTokens, overrides, ttlSplit, rowCostOptions(row)).cost;
 }
 
 /** Sum of `messageCost` over a set of rows. */

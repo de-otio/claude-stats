@@ -49,7 +49,7 @@ function row(overrides: Partial<HygieneMessageRow> & { sessionId: string; uuid: 
     ephemeral5mCacheTokens: 0,
     ephemeral1hCacheTokens: 0,
     toolErrorCount: 0,
-    tools: [], outputPlaceholder: false, effort: null, isSubagent: false, claudeVersion: null,
+    tools: [], outputPlaceholder: false, effort: null, isSubagent: false, claudeVersion: null, speed: null, inferenceGeo: null,
     ...overrides,
   };
 }

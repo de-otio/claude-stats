@@ -25,7 +25,7 @@ import {
   createCommitSubjectsCache,
   type CommitSubjectsCache,
 } from "../recap/git.js";
-import type { MessageFilter, SessionRow, Store } from "../store/index.js";
+import { groupCostOpts, type MessageFilter, type SessionRow, type Store } from "../store/index.js";
 
 /**
  * How far past a session's last message to look for a corroborating commit.
@@ -310,7 +310,7 @@ export function getTicketCostReport(store: Store, filters: TicketReportFilters =
         ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
         ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
       },
-      { longContext: row.long_context === 1 },
+      groupCostOpts(row),
     );
     if (priced.rateBasis === "first_party_fallback") anyFallbackRates = true;
     if (priced.known) {

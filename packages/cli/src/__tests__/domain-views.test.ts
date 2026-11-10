@@ -203,6 +203,7 @@ const everything: DashboardData = {
     cacheImpact: { energySavedWh: 0, co2SavedGrams: 0, cacheEfficiencyPct: 0 },
     thinkingImpact: { sessionsWithThinking: 0, pctEnergyFromThinking: 0 },
     inferenceGeo: { detected: {}, coveragePct: 0 },
+    floor: false,
     region: "world",
     gridIntensity: 400,
     pue: 1.2,
@@ -529,5 +530,22 @@ describe("both hosts render the regrouped nav", () => {
     // the default, so a user who left the panel on Spending returns to it.
     expect(stale).toContain('"spending":"cost-and-controlling"');
     expect(stale).toContain("var startResolved = resolveHashTarget(startRaw)");
+  });
+});
+
+// ─── The energy floor label (plan P1 section 3.3) ─────────────────────────────
+
+describe("the Energy tab says 'at least' when Fable or Mythos is in the period", () => {
+  const floorData: DashboardData = { ...everything, energy: { ...everything.energy!, floor: true } };
+
+  it("renders 'At least' on the energy and CO2 totals and the floor note, only when floor is set", () => {
+    const withFloor = visibleText(renderDashboard(floorData, t));
+    expect(withFloor).toContain("At least 12.0 Wh");
+    expect(withFloor).toContain("At least 3.00 g");
+    expect(withFloor).toContain("Fable and Mythos have no published energy figure");
+
+    const without = visibleText(renderDashboard(everything, t));
+    expect(without).not.toContain("At least 12.0 Wh");
+    expect(without).not.toContain("Fable and Mythos have no published energy figure");
   });
 });

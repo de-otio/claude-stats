@@ -17,7 +17,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import type { Store } from '../store/index.js';
+import { rowCostOpts, type Store } from '../store/index.js';
 import type {
   CachedEntry,
   Confidence,
@@ -47,7 +47,7 @@ import {
 import type { CacheClient, SnapshotHashInputs } from './cache.js';
 import { wrapUntrusted } from '../mcp/index.js';
 import { sanitizePromptText } from '@claude-stats/core/sanitize';
-import { estimateCost, isLongContextRequest } from '@claude-stats/core/pricing';
+import { estimateCost } from '@claude-stats/core/pricing';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1040,6 +1040,8 @@ function buildDigestItem(
       output_tokens: number;
       cache_read_tokens: number;
       cache_creation_tokens: number;
+      speed: string | null;
+      inference_geo: string | null;
     }>,
   ): void => {
     for (const row of rows) {
@@ -1052,7 +1054,7 @@ function buildDigestItem(
         row.cache_creation_tokens,
         undefined,
         undefined,
-        { longContext: isLongContextRequest(row.model, row.input_tokens, row.cache_read_tokens, row.cache_creation_tokens) },
+        rowCostOpts(row),
       );
       estimatedCost += cost;
       costByModel[row.model] = (costByModel[row.model] ?? 0) + cost;

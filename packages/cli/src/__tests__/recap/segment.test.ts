@@ -29,6 +29,7 @@ function makeMsg(overrides: Partial<MessageRow> & { timestamp: number }): Messag
     thinking_blocks: 0,
     service_tier: null,
     inference_geo: null,
+    speed: null,
     ephemeral_5m_cache_tokens: 0,
     ephemeral_1h_cache_tokens: 0,
     prompt_text: null,

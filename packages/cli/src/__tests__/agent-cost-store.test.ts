@@ -139,12 +139,15 @@ describe("Store.getMessagesForAgentCost", () => {
         "effort",
         "ephemeral_1h_cache_tokens",
         "ephemeral_5m_cache_tokens",
+        // Priced by estimateCost (fast mode, US geo); neither identifies anything.
+        "inference_geo",
         "input_tokens",
         "is_subagent",
         "model",
         "output_tokens",
         "skill",
         "spawn_depth",
+        "speed",
         "timestamp",
       ]);
     }

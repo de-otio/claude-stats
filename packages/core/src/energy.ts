@@ -1,3 +1,5 @@
+import { normalizeModelId } from "./pricing.js";
+
 /**
  * Energy and CO₂ estimation for Claude inference requests.
  *
@@ -30,10 +32,32 @@ const MODEL_CLASS_PREFIXES: Array<[string, ModelClass]> = [
 ];
 
 /**
+ * Model families with NO published energy figure that are counted at the `opus`
+ * class as a FLOOR: Fable and Mythos sit above Opus in capability and price, and
+ * nothing published says by how much their energy per token differs. Counting
+ * them at the Opus class is the lowest defensible figure, so every total that
+ * includes them is "at least" that much (`EnergyEstimate.floor`). No coefficient
+ * is invented for them.
+ */
+const FLOOR_FAMILY_PREFIXES = ["claude-fable", "claude-mythos"] as const;
+
+/**
+ * True when this model is counted at a floor class (see `FLOOR_FAMILY_PREFIXES`).
+ * Reads the canonical first-party id, so a Bedrock or Vertex id for the same
+ * model is a floor too.
+ */
+export function isEnergyFloorModel(modelName: string): boolean {
+  const canonical = normalizeModelId(modelName).canonical.toLowerCase();
+  return FLOOR_FAMILY_PREFIXES.some((p) => canonical.startsWith(p));
+}
+
+/**
  * Map a model name to its energy class.
- * Falls back to "sonnet" (conservative middle-ground) for unknown models.
+ * Fable and Mythos map to "opus" as a floor (`isEnergyFloorModel`); every other
+ * unknown model falls back to "sonnet" (conservative middle-ground).
  */
 export function modelClass(modelName: string): ModelClass {
+  if (isEnergyFloorModel(modelName)) return "opus";
   const lower = modelName.toLowerCase();
   for (const [prefix, cls] of MODEL_CLASS_PREFIXES) {
     if (lower.startsWith(prefix)) return cls;
@@ -304,6 +328,12 @@ export interface EnergyEstimate {
   detectedRegion: string | null;
   /** Config actually used for this estimate. */
   config: EnergyConfig;
+  /**
+   * True when any model in this estimate is counted at a floor class (Fable,
+   * Mythos: see `isEnergyFloorModel`), so every figure here is a lower bound,
+   * not a central estimate. Surfaces must say "at least" when it is set.
+   */
+  floor: boolean;
 }
 
 // ─── Core estimation ─────────────────────────────────────────────────────────
@@ -362,6 +392,7 @@ export function estimateEnergy(usage: TokenUsage, config: Partial<EnergyConfig> 
     equivalents: computeEquivalents(totalEnergyWh, co2Grams, detectedRegion ?? resolvedConfig.region ?? null),
     detectedRegion,
     config: resolvedConfig,
+    floor: isEnergyFloorModel(usage.model),
   };
 }
 
@@ -393,6 +424,7 @@ export function aggregateEnergy(estimates: EnergyEstimate[]): EnergyEstimate {
     equivalents: computeEquivalents(totalEnergyWh, co2Grams, estimates.find(e => e.detectedRegion)?.detectedRegion ?? config.region ?? null),
     detectedRegion: estimates.find(e => e.detectedRegion)?.detectedRegion ?? null,
     config,
+    floor: estimates.some(e => e.floor),
   };
 }
 
