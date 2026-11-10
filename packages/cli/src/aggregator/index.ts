@@ -310,7 +310,7 @@ export async function collect(
           // Pathological first collect: this file's first-ever parse saw only
           // api-request lines, so no sessions row exists to attribute the rows
           // to (api_requests.session_id is NOT NULL). Do not silently lose
-          // them: the checkpoint is left untouched (clamped below) so the next
+          // them: the checkpoint OFFSET is held back (see below) so the next
           // collect re-reads the range — the re-parse is idempotent — and the
           // rows are stored once any session-establishing entry exists. The
           // drop is reported separately (apiRequestRowsDropped).
@@ -350,22 +350,22 @@ export async function collect(
         }
       }
 
-      // V28 (E1) clamp: when api-request rows were dropped (no session id to
-      // attribute them to), leave the checkpoint untouched. Advancing it
-      // would strand the rows permanently — the range would never be re-read.
-      // The next collect re-parses from the old offset (byte 0 on a first
-      // collect), which is idempotent, and stores the rows once a session
-      // exists.
-      if (!droppedApiRequestRows) {
-        store.upsertCheckpoint({
-          filePath: sf.filePath,
-          fileSize: fileStats.size,
-          lastByteOffset: parsed.lastGoodOffset,
-          lastMtime: fileStats.mtime,
-          firstKbHash: parsed.firstKbHash,
-          sourceDeleted: false,
-        });
-      }
+      // V28 (E1) hold-back: when api-request rows were dropped (no session id
+      // to attribute them to), the OFFSET must not advance — advancing it would
+      // strand the rows permanently, because the range would never be re-read.
+      // The size, mtime and first-KB hash are still recorded, at the OLD offset
+      // (`startOffset`: byte 0 on a first collect). An unchanged file is then
+      // skipped by the ordinary size+mtime test instead of being re-parsed from
+      // the start on every collect; a changed file is re-read from the old
+      // offset (idempotent) and stores the rows once a session exists.
+      store.upsertCheckpoint({
+        filePath: sf.filePath,
+        fileSize: fileStats.size,
+        lastByteOffset: droppedApiRequestRows ? startOffset : parsed.lastGoodOffset,
+        lastMtime: fileStats.mtime,
+        firstKbHash: parsed.firstKbHash,
+        sourceDeleted: false,
+      });
     });
 
     // Collect entries for schema fingerprinting (sample: assistant messages only)
@@ -403,7 +403,7 @@ export async function collect(
   if (opts.verbose && result.apiRequestRowsDropped > 0) {
     console.log(
       `[warning] ${result.apiRequestRowsDropped} api-request row(s) had no session to be attributed to ` +
-        `and were NOT stored; their checkpoints were left unadvanced so the next collect re-reads them`
+        `and were NOT stored; their checkpoint offsets were held back, so the next collect after the file changes re-reads them`
     );
   }
 

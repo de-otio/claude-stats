@@ -258,12 +258,12 @@ describe("collect — E1 request records", () => {
     expect(store.countApiRequests()).toBe(1);
   });
 
-  it("first collect with ONLY an api-request line drops nothing — the checkpoint is clamped and the row is stored on the next collect", async () => {
+  it("first collect with ONLY an api-request line drops nothing — the offset is held back and the row is stored once a session exists", async () => {
     // The pathological case: no sessions row exists yet, so the store lookup
-    // yields no id either. Chosen behavior (documented in the PR): the rows
-    // are NOT written and the checkpoint is NOT advanced (the clamp) — the
-    // next collect re-parses from the start (idempotent) and stores them once
-    // a session exists. The drop is counted and reported, never silent.
+    // yields no id either. Chosen behavior: the rows are NOT written and the
+    // checkpoint OFFSET is NOT advanced (held at 0) — the next collect that
+    // sees a changed file re-parses from there (idempotent) and stores them
+    // once a session exists. The drop is counted and reported, never silent.
     const projDir = path.join(projectsDir, "-proj-e1-orphan");
     fs.mkdirSync(projDir);
     const sessFile = path.join(projDir, `${SID}.jsonl`);
@@ -275,9 +275,13 @@ describe("collect — E1 request records", () => {
     expect(first.apiRequestRowsDropped).toBe(1); // counted, not silent
     expect(first.apiRequestHeadMisses).toBe(0);
     expect(store.countApiRequests()).toBe(0);
-    expect(store.getCheckpoint(sessFile)).toBeNull(); // clamp: not advanced
+    // L1: size and mtime ARE recorded, at the old offset (0).
+    const held = store.getCheckpoint(sessFile);
+    expect(held).not.toBeNull();
+    expect(held!.lastByteOffset).toBe(0);
+    expect(held!.fileSize).toBe(fs.statSync(sessFile).size);
 
-    // Phase 2: a user line arrives. No checkpoint → full re-parse from 0;
+    // Phase 2: a user line arrives. The file changed → re-parse from offset 0;
     // the api-request line is re-read and now lands in api_requests.
     fs.appendFileSync(sessFile, userLine(TS_MS) + "\n");
     const second = await collect(store);
@@ -286,6 +290,45 @@ describe("collect — E1 request records", () => {
     expect(second.apiRequestRowsDropped).toBe(0);
     expect(store.countApiRequests()).toBe(1);
     expect(rawOne(dbPath, "SELECT session_id FROM api_requests")["session_id"]).toBe(SID);
-    expect(store.getCheckpoint(sessFile)).not.toBeNull();
+    expect(store.getCheckpoint(sessFile)!.lastByteOffset).toBe(fs.statSync(sessFile).size);
+  });
+
+  it("L1 — a transcript holding ONLY api-request lines is not re-parsed on every collect; it is re-read when the file changes", async () => {
+    const projDir = path.join(projectsDir, "-proj-e1-orphan-skip");
+    fs.mkdirSync(projDir);
+    const sessFile = path.join(projDir, `${SID}.jsonl`);
+    fs.writeFileSync(sessFile, apiRequestLine("req_a") + "\n");
+
+    const first = await collect(store);
+    expect(first.filesProcessed).toBe(1);
+    expect(first.apiRequestRowsDropped).toBe(1);
+
+    // Unchanged file: skipped by the size+mtime test, NOT re-parsed from 0.
+    for (let i = 0; i < 3; i++) {
+      const again = await collect(store);
+      expect(again.filesProcessed).toBe(0);
+      expect(again.filesSkipped).toBe(1);
+      expect(again.apiRequestRowsDropped).toBe(0);
+    }
+    expect(store.countApiRequests()).toBe(0);
+    expect(store.getCheckpoint(sessFile)!.lastByteOffset).toBe(0);
+
+    // Another api-request line appended, still no session: the file changed,
+    // so it IS re-read — from the held-back offset 0, both rows pending.
+    fs.appendFileSync(sessFile, apiRequestLine("req_b") + "\n");
+    const changed = await collect(store);
+    expect(changed.filesProcessed).toBe(1);
+    expect(changed.apiRequestRowsDropped).toBe(2);
+    expect(store.getCheckpoint(sessFile)!.lastByteOffset).toBe(0);
+    // …and is skipped again until it changes once more.
+    const quiet = await collect(store);
+    expect(quiet.filesProcessed).toBe(0);
+    expect(quiet.filesSkipped).toBe(1);
+
+    // A session finally appears: BOTH held rows are stored.
+    fs.appendFileSync(sessFile, userLine(TS_MS) + "\n");
+    const done = await collect(store);
+    expect(done.apiRequestsRead).toBe(2);
+    expect(store.countApiRequests()).toBe(2);
   });
 });

@@ -646,30 +646,61 @@ export class Store {
    * rows.
    */
   private migrateToV28(): void {
-    // Same partial-fixture guard as V24/V25: a database lacking either table
-    // has nothing to add a column to (every real store has both since V1).
-    const tables = this.db
-      .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('sessions', 'messages')")
-      .get() as { n: number };
-    if (tables.n < 2) return;
-    const addColumn = (table: string, column: string, def: string): void => {
-      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-      if (!cols.some((c) => c.name === column)) {
-        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+    // `api_requests` stands alone (no foreign key), so it is created even in a
+    // partial fixture that lacks `sessions`/`messages`: `upsertApiRequests` is
+    // then always safe to call. Only the column and the index need `messages`.
+    const hasMessages =
+      (this.db
+        .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'messages'")
+        .get() as { n: number }).n > 0;
+    const hasSessions =
+      (this.db
+        .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'sessions'")
+        .get() as { n: number }).n > 0;
+
+    // The CLI, the MCP server and the extension can start together on one
+    // file, and the schema version is only stamped after every step. The
+    // check-then-ALTER must therefore be atomic: BEGIN IMMEDIATE takes the
+    // write lock BEFORE the column check (a competing opener waits out its
+    // busy_timeout, then sees the finished schema), and COMMIT/ROLLBACK keeps a
+    // half-applied V28 from ever being visible.
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS api_requests (
+          request_id  TEXT PRIMARY KEY,
+          session_id  TEXT NOT NULL,
+          agent_id    TEXT,
+          timestamp   INTEGER,
+          shape_hash  TEXT
+        );
+      `);
+      if (hasMessages && hasSessions) {
+        const cols = this.db.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>;
+        if (!cols.some((c) => c.name === "request_ref")) {
+          try {
+            this.db.exec("ALTER TABLE messages ADD COLUMN request_ref TEXT");
+          } catch (err) {
+            // Belt and braces: a process that does not honour the lock
+            // protocol (an older build) may have added the column between the
+            // check and the ALTER. That is the state we wanted.
+            if (!/duplicate column name/i.test(String((err as Error)?.message))) throw err;
+          }
+        }
+        this.db.exec(`
+          CREATE INDEX IF NOT EXISTS idx_messages_request_ref
+            ON messages (request_ref) WHERE request_ref IS NOT NULL;
+        `);
       }
-    };
-    addColumn("messages", "request_ref", "TEXT");
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS api_requests (
-        request_id  TEXT PRIMARY KEY,
-        session_id  TEXT NOT NULL,
-        agent_id    TEXT,
-        timestamp   INTEGER,
-        shape_hash  TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_messages_request_ref
-        ON messages (request_ref) WHERE request_ref IS NOT NULL;
-    `);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {
+        /* the transaction was already closed */
+      }
+      throw err;
+    }
   }
 
   private migrateToV13(): void {

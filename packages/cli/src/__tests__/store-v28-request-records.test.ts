@@ -349,6 +349,77 @@ describe("Store — migration V27 → V28 (E1 §8.10)", () => {
     }
   });
 
+  it("L4: another process already added the column before this one's ALTER — the migration tolerates it", () => {
+    seed();
+    rewindToV27();
+    // The race's losing state: schema_version still 27, but the winner has
+    // already added the column (and not yet stamped).
+    const db = new DatabaseSync(dbPath);
+    db.exec("ALTER TABLE messages ADD COLUMN request_ref TEXT");
+    db.close();
+    const store = new Store(dbPath);
+    try {
+      expect(rawOne(dbPath, "SELECT value FROM metadata WHERE key = 'schema_version'")["value"]).toBe("28");
+      expect(raw(dbPath, "PRAGMA table_info(messages)").filter((c) => c["name"] === "request_ref")).toHaveLength(1);
+      expect(raw(dbPath, "SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'api_requests'")[0]!["n"]).toBe(1);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("L4: two Store instances opened on one V27 file both end at a consistent V28", () => {
+    seed();
+    rewindToV27();
+    const a = new Store(dbPath);
+    const b = new Store(dbPath); // opens while `a` is still open and already migrated
+    try {
+      a.upsertApiRequests("sess-v28", [REQ]);
+      expect(b.countApiRequests()).toBe(1);
+      expect(raw(dbPath, "PRAGMA table_info(messages)").filter((c) => c["name"] === "request_ref")).toHaveLength(1);
+      expect(rawOne(dbPath, "SELECT value FROM metadata WHERE key = 'schema_version'")["value"]).toBe("28");
+    } finally {
+      a.close();
+      b.close();
+    }
+  });
+
+  it("L4: a failure after the ALTER rolls the whole V28 back (no half-applied schema, version not stamped)", () => {
+    seed();
+    rewindToV27();
+    // Make the final CREATE INDEX fail: a TABLE with the index's name makes
+    // SQLite raise "there is already a table named ..." even with IF NOT EXISTS.
+    const db = new DatabaseSync(dbPath);
+    db.exec("CREATE TABLE idx_messages_request_ref (x INTEGER)");
+    db.close();
+    expect(() => new Store(dbPath)).toThrow(/idx_messages_request_ref/);
+    // Rolled back: the column the ALTER added, and the table, are gone again.
+    expect(raw(dbPath, "PRAGMA table_info(messages)").map((c) => c["name"])).not.toContain("request_ref");
+    expect(raw(dbPath, "SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'api_requests'")[0]!["n"]).toBe(0);
+    expect(rawOne(dbPath, "SELECT value FROM metadata WHERE key = 'schema_version'")["value"]).toBe("27");
+    // And once the obstacle is removed, the next open completes the migration.
+    const fix = new DatabaseSync(dbPath);
+    fix.exec("DROP TABLE idx_messages_request_ref");
+    fix.close();
+    const store = new Store(dbPath);
+    store.close();
+    expect(raw(dbPath, "PRAGMA table_info(messages)").map((c) => c["name"])).toContain("request_ref");
+    expect(rawOne(dbPath, "SELECT value FROM metadata WHERE key = 'schema_version'")["value"]).toBe("28");
+  });
+
+  it("L3-review: a partial fixture without sessions/messages still gets api_requests, so upsertApiRequests is safe", () => {
+    const db = new DatabaseSync(dbPath);
+    db.exec("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+    db.exec("INSERT INTO metadata VALUES ('schema_version', '27')");
+    db.close();
+    const store = new Store(dbPath);
+    try {
+      store.upsertApiRequests("sess-x", [REQ]);
+      expect(store.countApiRequests()).toBe(1);
+    } finally {
+      store.close();
+    }
+  });
+
   it("a fresh store is created directly at V28 with the full shape", () => {
     const store = new Store(dbPath);
     try {
