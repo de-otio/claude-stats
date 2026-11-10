@@ -19,7 +19,7 @@
  */
 import { estimateCost, isLongContextRequest } from "@claude-stats/core/pricing";
 import { compareEffort } from "@claude-stats/core/effort";
-import type { MessageEffortTotalRow } from "../store/index.js";
+import { groupCostOpts, type MessageEffortTotalRow } from "../store/index.js";
 
 export interface EffortBreakdownRow {
   /** Reasoning-effort tier as Claude Code wrote it; `null` = not reported. */
@@ -128,7 +128,7 @@ export function buildEffortBreakdown(rows: readonly MessageEffortTotalRow[]): Ef
         ephemeral5mCacheTokens: r.ephemeral_5m_cache_tokens,
         ephemeral1hCacheTokens: r.ephemeral_1h_cache_tokens,
       },
-      { longContext: r.long_context === 1 },
+      groupCostOpts(r),
     );
     if (priced.rateBasis === "first_party_fallback") anyFallbackRates = true;
     add(head, r, priced.cost);
@@ -201,6 +201,8 @@ export interface EffortMixInput {
   output_tokens?: number | null;
   cache_read_tokens?: number | null;
   cache_creation_tokens?: number | null;
+  speed?: string | null;
+  inference_geo?: string | null;
 }
 
 /**
@@ -219,7 +221,11 @@ export function buildEffortMix(messages: readonly EffortMixInput[]): EffortMixRo
       m.cache_creation_tokens ?? 0,
       undefined,
       undefined,
-      { longContext: isLongContextRequest(m.model ?? "unknown", m.input_tokens ?? 0, m.cache_read_tokens ?? 0, m.cache_creation_tokens ?? 0) },
+      {
+        longContext: isLongContextRequest(m.model ?? "unknown", m.input_tokens ?? 0, m.cache_read_tokens ?? 0, m.cache_creation_tokens ?? 0),
+        speed: m.speed ?? null,
+        inferenceGeo: m.inference_geo ?? null,
+      },
     ).cost;
     const t = tiers.get(effort) ?? { messages: 0, cost: 0 };
     t.messages += 1;

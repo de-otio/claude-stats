@@ -253,6 +253,7 @@
     "cacheDetail": "读取 {{read}}，创建 {{created}}（效率 {{efficiency}}%）",
     "costLine": "~{{cost}}（等价 API 费用）",
     "costUnknown": "（已排除来自未知模型的 {{tokens}} 个 Token）",
+    "fastModeUnpriced": "（此合计为下限：快速模式的消息在此按标准费率计价，数量：{{count}}）",
     "planROI": "{{planFee}}/月 套餐 → 获得 {{multiplier}}× API 价值",
     "planPerUnit": "{{costPerPrompt}}/提示词   {{costPerSession}}/会话",
     "velocityDetail": "{{tokPerMin}} Token/分   {{promptsPerHr}} 提示词/小时   {{outputPerPrompt}} 输出/提示词",

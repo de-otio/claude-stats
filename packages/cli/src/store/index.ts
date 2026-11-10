@@ -23,7 +23,7 @@ import type {
   OwnerTarget,
   ApiErrorEvent,
 } from "@claude-stats/core/types";
-import { estimateCost, longContextSqlExpr, longContextSqlExprHash } from "@claude-stats/core/pricing";
+import { estimateCost, isLongContextRequest, longContextSqlExpr, longContextSqlExprHash, type CostOptions } from "@claude-stats/core/pricing";
 import { isPlaceholderOutput } from "@claude-stats/core/hygiene";
 import { placeholderOutputSql } from "./placeholder-sql.js";
 import { requireTicketKey } from "@claude-stats/core/tickets";
@@ -45,6 +45,71 @@ function lcSql(alias: string): string {
     cacheRead: `${p}cache_read_tokens`,
     cacheCreation: `${p}cache_creation_tokens`,
   });
+}
+
+/**
+ * SQL (0/1): the row asked for US-only inference (`inference_geo = 'us'`), the
+ * one geo value with a price multiplier. Every other value (`global`,
+ * `not_available`, NULL, a partner region code) collapses to 0, so the extra
+ * GROUP BY dimension adds a group only where US-pinned traffic exists.
+ */
+function usGeoSql(alias: string): string {
+  const p = alias ? `${alias}.` : "";
+  return `CASE WHEN ${p}inference_geo = 'us' THEN 1 ELSE 0 END`;
+}
+
+/**
+ * SQL: the row's NON-standard `speed` (`fast`, or any value this build does not
+ * know), NULL for `standard` and absent. Same collapse rationale as `usGeoSql`;
+ * an unknown value is kept (not folded into NULL) so `estimateCost` can refuse
+ * it visibly instead of pricing it as standard.
+ */
+function speedClassSql(alias: string): string {
+  const p = alias ? `${alias}.` : "";
+  return `CASE WHEN ${p}speed IS NULL OR ${p}speed = 'standard' THEN NULL ELSE ${p}speed END`;
+}
+
+/**
+ * The `estimateCost` options for one grouped row: its long-context tier, its
+ * US-geo flag and its speed class. Every cost reader over `message_hourly` or
+ * the grouped `messages` reads passes this, so a new pricing dimension is added
+ * in one place. Rows from the rollup carry `speed_class: null` (the rollup has
+ * no `speed` key): a fast-mode row priced from it is priced as standard, which
+ * is why rollup-based totals carry the `fastModeUnpriced` disclosure.
+ */
+export function groupCostOpts(row: {
+  long_context: number;
+  us_geo: number;
+  speed_class: string | null;
+}): CostOptions {
+  return {
+    longContext: row.long_context === 1,
+    inferenceGeo: row.us_geo === 1 ? "us" : null,
+    speed: row.speed_class ?? null,
+  };
+}
+
+/**
+ * The `estimateCost` options for ONE message row: its long-context tier (from
+ * its own token counts), its `speed` and its `inference_geo`. The per-message
+ * counterpart of `groupCostOpts`. `speed` / `inference_geo` are optional only
+ * because `MessageRow` declares them so; every row type this module adds for a
+ * pricing read declares them required, so a SELECT that forgets them is a
+ * type error rather than a silent standard-rate price.
+ */
+export function rowCostOpts(row: {
+  model: string | null;
+  input_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  speed?: string | null;
+  inference_geo?: string | null;
+}): CostOptions {
+  return {
+    longContext: isLongContextRequest(row.model ?? "unknown", row.input_tokens, row.cache_read_tokens, row.cache_creation_tokens),
+    speed: row.speed ?? null,
+    inferenceGeo: row.inference_geo ?? null,
+  };
 }
 
 /**
@@ -2378,7 +2443,7 @@ export class Store {
       const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens, undefined, {
         ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
         ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
-      }, { longContext: row.long_context === 1 });
+      }, groupCostOpts(row));
       entry.cost += cost;
       entry.tokensByModel[row.model] = (entry.tokensByModel[row.model] ?? 0) + row.input_tokens + row.output_tokens;
       sessionCostMap.set(row.session_id, entry);
@@ -2439,6 +2504,8 @@ export class Store {
         m.model AS model,
         ${flag} AS flagged,
         ${lcSql("m")} AS long_context,
+        ${usGeoSql("m")} AS us_geo,
+        ${speedClassSql("m")} AS speed_class,
         COUNT(*) AS row_count,
         SUM(m.input_tokens) AS input_tokens,
         SUM(m.output_tokens) AS output_tokens,
@@ -2449,7 +2516,7 @@ export class Store {
       FROM messages m
       LEFT JOIN sessions ss ON ss.session_id = m.session_id
       WHERE ${this.messageWhereExists(f)} AND m.usage_counted = 1
-      GROUP BY m.model, flagged, long_context
+      GROUP BY m.model, flagged, long_context, us_geo, speed_class
     `;
     const stmt = this.db.prepare(sql);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2506,6 +2573,17 @@ export class Store {
     // includeCI/includeDeleted are session-scoped bounds too: the rollup has no
     // session dimension, so an explicit `false` must fall through to the raw
     // seek or the fast path would silently ignore the narrowing.
+    if (this.servedFromRollup(filters)) return this.getMessageTotalsFromRollup();
+    return this.getMessageTotalsRaw(filters);
+  }
+
+  /**
+   * True when `getMessageTotals(filters)` is served from the `message_hourly`
+   * rollup: a fully-unbounded request (no period, no session-scoped narrowing)
+   * and a fresh rollup. The single place the rule lives, so `getMessageTotals`
+   * and `getFastModeUnpriced` cannot disagree about which path priced a total.
+   */
+  private servedFromRollup(filters: MessageFilter): boolean {
     const fullyUnbounded =
       filters.since === undefined &&
       filters.until === undefined &&
@@ -2515,8 +2593,32 @@ export class Store {
       !filters.entrypoint &&
       filters.includeCI !== false &&
       filters.includeDeleted !== false;
-    if (fullyUnbounded && this.isMessageHourlyFresh()) return this.getMessageTotalsFromRollup();
-    return this.getMessageTotalsRaw(filters);
+    return fullyUnbounded && this.isMessageHourlyFresh();
+  }
+
+  /**
+   * Fast-mode disclosure for a ROLLUP-priced total. `message_hourly` has no
+   * `speed` key (adding one is a schema change, deferred to the transcript-capture
+   * migration), so a total served from it prices every fast-mode message at the
+   * standard rate, which is half the true cost on a model with a published fast
+   * rate. This returns how many messages in the window carry a non-standard
+   * `speed` (in practice `fast`), so the surface can say its total is a lower
+   * bound. `null` when there are none, and `null` when the total was NOT served
+   * from the rollup (the raw path groups by speed and prices it exactly). Same
+   * filter builder as `getMessageTotals`, so it describes the same window.
+   */
+  getFastModeUnpriced(filters: MessageFilter = {}): number | null {
+    if (!this.servedFromRollup(filters)) return null;
+    const f = this.buildMessageFilter(filters);
+    const sql = `
+      SELECT COUNT(*) AS n
+      FROM messages m
+      WHERE ${speedClassSql("m")} IS NOT NULL AND ${this.messageWhereExists(f)}
+    `;
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row = (stmt.get as (...args: any[]) => unknown)(...f.params) as { n: number } | undefined;
+    return row && row.n > 0 ? row.n : null;
   }
 
   /**
@@ -2531,6 +2633,11 @@ export class Store {
         model,
         effort,
         long_context,
+        -- Geo is a rollup key, so US-pinned traffic prices exactly. The rollup
+        -- has NO speed key: speed_class is NULL here, a fast-mode row prices as
+        -- standard, and the caller discloses the count (getFastModeUnpriced).
+        CASE WHEN inference_geo = 'us' THEN 1 ELSE 0 END AS us_geo,
+        NULL AS speed_class,
         SUM(input_tokens) AS input_tokens,
         SUM(output_tokens) AS output_tokens,
         SUM(cache_read_tokens) AS cache_read_tokens,
@@ -2543,7 +2650,7 @@ export class Store {
         0 AS ephemeral_1h_cache_tokens,
         SUM(msg_count) AS msg_count
       FROM message_hourly
-      GROUP BY model, effort, long_context
+      GROUP BY model, effort, long_context, us_geo
     `);
     return stmt.all() as unknown as MessageEffortTotalRow[];
   }
@@ -2690,6 +2797,8 @@ export class Store {
         (m.timestamp / ${Store.BUCKET_MS}) * ${Store.BUCKET_MS} AS bucket_start,
         m.model AS model,
         ${lcSql("m")} AS long_context,
+        ${usGeoSql("m")} AS us_geo,
+        ${speedClassSql("m")} AS speed_class,
         SUM(m.input_tokens) AS input_tokens,
         SUM(m.output_tokens) AS output_tokens,
         SUM(m.cache_read_tokens) AS cache_read_tokens,
@@ -2700,7 +2809,7 @@ export class Store {
         SUM(m.is_turn_start) AS prompt_count
       FROM messages m
       WHERE ${this.messageWhereExists(f)}
-      GROUP BY bucket_start, m.model, long_context
+      GROUP BY bucket_start, m.model, long_context, us_geo, speed_class
     `;
     const params = f.params;
     const stmt = this.db.prepare(sql);
@@ -2755,6 +2864,8 @@ export class Store {
         s.project_path AS project_path,
         m.model AS model,
         ${lcSql("m")} AS long_context,
+        ${usGeoSql("m")} AS us_geo,
+        ${speedClassSql("m")} AS speed_class,
         SUM(m.input_tokens) AS input_tokens,
         SUM(m.output_tokens) AS output_tokens,
         SUM(m.cache_read_tokens) AS cache_read_tokens,
@@ -2766,7 +2877,7 @@ export class Store {
       FROM messages m
       JOIN sessions s ON s.session_id = m.session_id
       WHERE ${this.messageWhereJoin(f)}
-      GROUP BY s.project_path, m.model, long_context
+      GROUP BY s.project_path, m.model, long_context, us_geo, speed_class
     `;
     const params = f.params;
     const stmt = this.db.prepare(sql);
@@ -2786,6 +2897,8 @@ export class Store {
         m.model,
         m.effort,
         ${lcSql("m")} AS long_context,
+        ${usGeoSql("m")} AS us_geo,
+        ${speedClassSql("m")} AS speed_class,
         SUM(m.input_tokens) AS input_tokens,
         SUM(m.output_tokens) AS output_tokens,
         SUM(m.cache_read_tokens) AS cache_read_tokens,
@@ -2795,7 +2908,7 @@ export class Store {
         COUNT(*) AS msg_count
       FROM messages m
       WHERE ${this.messageWhereExists(f)}
-      GROUP BY m.model, m.effort, long_context
+      GROUP BY m.model, m.effort, long_context, us_geo, speed_class
     `;
     const stmt = this.db.prepare(sql);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2828,6 +2941,8 @@ export class Store {
     const sql = `
       SELECT s.account_uuid AS account_uuid, m.model AS model,
         ${lcSql("m")} AS long_context,
+        ${usGeoSql("m")} AS us_geo,
+        ${speedClassSql("m")} AS speed_class,
         SUM(m.input_tokens) AS input_tokens,
         SUM(m.output_tokens) AS output_tokens,
         SUM(m.cache_read_tokens) AS cache_read_tokens,
@@ -2837,7 +2952,7 @@ export class Store {
       FROM messages m
       JOIN sessions s ON s.session_id = m.session_id
       WHERE ${this.messageWhereJoin(f)}
-      GROUP BY s.account_uuid, m.model, long_context
+      GROUP BY s.account_uuid, m.model, long_context, us_geo, speed_class
     `;
     const stmt = this.db.prepare(sql);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3859,6 +3974,8 @@ export class Store {
       const stmt = this.db.prepare(`
         SELECT session_id, model,
           ${lcSql("")} AS long_context,
+          ${usGeoSql("")} AS us_geo,
+          ${speedClassSql("")} AS speed_class,
           SUM(input_tokens) AS input_tokens,
           SUM(output_tokens) AS output_tokens,
           SUM(cache_read_tokens) AS cache_read_tokens,
@@ -3867,7 +3984,7 @@ export class Store {
           SUM(ephemeral_1h_cache_tokens) AS ephemeral_1h_cache_tokens
         FROM messages
         WHERE session_id IN (${placeholders})${boundAnd}
-        GROUP BY session_id, model, long_context
+        GROUP BY session_id, model, long_context, us_geo, speed_class
       `);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rows = (stmt.all as (...args: any[]) => unknown[])(...batch, ...boundParams) as SessionMessageTotalRow[];
@@ -3889,7 +4006,8 @@ export class Store {
       const batch = uuids.slice(i, i + 500);
       const placeholders = batch.map(() => "?").join(",");
       const stmt = this.db.prepare(`
-        SELECT uuid, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens
+        SELECT uuid, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+          speed, inference_geo
         FROM messages
         WHERE uuid IN (${placeholders})
       `);
@@ -4018,7 +4136,8 @@ export class Store {
              m.cache_read_tokens, m.cache_creation_tokens,
              m.ephemeral_5m_cache_tokens, m.ephemeral_1h_cache_tokens,
              m.tool_error_count, m.tools,
-             m.claude_version, m.stop_reason, s.is_subagent, m.effort
+             m.claude_version, m.stop_reason, s.is_subagent, m.effort,
+             m.speed, m.inference_geo
       FROM messages m
       JOIN sessions s ON s.session_id = m.session_id
       WHERE ${this.messageWhereJoin(f)}
@@ -4073,7 +4192,7 @@ export class Store {
              m.input_tokens, m.output_tokens,
              m.cache_read_tokens, m.cache_creation_tokens,
              m.ephemeral_5m_cache_tokens, m.ephemeral_1h_cache_tokens,
-             m.skill, m.effort,
+             m.skill, m.effort, m.speed, m.inference_geo,
              s.is_subagent, s.agent_type, s.spawn_depth
       FROM messages m
       JOIN sessions s ON s.session_id = m.session_id
@@ -4554,7 +4673,8 @@ export class Store {
       // nothing and keeps the list honest.
       const sql = `SELECT m.uuid, m.session_id, m.model, m.input_tokens, m.output_tokens,
           m.cache_read_tokens, m.cache_creation_tokens, m.thinking_blocks, m.tools,
-          m.prompt_text, m.timestamp, m.stop_reason, m.thinking_tokens, m.usage_counted
+          m.prompt_text, m.timestamp, m.stop_reason, m.thinking_tokens, m.usage_counted,
+          m.speed, m.inference_geo
         FROM messages m JOIN sessions s ON m.session_id = s.session_id
         ${sessionWhere} AND m.usage_counted = 1
         ORDER BY (m.input_tokens + m.output_tokens + m.cache_creation_tokens) DESC LIMIT ?`;
@@ -4857,7 +4977,7 @@ export class Store {
           ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
           ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
         },
-        { longContext: row.long_context === 1 },
+        groupCostOpts(row),
       );
       costMap.set(row.session_id, current + cost);
     }
@@ -4891,7 +5011,8 @@ export class Store {
 
     const where = `WHERE ${conditions.join(" AND ")}`;
     const sql = `SELECT m.uuid, m.session_id, m.model, m.input_tokens, m.output_tokens,
-        m.cache_read_tokens, m.cache_creation_tokens, m.tools, s.project_path
+        m.cache_read_tokens, m.cache_creation_tokens, m.tools, s.project_path,
+        m.speed, m.inference_geo
       FROM messages m JOIN sessions s ON m.session_id = s.session_id
       ${where}
       ORDER BY (m.input_tokens + m.output_tokens) DESC`;
@@ -5069,6 +5190,10 @@ export interface SessionMessageTotalRow {
    *  `{ longContext: row.long_context === 1 }` to `estimateCost`. A model has up
    *  to two rows per session: one per tier. */
   long_context: number;
+  /** 1 when these are US-pinned requests (`inference_geo = 'us'`); see `groupCostOpts`. */
+  us_geo: number;
+  /** The group's non-standard `speed` (`fast`, ...), null for standard/absent; see `groupCostOpts`. */
+  speed_class: string | null;
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;
@@ -5121,6 +5246,11 @@ export interface MessageTotalRow {
    *  to two rows per group: one per tier. Token readers sum across both; cost
    *  readers price each row. */
   long_context: number;
+  /** 1 when these are US-pinned requests (`inference_geo = 'us'`); pass via `groupCostOpts`. */
+  us_geo: number;
+  /** Non-standard `speed` of the group (`fast`, ...), null for standard/absent, and always
+   *  null from the rollup (no `speed` key; see `getFastModeUnpriced`). Pass via `groupCostOpts`. */
+  speed_class: string | null;
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;
@@ -5141,6 +5271,10 @@ export interface PlaceholderTotalRow {
   flagged: number;
   /** 1 when the group's requests price at the model's long-context tier, else 0. */
   long_context: number;
+  /** 1 when the group's requests are US-pinned, else 0; see `groupCostOpts`. */
+  us_geo: number;
+  /** Non-standard `speed` of the group, null for standard/absent; see `groupCostOpts`. */
+  speed_class: string | null;
   row_count: number;
   input_tokens: number;
   output_tokens: number;
@@ -5162,10 +5296,12 @@ export interface MessageEffortTotalRow extends MessageTotalRow {
 }
 
 /**
- * Collapse (model, effort) rows to one row per (model, long-context tier):
- * token sums add, so for every model with no tier the result equals the
- * pre-V26 per-model `getMessageTotals`. A model with a long-context tier keeps
- * two rows (`long_context` 0 and 1) because each prices at its own rates;
+ * Collapse (model, effort) rows to one row per (model, long-context tier, US
+ * geo, speed class): token sums add, so for every model with no tier, and a
+ * store with no US-pinned or fast-mode rows, the result equals the pre-V26
+ * per-model `getMessageTotals`. A model with a long-context tier keeps two rows
+ * (`long_context` 0 and 1), and US-pinned or fast-mode traffic its own rows,
+ * because each prices at its own rates;
  * summing cost over the rows gives the model's cost, and a caller that DISPLAYS
  * one entry per model must add the two rows' costs under the one model key.
  * First-seen order is kept.
@@ -5173,7 +5309,7 @@ export interface MessageEffortTotalRow extends MessageTotalRow {
 export function foldTotalsByModel(rows: readonly MessageEffortTotalRow[]): MessageTotalRow[] {
   const byModel = new Map<string, MessageTotalRow>();
   for (const r of rows) {
-    const key = `${r.model ?? ""}\u0000${r.model === null ? "n" : "s"}\u0000${r.long_context}`;
+    const key = `${r.model ?? ""}\u0000${r.model === null ? "n" : "s"}\u0000${r.long_context}\u0000${r.us_geo}\u0000${r.speed_class ?? ""}`;
     const acc = byModel.get(key);
     if (acc) {
       acc.input_tokens += r.input_tokens;
@@ -5186,6 +5322,8 @@ export function foldTotalsByModel(rows: readonly MessageEffortTotalRow[]): Messa
       byModel.set(key, {
         model: r.model,
         long_context: r.long_context,
+        us_geo: r.us_geo,
+        speed_class: r.speed_class,
         input_tokens: r.input_tokens,
         output_tokens: r.output_tokens,
         cache_read_tokens: r.cache_read_tokens,
@@ -5220,6 +5358,10 @@ export interface AccountModelTotalRow {
   model: string;
   /** See `MessageTotalRow.long_context`. */
   long_context: number;
+  /** See `MessageTotalRow.us_geo`. */
+  us_geo: number;
+  /** See `MessageTotalRow.speed_class`. */
+  speed_class: string | null;
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;
@@ -5235,6 +5377,10 @@ export interface MessageCostInputRow {
   output_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+  /** `messages.speed` (V23); null = not reported. */
+  speed: string | null;
+  /** `messages.inference_geo`; null = not reported. */
+  inference_geo: string | null;
 }
 
 export interface EfficiencyMessageRow {
@@ -5288,6 +5434,10 @@ export interface HygieneMessageStoreRow {
   is_subagent: boolean;
   /** `messages.effort` (#125); null = Claude Code did not report one. */
   effort: string | null;
+  /** `messages.speed` (V23); null = not reported. Priced by `estimateCost`. */
+  speed: string | null;
+  /** `messages.inference_geo`; null = not reported. Priced by `estimateCost`. */
+  inference_geo: string | null;
 }
 
 /**
@@ -5308,6 +5458,10 @@ export interface AgentCostMessageStoreRow {
   skill: string | null;
   /** `messages.effort`; null = not reported (#125). */
   effort: string | null;
+  /** `messages.speed` (V23); null = not reported. */
+  speed: string | null;
+  /** `messages.inference_geo`; null = not reported. */
+  inference_geo: string | null;
   /** `sessions.is_subagent`, 0/1. */
   is_subagent: number;
   /** `sessions.agent_type` (V25); null = not recorded. */
@@ -5413,6 +5567,10 @@ export interface SpendingMessageRow {
   thinking_tokens: number | null;
   /** Always 1 here; the SELECT filters to carriers. Present so readers need not assume. */
   usage_counted: number;
+  /** `messages.speed` (V23); null = not reported. */
+  speed: string | null;
+  /** `messages.inference_geo`; null = not reported. */
+  inference_geo: string | null;
 }
 
 export interface SpendingProjectRow {
@@ -5460,4 +5618,8 @@ export interface McpMessageRow {
   cache_creation_tokens: number;
   tools: string;
   project_path: string;
+  /** `messages.speed` (V23); null = not reported. */
+  speed: string | null;
+  /** `messages.inference_geo`; null = not reported. */
+  inference_geo: string | null;
 }

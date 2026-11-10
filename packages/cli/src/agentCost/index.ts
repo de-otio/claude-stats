@@ -91,7 +91,11 @@ function toAgentCostRow(row: AgentCostMessageStoreRow, overrides: RateOverrides 
         ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
         ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
       },
-      { longContext: isLongContextRequest(row.model, input, cacheRead, cacheCreation) },
+      {
+        longContext: isLongContextRequest(row.model, input, cacheRead, cacheCreation),
+        speed: row.speed,
+        inferenceGeo: row.inference_geo,
+      },
     );
     cost = r.cost;
     priced = r.known;

@@ -32,7 +32,7 @@ import {
   getPricingDriftFindings,
 } from "@claude-stats/core/pricing";
 import type { CostBasis } from "@claude-stats/core/types";
-import { foldTotalsByModel, type MessageFilter, type MessageTotalRow, type Store } from "../store/index.js";
+import { foldTotalsByModel, groupCostOpts, type MessageFilter, type MessageTotalRow, type Store } from "../store/index.js";
 import { REPAIR_DEDUPE_COMPLETED_KEY } from "../repair/dedupe.js";
 
 // ─── cost basis ──────────────────────────────────────────────────────────────
@@ -231,7 +231,7 @@ export function collectPricingDrift(
       mt.cache_creation_tokens,
       overrides,
       { ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens, ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens },
-      { longContext: mt.long_context === 1 },
+      groupCostOpts(mt),
     );
     if (r.known) continue;
     const tokens = mt.input_tokens + mt.output_tokens + mt.cache_read_tokens + mt.cache_creation_tokens;

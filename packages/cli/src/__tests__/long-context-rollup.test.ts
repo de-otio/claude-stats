@@ -77,7 +77,11 @@ function line(spec: Spec): Record<string, unknown> {
         cache_creation_input_tokens: spec.cacheCreation ?? 0,
         cache_read_input_tokens: spec.cacheRead ?? 0,
         cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 0 },
-        inference_geo: "us",
+        // "global" (the first-party default), NOT "us": a US-pinned request
+        // carries the 1.1x data-residency multiplier, which the hand-computed
+        // dollar figures below do not include. The US x tier composition has
+        // its own tests (pricing-fast-geo.test.ts).
+        inference_geo: "global",
       },
     },
   };

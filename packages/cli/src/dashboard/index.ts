@@ -2,7 +2,7 @@
  * Dashboard — builds pre-aggregated JSON for visualization tools.
  * See plans/11-dashboard-export.md for design.
  */
-import { foldTotalsByModel, type Store, type SessionRow, type MessageFilter, type SpendingMessageRow } from "../store/index.js";
+import { foldTotalsByModel, groupCostOpts, rowCostOpts, type Store, type SessionRow, type MessageFilter, type SpendingMessageRow } from "../store/index.js";
 import {
   buildEffortBreakdown,
   type EffortCoverage,
@@ -141,6 +141,17 @@ export interface DashboardSummary {
    * Optional for the same fixture reason as `costBasis`.
    */
   placeholderOutputShare?: PlaceholderOutputShare | null;
+  /**
+   * Fast-mode disclosure for a total priced from the hourly rollup (an
+   * unbounded period). The rollup has no `speed` key, so it prices every
+   * fast-mode message at the standard rate, half the true cost on a model with
+   * a published fast rate. This is the number of such messages in the window,
+   * i.e. `estimatedCost` and every money figure derived from the rollup are a
+   * LOWER BOUND by that many messages' fast-mode premium. `null` when there
+   * are none, and `null` when the period is bounded (priced per message, exact).
+   * Removed once the rollup carries a `speed` key.
+   */
+  fastModeUnpriced?: number | null;
   totalDurationMs: number;
   // Plan ROI
   planFee: number;
@@ -1010,7 +1021,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     const { cost } = estimateCost(b.model, b.input_tokens, b.output_tokens, b.cache_read_tokens, b.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: b.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: b.ephemeral_1h_cache_tokens,
-    }, { longContext: b.long_context === 1 });
+    }, groupCostOpts(b));
     const dateStr = b.bucket_start != null ? dayFmt.format(new Date(b.bucket_start)) : "unknown";
     const dayEntry = dayMap.get(dateStr) ?? { sessions: 0, prompts: 0, ...emptyTokens() };
     dayEntry.inputTokens += b.input_tokens;
@@ -1039,7 +1050,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     const { cost } = estimateCost(p.model, p.input_tokens, p.output_tokens, p.cache_read_tokens, p.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: p.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: p.ephemeral_1h_cache_tokens,
-    }, { longContext: p.long_context === 1 });
+    }, groupCostOpts(p));
     const entry = projectMap.get(p.project_path) ?? {
       sessions: 0, prompts: 0, thinkingBlocks: 0,
       workProfile: { exploring: 0, editing: 0, running: 0, researching: 0, planning: 0 },
@@ -1081,6 +1092,8 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
   const costBasis = costBasisFor(store, msgFilter);
   // R1 disclosure — its own raw read over the same window; never feeds a total.
   const placeholderOutputShare = placeholderOutputShareFor(store, msgFilter);
+  // Fast-mode disclosure: non-null only when `messageTotals` came from the rollup.
+  const fastModeUnpriced = store.getFastModeUnpriced(msgFilter);
 
   // ── Fill empty day buckets for the full period range so charts always show
   //    all days in the selected window, not just days that have sessions ────
@@ -1265,7 +1278,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
     const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
-    }, { longContext: mt.long_context === 1 });
+    }, groupCostOpts(mt));
     entry.cost += cost;
     const tokens = mt.input_tokens + mt.output_tokens;
     if (tokens > entry.topModelTokens) {
@@ -1422,7 +1435,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens, undefined, {
         ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
         ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
-      }, { longContext: mt.long_context === 1 });
+      }, groupCostOpts(mt));
       entry.cost += cost;
       // Use mt.model as-is (matching the top-level byModel grouping key) so the
       // per-account split reconciles model-for-model with the headline split.
@@ -1714,6 +1727,7 @@ export function buildDashboard(store: Store, opts: ReportOptions): DashboardData
       costBasis,
       unpricedModels,
       placeholderOutputShare,
+      fastModeUnpriced,
       totalDurationMs,
       planFee,
       planMultiplier,
@@ -1906,7 +1920,7 @@ export function attachInsights(
             ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
             ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
           },
-          { longContext: mt.long_context === 1 },
+          groupCostOpts(mt),
         ).cost;
       }
       // Zero means the preceding window had no recorded spend, which is not a
@@ -2641,7 +2655,7 @@ function buildSpendingSection(
     const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
-    }, { longContext: row.long_context === 1 });
+    }, groupCostOpts(row));
     grandTotal += cost;
     // report.byModel has one row per (model, long-context tier); the output
     // keeps one entry per model.
@@ -2670,7 +2684,7 @@ function buildSpendingSection(
       a.message.input_tokens, a.message.output_tokens,
       a.message.cache_read_tokens, a.message.cache_creation_tokens,
       undefined, undefined,
-      { longContext: isLongContextRequest(a.message.model ?? "unknown", a.message.input_tokens, a.message.cache_read_tokens, a.message.cache_creation_tokens) },
+      rowCostOpts(a.message),
     );
     const flags: string[] = [];
     if (a.timesAvg > 2) flags.push("OUTLIER");
@@ -3028,7 +3042,7 @@ function buildContextAnalysis(
         ephemeral1hCacheTokens: 0,
         toolErrorCount: 0,
         tools: [],
-        outputPlaceholder: false, effort: null, isSubagent: false, claudeVersion: null, // context-position math only; output is not read
+        outputPlaceholder: false, effort: null, isSubagent: false, claudeVersion: null, speed: null, inferenceGeo: null, // context-position math only; output is not read
       };
       const position = (perSessionCount.get(msg.session_id) ?? 0) + 1;
       perSessionCount.set(msg.session_id, position);

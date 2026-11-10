@@ -3,7 +3,7 @@
  * Timestamps are stored as UTC; timezone conversion happens here at report time.
  * See doc/analysis/02-collection-strategy.md — Timezone Handling.
  */
-import { foldTotalsByModel, type Store, type SessionRow, type MessageRow, type StatusInfo, type SpendingReport } from "../store/index.js";
+import { foldTotalsByModel, groupCostOpts, rowCostOpts, type Store, type SessionRow, type MessageRow, type StatusInfo, type SpendingReport } from "../store/index.js";
 import type { SearchResult } from "../history/index.js";
 import type { DailyDigest, DailyDigestItem } from "../recap/index.js";
 import type { CostPerTaskReport } from "../cost-per-task/index.js";
@@ -571,7 +571,7 @@ export function printSummary(store: Store, opts: ReportOptions = {}): void {
         ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
         ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
       },
-      { longContext: mt.long_context === 1 },
+      groupCostOpts(mt),
     );
     if (result.known) {
       totalCost += result.cost;
@@ -588,6 +588,12 @@ export function printSummary(store: Store, opts: ReportOptions = {}): void {
   }
   console.log(costLine);
   printCostBasisLine(costBasisLabel(costBasisFor(store, msgFilter), t));
+  // A total read from the hourly rollup prices fast-mode messages at the standard
+  // rate (the rollup has no `speed` key); say how many, so the figure reads as a floor.
+  const fastModeUnpriced = store.getFastModeUnpriced(msgFilter);
+  if (fastModeUnpriced !== null) {
+    console.log(`${t("cli:report.labelCost").padEnd(9)}: ${t("cli:report.fastModeUnpriced", { count: fastModeUnpriced })}`);
+  }
 
   // Plan ROI — only shown when a plan fee is configured
   const planFee = opts.planFee ?? 0;
@@ -764,7 +770,7 @@ export function printSpendingReport(store: Store, opts: SpendingOptions = {}): v
     const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
-    }, { longContext: row.long_context === 1 });
+    }, groupCostOpts(row));
     grandTotal += cost;
     // byModel carries one row per (model, long-context tier); show one line per model.
     const existing = modelCosts.find((mc) => mc.model === row.model);
@@ -805,7 +811,7 @@ export function printSpendingReport(store: Store, opts: SpendingOptions = {}): v
     const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
-    }, { longContext: mt.long_context === 1 });
+    }, groupCostOpts(mt));
     sessionCostMap.set(mt.session_id, (sessionCostMap.get(mt.session_id) ?? 0) + cost);
   }
 
@@ -859,7 +865,7 @@ export function printSpendingReport(store: Store, opts: SpendingOptions = {}): v
         a.message.input_tokens, a.message.output_tokens,
         a.message.cache_read_tokens, a.message.cache_creation_tokens,
         undefined, undefined,
-        { longContext: isLongContextRequest(a.message.model ?? "unknown", a.message.input_tokens, a.message.cache_read_tokens, a.message.cache_creation_tokens) },
+        rowCostOpts(a.message),
       );
       const modelShort = a.message.model?.replace("claude-", "") ?? "unknown";
       console.log(`  ${i + 1}. "${preview}${a.message.prompt_text && a.message.prompt_text.length > 60 ? "\u2026" : ""}"  \u2014 ${formatTokens(a.totalTokens)} tokens (${formatCost(cost)})  ${modelShort}`);
@@ -1207,7 +1213,7 @@ export function printSessionList(store: Store, opts: ReportOptions = {}): void {
     const { cost } = estimateCost(mt.model, mt.input_tokens, mt.output_tokens, mt.cache_read_tokens, mt.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: mt.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: mt.ephemeral_1h_cache_tokens,
-    }, { longContext: mt.long_context === 1 });
+    }, groupCostOpts(mt));
     sessionCostMap.set(mt.session_id, prev + cost);
   }
 

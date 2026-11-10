@@ -3,8 +3,8 @@
  * and anomaly detection.
  * See doc/analysis/09-token-spending-analysis.md for design.
  */
-import { estimateCost, isLongContextRequest } from "@claude-stats/core/pricing";
-import type { SpendingMessageRow, McpMessageRow } from "./store/index.js";
+import { estimateCost } from "@claude-stats/core/pricing";
+import { rowCostOpts, type SpendingMessageRow, type McpMessageRow } from "./store/index.js";
 
 export interface ToolCostEntry {
   tool: string;
@@ -58,7 +58,7 @@ export function attributeToolCosts(messages: SpendingMessageRow[]): ToolCostEntr
       msg.cache_creation_tokens,
       undefined,
       undefined,
-      { longContext: isLongContextRequest(msg.model ?? "unknown", msg.input_tokens, msg.cache_read_tokens, msg.cache_creation_tokens) },
+      rowCostOpts(msg),
     );
 
     for (const tool of tools) {
@@ -207,7 +207,7 @@ export function aggregateMcpServerUsage(rows: McpMessageRow[]): McpServerUsage[]
       row.input_tokens, row.output_tokens,
       row.cache_read_tokens, row.cache_creation_tokens,
       undefined, undefined,
-      { longContext: isLongContextRequest(row.model ?? "unknown", row.input_tokens, row.cache_read_tokens, row.cache_creation_tokens) },
+      rowCostOpts(row),
     );
 
     for (const tool of mcpTools) {

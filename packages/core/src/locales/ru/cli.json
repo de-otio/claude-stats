@@ -253,6 +253,7 @@
     "cacheDetail": "{{read}} чтений, {{created}} создано ({{efficiency}}% эффективность)",
     "costLine": "~{{cost}} (эквивалентная стоимость API)",
     "costUnknown": "({{tokens}} токенов от неизвестных моделей исключено)",
+    "fastModeUnpriced": "(эта сумма — нижняя граница: сообщения в быстром режиме здесь считаются по стандартному тарифу, количество: {{count}})",
     "planROI": "План {{planFee}}/мес → получено API-ценности в {{multiplier}}×",
     "planPerUnit": "{{costPerPrompt}}/запрос   {{costPerSession}}/сессия",
     "velocityDetail": "{{tokPerMin}} ток/мин   {{promptsPerHr}} запросов/час   {{outputPerPrompt}} вывод/запрос",
