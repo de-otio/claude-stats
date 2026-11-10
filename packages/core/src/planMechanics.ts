@@ -20,8 +20,14 @@
  * {@link staleWarningFor} otherwise.
  */
 
-/** ISO date the plan-mechanics snapshot below was last verified. */
-export const PLAN_MECHANICS_VERIFIED_DATE = "2026-07-03";
+/**
+ * ISO date the plan-mechanics snapshot below was last verified. The seat ranges,
+ * seat prices and benchmarks were transcribed 2026-07-03; the Fable allowance
+ * (`FABLE_ALLOWANCE`) was read off the launch-offers page 2026-11-10. The date
+ * covers the newest claim, as the dated-constant discipline of `pricing.ts`
+ * does; each block names its own date.
+ */
+export const PLAN_MECHANICS_VERIFIED_DATE = "2026-11-10";
 
 // ─── Source references (Anthropic support center / pricing) ──────────────────
 // Cited per-figure below. Transcribed from analysis 02; do NOT re-fetch during
@@ -40,6 +46,7 @@ const SRC = {
   consumptionGuide:
     "https://support.claude.com/en/articles/14782391-claude-enterprise-consumption-guide",
   claudeCodeTeamEnt: "https://www.anthropic.com/news/claude-code-on-team-and-enterprise",
+  fableLaunchOffers: "https://support.claude.com/en/articles/17506494",
 } as const;
 
 // ─── Claim-kind labelling (analysis 06) ──────────────────────────────────────
@@ -193,6 +200,55 @@ export const ENTERPRISE_ADDS = [
     source: SRC.claudeCodeTeamEnt,
   },
 ] as const;
+
+// ─── Fable 5.2 launch allowance (dated, expires) ─────────────────────────────
+
+/**
+ * The Fable allowance that came with Claude Fable 5.2 (launched 2026-11-09),
+ * as `verified-fact` claims read off the launch-offers page on 2026-11-10. It
+ * EXPIRES: from launch through 2026-11-16 11:59 pm PT. After that date Fable
+ * runs on usage credits on Pro and standard Team seats, and a consumer must not
+ * present these claims as current (compare `validThroughIso` to today).
+ *
+ * Quoted from the page:
+ *  - Pro and standard Team seats: "All Fable models included in your plan for
+ *    one week, up to 50% of your weekly usage limits, plus one Fable limit
+ *    reset".
+ *  - Max, Ultra, Team premium and legacy Enterprise premium seats: "One to
+ *    three Fable limit resets, depending on how long you've subscribed".
+ *  - "After you use that 50%, or once the week ends, Fable usage is billed to
+ *    usage credits if you have them turned on."
+ *  - Not available on the Free plan or standard seats on legacy seat-based
+ *    Enterprise plans.
+ *
+ * Source: fableLaunchOffers. Not modelled: how many resets a given subscriber
+ * gets (it depends on subscription length, which no local data records).
+ */
+export const FABLE_ALLOWANCE = {
+  verifiedDate: "2026-11-10",
+  /** Last day the allowance applies (inclusive, 11:59 pm PT). */
+  validThroughIso: "2026-11-16",
+  source: SRC.fableLaunchOffers,
+  claims: [
+    {
+      plans: ["pro", "team_standard"],
+      claim:
+        "All Fable models are included in the plan for one week, up to 50% of the weekly usage limits, plus one Fable limit reset.",
+      kind: "verified-fact",
+    },
+    {
+      plans: ["max", "ultra", "team_premium", "enterprise_premium_legacy"],
+      claim: "One to three Fable limit resets, depending on how long the account has been subscribed.",
+      kind: "verified-fact",
+    },
+    {
+      plans: ["pro", "max", "ultra", "team_standard", "team_premium"],
+      claim:
+        "After the 50% is used, or once the week ends, Fable usage is billed to usage credits if they are turned on; on Pro and standard Team seats Fable returns to running on usage credits when the week ends.",
+      kind: "verified-fact",
+    },
+  ],
+} as const;
 
 // ─── Staleness contract ──────────────────────────────────────────────────────
 
