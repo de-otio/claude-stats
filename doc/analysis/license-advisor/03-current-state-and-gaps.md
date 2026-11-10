@@ -66,7 +66,7 @@ an observation timeline, an `accounts` table (schema v13: `account_uuid`,
 `account_observations`, and `account reattribute` / OTEL ingest commands. The
 `get_cost_per_task` MCP tool already accepts an `account` filter
 (`packages/cli/src/mcp/index.ts`, documented in its input schema as "Filter to
-a specific account UUID"). Section [07](07-rollout-plan.md) treats this as a
+a specific account UUID"). This feature treats it as a
 hard dependency, not a nice-to-have.
 
 ### Cost modeling already separates three things this feature needs kept apart
@@ -160,4 +160,4 @@ whenever either copy is touched, independent of this feature.
 The individual column is a small, well-scoped extension of code that already
 works. The company column is a genuinely new capability. Both are needed for
 the full use case in [01](01-problem-and-use-case.md), but they don't need to
-ship together — see [07](07-rollout-plan.md).
+ship together.

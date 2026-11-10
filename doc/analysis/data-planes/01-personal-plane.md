@@ -57,9 +57,8 @@ into its local SQLite by the rules the data already supports:
   `updated_at`.
 - **Monotonic counters** (token totals, prompt counts) — `max()`.
 
-These are exactly the CRDT semantics [team-dashboard/01 Option
-B](../team-dashboard/01-sync-options.md) identified as "best long-term" with
-cr-sqlite. Per-device shards get us there with **no native dependency**;
+These are exactly the CRDT semantics the earlier team-dashboard sync analysis
+(its Option B) identified as "best long-term" with cr-sqlite. Per-device shards get us there with **no native dependency**;
 cr-sqlite is the finer-grained (per-column) upgrade if/when wanted.
 
 Because merge is convergent, a partial sync, a paused cloud client, or two
@@ -169,8 +168,8 @@ Same mechanism, different blast radius for the *decision*:
 
 ## 8. The archive in the personal plane
 
-This refines the [transcript-archive plan](../../../plans/transcript-archive/plan.md)'s
-Phase-2 rule. The archive is the most sensitive class, so:
+This refines the opt-in transcript archive's rule for leaving the machine
+(see [05-privacy-security.md](../05-privacy-security.md)). The archive is the most sensitive class, so:
 
 - It **may** leave the machine — but **only via the personal plane**, where
   encryption is offered and defaulted-on for third-party targets. Backing up the

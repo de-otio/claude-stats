@@ -2,8 +2,7 @@
 
 ## 1.1 The numbers
 
-The original frontend spec
-([frontend/CHECKLIST.md](../frontend/CHECKLIST.md)) described "a top summary
+The original frontend spec described "a top summary
 bar and six canvases", estimated at ~200–400 lines. Today:
 
 | Dimension | Spec (v1) | Now |
@@ -55,12 +54,11 @@ page's words. The at-a-glance layer is the least-invested layer of the page.
 
 ## 1.4 Finding 3 — the redesign thesis exists, implemented but never promoted
 
-[value-per-cost/06-what-to-build.md](../value-per-cost/06-what-to-build.md)
-already specifies the reframe: efficiency frontier as the headline,
+The value-per-cost analysis already specifies the reframe: efficiency frontier as the headline,
 cost-per-successful-task demoted to a layer inside it, value strictly as an
 optional user-declared layer. The frontier card and calibration view were
 *built* — and placed mid-way down the Spending tab, below the card they were
-supposed to demote. [deep-analysis/README.md](../deep-analysis/README.md)
+supposed to demote. The earlier deep-analysis work
 supplies the interaction model ("a mentor, not a dashboard: observes,
 notices, compares, advises, follows up"). The redesign is therefore mostly
 **promotion and consolidation of existing pieces**, not invention.
@@ -94,7 +92,7 @@ notices, compares, advises, follows up"). The redesign is therefore mostly
   outputs as they land.
 - **One renderer, two hosts** (served HTML + webview with a message bridge,
   `extension/panel.ts:526-660`) — cheap to maintain, no build step; the
-  architecture decision from [frontend/](../frontend/) stands.
+  architecture decision from the original frontend option study stands.
 - The **recommendations engine** — the mentor seed.
 - The guru surface itself: 28 charts is not a defect for the guru persona;
   its *location* (the front door) is the defect.
@@ -104,7 +102,7 @@ notices, compares, advises, follows up"). The redesign is therefore mostly
 `packages/frontend/` (27 pages) is largely a mock-driven shell
 (`frontend/src/hooks/useApi.ts:9` — mock data pending backend wiring), and
 half its pages are gamification (challenges, achievements, leaderboards) per
-[team-dashboard/04](../team-dashboard/04-gamification.md) — orthogonal to a
+the earlier team-dashboard gamification design — orthogonal to a
 cost/ROI redesign. Scope discipline: this folder redesigns the **local
 dashboard**; the SPA inherits the same question-shaped IA later, when the
 org-plane features ([ticket-attribution/03](../ticket-attribution/03-org-plane-and-backend.md))

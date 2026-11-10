@@ -52,8 +52,6 @@ every "present / absent / constant" claim was verified, not assumed.
    `accountUuid`/`organizationUuid`/`subscriptionType` null fields.
 5. [Reliability, validation and limitations](05-reliability-validation-and-limitations.md)
    — confidence scoring, cross-checks, failure modes, privacy.
-6. [Recommendation and rollout](06-recommendation-and-rollout.md) — a phased
-   plan, lowest-effort-first, and the immediate plan-tier win.
 7. [Multi-surface accounts](07-multi-surface-accounts.md) — **important
    correction:** the CLI and the IDE extension log in independently and can be on
    different accounts at once; the extension's account is not on disk. Scopes the
@@ -65,7 +63,7 @@ every "present / absent / constant" claim was verified, not assumed.
    — signal inventory (account is not in transcripts; telemetry/backup/userID are
    dead) and a **seed-and-propagate** method for the *actual-account* view:
    project-affinity + the per-account, cross-surface 5-hour window propagate a few
-   seeds across ~960 sessions, including the 26% non-CLI ones.
+   seeds across a whole history, including the sessions that did not come from the CLI.
 10. [Cost-ownership: guided project classification](10-cost-ownership-guided-classification.md)
    — **the primary plan for cost attribution.** Cost belongs to the subscription
    that *owns* a project (a per-user policy, not an inference, and independent of
@@ -75,16 +73,15 @@ every "present / absent / constant" claim was verified, not assumed.
 
 ## TL;DR verdict
 
-| Mechanism | Per-account? | Reliability | Effort | When |
-|---|---|---|---|---|
-| `oauthAccount` observation timeline | yes (**CLI surface only**) | high (forward) | low | Phase 1 |
-| Anchor pins (`projects` map, live `sessions/`) | yes (CLI) | high (forward) | low | Phase 2 |
-| OpenTelemetry ingestion | yes (**all surfaces**) | authoritative | medium (opt-in) | Phase 3 |
-| IDE-extension account from disk | — | **impossible** (encrypted SecretStorage) | — | needs OTEL / label |
-| Legacy switch-point backfill | yes | low–medium | medium | Phase 2 |
-| `service_tier` / `inference_geo` clustering | weak | **not usable here** (constant) | — | rejected |
+| Mechanism | Per-account? | Reliability |
+|---|---|---|
+| `oauthAccount` observation timeline | yes (**CLI surface only**) | high (forward) |
+| Anchor pins (`projects` map, live `sessions/`) | yes (CLI) | high (forward) |
+| OpenTelemetry ingestion | yes (**all surfaces**) | authoritative (opt-in) |
+| IDE-extension account from disk | — | **impossible** (encrypted SecretStorage) |
+| Legacy switch-point backfill | yes | low–medium |
+| `service_tier` / `inference_geo` clustering | weak | **not usable here** (constant) |
 
 The plan-tier sub-question ("is a work seat premium or standard?") is answered
-**directly, today** by one field — `oauthAccount.organizationRateLimitTier` —
-no attribution required. See
-[06](06-recommendation-and-rollout.md#immediate-win).
+**directly** by one field — `oauthAccount.organizationRateLimitTier` — no
+attribution required.

@@ -21,7 +21,7 @@ over *activity*:
 | 47 prompts sent           | Shipped auth-refactor PR (12 commits, 8 files) |
 | 142 minutes of session time | Diagnosed the cache-miss bug; root cause documented |
 | 23k output tokens         | Migrated three integration tests off the mock DB |
-| 4 sessions in `claude-stats` | Drafted plan-15 and got it reviewed |
+| 4 sessions in `project-a` | Drafted a design doc and got it reviewed |
 
 The first column is what the existing dashboard shows. The recap feature must
 reach the second column. That requires combining:
@@ -88,25 +88,27 @@ These quality requirements drive the hybrid design in
 
 ## Example output (target)
 
+Illustrative only: a synthetic day with invented projects, prompts and figures.
+
 ```
-Today (Sun Apr 26)
+Today (Mon Jan 3, UTC)
 
-  ▸ Shipped Russian locale + silent-fallback fix (claude-stats)
-      4 commits on master, 3 files changed, +287 −12
-      Started from: "i want to add russian"
-      ~1h 12m across 2 sessions
+  ▸ Added CSV export to the report command (project-a)
+      3 commits on main, 4 files changed, +120 −8
+      Started from: "add a csv export option to the report command"
+      ~1h 05m across 2 sessions
 
-  ▸ Drafted daily-recap analysis (claude-stats)
-      No commits yet — 5 files added under doc/analysis/daily-recap/
-      Started from: "create a subfolder in doc/analysis…"
-      ~38m, 1 session
+  ▸ Drafted caching design notes (project-a)
+      No commits yet — 2 files added under doc/
+      Started from: "write up the options for caching the report output"
+      ~35m, 1 session
 
-  ▸ Investigated trellis sync flake (trellis)
+  ▸ Investigated a flaky nightly job (project-b)
       No commits, no resolution — left an open question in the session
-      Started from: "the nightly sync job failed again"
-      ~22m, 1 session — looks unfinished
+      Started from: "the nightly job failed again"
+      ~20m, 1 session — looks unfinished
 
-  3 projects · 4 sessions · 2h 12m active · ~$1.84
+  2 projects · 4 sessions · 2h 00m active · ~$1.50
 ```
 
 The first three lines per item come from extractive deterministic data.

@@ -1,10 +1,10 @@
-# Plan — Manual account labelling (historical split)
+# Design — Manual account labelling (historical split)
 
-**Status:** proposed · **Depends on:** the merged attribution engine (#25) + its
-follow-ups (backfill #29, anchor pins #31). **Precedence rank:** `override` — the
-one rank the engine already reserves but does not yet produce.
+**Depends on:** the attribution engine and its backfill and anchor-pin sources.
+**Precedence rank:** `override` — the one rank the engine reserves for explicit
+user statements.
 
-> **Role:** hand-labelling ~960 sessions is impractical, so this is the **seed /
+> **Role:** hand-labelling a whole history is impractical, so this is the **seed /
 > fallback** for the automatic **seed-and-propagate** method in doc
 > [09](09-historical-split-without-labelling.md) — used at *project* granularity
 > for the residual projects propagation can't resolve, not for the bulk. Read 09
@@ -22,7 +22,7 @@ knowledge**, expressed as a label.
 Manual labelling is doc 03 §D.5 — "the highest-confidence backfill of all and the
 correct escape hatch for ambiguous history." It writes `source=override,
 confidence=authoritative`, which the store already **preserves** across reattribute
-and **never lets inference overwrite**. This plan adds the missing producer.
+and **never lets inference overwrite**. This design adds the missing producer.
 
 Goal, concretely: the user paints a **date range** (optionally scoped to a
 project) → "this was Account A" → every session in that range is attributed to A,
@@ -128,22 +128,12 @@ account unlabel <ruleId>            # delete a rule, then reattribute to revert
 - After `label` / `unlabel`, run the reattribution recompute + print how many
   sessions changed (reuse `reattribute`'s summary). `--dry-run` on `label`.
 
-## Dashboard UI (phase 2, optional)
+## Dashboard UI (optional)
 
 A "label a range" control in Settings → Accounts: date-range inputs + account
-picker + Apply, and a list of existing rules with delete. The CLI is the MVP;
-the UI calls the same store methods via the existing panel message channel. Split
-into its own PR after the CLI lands.
-
-## Phases (DAG)
-
-| Phase | Work | Parallel? | Model / effort |
-|---|---|---|---|
-| **P1** | V15 migration + types + `labels.ts` (pure) + store methods (`createLabelRule`/`list`/`delete`/`applyOverride`) + reset-predicate change | sequential (shared files) | Opus / high — precedence + the guard-bypass write are the risk |
-| **P2** | CLI commands (`account label/labels/unlabel`) + account resolution + date parsing | parallel with P3 | Sonnet / medium |
-| **P3** | wire into `reattribute` + `collect` | parallel with P2 | Sonnet / medium |
-| **P4** | i18n keys → all 10 locales | after P2 | Haiku / low |
-| **P5** | tests + coverage + `--dry-run` verification on a copy of the live DB | last | Sonnet / medium |
+picker + Apply, and a list of existing rules with delete. The CLI is the minimum
+surface; the UI calls the same store methods via the existing panel message
+channel.
 
 ## Tests (fail-when-wrong; boundary + failure paths)
 
@@ -159,25 +149,11 @@ into its own PR after the CLI lands.
   email, ambiguous, unknown); `label --dry-run` writes nothing.
 - **property**: `computeOverrides` idempotent and order-independent.
 
-Coverage: repo gate (lines/functions/statements ≥ 80, branches ≥ 71);
-`attribution/labels.ts` additionally ≥ 80 branches under a scoped run.
-
-## Confidentiality
-
-All fixtures use `00000000-…` UUIDs and `@example.com`; **no customer/employer
-names** in the doc, tests, CLI help strings, or i18n values (this repo is public
-and the extension is a published artifact). Marker-grep the diff before each PR.
-
 ## Deferred (v2)
 
 - **Per-message range splits** — a range boundary mid-session. The
-  `messages.account_uuid` column + the straddle writer (#27) already exist, so a
+  `messages.account_uuid` column and the straddle writer already exist, so a
   range rule could split a straddling session at the boundary instead of
-  whole-session. Deferred to keep v1 simple; note it in ASSUMPTIONS.
+  whole-session. Deferred to keep v1 simple.
 - **Import a labelling from an OTLP/`~/.claude.json.backup` anchor** to seed
   ranges automatically (doc 03 §D.2–D.4).
-
-## Human checkpoints
-
-None. This feature is local code + tests only — no deploy, publish, or prod
-mutation. Unlike a release, the whole plan is safe to run unattended.

@@ -361,13 +361,13 @@ token columns zeroed.
 | `usage_counted` | `INTEGER` | no (`DEFAULT 1`) | `1` on the one row per `message_id` group that carries the response's real usage (the "carrier"); `0` on every other row in the group, whose token columns are zeroed. Every pre-V23 row reads back as `1` — it was, and still is, the only row for its `uuid`. |
 | `effort` | `TEXT` | yes | The reasoning-effort tier (`low`, `medium`, `high`, `xhigh`, `max`, or any later value — the set is open), when Claude Code reports one. Read from the entry-root `perTurnEffort`, falling back to `effort` (provisional: the two never differ on 2.1.300–2.1.310 data, and the per-turn value is the billed one if 2.1.311 makes them differ). Feeds `get_stats` `byEffort` and `get_session_detail` `effortMix` (V26 adds it to the hourly rollup). |
 | `speed` | `TEXT` | yes | `usage.speed` (e.g. `standard`, `fast`). Captured but **not priced** — fast-mode's published rate covers only input/output, not the cache rates that dominate volume, and no `estimateCost` call site can pass it yet. |
-| `thinking_tokens` | `INTEGER` | yes | `usage.output_tokens_details.thinking_tokens` — a subset of `output_tokens`. **Deliberately nullable**: the field is absent from roughly a third of history, and defaulting it to `0` would fabricate a 0% thinking share for transcripts that never reported one. Also `NULL` on every `usage_counted = 0` row. |
+| `thinking_tokens` | `INTEGER` | yes | `usage.output_tokens_details.thinking_tokens` — a subset of `output_tokens`. **Deliberately nullable**: the field is absent from part of history, and defaulting it to `0` would fabricate a 0% thinking share for transcripts that never reported one. Also `NULL` on every `usage_counted = 0` row. |
 | `cost_basis` | `TEXT` | **no** (`DEFAULT 'pre-dedupe'`) | `'per-response'` on a row the corrected, carrier-aware parser wrote or repaired; `'pre-dedupe'` on every row written before that fix (the V23 migration's backfill, and any row a sync partner with an older build still writes). The one column here that is deliberately **not** nullable: an unknown basis must read as "don't trust this row," not as an implied clean bill. |
 
 The partial unique index enforces the carrier rule at the database level —
 at most one `usage_counted = 1` row per `message_id` — rather than leaving it
 as a convention the application code must never violate. See
-[cost-correctness-2026-09/06-implementation-plan.md](cost-correctness-2026-09/06-implementation-plan.md#61-the-row-model--settle-this-before-anything-else)
+[cost-correctness-2026-09/README.md](cost-correctness-2026-09/README.md)
 for why the row model keeps every entry instead of collapsing each group to
 one row, and [05-privacy-security.md](05-privacy-security.md) for how
 `SELECT *`-shaped reads (the personal-plane export, `get_session_detail`)

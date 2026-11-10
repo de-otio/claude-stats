@@ -2,8 +2,7 @@
 
 Files and surfaces that exist now and are not read by the scanner
 (`packages/cli/src/paths.ts` centralizes what we do read). Local files below
-were inspected directly **[live]** on 2026-09-01; org-side surfaces are
-**[docs]**.
+were inspected directly **[live]**; org-side surfaces are **[docs]**.
 
 ## 3.1 `~/.claude/stats-cache.json` — Claude Code's own aggregate
 
@@ -26,8 +25,8 @@ Claude Code now maintains a precomputed lifetime aggregate:
 
 Value, in order:
 
-1. **Backfill for pruned history.** The store records that 936 of 1168 sessions
-   no longer have a transcript (`packages/cli/src/store/index.ts:579-586`).
+1. **Backfill for pruned history.** A store can record sessions whose
+   transcripts no longer exist (`packages/cli/src/store/index.ts:579-586`).
    `dailyActivity`/`dailyModelTokens` here reach back before our archive mirror
    existed — daily-grain only, but real.
 2. **Cross-validation.** An independent computation of daily token totals to
@@ -52,9 +51,9 @@ analytics.
 - `tasks/<uuid>/` — background-task state (subagent output transcripts land
   here for background agents). Relevant to subagent accounting: background
   agents may not write under `projects/<p>/subagents/`.
-- `teams/` — agent-team state (empty on this machine; present as a directory).
+- `teams/` — agent-team state (may be an empty directory).
 - `file-history/<uuid>/` — edit backups backing the `file-history-*` transcript
-  entries and the rewind feature; 102 entries observed. An edit-volume signal
+  entries and the rewind feature. An edit-volume signal
   independent of transcripts.
 
 ## 3.4 `~/.claude/history.jsonl` gained `pastedContents`

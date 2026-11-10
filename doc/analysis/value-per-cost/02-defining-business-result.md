@@ -90,7 +90,7 @@ The tool's contract with the user becomes a clean division of labour:
   tokens per unit, with the review/rework tax made visible (it already has the
   data: tool calls, edits, follow-up turns).
 - **The tool supplies a rigorous output/survival proxy** — the best *automatic*
-  approximation of "did this land and stick" ([05 §3](05-prior-art-and-whitespace.md)).
+  approximation of "did this land and stick" ([05 §1](05-prior-art-and-whitespace.md)).
 - **The user supplies the value** — a thin tag on a delivered unit:
   a category (`client-billable` / `product` / `prod-fix` / `spike` / `research` /
   `no-value`) and, optionally, a magnitude (a € figure, a story-size, or just

@@ -71,7 +71,7 @@ Three honesty guards:
 
 A guarded counterfactual is still the single most useful output the tool can
 produce, because it is the only one that answers "could I have gotten the result
-cheaper" — the question [05](05-prior-art-and-whitespace.md) finds *nobody* asks.
+cheaper".
 
 ## 4.4 The effort-level gap — the one schema change Q2 needs
 

@@ -4,7 +4,6 @@
 |---|---|
 | Cost lever | Lower CPU + faster cache rebuild |
 | When it pays off | Mid-day "how am I doing" patterns |
-| Effort | Medium |
 
 ## Rationale
 

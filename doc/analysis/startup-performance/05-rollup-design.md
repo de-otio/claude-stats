@@ -52,11 +52,10 @@ CREATE TABLE message_hourly (
 CREATE INDEX idx_message_hourly_hour ON message_hourly (hour_utc);
 ```
 
-Only messages from **included** sessions contribute: `is_interactive = 1 AND
-source_deleted = 0` (matches the dashboard's default `getSessions` filter; note
-the energy/efficiency queries do NOT currently filter is_interactive — confirm
-the exact inclusion predicate against `getMessagesForEnergy`'s session subquery
-during build and replicate it EXACTLY, else parity breaks).
+The rollup must use **exactly** the inclusion predicate of the raw queries it
+replaces, else parity breaks. The raw energy and totals reads filter on none of
+`is_interactive` / `source_deleted` / `is_subagent` (only the spending report
+does); the energy branch adds `m.model IS NOT NULL`, the totals branch does not.
 
 `detectedRegion` (earliest mappable geo) and the dominant-geo region: derivable
 from the rollup via `MIN(hour_utc)` per geo + `SUM(msg_count)` per geo.
@@ -105,8 +104,9 @@ O(lifetime). `idx_messages_timestamp` makes the hour ranges a seek.
   the touched set → recomputed. ✓
 
 **Backfill / migration:** `migrateToV12` creates the table and does a one-shot
-full build (`INSERT … SELECT … GROUP BY` over all messages — the ~100–250 ms
-measured cost, one time). Gate behind the schema-version bump so it runs once.
+full build (`INSERT … SELECT … GROUP BY` over all messages, a one-time cost).
+Gate behind the schema-version bump so it runs once, and make it idempotent
+(clear the table first) so a crash-retry cannot double-count.
 
 ## Read path
 
@@ -137,7 +137,7 @@ integer-offset-exact / fractional-offset caveat as Phase A).
    `message_hourly` byte-identical (touched set empty on the second run).
 4. Existing `energy.test.ts` / `dashboard.test.ts` pass unchanged.
 
-## Risks / open questions for review
+## Risks and open questions
 
 - **Inclusion-predicate parity:** the rollup MUST use the exact same
   session-inclusion predicate as the current raw energy/totals queries
@@ -145,137 +145,55 @@ integer-offset-exact / fractional-offset caveat as Phase A).
   actual SQL during build; the parity gate catches it.
 - **`project_path` cardinality** in the PK — bounded by real project count;
   acceptable.
-- **NULL `inference_geo` in PK** — SQLite treats NULLs as distinct in a PRIMARY
-  KEY/UNIQUE (multiple NULLs allowed), which would split buckets. Use a `''`
-  sentinel or `COALESCE` in GROUP BY + a NOT NULL column to keep one row per
-  (hour,project,model,no-geo). Decide and test.
+- **NULL `inference_geo` in the PK** — SQLite treats NULLs as distinct in a
+  PRIMARY KEY/UNIQUE (multiple NULLs allowed). Because the table is only ever
+  maintained by delete-by-hour + insert (never an `ON CONFLICT` upsert), nullable
+  dimension columns are safe; see the dimension-value decision below.
 - **Touched-hour set size** on a large rewrite (a multi-month session file) —
   could be many hours, but still bounded by that file's span, not lifetime.
 - **Collect latency:** the end-of-collect recompute adds bounded work to a
   background task; measure it doesn't regress collect noticeably.
 
-## Sequencing
+## Design decisions
 
-Design (this doc) → review (stress the maintenance/invalidation correctness) →
-build (migration + collect hook + read path + tests) → verify (parity + the
-maintenance tests above) → commit. Expected: "all" energy/totals reads drop
-from O(213k)·scans to O(hours).
+**Period axis: message-timestamp semantics.** The raw queries this rollup
+replaces bound the period on the *session's* first timestamp and then sum all of
+that session's messages, whatever each message's own timestamp. An hourly
+message rollup is inherently keyed on message timestamp, and it aggregates away
+`session_id`, so it cannot reproduce session-axis semantics for a session that
+straddles a period boundary. Adopting the rollup therefore means adopting
+message-timestamp period semantics ("messages *sent* in the period") for the
+period-filtered **message-level** reads (`getMessageTotals`,
+`getMessagesForEnergy`, `getMessagesForEfficiency`, `getMessagesForContext`,
+`getEnergyAggregates`). This also matches the energy `byDay` chart, which already
+buckets by message timestamp. Session-keyed reads stay session-based: they
+answer a different question ("sessions started in the period") and are already
+cheap. The alternative — keeping session-axis semantics — would mean abandoning
+the rollup for these reads; there is no option that preserves both.
 
----
+**Dimension values are stored as they are, including NULL.** Real data has
+`inference_geo` as the empty string, as `'not_available'`, **and** as `NULL` —
+three distinct values. A `COALESCE(geo, '')` sentinel conflates the empty string
+with null and corrupts the geo breakdowns, so `model`, `inference_geo` and
+`project_path` are stored as their actual values. Synthetic fixtures that do
+not reproduce the real value space hide this class of bug, which is why the
+parity gate runs against a real store.
 
-## Review outcome (security + correctness) — build is BLOCKED on one decision
+**Reads are guarded by a freshness watermark.** The dispatcher reads the rollup
+only when a stored messages-count watermark matches the current count, and
+otherwise falls back to the raw path, so any writer that upserts outside a
+`collect()` recompute cannot cause a stale read.
 
-Two parallel reviews against the actual code found that the first draft of this
-design would have **silently corrupted dashboard numbers**. Corrections folded
-in below; one finding is a product decision that gates the build.
+**The rollup serves only the unbounded read.** For "all" (`since = 0`) the
+hour-bucket boundaries are exact. Bounded periods keep the direct
+`m.timestamp >= ? [AND m.timestamp < ?]` seek, which is already fast and avoids
+the partial-boundary-hour granularity problem.
 
-### ⛔ Blocking product decision — period axis
-
-The raw queries this rollup replaces (`getMessageTotals`, `getMessagesForEnergy`)
-bound the period on **session `first_timestamp`** (`store/index.ts:657,1103`)
-and then sum **all** messages of qualifying sessions, regardless of each
-message's own timestamp. An hourly-message rollup is inherently keyed on
-**message timestamp**. These two axes disagree for any session that **straddles
-a period boundary** (starts before `since` but has messages after, or vice
-versa). An hourly rollup that aggregates away `session_id` **cannot** reproduce
-the session-first-timestamp semantics — so shipping the rollup necessarily
-**changes period filtering to message-timestamp semantics** for the affected
-reads.
-
-Message-timestamp ("count messages authored in the period") is arguably the
-more intuitive semantics, and the energy `byDay` chart already buckets by
-message timestamp — but switching the period *filter* changes every
-period-bounded number for boundary-straddling sessions. **This requires
-sign-off before build.** Options: (a) adopt message-timestamp period semantics
-dashboard-wide (enables the rollup; update the raw oracle + all period-filtered
-queries to match; document the behaviour change); or (b) keep session-axis
-semantics and abandon the hourly rollup for these reads (the rollup cannot serve
-them correctly). There is no (c) that preserves session-axis *and* gets the
-rollup.
-
-### Corrections folded in (apply when/if the build proceeds)
-
-1. **Inclusion predicate — match raw EXACTLY.** Raw energy/totals filter on
-   **none** of `is_interactive` / `source_deleted` / `is_subagent` (only
-   `getSpendingReport` filters `is_interactive=1 AND source_deleted=0`). The
-   rollup recompute must use the same: energy branch adds `m.model IS NOT NULL`,
-   totals branch does not. Drop the proposed `is_interactive=1 AND
-   source_deleted=0` from the schema-inclusion note above.
-2. **`markSourceDeleted` invalidation becomes a no-op for value** (raw doesn't
-   filter `source_deleted`), so remove it from the touched-set correctness
-   argument. (It also had a filePath→session_id resolution gap.)
-3. **NULL `model` and NULL `inference_geo`:** `getMessageTotals` includes
-   NULL-model messages; the schema's `NOT NULL` columns would crash/drop them.
-   Use `COALESCE(m.model,'')` / `COALESCE(m.inference_geo,'')` (sentinel) in the
-   recompute GROUP BY, store `NOT NULL DEFAULT ''`, map back at read. Forbid any
-   `ON CONFLICT` upsert against the table — only delete-by-hour + insert.
-4. **Null/zero-timestamp messages:** 0 exist today (verified) but the column is
-   nullable and raw counts them; `NULL/3600000` → never bucketed. Reserve a
-   sentinel `hour_utc` (e.g. `-1`), recompute it unconditionally each collect,
-   include it in "all"/total reads — or add a `timestamp IS NOT NULL` guard to
-   the raw queries too. Test either way.
-5. **Rewrite stale rows:** `upsertMessages` is upsert-only, never deletes
-   (`store/index.ts:468`); a rewrite that drops uuids leaves stale message rows.
-   The recompute reads current `messages`, so rollup == raw (both retain them).
-   Do **not** special-case this in the rollup; if undesired, fix `upsertMessages`
-   and the rollup follows for free.
-6. **Parameterized `IN (<touched hours>)`** — one `?` per element (as
-   `getStopReasonCounts`/`getMessageTotalsBySession`) or `json_each(?)`; never
-   string-interpolate. Mind `SQLITE_LIMIT_VARIABLE_NUMBER` for big rewrites.
-7. **Idempotent backfill** — `migrateToV12` is not atomic across CREATE + INSERT;
-   prefix the backfill with `DELETE FROM message_hourly` (or wrap in a txn) so a
-   crash-retry can't double-count.
-8. **`until` bound** — totals supports `until`; the read path needs
-   `hour_utc < until/…` for that branch.
-9. **Single shared recompute SELECT** for backfill + incremental (param: the
-   hour-set; backfill = all hours) so they cannot drift. Tests use synthetic
-   `project_path` only — never the live DB.
-
-### Decision (made) + staged build
-
-**Period axis: message-timestamp semantics adopted.** Period-filtered
-**message-level** reads (`getMessageTotals`, `getMessagesForEnergy`,
-`getMessagesForEfficiency`, `getMessagesForContext`, `getEnergyAggregates`) now
-mean "messages **sent** in the period" — filter on `m.timestamp`, not the
-session-first-timestamp subquery. Session-keyed reads (`getSessions` and the
-byDay/byProject/byHour/conversation/plan/spending summaries built from it) stay
-session-based — they answer a different question ("sessions started in period")
-and are already cheap. This makes the message reads consistent with the energy
-`byDay` chart (which already buckets by message timestamp).
-
-Staged to contain the silent-corruption risk the reviews demonstrated:
-
-- **Build 1 — semantics switch.** Replace the `m.session_id IN (SELECT … WHERE
-  s.first_timestamp …)` filter in the message-level reads with a direct
-  `m.timestamp >= ? [AND m.timestamp < ?]` (seeks `idx_messages_timestamp`;
-  O(period) for all bounded periods). Session-scoped filters
-  (project/repo/account) stay as a session-id subquery, ANDed. **Behaviour
-  change:** re-baseline the affected period-filtered test assertions —
-  distinguishing intended semantic changes from regressions, never editing
-  assertions just to go green. Little perf delta vs the current subquery seek;
-  its purpose is the semantics + setting up the rollup axis.
-- **Build 2 — the rollup.** `message_hourly` (migrateToV12, corrections 1–9) +
-  collector touched-hour maintenance + backfill. Read path: serve energy +
-  totals from the rollup **only for the unbounded "all" read** (since=0), where
-  hour-bucket boundaries are exact; bounded periods keep the Build-1 direct
-  seek (already fast, and avoids the partial-boundary-hour granularity issue).
-  Parity oracle compares rollup output to the Build-1 raw output on the full DB.
-
----
-
-## Status — SHIPPED
-
-Three commits after the message-timestamp decision:
-- `606f363` Build 1 — message-timestamp period semantics (the axis decision).
-- `c5aa3a7` Build 2 Phase 1 — `message_hourly` + `recomputeMessageHourly` + idempotent backfill.
-- `367c4fb` Build 2 Phase 2 — rollup-backed unbounded reads (dispatch + freshness watermark) + collector touched-hour maintenance.
-
-**Result (live 214k-message store):** `getEnergyAggregates` "all" read 725ms → 44ms (16×); `buildDashboard('all')` ~2150ms → ~1050ms. Output-preserving: rollup vs raw match field-by-field across every aggregate (0 mismatches).
-
-**Correction the live-DB verification caught (synthetic tests missed it):** real data has `inference_geo` as `''`(empty), `'not_available'`, AND `NULL` — three distinct values. The planned `COALESCE(geo,'')` sentinel (correction 3) **conflated empty-string with null** in `byGeo`/`geoByEarliest`. Fixed by storing `model`/`inference_geo`/`project_path` as their **actual values incl. NULL** (nullable columns; SQLite allows NULL in the PK, and the DELETE-by-hour + GROUP BY recompute has no ON CONFLICT so it's safe). Lesson: sentinel-collision bugs hide from synthetic fixtures that don't reproduce the real value space — verify aggregates against raw on the real store.
-
-Two safeguards added during the build:
-- **Freshness watermark** (not in the original design): the dispatcher reads the rollup only when a stored messages-count watermark matches the current count, else falls back to raw — so any reader that upserts outside a `collect()` recompute (tests, future callers) can't read a stale rollup.
-- **`migrateToV12` DROP+CREATEs** the (pure derived) table so the schema stays correct across pre-release iteration.
-
-Still open for "all" < 0.5s (separate efforts): **Phase B** (recap floor, the dominant *month* cost) and **`#5`** (non-additive efficiency/context → ingest tables).
+**Other invariants.** Recompute with a single shared SELECT for backfill and
+incremental maintenance (parameter: the hour set; backfill = all hours) so they
+cannot drift; parameterise the `IN (<touched hours>)` list (one `?` per element
+or `json_each(?)`, mind `SQLITE_LIMIT_VARIABLE_NUMBER`); reserve a sentinel
+`hour_utc` for null/zero-timestamp messages and recompute it each collect;
+`upsertMessages` never deletes, so rewrite-dropped uuids leave stale message
+rows that the rollup faithfully mirrors, and fixing that belongs in
+`upsertMessages`; the read path must honour the `until` bound.

@@ -41,12 +41,6 @@ Anthropic's own publicly documented plan mechanics, cited inline.
   live truth. The design leans on that: prefer a live lookup, fall back to a
   dated cache, and make the staleness a field in the payload, not just a code
   comment ([06](06-staleness-trust-and-privacy.md)).
-- **Ship in four phases, cheapest first**, and stop before the backend unless
-  real demand shows up: (0) expose already-computed data via MCP, (1) add
-  Enterprise-plan awareness plus a sourced plan-mechanics reference and a
-  skill, (2) a manual multi-developer export/aggregation workflow, (3) a real
-  backend — last, and only on demonstrated need
-  ([07](07-rollout-plan.md)).
 - **The GUI story splits in two, and they must not share a tab.** The
   individual case already has a shipped dashboard tab worth extending; the
   company-scale case needs a separately-generated report, not a tab bolted
@@ -64,7 +58,6 @@ Anthropic's own publicly documented plan mechanics, cited inline.
 | 04 | [04-proposed-tools-and-workflow.md](04-proposed-tools-and-workflow.md) | New/changed MCP tools, CLI commands, and the agent workflow that ties them together |
 | 05 | [05-reusing-the-team-backend.md](05-reusing-the-team-backend.md) | How much of the existing, unshipped team-app backend this feature can reuse |
 | 06 | [06-staleness-trust-and-privacy.md](06-staleness-trust-and-privacy.md) | Keeping plan-mechanics data from being presented as more current than it is; privacy guardrails for cross-person aggregation |
-| 07 | [07-rollout-plan.md](07-rollout-plan.md) | The phased build order and why the backend comes last |
 | 08 | [08-dashboard-surface.md](08-dashboard-surface.md) | What changes in the dashboard GUI, and why the company-scale view is a separate report, not a shared tab |
 
 ## Relationship to existing analysis
@@ -76,7 +69,7 @@ starting from nothing:
   not background reading: any cross-developer usage aggregation is only
   trustworthy once personal and work-account usage are correctly separated
   on each contributing machine. It has already shipped forward attribution.
-- [team-app/](../team-app/) and [team-dashboard/](../team-dashboard/) are the
+- [team-app/](../team-app/) and the earlier team-dashboard exploration are the
   prior "server-side backend for team stats" work referenced in
   [05](05-reusing-the-team-backend.md) — assessed here for reuse, not
   duplicated.

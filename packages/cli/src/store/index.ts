@@ -1003,7 +1003,7 @@ export class Store {
 
   /**
    * V23 — the usage-carrier row model, plus three request dimensions
-   * (`doc/analysis/cost-correctness-2026-09/06-implementation-plan.md` §6.1).
+   * (`doc/analysis/cost-correctness-2026-09/`).
    *
    * ONE API RESPONSE IS WRITTEN AS N TRANSCRIPT ENTRIES, one per content block,
    * and every one of them repeats the WHOLE response's usage. `messages` is
@@ -1046,7 +1046,7 @@ export class Store {
       }
     };
 
-    // Request dimensions (03-request-dimensions-delta.md). All nullable: an
+    // Request dimensions (cost-correctness-2026-09/README.md §3). All nullable: an
     // absent value must read as "not reported", not as a measured zero.
     addColumn("messages", "effort", "TEXT");
     addColumn("messages", "speed", "TEXT");

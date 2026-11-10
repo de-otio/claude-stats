@@ -36,7 +36,7 @@ belong to this task's segments. Consequences:
    keeps only a scalar `estimatedCost`. The article's per-model view is
    impossible from this.
 
-**The fix** (Phase 0 of the plan): attribute cost from the task's
+**The fix:** attribute cost from the task's
 `segmentIds → Segment.messageUuids` only. Each `Segment` already carries its
 `messageUuids` ([`recap/types.ts:113`](../../../packages/cli/src/recap/types.ts#L113)).
 Compute cost over exactly those UUIDs and bucket by `msg.model` in the same
@@ -116,8 +116,7 @@ project isn't a git repo; there's no upstream (so `pushed` is meaningless); the
 commit author email doesn't match; or `gh` isn't installed (so `prMerged` is
 null). Each of those makes a *genuinely successful* task look unobservable or
 thin. The metric must **measure and report this coverage**, never silently
-absorb it. (Quantify it empirically during Phase 1 against the author's own
-history before trusting any headline rate.)
+absorb it, and report it alongside any headline rate.
 
 ## 2.5 Explicit user override: partially exists — `hide`
 
@@ -185,7 +184,7 @@ treats subagent cost as a **separate additive line** (`SubagentCostRow`,
 [`store/index.ts:1190`](../../../packages/cli/src/store/index.ts#L1190))
 precisely because of this hazard; the recap pipeline never inherited that care.
 
-**Fix (Phase 0):** exclude `is_subagent=1` from the task set (an
+**Fix:** exclude `is_subagent=1` from the task set (an
 `includeSubagents:false` filter on `getSessions`), and fold each contributing
 session's child-subagent cost into the **parent** task via
 `getChildSessions(parentSessionId)`
@@ -196,15 +195,15 @@ task and its cost appears once, in the parent.
 
 ## 2.9 Summary table
 
-| Signal | Status | Source | Action needed |
-|---|---|---|---|
-| Per-message cost | ✅ exact | `estimateCost` | none |
-| Per-task cost | ⚠️ double-counts, no model split | `buildDigestItem` | **fix** (Phase 0) |
-| Task unit | ✅ | `DailyDigestItem` / `Segment` | make metric unit-agnostic |
-| Outcome proxy | ✅ but `low` is overloaded | `computeConfidence` | wrap into 3-state classifier |
-| Git success | ✅ (biased by coverage) | `getProjectGitActivity` | report coverage |
-| Negative label | ◑ `hide` only | `corrections.ts` | reuse `hidden`; add `outcome` action |
-| Per-model mix | ◯ derivable | per-UUID cost pass | compute |
-| Window > 1 day | ◯ per-day only | `buildDailyDigest` | iterate days + signature-dedupe |
-| Subagents | ⚠️ counted as own task | unfiltered `getSessions` | exclude + fold into parent (Phase 0) |
-| Project/account filter | ⚠️ not threaded | `buildDailyDigest` hardcodes filters | add passthrough + cache-key (Phase 1) |
+| Signal | Status | Source |
+|---|---|---|
+| Per-message cost | ✅ exact | `estimateCost` |
+| Per-task cost | ⚠️ double-counts, no model split | `buildDigestItem` |
+| Task unit | ✅ | `DailyDigestItem` / `Segment` |
+| Outcome proxy | ✅ but `low` is overloaded | `computeConfidence` |
+| Git success | ✅ (biased by coverage) | `getProjectGitActivity` |
+| Negative label | ◑ `hide` only | `corrections.ts` |
+| Per-model mix | ◯ derivable | per-UUID cost pass |
+| Window > 1 day | ◯ per-day only | `buildDailyDigest` |
+| Subagents | ⚠️ counted as own task | unfiltered `getSessions` |
+| Project/account filter | ⚠️ not threaded | `buildDailyDigest` hardcodes filters |

@@ -13,7 +13,7 @@ one design problem:
    e.g. by pointing at a consumer cloud-storage service — and, if possible, to
    reuse that same mechanism as a *low-tech* cross-device sync.
 
-Plus the pre-existing [transcript-archive plan](../../../plans/transcript-archive/plan.md),
+Plus the opt-in transcript archive (see [05-privacy-security.md](../05-privacy-security.md)),
 which keeps full raw transcripts on-box to survive Claude Code's cleanup bug.
 
 The claim of this note: these are **not four features**. They are points in one
@@ -95,8 +95,8 @@ bridge.
 
 The org plane is already substantially designed — see [team-app/](../team-app/)
 (AppSync + DynamoDB + Cognito magic-link auth, KMS-at-rest, one-way-hashed
-account ids) and [team-dashboard/](../team-dashboard/) (team model, shared
-metrics, gamification). That design's deliberately **non**-zero-knowledge posture
+account ids), including the team model, shared metrics and gamification.
+That design's deliberately **non**-zero-knowledge posture
 (the org reads the aggregates; [team-app/11 removed per-user encryption
 keys](../team-app/11-account-separation.md) on purpose) is *correct for this
 plane*. Reuse it as-is for topic #1, wired to:
@@ -105,7 +105,7 @@ plane*. Reuse it as-is for topic #1, wired to:
   the [license-advisor](../license-advisor/) needs to recommend a plan and seat
   count from real usage, but at org scale instead of one machine.
 - **gamification** — leaderboards/streaks/achievements ride the same aggregate
-  stream ([team-dashboard/04](../team-dashboard/04-gamification.md)).
+  stream.
 
 The one hard rule: the **raw transcript archive and the personal bundle are
 never eligible for the org plane.** Only locally-computed aggregates cross into
@@ -113,13 +113,13 @@ it.
 
 ## What this supersedes / reframes in existing docs
 
-- [cross-device-sync/recommendation.md](../cross-device-sync/recommendation.md)
+- The earlier cross-device-sync recommendation
   ("start with S3, upgrade to AppSync") is **reframed**: AppSync belongs to the
   **org plane**. The **personal plane** uses encrypted per-device shards over a
   *swappable dumb store*, starting with the consumer cloud client the user
   already runs. The S3 instinct (a dumb blob store, upsert-by-session_id) is
   right in spirit and is generalized here.
-- [team-dashboard/01 Option B (cr-sqlite CRDT)](../team-dashboard/01-sync-options.md)
+- The earlier team-dashboard sync option B (cr-sqlite CRDT)
   is the **eventual upgrade** for personal-plane merge. Per-device append-only
   shards are the MVP that needs no native dependency; cr-sqlite is the
   finer-grained successor.
@@ -129,25 +129,6 @@ it.
 - [05-privacy-security.md](../05-privacy-security.md)'s "Server Sync Rules
   (Future)" section describes the **org plane** only. The personal plane is new
   and needs its own section (see the personal-plane doc).
-
-## Sequencing / roadmap
-
-The planes are independent; within the personal plane, backup seeds sync.
-
-1. **Keystone — the encrypted personal bundle.** Shard format + envelope key
-   management + merge-by-id. Both #3 and #2 stand on it.
-2. **Ship #3 (backup) first**, to a configurable target (an already-syncing
-   consumer cloud folder, or a plain dir). Fewest moving parts, no server; forces
-   the crypto and format to be right.
-3. **Low-tech sync (#3 → #2)**: point a second install at the same target,
-   enable pull + merge. Nearly free once backup exists.
-4. **High-tech sync (#2)**: swap transport for an org-run *blind-storage*
-   service (auth, quotas, audit, maybe realtime) — same bundle, still
-   zero-knowledge. Only for orgs that need it.
-5. **#1 team features**: build the aggregate plane on the existing team-app
-   design; wire to license-advisor + gamification. Repurpose the coded-but-
-   unwired [`sync/`](../../../packages/cli/src/sync/) module here, explicitly as
-   **aggregate-only** — *not* the personal E2E path.
 
 Net: **#3 is the seed, #2 is #3 grown up, and #1 is a separate plane that shares
 nothing but the source DB — bridged safely by local aggregation.**

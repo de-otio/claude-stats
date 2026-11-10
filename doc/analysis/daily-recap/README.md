@@ -18,7 +18,6 @@ possible and reserve LLM tokens for what only an LLM can do well.
 | 02 | [02-data-sources.md](02-data-sources.md) | What signals are available without an LLM in the loop |
 | 03 | [03-hybrid-pipeline.md](03-hybrid-pipeline.md) | Tiered pipeline: deterministic extraction → optional LLM synthesis |
 | 04 | [04-token-cost-model.md](04-token-cost-model.md) | Concrete token-cost comparison of strategies (naive vs. tiered) |
-| 05 | [05-implementation-plan.md](05-implementation-plan.md) | MCP tool surface, file changes, phasing |
 
 ## Sub-analyses
 

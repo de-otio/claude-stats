@@ -160,8 +160,8 @@ Three taps for the common case; the crypto reduced to "save this one key."
 
 ## 10. Uninstall / removal — one button, honest scope
 
-Extends the [archive plan](../../../plans/transcript-archive/plan.md)'s removal
-work. Because VS Code has no reliable uninstall hook, removal is an explicit,
+Extends the opt-in transcript archive's removal behaviour (see
+[05-privacy-security.md](../05-privacy-security.md)). Because VS Code has no reliable uninstall hook, removal is an explicit,
 clearly-scoped action:
 
 - **"Delete all stored data"** (command + CLI `purge`) with an honest scope

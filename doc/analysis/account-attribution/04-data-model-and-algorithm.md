@@ -19,10 +19,10 @@ columns the schema already declares and adds two small tables.
   never clobbers a known value). This is the exact hook attribution needs.
 - Query layer already accepts an `accountUuid` filter.
 - Migration framework: `PRAGMA user_version`, sequential `migrateToVN()`;
-  schema is at **V12**, so account-attribution work lands as **V13**.
+  account-attribution lands as **V13**.
 
-So the engine has been wired for per-account data from the start — only the
-*population* path is missing.
+So the engine was wired for per-account data from the start — only the
+*population* path was missing.
 
 ## New tables (migration V13)
 
@@ -141,27 +141,12 @@ Because it only updates `WHERE account_uuid IS NULL`, re-running is safe and a
 later, higher-confidence pass can be allowed to upgrade low-confidence rows by
 relaxing that guard for `account_confidence IN ('low','medium')`.
 
-## Reconciliation with existing implementation
+## Where it lives
 
-The schema columns `sessions.account_uuid`, `sessions.organization_uuid`, and
-`sessions.subscription_type` have existed since **V3** (2023). The
-**surface-blind fallback** that previously populated them (stamping the
-current-at-first-collect account from `~/.claude.json` onto every session
-regardless of surface or timestamp) has been **removed atomically in Phase 1**.
-The new attribution engine replaces it with an observation-based method that:
-
-1. **Records observations** in the new `account_observations` table (append-only
-   log, deduped on value-change).
-2. **Assigns by timeline interval** for CLI-surface sessions only, using the
-   canonical precedence: `override > otel > telemetry > anchor > observation >
-   backfill > unknown`.
-3. **Records confidence and source** in the new `account_source` and
-   `account_confidence` columns added to `sessions` in V13.
-4. **Handles non-CLI surfaces** by assigning them to `unknown` unless OTEL /
-   telemetry / anchor provides an account.
-5. **Recomputes windows** using `recomputeWindowsInRange` when accounts are
-   corrected, so `usage_windows` reflect the final per-account attribution.
-
-Telemetry is wired as a real source (fixed parser in Phase 2, B2). The `account`
-command reads the new `accounts` table to show per-account summaries with
-tier/billing/seat labels.
+The tables and columns below are created by schema migration **V13**. Sessions
+are assigned by timeline interval for CLI-surface sessions only, using the
+canonical precedence `override > otel > telemetry > anchor > observation >
+backfill > unknown`; non-CLI surfaces resolve to `unknown` unless OTEL,
+telemetry or an anchor provides an account. When accounts are corrected,
+`usage_windows` are recomputed over the affected range so they reflect the
+final per-account attribution.

@@ -28,7 +28,7 @@ guru surface stops being a front door and becomes a destination.
 ## 2.2 The five question cards
 
 Every card is a **sentence with a number**, never a number alone — the
-mentor voice from [deep-analysis/](../deep-analysis/README.md). Data sources
+mentor voice from the earlier deep-analysis work. Data sources
 are existing `DashboardData` fields unless marked *(new)*.
 
 | Card | The sentence it renders | Sources |
@@ -47,7 +47,7 @@ per [constraint-impact/03 Gap 5](../constraint-impact/03-measurement-mechanics.m
 "estimate" vs "actual" language per account mode, "uncalibrated" and
 "coverage low" states). A card that cannot honestly answer yet says so in
 its own voice: "Value not declared → ROI unknown" (the
-[value-per-cost](../value-per-cost/06-what-to-build.md) contract), "No
+value-per-cost contract), "No
 tickets linked yet — enable branch extraction", never an empty widget.
 
 ## 2.3 The alerts strip
@@ -117,7 +117,7 @@ card to the row-level evidence (ticket → sessions → messages), matching the
 ## 2.6 What the Insights layer refuses to do
 
 - **No composite score.** A single "AI ROI: 87/100" tile would be
-  verification theatre ([deep-analysis](../deep-analysis/README.md) rule);
+  verification theatre (a deep-analysis rule);
   five honest sentences beat one manufactured number.
 - **No raw token counts** above the fold — they are evidence, and live one
   click down. (The status bar keeps its today-tokens/cost readout —

@@ -112,20 +112,3 @@ calibration sample keeps growing. Below a minimum n, reports say
   export**: the report's natural consumer is a human conversation with a
   manager, and a hand-carried, reconcilable document is enough until a team
   asks for automation.
-
-## 3.4 Sequencing
-
-| Phase | Scope | Depends on |
-|---|---|---|
-| 1 | Policy-event config + timeline annotations in existing reports | nothing |
-| 2 | Task-class classifier (deterministic, version-stamped) | nothing — also benefits `get_cost_per_task` |
-| 3 | Before/after engine + `get_constraint_impact` + CLI/CSV | 1, 2 |
-| 4 | Metered throttling parse (Bedrock 429s) + wait/re-entry metrics | metered account mode |
-| 5 | Escalation chains; dashboard timeline; prospective mode | 3 |
-| — | [Pricing-model comparison](04-pricing-model-comparison.md) — independent track | only ticket-attribution phase 0 (metered mode) |
-
-Phases 1–3 already produce the two-sided model-policy report for the org
-scenario that motivated this folder; 4 extends the same vocabulary to quota
-pressure; 5 is sharpening. The pricing-model comparison runs on its own
-track and can ship first — it is the fastest path to a constructive
-conversation with the org.

@@ -108,10 +108,7 @@ window whose contexts sit under the default floor. Every surface that renders
 both states this — `claude-stats context`'s text output prints an explicit
 divergence note naming both floor values whenever they differ; `--json` and
 the MCP payload carry both `resetFloorUsed` and `resetFloorDefault` for a
-reader (or an agent) to reconcile programmatically. See
-`plans/autocompact-window-fit/divergence.md` for the full surface-by-surface
-enumeration — the same treatment `plans/cache-ttl-fit/fallback-sites.md` gave
-the TTL build's own cost-basis split.
+reader (or an agent) to reconcile programmatically.
 
 ## Honest bounds, in both directions
 
@@ -193,50 +190,6 @@ assumed:
 - **No new store query shape.** The adaptive-floor pass is a second
   in-process call to `computeContextCarry` over rows the glue already
   fetched for the primary pass — one extra CPU pass, zero extra SQL.
-
-## Review history: what the plan got wrong before any code was written
-
-The plan behind this feature (`plans/autocompact-window-fit/plan.md`) was
-reviewed before implementation started, the same way `cache-ttl-fit` and
-`context-carry-cost` were. That review round produced **eleven corrections**
-to the original analysis, **six of which were blockers** — errors that would
-have shipped a confidently-wrong number rather than merely an imprecise one.
-Two are worth naming here because they are the kind of mistake that looks
-completely reasonable until it's traced against the actual code, and a future
-maintainer touching this module should know they were live risks, not
-hypothetical ones:
-
-- **The simulation seated every cycle at twice its floor.** An early version
-  of the replay initialised a cycle's simulated context at the observed
-  post-reset floor, then added the cycle's first real increment on top — but
-  that first increment, in the actual data, already *is* the whole
-  post-compaction context, not a small addition to it. Seating a cycle this
-  way double-counted the floor on every single cycle, which inflated the
-  simulated "carried" volume and could drive the reported saving negative,
-  and — worse — made the very first comparison at small candidate windows
-  trip immediately, causing the reset count to explode exactly at the
-  candidates a reader would care about most. The fix: the simulated context
-  starts at zero, the first increment supplies the baseline itself, and the
-  floor is only substituted back in *after* a simulated cut.
-- **The recommendation ladder's fixed point was "cannot tell," not "already
-  tuned."** Because carrying is priced far more heavily than resetting on any
-  real workload, the simulated saving is monotone non-increasing as the
-  candidate window shrinks — which means a savings-based "already tuned"
-  test can never fire: there is always a smaller window that looks like it
-  saves more, so the ladder always points further down. Worse, chasing that
-  pointer far enough lands below the reset-detector's floor, at which point
-  the *primary* detector stops finding any resets at all and the tool would
-  report "insufficient data" — the exact state the feature exists to avoid.
-  The adaptive-floor pass (above) and switching "already tuned" from a
-  savings test to a **peak-proximity** test (is the workload's own observed
-  peak already close to a candidate window, rather than "is there no cheaper
-  option") are what broke that cycle.
-
-Both were caught before a line of production code shipped, which is the
-value of reviewing the plan rather than only the diff — one is a numeric bug
-that would have quietly under- or over-stated every dollar figure the tool
-ever produced, and the other is a design defect that would have made the
-tool's most confident answer ("you're all set") unreachable by construction.
 
 ## Illustrative example (synthetic)
 

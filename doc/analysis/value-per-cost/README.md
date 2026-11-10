@@ -24,7 +24,7 @@ machinery. It tried to compress everything into a single value-flavoured number
 ("cost per successful task"), and a single number is exactly what every credible
 2023–2026 source — DORA, SPACE, DX Core 4, GitHub/Google/Microsoft researchers,
 Orosz/Beck — says is impossible and gameable
-([02](02-defining-business-result.md), [05](05-prior-art-and-whitespace.md)).
+([02](02-defining-business-result.md)).
 **Do not cut the feature. Reframe it into three honest layers.**
 
 ## Why "task is too vague" is a real defect — and what actually fixes it
@@ -62,8 +62,7 @@ business result.
 | **3. Value / impact** | Q1 — was the investment justified | **user** (business result) | **No — and it shouldn't try.** A thin, frictionless user-supplied value tag on a delivered unit. Q1 is answerable only when the user has tagged value; the tool says so honestly rather than fabricating. |
 
 Layer 1 is the strongest, most defensible, ship-now thing the tool can do, and
-the thing **nobody else does for a solo developer**
-([05](05-prior-art-and-whitespace.md)). Layer 2 is the best automatic oracle a
+the thing a solo developer can act on without anyone's cooperation. Layer 2 is the best automatic oracle a
 *local* tool can compute (it sees the full git history and test runs that cloud
 dashboards never do). Layer 3 is deliberately thin: the tool provides the cost
 side exactly and lets the human own the value side.
@@ -76,8 +75,7 @@ side exactly and lets the human own the value side.
 | 02 | [02-defining-business-result.md](02-defining-business-result.md) | The output → outcome → impact hierarchy; a defensible "business result" for a solo dev / small team; why the tool cannot measure value alone |
 | 03 | [03-the-three-questions.md](03-the-three-questions.md) | Q1/Q2/Q3 formalised into a measurement model; each mapped to a layer and to what is locally computable vs user-supplied |
 | 04 | [04-efficiency-frontier.md](04-efficiency-frontier.md) | Q2/Q3 in depth: `model × effort × archetype × cost-per-outcome`, the counterfactual "cheaper path," routing/effort evidence, and the **effort-level schema gap** |
-| 05 | [05-prior-art-and-whitespace.md](05-prior-art-and-whitespace.md) | What vendors and EI platforms measure, the biases of acceptance-rate and LLM-judge, and the white space `claude-stats` uniquely occupies |
-| 06 | [06-what-to-build.md](06-what-to-build.md) | The recommendation: keep the substrate, reframe the headline, add value-tags + efficiency frontier + effort dimension, de-bias the judge; phased plan and the fate of the current feature |
+| 05 | [05-prior-art-and-whitespace.md](05-prior-art-and-whitespace.md) | The credible outcome oracles (test-pass, code survival) and the biases of the LLM-judge fallback |
 | — | [references.md](references.md) | Consolidated, dated citations for every empirical claim |
 
 ## Relationship to existing analysis
@@ -87,7 +85,7 @@ This supersedes the *framing* of
 machinery** — the four-state outcome model, the proxy→label hierarchy, the
 coverage discipline, and the "no verification theatre" charter all survive intact
 and become Layer 2. It also promotes three ideas from the
-[`deep-analysis/`](../deep-analysis/) "wise mentor" catalog — *Model-fit
+`deep-analysis` "wise mentor" catalog — *Model-fit
 savings*, *Token-per-outcome*, and *Model-mix appropriateness* — from catalogue
 entries into Layer 1's core ([04](04-efficiency-frontier.md)).
 </content>

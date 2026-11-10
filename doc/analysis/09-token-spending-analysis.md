@@ -309,8 +309,10 @@ New subcommand that produces a spending breakdown.
 
 ### Default Output (period=day)
 
+Illustrative output; every figure is invented to show the layout.
+
 ```
-Token Spending — Today (2026-04-09)
+Token Spending — Today
 
 Total cost (API-equivalent): $14.82
   Opus:   $12.40 (83.7%)  — 248K input, 89K output
@@ -394,40 +396,7 @@ MCP Server Costs (today)
 
 ---
 
-## 7. Implementation Plan
-
-### Phase 1: Core Queries (no schema changes)
-
-1. Add `getSpendingReport()` method to `Store` — runs queries 3.1-3.6 above
-2. Add tool-level cost attribution logic (parse `tools` JSON, aggregate)
-3. Add MCP server grouping (split on `mcp__` prefix)
-4. Add `spending` subcommand to CLI using existing `Reporter` patterns
-5. Add anomaly detection (query 3.8) with configurable threshold (default: 2x average)
-
-### Phase 2: Dashboard Integration
-
-6. Add `spending` section to `DashboardData` in dashboard builder
-7. Add spending breakdown panel (sessions, tools, models)
-8. Add expensive prompts table
-9. Add MCP server cost card (conditional on MCP usage)
-
-### Phase 3: Enhancements
-
-10. Cache efficiency heatmap
-11. Subagent cost roll-up into parent session view
-12. Historical comparison ("today vs your 7-day average")
-13. Export: CSV/JSON dump of spending data for external analysis
-
-### Dependencies
-
-- No new npm packages needed
-- No schema migrations needed — all queries use existing columns
-- Pricing calculation reuses existing `estimateCost()` from `@claude-stats/core/pricing`
-- Reporter formatting reuses existing `formatTokens()`, `formatCost()`, `formatDuration()`
-
----
-
-## 8. Limitations
+## 7. Limitations
 
 - **Cost is API-equivalent, not plan cost.** Claude subscription plans bundle usage; there's no public formula mapping tokens to the percentage shown in the UI. The dollar amounts are informational comparisons, not billing-accurate.
 - **Tool cost attribution is approximate.** A message invoking `[Read, Edit, Bash]` has a single token count. We attribute the full cost to each tool (over-counting) or split evenly (under-counting per tool). The analysis notes this and defaults to full attribution with a "shared" flag.
