@@ -86,8 +86,8 @@ in [04](04-proposed-tools-and-workflow.md) with an import mode:
 claude-stats plan-advisor --import export1.csv export2.csv ... --html
 ```
 
-consuming Phase 2's privacy-safe per-developer exports
-([07](07-rollout-plan.md)) and producing its own standalone HTML file — the
+consuming the privacy-safe per-developer exports
+and producing its own standalone HTML file — the
 same idiom `report --html` already uses today ("generates a standalone HTML
 file with interactive Chart.js charts," per
 [doc/user-doc/commands.md](../../user-doc/commands.md)). It can reuse the

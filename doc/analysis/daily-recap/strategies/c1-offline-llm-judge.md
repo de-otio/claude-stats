@@ -4,7 +4,6 @@
 |---|---|
 | Cost lever | Higher quality (forever, after one-time spend) |
 | When it pays off | Once, during development; re-run when signals change |
-| Effort | Medium |
 
 ## Rationale
 

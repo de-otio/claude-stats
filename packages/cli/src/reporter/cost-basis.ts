@@ -7,8 +7,9 @@
  *  1. **`cost_basis`.** Rows written before the usage-carrier fix carry
  *     `'pre-dedupe'` — one API response counted once per content block, ~2x
  *     on average. A total over a window that includes such rows is inflated
- *     by an amount nobody can compute (the ratio differs per token class, see
- *     `doc/analysis/cost-correctness-2026-09/04-scope.md` §4.3), so the only
+ *     by an amount nobody can compute (the ratio differs per token class, so no
+ *     single correction factor is right; see
+ *     `doc/analysis/cost-correctness-2026-09/README.md` §4), so the only
  *     honest move is to SAY the window includes them. `cost_basis` is a closed
  *     machine token and is rendered unlocalised in machine fields; only the
  *     human label goes through i18n.

@@ -10,7 +10,7 @@ start that gives this feature.
 
 Two prior efforts, in sequence:
 
-- [doc/analysis/team-dashboard/](../team-dashboard/) — an earlier, lighter
+- The earlier team-dashboard analysis — a lighter
   exploration (sync options, a team model, shared-metrics rules,
   gamification) that its own README frames as "local-first... no dedicated
   server."
@@ -107,8 +107,7 @@ Don't revive team-app to build this feature. Two independent reasons:
    [01](01-problem-and-use-case.md)'s own grounding example was sized
    entirely without company-wide telemetry — headcount math plus Anthropic's
    published benchmarks were enough to produce a defensible recommendation.
-   [07](07-rollout-plan.md) sequences this feature so the backend is only
-   revisited once Phase 1/2 demonstrate that a spreadsheet-and-CLI-export
+   The backend should only be revisited once a spreadsheet-and-CLI-export
    workflow genuinely can't keep up with real demand — not built speculatively
    ahead of it.
 

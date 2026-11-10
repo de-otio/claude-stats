@@ -231,8 +231,7 @@ Every data-sharing feature defaults to off:
 Separate from the aggregated DB, claude-stats offers an **opt-in transcript
 archive**: a plaintext mirror of full raw session transcripts, kept so a
 session survives Claude Code's own `cleanupPeriodDays` deletion (which keys on
-file mtime and can misfire — see the
-[transcript-archive plan](../../plans/transcript-archive/plan.md)). This is a
+file mtime and can misfire). This is a
 materially different, higher-sensitivity data practice than the aggregated DB
 and is treated accordingly:
 
@@ -385,14 +384,11 @@ or per-session evidence text (`ticket_links.evidence`). A policy event's
   a fact the reader needs, not an omission). When `--project` or `--account`
   was used, that line — and the `projectPath`/`accountUuid` column on every CSV
   row — renders a stable marker (`[withheld:a1b2c3d4]`) rather than the value.
-  This was **not** the pack's original behavior: the raw absolute path was
-  embedded in the scope line and in every row of two CSVs, and was found and
-  fixed during review before the feature shipped. A
-  local path like `/Users/<user>/repos/<client>/<codename>` is Medium
+  A local path like `/Users/<user>/repos/<client>/<codename>` is Medium
   sensitivity per the classification table at the top of this document, and
-  this is the one artifact built to leave the machine, so shipping it by
-  default inverted the pack's own rule that every section is opt-in and the
-  default is the minimum. The marker is deterministic (two packs scoped alike
+  this is the one artifact built to leave the machine, so embedding the raw
+  path by default would invert the pack's own rule that every section is
+  opt-in and the default is the minimum. The marker is deterministic (two packs scoped alike
   compare; a series stays readable) and non-reversible, though it is **not** a
   security boundary — an eight-hex digest of a guessable path is guessable. It
   defeats disclosure *by accident*, which is the actual failure mode: a path

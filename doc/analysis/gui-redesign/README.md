@@ -22,10 +22,9 @@ IA is a 1:1 mirror of the data model (10 tabs = 10 nullable `DashboardData`
 blocks), so cost/ROI answers are scattered across four tabs while raw token
 tiles dominate the landing view. The fix is not a rewrite — the query layer
 (`buildDashboard`) is shared by every surface and needs no change, and the
-redesign thesis is already written in
-[value-per-cost/06](../value-per-cost/06-what-to-build.md) ("reframe, don't
-cut — change what leads") and
-[deep-analysis/](../deep-analysis/README.md) ("a mentor, not a dashboard").
+redesign thesis is already written in the value-per-cost analysis ("reframe,
+don't cut — change what leads") and the earlier deep-analysis work ("a mentor,
+not a dashboard").
 The fix is a new default **Insights layer**: five answer-shaped cards, one
 per business question (what did it cost · what did it buy · was it efficient
 · is the setup right · what should change), each a sentence with a number, a
@@ -55,26 +54,26 @@ tabs.
 |---|------|----------|
 | 01 | [01-diagnosis.md](01-diagnosis.md) | How 6 charts became 28: the growth audit, the three structural findings, what "overwhelming" is concretely |
 | 02 | [02-answer-first-ia.md](02-answer-first-ia.md) | The Insights layer: five question cards, alerts strip, the four domain views, Explore mode |
-| 03 | [03-migration-and-mechanics.md](03-migration-and-mechanics.md) | Getting there without a rewrite: sequencing, consolidations, parity gaps, success criteria |
+| 03 | [03-migration-and-mechanics.md](03-migration-and-mechanics.md) | Getting there without a rewrite: what does not change, keeping the pack and the GUI in step, success criteria, scope limits |
 
 ## Relationship to existing analysis
 
-- **[value-per-cost/06-what-to-build.md](../value-per-cost/06-what-to-build.md)
-  is the unimplemented spec this folder promotes to the front page**: lead
+- **The value-per-cost analysis**
+  is the spec this folder promotes to the front page: lead
   with the efficiency frontier, demote cost-per-successful-task, value as an
   optional user-owned layer. The mechanism was built (Spending tab) but never
   promoted; this redesign is largely that promotion.
-- **[deep-analysis/README.md](../deep-analysis/README.md)** supplies the
+- **The earlier deep-analysis work** supplies the
   voice: "a mentor, not a dashboard" — observes, notices, compares, advises.
   The recommendations engine is the seed of the Insights layer.
-- **[frontend/](../frontend/)** is the original option study (server +
+- **The original frontend option study** (server +
   webview, Chart.js, shared HTML) — its architecture decisions stand; its
   IA spec ("a top summary bar and six canvases") is what organic growth
   outgrew, unrevised until now.
 - **[ticket-attribution/05](../ticket-attribution/05-justification-pack.md)**:
   the pack is the *export* of the Insights layer — same questions, same
   numbers, generated as a document. The GUI and the pack must not drift.
-- **[sessions/session-analysis.md](../sessions/session-analysis.md)** §
-  "Visualization Improvements" lists proposed controlling visuals (budget
-  forecast line, session-cost histogram) that were never built while
-  lower-signal charts shipped — inputs to the domain views.
+- **The earlier session analysis**'s "Visualization Improvements" section lists
+  proposed controlling visuals (budget forecast line, session-cost histogram)
+  that were never built while lower-signal charts shipped — inputs to the
+  domain views.

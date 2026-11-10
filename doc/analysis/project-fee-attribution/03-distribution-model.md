@@ -87,7 +87,7 @@ fabricate a charge. Instead:
 - This remainder *is the insight*: it is money spent on capacity not used in the
   period. A persistently large idle slice on the personal account is exactly the
   "am I getting value from this subscription?" signal the plan-utilisation feature
-  already chases — see [06 §6.5](06-implementation-plan.md).
+  already chases.
 
 ## 3.5 Currency: subtotal, don't blend
 
@@ -161,5 +161,4 @@ buildFeeAttribution(rows, accountFees, periodDays):
 Every input already exists in `buildDashboard`'s scope: `rows`, `sessionCostMap`,
 the period bounds, and (after [02](02-data-model-and-attribution.md)'s config
 change) `accountFees`. This is a pure function over data already in hand —
-testable in isolation with synthetic rows, which is how [06](06-implementation-plan.md)
-specs it.
+testable in isolation with synthetic rows.

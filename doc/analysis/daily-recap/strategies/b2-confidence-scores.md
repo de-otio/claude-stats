@@ -4,7 +4,6 @@
 |---|---|
 | Cost lever | Higher quality + cheaper synthesis (agent self-edits) |
 | When it pays off | Always — affects rendering decisions |
-| Effort | Tiny |
 
 ## Rationale
 

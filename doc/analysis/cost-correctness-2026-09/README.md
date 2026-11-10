@@ -1,83 +1,79 @@
-# Cost Correctness — 2026-09-12
+# Cost correctness
 
-> **Status: implemented in extension 0.23.0** — see the changelog.
+A cost total is only useful if it is right, and "confidently wrong" is a worse
+failure than "visibly missing". This set records the defect classes that made
+Claude Stats' reported spend wrong, and the structural reasoning behind each fix.
+It is general: no measurements from any real store appear here.
 
-A re-measurement of what Claude Stats reports as spend, prompted by Anthropic's
-new cost tooling in the bundled `claude-api` skill (Claude Code 2.1.269) and by
-eleven days of new transcript data.
-
-This set is a **delta** on [../schema-drift-2026-09/](../schema-drift-2026-09/)
-and
-[../schema-drift-2026-09-implementation/](../schema-drift-2026-09-implementation/),
-written 2026-09-01 and committed as documentation only — none of it has been
-implemented (`dcc1727` is docs; nothing since touches the defects it names).
-
-**That plan is still right, and this document does not restate it.** Read it
-first. What follows is only what eleven days of new data changed:
-
-1. **One defect that did not exist on 2026-09-01.** `claude-fable-5-1` entered
-   the corpus and is mispriced — no prior coverage, confirmed by grep across
-   both doc sets.
-2. **One prior recommendation that live data now contradicts.** Phase 0 step
-   0.1 would introduce a 50% over-report on Claude Sonnet 5 if implemented as
-   written.
-3. **Independent reproduction** of the prior set's headline defect, on a
-   different sample, with the combined dollar impact of both multipliers.
-
-Everything else it found — `effort`, `speed`, `thinking_tokens`, `[1m]`
-normalisation, the `message.id` dedupe — this document either confirms or
-leaves untouched. Where the two analyses converge on the same conclusion from
-different evidence, that is noted as corroboration, not as a new finding.
-
-## The headline
-
-**Claude Stats over-reports cost by 2.34× on the corpus measured.**
-
-Two independent multipliers compound:
-
-| Defect | Effect | Prior coverage |
-|---|---|---|
-| Assistant usage deduped on `entry.uuid` instead of `message.id` | **1.94×** over-count of every token class | Fully designed — implementation set, defect **C1** |
-| `claude-opus-4-7` missing from the rate table, prefix-matched onto the **retired** `claude-opus-4` row | **3×** over-charge — the largest single correction in this release | **None** — new in this document |
-| `claude-fable-5-1` missing, prefix-matched onto `claude-fable-5` | **4×** over-charge on that model's cache reads | **None** — new in this document |
-
-The two pricing rows are one defect, not two: a point-release model id is a
-string prefix of its predecessor's, so longest-prefix matching silently inherits
-an old rate row. Fixing the class matters more than adding two rows
-([02 §2.3](02-pricing-drift.md#23-the-structural-fix)).
-
-Measured over the 150 most recently modified session files: Claude Stats
-reports **2.34×** the actual cost. That sample is transcript-derived and so contains **no
-Opus 4.7 traffic at all** — the largest correction is missing from it. Method,
-and why that matters, in [01-measured-defects.md](01-measured-defects.md).
-
-Both are *confidently wrong numbers* rather than missing ones — the failure mode
-`pricing.ts` was designed to avoid. Neither trips the `{cost: 0, known: false}`
-safety net: C1 because dedupe runs before pricing, the Fable row because
-`startsWith` matching finds a plausible wrong row.
-
-## Chapters
-
-| | |
+| Chapter | Subject |
 |---|---|
-| [01-measured-defects.md](01-measured-defects.md) | The two multipliers, measured; reproduction scripts |
-| [02-pricing-drift.md](02-pricing-drift.md) | The rate table against the live pricing page, fetched 2026-09-12 |
-| [03-request-dimensions-delta.md](03-request-dimensions-delta.md) | What eleven days changed for `effort`, `speed`, `thinking_tokens` — mostly nothing |
-| [04-scope.md](04-scope.md) | What belongs in this release, what does not, and the one decision that needs a maintainer |
-| [05-roadmap.md](05-roadmap.md) | Opportunities from Claude Code 2.1.252–2.1.269, deliberately deferred |
-| [06-implementation-plan.md](06-implementation-plan.md) | The plan: row model, three lanes, dependency graph, tests |
-| [07-review-integration.md](07-review-integration.md) | What two review passes changed, including three errors in this analysis |
+| [02-pricing-drift.md](02-pricing-drift.md) | The rate table against the live pricing page, and the suffix-shape rule for model ids |
 
-## Evidence conventions
+The four classes below are listed in the order they compound.
 
-Following the parent analysis: **[live]** marks an observation measured on
-current local data, **[docs]** marks one taken from published documentation.
+## 1. One API response, N transcript entries
 
-Every rate in [02](02-pricing-drift.md) is **[docs]**, fetched from the pricing
-page on 2026-09-12 rather than recalled. This matters more than it sounds: the
-one prior recommendation this document retracts is a remembered price that was
-never re-fetched, and the retraction only exists because the page was read.
+Claude Code writes one transcript entry per content block, and every one of
+them repeats the **whole** response's `usage`. A parser that keys rows on the
+per-entry `uuid` and sums usage therefore counts each response once per block.
+The over-count is not a single factor: it differs per token class (output-heavy
+responses are inflated more than cache-read-heavy ones), so no one correction
+ratio can repair stored history.
 
-Absolute dollar figures come from one contributor's local corpus, quoted only
-where a ratio alone understates severity. They are not representative of any
-user's spend.
+The fix is the **usage-carrier row model** (schema V23). `message_id` is the
+response identity; `usage_counted` marks the single entry per group whose usage
+is real. Every other entry keeps its row, because its tool, thinking-block and
+file-path data is per-entry, and has its token columns zeroed. Existing
+`SUM(...)` queries become sums over carriers with no query change. A partial
+unique index enforces "at most one carrier per session and `message_id`" in the
+database rather than as a convention. Because uuids never move, a re-parse
+upserts the same rows in place and only corrects which one carries the usage:
+nothing is deleted and no crash can lose history.
+
+## 2. Model-id prefix matching in pricing
+
+A point-release id (`claude-opus-4-7`) is a string prefix-extension of its
+predecessor's (`claude-opus-4`), so longest-prefix matching resolves a new model
+to an old rate row with `known: true`. That is a confidently wrong price. The
+fix is structural, not two more rows: the remainder after the matched key must
+have a recognised shape (empty, dated snapshot, context-tier suffix) or the
+lookup refuses with `known: false` and raises a drift finding. See
+[02-pricing-drift.md](02-pricing-drift.md).
+
+Refusing has a cost of its own. A `{cost: 0, known: false}` result that is
+summed straight into a total converts a visible over-charge into an invisible
+under-charge, so every surface that prints a total also states how much of it
+was unpriced.
+
+## 3. Request dimensions are nullable, because absence is not a default
+
+`effort`, `speed` and `thinking_tokens` are stored as nullable columns.
+`NOT NULL DEFAULT 0` on `thinking_tokens` would assert a 0% thinking share for
+every transcript written before the field existed: a fabricated value that
+reads as data. A `NULL` means "not reported". The same applies to non-carrier
+rows, whose `thinking_tokens` is `NULL` rather than `0`.
+
+Related choices: `effort` lives at the entry root, not under `message`; its set
+of tiers is open, so it is shape-validated at the parser boundary and not typed
+as a closed union. `speed` was first captured without being priced; pricing
+now applies a per-model fast-mode multiplier, and a read that cannot see
+`speed` (the hourly rollup) discloses its fast-mode share as unpriced instead of
+pricing it at the standard rate.
+
+## 4. Historical rows that cannot be repriced exactly
+
+Fixing the parser corrects numbers going forward but not what is already stored.
+Three options exist for the history:
+
+| Option | Effect | Verdict |
+|---|---|---|
+| **Repair** | Re-parse the sessions whose transcripts still exist | Right for what is repairable; non-destructive under the carrier model |
+| **Estimate** | Divide stored rows by a per-session inflation factor | **Struck.** It fabricates a number, and one that is wrong by token class |
+| **Disclose** | Flag unrepaired rows and say so wherever a total is printed | Always required, because some transcripts are gone |
+
+The decision is **repair what is repairable and disclose the rest**, never
+silently applying an estimated correction. The disclosure is `cost_basis`:
+`'per-response'` on rows the corrected parser wrote or repaired, `'pre-dedupe'`
+on everything else. It is the one new column that is deliberately **not**
+nullable and defaults to the untrusted value, so that a row nobody has vouched
+for reads as "don't trust me" rather than as an implied clean bill.

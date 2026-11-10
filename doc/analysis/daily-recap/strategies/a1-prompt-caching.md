@@ -4,7 +4,6 @@
 |---|---|
 | Cost lever | Lower tokens (≈10× on cache hits) |
 | When it pays off | Multiple recap calls in the same conversation/day |
-| Effort | Tiny |
 
 ## Rationale
 

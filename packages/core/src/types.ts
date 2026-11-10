@@ -34,10 +34,10 @@ export interface UsageData {
   service_tier?: string;
   inference_geo?: string;
   /**
-   * Inference speed mode (`"standard"` | `"fast"`). 489,970 occurrences in the
-   * current corpus, all `"standard"` — see
-   * doc/analysis/cost-correctness-2026-09/03-request-dimensions-delta.md §3.3.
-   * Captured as a column only; no analytic is built on it in this release.
+   * Inference speed mode (`"standard"` | `"fast"`). Every observed value has
+   * been `"standard"`; see doc/analysis/cost-correctness-2026-09/README.md §3.
+   * Nullable: absence is not `"standard"`. Pricing applies the fast-mode
+   * multiplier where a model has one (`resolveRequestPricing` in pricing.ts).
    */
   speed?: string;
   /**
@@ -102,8 +102,8 @@ export interface RawSessionEntry {
   requestId?: string;
   /**
    * Reasoning-effort tier for this request. Sits at the ENTRY ROOT, not under
-   * `message` — verified twice against real transcripts
-   * (doc/analysis/cost-correctness-2026-09/03-request-dimensions-delta.md §3.1).
+   * `message` — verified against real transcripts
+   * (doc/analysis/cost-correctness-2026-09/README.md §3).
    * NOT typed as a closed union: only `high` and `xhigh` have ever been
    * observed, `xhigh` itself arrived as a surprise, and a union here would make
    * the next unannounced tier a compile error rather than data. Shape-validated
@@ -114,7 +114,7 @@ export interface RawSessionEntry {
    * Per-turn reasoning-effort tier, also at the ENTRY ROOT. Read first by the
    * parser, with `effort` as the fallback (#125 D2, provisional: identical on
    * all 2.1.300-310 data, and the billed value if 2.1.311 `ultrathink` makes
-   * them differ — doc/analysis/claude-code-2.1.311-review/checks/V5.md).
+   * them differ).
    */
   perTurnEffort?: string;
   /**

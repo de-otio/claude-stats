@@ -90,16 +90,14 @@ class). Two aggregation paths, in order of availability:
    ([03](03-org-plane-and-backend.md)): the team dashboard renders the same
    sections continuously; the pack becomes its periodic snapshot export.
 
-## 5.5 Surfaces and sequencing
+## 5.5 Surfaces
 
 CLI: `claude-stats pack --period 2026-07 [--sections ...] [--json]`.
 MCP: `generate_justification_pack` with the same parameters, returning the
 document path. Dashboard: a "Generate report" card that walks the section
 opt-ins.
 
-The pack slots into the roadmap after ticket-attribution phase 1 (it needs
-the per-ticket table) and grows a section per feature phase — it is the
-integration point, so each new analysis (hygiene, constraint impact,
-[pricing-model comparison](../constraint-impact/04-pricing-model-comparison.md))
-lands as "a new section in the pack" rather than a new artifact the
-developer must discover.
+The pack is the integration point, so each new analysis (hygiene, constraint
+impact, [pricing-model comparison](../constraint-impact/04-pricing-model-comparison.md))
+lands as "a new section in the pack" rather than a new artifact the developer
+must discover.

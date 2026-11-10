@@ -5,15 +5,15 @@
 Two coupled features:
 
 1. **Settings tab** — configure a **monthly fee per account**. The user runs
-   two Claude accounts (work €100/mo, personal €200/mo) and switches between
-   them. Today there is exactly one fee field.
-2. **Projects tab** — show the **total fee (€300/mo) distributed across
+   more than one Claude account (e.g. a work and a personal subscription at
+   different fees) and switches between them. Today there is exactly one fee field.
+2. **Projects tab** — show the **total fees distributed across
    projects** for the selected period, so the flat subscription cost is
    attributed to the work it paid for.
 
 The deeper goal stated in the request: *"so that the AI costs can be attributed
 to projects proportionally."* The subscription fee is a **sunk, flat cost** —
-you pay €300 whether you run one prompt or ten thousand. The feature turns that
+you pay the same whether you run one prompt or ten thousand. The feature turns that
 undifferentiated number into a per-project, per-period figure the user can
 reason about (e.g. bill a client, or decide a side-project isn't worth its share
 of the fee).
@@ -64,7 +64,7 @@ already sums an auto-detected plan fee across accounts via
 [`lookupPlanFee(subscriptionType)`](../../../packages/core/src/pricing.ts#L110).
 **But** it can only produce *defaults* from the `PLAN_FEES` table
 ([pricing.ts:96](../../../packages/core/src/pricing.ts#L96)) — `max_5x`
-→ $100, etc. It cannot know the user actually pays €200 for the personal account.
+→ $100, etc. It cannot know what the user actually pays for a given account.
 That is precisely the gap the Settings feature fills.
 
 ### Proportional project distribution
@@ -100,22 +100,11 @@ The Day/Week/Month/All selector already flows into `buildDashboard` via
 `opts.period`, recomputing every per-project aggregate. The fee view rides this
 for free — when the period changes, the fee distribution recomputes with it.
 
-## 1.3 The exact gap
+## 1.3 Where the design work is
 
-| Capability | Status |
-|---|---|
-| Session → account attribution | ✅ exists (`account_uuid`) |
-| Enumerate accounts for a UI | ✅ exists (`listAccounts`) |
-| Group cost per account | ✅ exists (`accountMap`) |
-| Auto-detect a *default* fee per account | ✅ exists (`lookupPlanFee`) |
-| **Store a user-entered fee per account** | ❌ **missing** — config holds one global `monthly_fee` |
-| **Currency per account (EUR vs USD)** | ❌ **missing** |
-| **Split each account's fee across its projects** | ❌ **missing** |
-| **Period pro-rating of a monthly fee** | ❌ **missing** |
-| Settings UI: one fee field per account | ❌ **missing** (single field today) |
-| Projects UI: fee-by-project view | ❌ **missing** |
-
-Five missing pieces, all small, none requiring schema migration (the config file
-is free-form JSON; the store already has the columns). The design work is in
+The pieces to add — a stored fee and currency per account, the split of each
+account's fee across its projects, period pro-rating, and the Settings and
+Projects UI — are all small, and none requires a schema migration (the config
+file is free-form JSON; the store already has the columns). The design work is in
 *how* to split (the model) and *how honest* to be about attribution accuracy —
 the next two documents.

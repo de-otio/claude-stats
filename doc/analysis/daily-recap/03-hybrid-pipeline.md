@@ -57,32 +57,33 @@ This was previously described as "session clustering" but operates on
 segments. The Tier-2 digest produced looks like:
 
 ```jsonc
+// Illustrative: a synthetic day with invented projects, prompts and figures.
 {
-  "date": "2026-04-26",
-  "tz": "Europe/Berlin",
-  "totals": { "sessions": 4, "activeMs": 7920000, "estimatedCost": 1.84 },
+  "date": "2000-01-03",
+  "tz": "UTC",
+  "totals": { "sessions": 4, "activeMs": 7200000, "estimatedCost": 1.50 },
   "items": [
     {
-      "id": "claude-stats-russian",   // stable hash of segment_ids + commit shas
-      "project": "~/repos/myproject",
-      "repoUrl": "github.com/.../claude-stats",
+      "id": "project-a-csv-export",   // stable hash of segment_ids + commit shas
+      "project": "~/repos/project-a",
+      "repoUrl": "github.com/example-org/project-a",
       "sessionIds": ["abc123", "def456"],
       "segmentIds": ["abc123#0", "def456#2"],   // session-id#segment-index
-      "firstPrompt": "<UNTRUSTED-WRAPPED>i want to add russian</…>",
+      "firstPrompt": "<UNTRUSTED-WRAPPED>add a csv export option to the report command</…>",
       "characterVerb": "Shipped",     // from tool histogram + git state
       "git": {
-        "commitsToday": 4,
-        "filesChanged": 3,
-        "linesAdded": 287,
-        "linesRemoved": 12,
+        "commitsToday": 3,
+        "filesChanged": 4,
+        "linesAdded": 120,
+        "linesRemoved": 8,
         "subjects": [
-          "Add Russian locale and fix silent fallback bug (0.2.3)",
+          "Add CSV export to the report command",
           "..."
         ],
         "pushed": true,
         "prMerged": null
       },
-      "duration": { "wallMs": 6480000, "activeMs": 4320000 },
+      "duration": { "wallMs": 5400000, "activeMs": 3900000 },
       "score": 14.6                   // for ranking
     },
     /* … */
@@ -220,9 +221,7 @@ The Tier-3 narrative can also be cached by `(digest_hash, model, prompt)`,
 so re-asking for the same paragraph in the same session costs nothing.
 
 **File permission requirements:** the cache directory MUST be created
-with mode `0o700` and cache files written with mode `0o600`. See
-[05-implementation-plan.md](05-implementation-plan.md#privacy--safety)
-for the helper utilities that enforce this.
+with mode `0o700` and cache files written with mode `0o600`.
 
 ## What is *not* in the pipeline (deliberately)
 

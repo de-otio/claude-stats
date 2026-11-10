@@ -44,10 +44,7 @@ consumer.
    — validation rules (both-or-neither, `since ≤ until`, malformed/future
    dates), timezone handling, the `since` vs `activeSince` distinction that
    must be preserved, why `alerts.ts` is explicitly left untouched, and the
-   specific existing test files/describe-blocks each phase extends.
-6. [Rollout plan](06-rollout-plan.md) — four independently shippable
-   phases (core+CLI → MCP → web dashboard → VS Code extension), each with
-   a concrete manual-verification step, ordered by risk and leverage.
+   specific existing test files/describe-blocks the change extends.
 
 ## TL;DR scope
 

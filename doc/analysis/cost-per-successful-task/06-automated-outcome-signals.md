@@ -168,7 +168,7 @@ exactly the self-monitoring case the paper warns about. Practical implications:
 - Judge with a **different model/provider** where possible, and/or strip
   model-identifying detail from the transcript (blind eval).
 - Treat the judge as a **calibrated tier**, never ground truth: measure its
-  agreement with the user's manual labels and report it ([07 §7.4](07-accuracy-plan.md)).
+  agreement with the user's manual labels and report it.
 - It conflicts with the local-only privacy promise (transcript → external model).
   Gate behind explicit opt-in; prefer a local model if offered. This is why the
   judge is the *last* tier, not the first.
@@ -191,8 +191,7 @@ exactly the self-monitoring case the paper warns about. Practical implications:
 
 The throughline: **(6.1a) test outcomes** and **(6.2) conversational repair** are
 the two signals that are both high-value *and* mostly correctness-aware, and (6.2)
-needs no new parsing at all. They are the recommended first targets in
-[07](07-accuracy-plan.md).
+needs no new parsing at all. They are the natural first targets.
 
 ## References
 

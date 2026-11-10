@@ -9,7 +9,6 @@ Analysis for adding energy consumption and carbon footprint estimation to claude
 | 01 | [01-estimation-model.md](01-estimation-model.md) | Energy and CO2 estimation formulas, per-model coefficients |
 | 02 | [02-data-integration.md](02-data-integration.md) | How to wire into existing token data — no new collection needed |
 | 03 | [03-dashboard-design.md](03-dashboard-design.md) | UI components, visualizations, and placement |
-| 04 | [04-implementation-plan.md](04-implementation-plan.md) | Concrete steps, file changes, and phasing |
 
 ## Key Insight
 

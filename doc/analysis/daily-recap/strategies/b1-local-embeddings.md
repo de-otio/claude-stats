@@ -4,7 +4,6 @@
 |---|---|
 | Cost lever | Higher quality + lower LLM-fallback usage |
 | When it pays off | Whenever segments touch *related but non-identical* files/prompts |
-| Effort | Medium |
 
 ## Rationale
 

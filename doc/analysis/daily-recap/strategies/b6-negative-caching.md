@@ -4,7 +4,6 @@
 |---|---|
 | Cost lever | Lower CPU |
 | When it pays off | Days with no work (weekends, sick days, vacation) |
-| Effort | Tiny |
 
 ## Rationale
 

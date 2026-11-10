@@ -8,15 +8,15 @@ actually discriminate accounts from ones that only look like they might.
 ## A. The authoritative local snapshot — `~/.claude.json` → `oauthAccount`
 
 The single richest source. It describes the **currently logged-in** account
-(19 fields observed). The account-relevant ones:
+(about twenty fields). The account-relevant ones:
 
 | Field | Example (documented or reported values) | Use |
 |---|---|---|
 | `accountUuid` | UUID (36 ch) | **primary account key** |
 | `organizationUuid` | UUID (36 ch) | org key (Team/Max org) |
 | `emailAddress` | `<user>@<domain>` | human label (PII — hash at rest) |
-| `organizationType` | `claude_max` | plan family |
-| `organizationRateLimitTier` | `default_claude_max_5x` | **plan/limit tier** |
+| `organizationType` | `<plan-family>` | plan family |
+| `organizationRateLimitTier` | `<plan-tier>` | **plan/limit tier** |
 | `userRateLimitTier` | `null` | per-seat tier (Team) |
 | `seatTier` | `null` | Team seat (premium/standard) |
 | `billingType` | `stripe_subscription` | subscription vs API |
@@ -36,7 +36,7 @@ account changes. So:
 
 ### A.1 The lone backup — `~/.claude.json.backup`
 
-Exactly one backup exists, from a past date. On the inspected machine its
+At most one backup exists, from a past date. When inspected, its
 `oauthAccount` was the **same** account as current (same `accountUuid`,
 `userID`, `machineID`; only `numStartups` differed). So in practice the backup
 is a periodic copy, **not** a guaranteed snapshot of the *other* account. Treat
@@ -45,7 +45,7 @@ it doesn't. Do not rely on it.
 
 ### A.2 `projects` map — per-project last-session pins
 
-`~/.claude.json` → `projects[<path>]` (68 entries observed, 54 with a session)
+`~/.claude.json` → `projects[<path>]` (one entry per project path, not all with a session)
 carries per-project last-run telemetry: `lastSessionId`, `lastSessionModified`,
 `lastCost`, `lastModelUsage`, `lastTotal*Tokens`, `lastSessionFirstPrompt`.
 There is **no account field per project**. Its value: each entry pins a concrete
@@ -58,7 +58,7 @@ self-stamping with an account).
 ### A.3 `userID` (top-level, 64-hex) — candidate fingerprint, unverified
 
 `~/.claude.json` has a top-level `userID` that is a 64-char hex hash (distinct
-from the separate `machineID`, also 64-hex). On the inspected machine `userID`
+from the separate `machineID`, also 64-hex). When inspected, `userID`
 was identical between current and backup — but both were the *same* account, so
 this does **not** establish whether `userID` is account-derived or
 machine-derived. **Hypothesis to verify:** if `userID` is a hash of the account,
@@ -97,22 +97,22 @@ anchor > observation > backfill > unknown`.
 | Source | Path | What it gives |
 |---|---|---|
 | Session JSONL | `projects/<slug>/<sid>.jsonl` | per-message `timestamp` + `usage`; the records to be attributed |
-| Global history | `~/.claude/history.jsonl` | 2085 prompts × {timestamp, project, sessionId} over ~4 months — a master ordering to place switch boundaries against |
+| Global history | `~/.claude/history.jsonl` | every prompt × {timestamp, project, sessionId} across the whole history — a master ordering to place switch boundaries against |
 | Live sessions | `~/.claude/sessions/<pid>.json` | running sessions: `sessionId`, `pid`, `procStart`, `startedAt`, `status` — enables **real-time** stamping: a live session + current `oauthAccount` = an exact pin |
-| Per-session env | `~/.claude/session-env/<sid>.json` | 277 files keyed by sessionId; may capture env at start. **Not inspected deeply — captured env can contain secrets.** Potential but treat with care |
+| Per-session env | `~/.claude/session-env/<sid>.json` | one file per sessionId; may capture env at start. **Not inspected deeply — captured env can contain secrets.** Potential but treat with care |
 
 ## D. Signals that look useful but are NOT (verified)
 
 | Signal | Why it fails here |
 |---|---|
-| `message.usage.service_tier` | **Constant `"standard"`** across all sampled sessions. Could in principle differ if one account were on a priority tier, but it does not discriminate on this machine. |
+| `message.usage.service_tier` | **Constant `"standard"`** across all sampled sessions. Could in principle differ if one account were on a priority tier, but it did not discriminate in the sampled data. |
 | `message.usage.inference_geo` | **Constant `"not_available"`** — empty everywhere. No signal. |
 | `userType` | Constant `"external"`. |
 | `machineID` | Per-machine, identical across accounts by definition. Non-signal. |
 | `requestId` (`req_…`) | Maps to a backend request; account is known only server-side. Opaque offline. |
-| `stats-cache.json` | Claude Code's own 65-day rollup (`dailyActivity`, `modelUsage`, totals). Contains cost/tokens/sessionId but **no account/tier** — it is itself account-*mixed*. Useful only as a totals cross-check ([05](05-reliability-validation-and-limitations.md)). |
+| `stats-cache.json` | Claude Code's own rolling-window rollup (`dailyActivity`, `modelUsage`, totals). Contains cost/tokens/sessionId but **no account/tier** — it is itself account-*mixed*. Useful only as a totals cross-check ([05](05-reliability-validation-and-limitations.md)). |
 | `policy-limits.json` | Only feature restrictions / compliance flags. No rate-limit tier, no account. |
-| Statsig cache | **Absent** on this machine (Claude Code uses GrowthBook now — `cachedGrowthBookFeatures`, 374 keys, lives in `~/.claude.json`). The earlier "distinct Statsig user IDs" idea does not apply. |
+| Statsig cache | **Absent** on current versions (Claude Code uses GrowthBook now — `cachedGrowthBookFeatures` lives in `~/.claude.json`). The earlier "distinct Statsig user IDs" idea does not apply. |
 
 ## E. Surface (`entrypoint`) — and the invisible editor account
 

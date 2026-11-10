@@ -208,7 +208,7 @@ co2_grams = (total_energy_wh / 1000) * grid_intensity_gCO2_per_kWh
 - **EPA eGRID** (eGRID2022, published 2024): US subregional emission factors. Free via eGRID Explorer. Updated roughly every 2 years.
 - **EEA Emission Intensity Indicator**: EU country-level and aggregate. Updated annually. Free.
 - **IEA Emissions Factors**: Global coverage, published annually. Paid product; we use publicly reported summary figures.
-- **Electricity Maps / WattTime**: Real-time carbon intensity APIs. Out of scope for v1 (see Open Questions in 04-implementation-plan.md) but could enable time-of-day adjustments in v2. Note: Electricity Maps recommends average (not marginal) for impact estimation. WattTime marginal signals have known methodological challenges.
+- **Electricity Maps / WattTime**: Real-time carbon intensity APIs. Out of scope for v1 but could enable time-of-day adjustments in v2. Note: Electricity Maps recommends average (not marginal) for impact estimation. WattTime marginal signals have known methodological challenges.
 
 ## Environmental Equivalents
 

@@ -89,7 +89,7 @@ plus team share-level, not cohort thresholds.
 | 01 | [01-attribution-signals.md](01-attribution-signals.md) | The accuracy ladder: which signals exist, how they rank, the coverage/denominator problem |
 | 02 | [02-local-data-model.md](02-local-data-model.md) | Store schema changes, extraction pass, per-message branch, MCP surface, migration mechanics |
 | 03 | [03-org-plane-and-backend.md](03-org-plane-and-backend.md) | Sync wire shape, backend tables/resolvers/rollups, the privacy analysis for per-ticket org data |
-| 04 | [04-reporting-and-roi.md](04-reporting-and-roi.md) | What the report must look like to be believed; the Jira-side value join; invoice reconciliation; sequencing |
+| 04 | [04-reporting-and-roi.md](04-reporting-and-roi.md) | What the report must look like to be believed; the Jira-side value join; invoice reconciliation |
 | 05 | [05-justification-pack.md](05-justification-pack.md) | The self-contained periodic artifact for managers who don't run the tool — the integration point for all the reporting features |
 
 ## Relationship to existing analysis
@@ -99,8 +99,7 @@ plus team share-level, not cohort thresholds.
   this feature's contract. Its `02-defining-business-result.md` marks "tickets
   close" as computable only via "an external signal the user wires in"; the
   ticket key **is** that signal, and the "frictionless value-tagging surface"
-  its `06-what-to-build.md` calls for is naturally implemented as ticket
-  linkage. Nothing of that surface is implemented yet.
+  it calls for is naturally implemented as ticket linkage.
 - **[project-fee-attribution/](../project-fee-attribution/)** is the closest
   structural analogue (attribute a cost pool to user-declared units); its
   "join quality is the ceiling on accuracy" argument recurs here as the
@@ -112,6 +111,6 @@ plus team share-level, not cohort thresholds.
   **[05-privacy-security.md](../05-privacy-security.md)** bind the org-plane
   design; [03](03-org-plane-and-backend.md) works within their constraints and
   lists the required amendments to 05.
-- `plans/10-session-tagging.md` built the tagging substrate this feature
-  extends; `get_cost_per_task` (topic clusters) is a cousin, not a substitute —
+- The existing session-tagging substrate is what this feature extends;
+  `get_cost_per_task` (topic clusters) is a cousin, not a substitute —
   its "task" has no stable external identity.

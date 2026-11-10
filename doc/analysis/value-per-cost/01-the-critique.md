@@ -55,7 +55,7 @@ But "value per cost" demands a stronger thing still: even *correct* ≠ *valuabl
 
 So "successful task" sits at the *output* layer and is being asked to stand in
 for the *impact* layer. That is the load-bearing confusion. The fix is not to
-make the success oracle better (though we should — [05 §3](05-prior-art-and-whitespace.md));
+make the success oracle better (though we should — [05 §1](05-prior-art-and-whitespace.md));
 it is to **stop conflating the layers** and let value be declared, not inferred
 ([02](02-defining-business-result.md), [03](03-the-three-questions.md)).
 
@@ -69,8 +69,7 @@ justified?") are both **counterfactual** questions:
   *same* outcome?
 
 The shipped metric measures only what *did* happen (cost ÷ successes). It never
-estimates the *cheaper path*. Yet the prior-art survey found this is precisely
-the question **no existing tool asks** ([05 §4](05-prior-art-and-whitespace.md)),
+estimates the *cheaper path*. Yet this is precisely the cheaper-path question,
 and the efficiency literature says the answer is large: FrugalGPT-style cascades
 match frontier quality at up to **98% lower cost**; routing "simple" requests
 away from reasoning models cut one assistant's spend **68%** with no quality loss
@@ -105,7 +104,7 @@ It does not say the feature was a mistake. The substrate it built — local cost
 attribution per unit, a four-state outcome model that never counts *unobservable*
 as *failed*, a proxy→label hierarchy, coverage reported next to the rate, and a
 hard "no verification theatre" rule — is exactly the rare, hard-won machinery a
-real value-per-cost tool needs. The reframe in [06](06-what-to-build.md) keeps
+real value-per-cost tool needs. The reframe described here keeps
 all of it. The problem is the **headline** ("cost per successful task," one
 number, value-flavoured) and the **implied promise** (that a topic-cluster is a
 business result). Those are framing defects, and framing is cheap to change.

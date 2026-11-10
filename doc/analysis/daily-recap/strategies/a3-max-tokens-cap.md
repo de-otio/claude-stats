@@ -4,7 +4,6 @@
 |---|---|
 | Cost lever | Lower tokens (output side) |
 | When it pays off | Always; bounds worst-case output cost |
-| Effort | Tiny |
 
 ## Rationale
 

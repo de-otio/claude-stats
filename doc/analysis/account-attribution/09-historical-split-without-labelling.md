@@ -1,7 +1,7 @@
 # 09 — Historical account split without hand-labelling
 
 Manual labelling (doc [08](08-manual-labelling.md)) is the *escape hatch*, not the
-plan: hand-tagging ~960 historical sessions is impractical. This doc finds the
+plan: hand-tagging a whole historical back-catalogue is impractical. This doc finds the
 signals that let us attribute a **multi-account back-catalogue automatically**,
 from a handful of seeds, and specifies the mechanism.
 
@@ -9,31 +9,31 @@ The premise (doc [03](03-attribution-methods.md)): the timeline is forward-only
 and single-account backfill (doc 03 §D.1) abstains once ≥2 accounts are seen. So
 pre-observation history across two accounts needs *something else*.
 
-## What the data actually offers (measured, not assumed)
+## What the data actually offers
 
-Empirical scan of the local store + transcripts (counts only; no identifying
-values), cross-checked against the official docs:
+Empirical scan of a local store + transcripts (no identifying values),
+cross-checked against the official docs:
 
 | Signal | Verdict | Evidence |
 |---|---|---|
-| Account in transcript `*.jsonl` | ❌ **absent** | Scanned 10k+ lines / 64 files → 1540 distinct keys, **none** an account/org/subscription id. Docs confirm: account/org/email are *"only sent to the configured OpenTelemetry exporter, never to local transcript files."* |
-| Historical telemetry files | ❌ **negligible** | `~/.claude/telemetry/` = 2 files / 29 lines, **0** sessionIds, **0** accounts (failed-event dumps only). |
+| Account in transcript `*.jsonl` | ❌ **absent** | A scan of many transcript lines across many files found a wide set of distinct keys, **none** an account/org/subscription id. Docs confirm: account/org/email are *"only sent to the configured OpenTelemetry exporter, never to local transcript files."* |
+| Historical telemetry files | ❌ **negligible** | `~/.claude/telemetry/` holds a handful of small files with no sessionIds and no accounts (failed-event dumps only). |
 | `~/.claude.json.backup` anchor | ❌ **same account** | backup holds the *current* account → no historical switch captured (doc 03 §D.2 was opportunistic). |
 | `userID` fingerprint | ❌ **not account-derived** | Docs: `user.id` is *"a random anonymous identifier … not derived from your Claude account"*, persisted per-install. Kills doc 03 §D.4. |
 | `message.usage.service_tier` | ⚠️ weak | Present per message, but reflects the *request* tier (standard/priority/batch), not the account; both plans commonly resolve to the same tier. |
-| **Project / repo affinity** | ✅ **strong** | 961 sessions over **94 projects**; **23 projects cover 80%**, 59 cover 95%. Work vs personal is project-aligned. |
+| **Project / repo affinity** | ✅ **strong** | Session counts are concentrated in a minority of projects, so a few projects cover most sessions. Work vs personal is project-aligned. |
 | **5-hour usage-window co-membership** | ✅ **strong, cross-surface** | Docs: the 5-hour limit is **per account** and *"usage of all Claude surfaces (claude.ai, Claude Code, Claude Desktop) counts toward the same limit."* So one window = one account, spanning surfaces. |
-| Forward observation timeline | ✅ seed source | Once 0.11.x runs, CLI sessions get attributed → seeds. |
+| Forward observation timeline | ✅ seed source | Once observation is running, CLI sessions get attributed → seeds. |
 | OTEL export | ✅ exact, forward, opt-in | `user.account_uuid` etc. — gold standard going forward, and validates inference. |
 
 Two facts reframe the problem:
 
-1. **26% of sessions are non-CLI** (vscode / claude-vscode / desktop) and are
-   *unattributable* by the CLI timeline. Any per-session method leaves a quarter
-   of history blank.
+1. **A sizeable share of sessions are non-CLI** (vscode / claude-vscode / desktop)
+   and are *unattributable* by the CLI timeline. Any per-session method leaves
+   that share of history blank.
 2. The account is **project-aligned** and the 5-hour window is **per-account
    across surfaces**. These two are surface-independent — they can attribute the
-   non-CLI 26% too.
+   non-CLI sessions too.
 
 ## The solution — seed-and-propagate
 
@@ -44,8 +44,8 @@ labelling.
 
 ### Seeds (known account), strongest first
 - **OTEL** events (authoritative) — if enabled.
-- **Forward observation timeline** — CLI sessions attributed once 0.11.x runs.
-- **Anchor pins** (live sessions, doc [08]/#31).
+- **Forward observation timeline** — CLI sessions attributed once observation is running.
+- **Anchor pins** (live sessions).
 - **User *project* labels** (doc 08) — but at project granularity (≤ tens), and
   only for projects never seen forward.
 
@@ -72,11 +72,11 @@ Confidence from agreement:
 ### Why it converges here
 - Forward use re-touches the active projects → they self-seed, and the project
   edge pins their back-catalogue automatically (**zero** input).
-- The window edge folds in the non-CLI 26% that no per-session method reaches.
+- The window edge folds in the non-CLI sessions that no per-session method reaches.
 - Only projects **abandoned before** attribution began need a seed — a *handful*
-  of project labels, not ~960 session tags. With 23 projects at 80% coverage, a
-  dozen confirmations plus forward seeds realistically resolve the bulk at
-  medium-or-better confidence.
+  of project labels, not one tag per session. Because a few projects cover most
+  sessions, a small number of confirmations plus forward seeds should resolve the
+  bulk at medium-or-better confidence.
 
 ## Precedence & storage
 
@@ -88,31 +88,15 @@ signal upgrade them, and `reattribute` recomputes them from seeds each run
 (`propagated`) for provenance. Durable inputs (project labels) live in the doc 08
 `account_label_rules` table; everything else is recomputed.
 
-## Implementation sketch (phased)
+## Shape of the mechanism
 
-1. **Pure core** `attribution/propagate.ts` — `propagate(sessions, seeds, {windowMs})
-   → Map<sessionId, {accountUuid, confidence}>`. Clockless; windows precomputed
-   as `[start,end)` spans (reuse the 5-hour grouping already in the store). Fully
-   unit-testable; property test: idempotent, seed-preserving, conflict → unknown.
-2. **Store** — read the inputs (sessions + project/repo + window bucket + existing
-   strong attributions as seeds); write propagated rows via the existing
-   `applyAttribution` guard (source `backfill`, confidence medium/low).
-3. **Wire** into `reattribute` (after inference, before window recompute) and
-   expose `account backfill --propagate [--dry-run]` so the user can run it once
-   forward seeds exist; print a per-project resolution table + the residual
-   `unknown` projects to label.
-4. **Tests + coverage** to the repo gate; fixtures use placeholder UUIDs.
-
-## The user's practical path
-
-1. Update to 0.11.x and `collect` for a while so **forward seeds** accrue (each
-   account gets observed as you switch; each active project gets pinned).
-2. Run `account backfill --propagate --dry-run` → review the per-project split.
-3. Label only the **residual** projects it couldn't resolve (a short list), then
-   run it for real. Optionally enable OTEL for exact forward attribution.
-
-Manual labelling shrinks from ~960 sessions to a handful of *project* seeds; the
-propagation does the rest, across surfaces.
+Propagation is a pure, clockless function over precomputed inputs: sessions with
+their project/repo and 5-hour window bucket, plus the existing strong
+attributions as seeds. It returns an account and a confidence per session.
+Windows are precomputed as `[start,end)` spans (reusing the 5-hour grouping the
+store already keeps). Properties worth testing: idempotent, seed-preserving,
+conflict → `unknown`. Manual labelling shrinks from one tag per session to a
+handful of *project* seeds; the propagation does the rest, across surfaces.
 
 ## Sources
 
@@ -121,9 +105,3 @@ propagation does the rest, across surfaces.
 - Usage limits (5-hour per-account window; all surfaces share one limit):
   <https://support.claude.com/en/articles/14552983-models-usage-and-limits-in-claude-code>,
   <https://support.claude.com/en/articles/11647753-how-do-usage-and-length-limits-work>
-
-## Confidentiality
-
-All figures here are aggregate counts; no project names, repo URLs, account
-UUIDs, or emails appear. Fixtures/tests for the implementation use the
-`00000000-…` / `@example.com` placeholders (doc 08).

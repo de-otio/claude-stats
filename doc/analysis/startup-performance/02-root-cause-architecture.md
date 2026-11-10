@@ -58,13 +58,13 @@ the full message table for the period and iterate it in JS:
 | model efficiency | `getMessagesForEfficiency` (full rows incl. `prompt_text`, `tools`) | turn assembly, `JSON.parse(tools)`, `scoreComplexity`, `estimateCost` ×2 |
 | context analysis | `getMessagesForContext` | per-row accumulation |
 | spending | spending query | per-row accumulation |
-| **energy** | `getMessagesForEnergy` (full rows) | `estimateEnergy` per row, `Intl` date-format per row, 213k-element array |
+| **energy** | `getMessagesForEnergy` (full rows) | `estimateEnergy` per row, `Intl` date-format per row, an array as large as the whole store |
 
-Nothing is shared between these passes: the same 213k rows are pulled from
+Nothing is shared between these passes: the same rows are pulled from
 SQLite and walked **four-plus times**, with separate materialisation each
-time. `buildEnergySection` alone is ~1 s because it pays the largest fetch
-(503 ms) plus the most expensive per-row work (`Intl.DateTimeFormat.format`
-inside a 213k loop, 185 ms).
+time. `buildEnergySection` is the single slowest pass because it pays the
+largest fetch plus the most expensive per-row work
+(`Intl.DateTimeFormat.format` inside a loop over every message).
 
 The shape of the cost:
 
@@ -80,39 +80,40 @@ only grows. There is no memoisation, no cache keyed on
 
 Even narrowing the period only partially helps, because the message
 queries filter on `sessions.first_timestamp` rather than `messages.timestamp`
-(detail and query plans in
-[`01-methodology-and-measurements.md`](01-methodology-and-measurements.md#the-un-prunable-scan-why-period-filters-help-less-than-they-should)).
+(the query plans show it).
 
 SQLite scans the **whole** `idx_messages_timestamp` index and applies the
-session-time predicate post-join, so each message query has a floor of
-~50 ms (full index scan + 213k session lookups) **regardless of period**.
-Fetching a single day's 133 rows still costs ~53 ms. That floor is
-lifetime-linear and unavoidable until the predicate moves onto an indexed
-message column.
+session-time predicate post-join, so each message query has a floor (full
+index scan plus a session lookup per message) **regardless of period**.
+Fetching a single day's few hundred rows costs about as much as fetching a
+much wider window. That floor is lifetime-linear and unavoidable until the
+predicate moves onto an indexed message column.
 
 ## Why "default to day" is necessary but not sufficient
 
 Changing the default to `"day"` removes the dominant term
-(`messages_in_scope` collapses from ~213k to ~hundreds) and is the right
-immediate fix — first paint goes from ~3.3 s to ~0.26 s here.
+(`messages_in_scope` collapses from the whole store to a few hundred rows) and
+is the right immediate fix — first paint drops from seconds to a fraction of a
+second on a store of a few hundred thousand messages.
 
 But two residual scaling hazards remain:
 
-1. **The per-query scan floor** (§3): ~50 ms × (number of message passes)
-   that grows with lifetime messages, paid even for `period = "day"`. At
-   today's size that is ~200 ms of the 260 ms `day` budget; it will keep
-   climbing.
+1. **The per-query scan floor** (§3): one scan per message pass, growing with
+   lifetime messages, paid even for `period = "day"`. On a store of a few
+   hundred thousand messages that floor is most of the `day` budget; it will
+   keep climbing.
 2. **The wide-period paths still hit the wall.** A user who selects
-   "all" — a completely reasonable thing to want — still waits 3.3 s and
+   "all" — a completely reasonable thing to want — still waits seconds, and
    rising. The feature shouldn't degrade to unusable as history grows.
 
-Both are addressed structurally in
-[`03-remediation-plan.md`](03-remediation-plan.md): move the filter onto
-`messages.timestamp` (seek, not scan), and — the durable fix — **push the
-additive aggregation into SQLite**. A SQL `GROUP BY` over all history
-computes the token/cost/energy/breakdown metrics in ~100 ms (vs ~500 ms
-just to fetch the raw rows for one of the four JS passes), with no
-maintenance surface and no fixed group-by lock-in.
+Both are addressed structurally: move the filter onto `messages.timestamp`
+(seek, not scan), and — the durable fix — **push the additive aggregation into
+SQLite**. A SQL `GROUP BY` over all history computes the
+token/cost/energy/breakdown metrics in a fraction of the time it takes merely
+to fetch the raw rows for one of the four JS passes, with no maintenance
+surface and no fixed group-by lock-in. See
+[05-rollup-design.md](05-rollup-design.md) and
+[06-ingest-derived-tables-design.md](06-ingest-derived-tables-design.md).
 
 Two caveats shape that plan. First, **not all metrics are additive**: turn
 classification (`buildModelEfficiency`) and per-session token trajectory

@@ -108,5 +108,4 @@ a single tool call:
 
 This skill is cheap to ship — a markdown prompt asset distributed with the
 extension or the repo, no new infrastructure — and is the first thing to
-build once the Phase 0/1 tools above exist. See
-[07](07-rollout-plan.md) for sequencing.
+build once the tools above exist.
