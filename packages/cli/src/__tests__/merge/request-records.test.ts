@@ -227,3 +227,31 @@ describe("applyMerged never clears a stored request_ref", () => {
     expect(store.getSessionMessages("s1")[0]!.request_ref).toBeNull();
   });
 });
+
+// ── merge-fold/apply composition (test-critic F7) ────────────────────────────
+
+describe("the fold does not validate; the apply boundary does (test-critic F7)", () => {
+  it("an invalid NEWER shard row wins the fold and lands as NULL after apply", () => {
+    // ACCEPTED BEHAVIOR, pinned: the merge fold resolves purely by logical
+    // clock (latest-non-null-wins) and never validates — an invalid newer
+    // value therefore erases a valid older one IN THE FOLD. Validation is
+    // the apply boundary's job (rowToMessageRecord), so the composition
+    // stores NULL: the hostile value never reaches the store, and the store's
+    // COALESCE never-clear protects an already-stored valid value from a
+    // later null. The cost of the accepted behavior is one lost link when a
+    // newer peer carries a corrupt request_ref; validating inside the fold
+    // instead would break convergence, since validity is not a function of
+    // clock order.
+    const { store } = freshStore();
+    const older = stamped("s1", "aaaa0001" as DeviceId, 1, [messageRow("m1", "s1", { request_ref: "req_1" })]);
+    const newer = stamped("s1", "aaaa0002" as DeviceId, 2, [
+      messageRow("m1", "s1", { request_ref: "<script>x</script>" }),
+    ]);
+    const merged = mergeRecords([older, newer]);
+    // The fold itself carries the invalid value, unvalidated.
+    expect(merged[0]!.messages[0]!.request_ref).toBe("<script>x</script>");
+    // The apply boundary drops it: the stored row is NULL.
+    applyMerged(store, merged);
+    expect(store.getSessionMessages("s1")[0]!.request_ref).toBeNull();
+  });
+});

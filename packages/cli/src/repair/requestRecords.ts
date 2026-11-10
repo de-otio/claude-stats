@@ -245,7 +245,9 @@ export async function repairRequestRecords(
       dryRun: false,
       alreadyDone: false,
       files: candidateFiles.length,
-      requestLines: result.apiRequestsRead,
+      // Rows actually handed to the store plus head misses = the lines the
+      // bounded reader was called on, the same count a dry run reports.
+      requestLines: result.apiRequestsRead + result.apiRequestHeadMisses,
       requestsStored: store.countApiRequests() - rowsBefore,
       backupPath,
       parseErrors: result.parseErrors,

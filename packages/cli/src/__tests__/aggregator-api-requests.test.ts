@@ -118,6 +118,7 @@ describe("collect — E1 request records", () => {
     expect(result.filesProcessed).toBe(1);
     expect(result.apiRequestHeadMisses).toBe(0);
     expect(result.apiRequestsRead).toBe(1);
+    expect(result.apiRequestRowsDropped).toBe(0);
 
     const req = rawOne(dbPath, "SELECT * FROM api_requests");
     expect(req).toEqual({
@@ -186,7 +187,10 @@ describe("collect — E1 request records", () => {
     expect(result.filesProcessed).toBe(1);
     expect(result.parseErrors).toBe(0); // the miss is not a parse error
     expect(result.apiRequestHeadMisses).toBe(1);
-    expect(result.apiRequestsRead).toBe(2); // rows read + misses
+    // apiRequestsRead counts only rows actually handed to the store; the
+    // head miss is counted separately in apiRequestHeadMisses.
+    expect(result.apiRequestsRead).toBe(1);
+    expect(result.apiRequestRowsDropped).toBe(0);
 
     // The checkpoint advanced PAST the bad line: the whole file was consumed.
     const checkpoint = store.getCheckpoint(sessFile);
@@ -200,5 +204,88 @@ describe("collect — E1 request records", () => {
 
     // The lines after the miss were still processed normally.
     expect(rawOne(dbPath, "SELECT request_ref FROM messages")["request_ref"]).toBe("req_good");
+  });
+
+  it("spec test 4 (strong) — a collect range with ONLY an api-request line still stores the row", async () => {
+    // The window decision 3 / test 4 contemplate: a collect that runs between
+    // the api-request line and its response. The parse range contains no
+    // session-establishing entry, so `parsed.session` is null — the aggregator
+    // must resolve the session id from the store (the sessions row was written
+    // with the first checkpoint in the same transaction) rather than drop the
+    // row or advance the checkpoint past it.
+    const projDir = path.join(projectsDir, "-proj-e1-req-only");
+    fs.mkdirSync(projDir);
+    const sessFile = path.join(projDir, `${SID}.jsonl`);
+    fs.writeFileSync(sessFile, userLine(TS_MS - 1000) + "\n");
+
+    const first = await collect(store);
+    expect(first.filesProcessed).toBe(1);
+    expect(first.sessionsUpserted).toBe(1);
+    expect(store.countApiRequests()).toBe(0);
+
+    // Phase 2: ONLY the api-request line is appended — no entry establishes
+    // the session inside this collect range.
+    fs.appendFileSync(sessFile, apiRequestLine("req_1") + "\n");
+    const second = await collect(store);
+    expect(second.filesProcessed).toBe(1);
+    expect(second.filesSkipped).toBe(0);
+    expect(second.sessionsUpserted).toBe(0); // no session row in this range
+    expect(second.apiRequestsRead).toBe(1); // the row WAS handed to the store
+    expect(second.apiRequestRowsDropped).toBe(0);
+    expect(second.apiRequestHeadMisses).toBe(0);
+
+    expect(store.countApiRequests()).toBe(1);
+    expect(rawOne(dbPath, "SELECT * FROM api_requests")).toEqual({
+      request_id: "req_1",
+      session_id: SID, // resolved from the store, not from the line
+      agent_id: "agent-1",
+      timestamp: TS_MS,
+      shape_hash: REAL_HASH,
+    });
+
+    // Phase 3: the assistant message arrives — the join resolves.
+    fs.appendFileSync(sessFile, assistantLine(TS_MS, "msg_1", "req_1") + "\n");
+    const third = await collect(store);
+    expect(third.filesProcessed).toBe(1);
+    const joined = rawOne(
+      dbPath,
+      `SELECT m.uuid, m.request_ref, r.request_id
+         FROM messages m JOIN api_requests r ON r.request_id = m.request_ref
+        WHERE m.session_id = ?`,
+      SID,
+    );
+    expect(joined).toEqual({ uuid: `a-${TS_MS}`, request_ref: "req_1", request_id: "req_1" });
+    expect(store.countApiRequests()).toBe(1);
+  });
+
+  it("first collect with ONLY an api-request line drops nothing — the checkpoint is clamped and the row is stored on the next collect", async () => {
+    // The pathological case: no sessions row exists yet, so the store lookup
+    // yields no id either. Chosen behavior (documented in the PR): the rows
+    // are NOT written and the checkpoint is NOT advanced (the clamp) — the
+    // next collect re-parses from the start (idempotent) and stores them once
+    // a session exists. The drop is counted and reported, never silent.
+    const projDir = path.join(projectsDir, "-proj-e1-orphan");
+    fs.mkdirSync(projDir);
+    const sessFile = path.join(projDir, `${SID}.jsonl`);
+    fs.writeFileSync(sessFile, apiRequestLine("req_orphan") + "\n");
+
+    const first = await collect(store);
+    expect(first.filesProcessed).toBe(1);
+    expect(first.apiRequestsRead).toBe(0); // nothing handed to the store
+    expect(first.apiRequestRowsDropped).toBe(1); // counted, not silent
+    expect(first.apiRequestHeadMisses).toBe(0);
+    expect(store.countApiRequests()).toBe(0);
+    expect(store.getCheckpoint(sessFile)).toBeNull(); // clamp: not advanced
+
+    // Phase 2: a user line arrives. No checkpoint → full re-parse from 0;
+    // the api-request line is re-read and now lands in api_requests.
+    fs.appendFileSync(sessFile, userLine(TS_MS) + "\n");
+    const second = await collect(store);
+    expect(second.filesProcessed).toBe(1);
+    expect(second.apiRequestsRead).toBe(1);
+    expect(second.apiRequestRowsDropped).toBe(0);
+    expect(store.countApiRequests()).toBe(1);
+    expect(rawOne(dbPath, "SELECT session_id FROM api_requests")["session_id"]).toBe(SID);
+    expect(store.getCheckpoint(sessFile)).not.toBeNull();
   });
 });

@@ -158,6 +158,44 @@ describe("Store — V28 api_requests", () => {
   });
 });
 
+describe("Store — findSessionIdBySourceFile (V28, E1 F1)", () => {
+  let store: Store;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dbPath = tmpDb();
+    store = new Store(dbPath);
+  });
+
+  afterEach(() => {
+    store.close();
+    for (const suffix of ["", "-wal", "-shm"]) {
+      try { fs.unlinkSync(dbPath + suffix); } catch { /* ok */ }
+    }
+  });
+
+  it("returns the session id of the row pointing at the source file", () => {
+    const s = makeSession("sess-lookup");
+    store.upsertSession(s);
+    expect(store.findSessionIdBySourceFile(s.sourceFile)).toBe("sess-lookup");
+  });
+
+  it("returns null when no sessions row points at the source file", () => {
+    store.upsertSession(makeSession("sess-lookup"));
+    expect(store.findSessionIdBySourceFile("/nope/missing.jsonl")).toBeNull();
+  });
+
+  it("is deterministic when two sessions rows share a source_file (lexicographically first)", () => {
+    // source_file is not unique in principle (a resumed/forked transcript can
+    // leave two rows pointing at one file); the pick must be stable so the
+    // aggregator's attribution never flips between collects.
+    const shared = "/Users/alice/.claude/projects/-proj/shared.jsonl";
+    store.upsertSession({ ...makeSession("sess-zzz"), sourceFile: shared });
+    store.upsertSession({ ...makeSession("sess-aaa"), sourceFile: shared });
+    expect(store.findSessionIdBySourceFile(shared)).toBe("sess-aaa");
+  });
+});
+
 describe("Store — messages.request_ref (V28)", () => {
   let store: Store;
   let dbPath: string;

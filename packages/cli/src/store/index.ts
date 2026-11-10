@@ -3131,6 +3131,24 @@ export class Store {
   }
 
   /**
+   * The session id whose row points at `sourceFile`, or null. Schema V28
+   * (E1): the aggregator uses this to attribute `api_requests` rows when a
+   * collect range contains api-request lines but no session-establishing
+   * entry — the line is written when the request is sent and the assistant
+   * message that would establish the session arrives with the response. Any
+   * incremental collect's file already has a sessions row (written together
+   * with its first checkpoint in the same transaction), so the lookup
+   * resolves exactly the session the file belongs to. `source_file` is not
+   * unique in principle, so the pick is deterministic.
+   */
+  findSessionIdBySourceFile(sourceFile: string): string | null {
+    const row = this.db
+      .prepare("SELECT session_id FROM sessions WHERE source_file = ? ORDER BY session_id LIMIT 1")
+      .get(sourceFile) as { session_id: string } | undefined;
+    return row?.session_id ?? null;
+  }
+
+  /**
    * The most recently active non-deleted session, or null when the store is
    * empty. "Active" is `COALESCE(last_timestamp, first_timestamp)` — the same
    * ordering `getSessions({activeSince})` treats as membership — so "current

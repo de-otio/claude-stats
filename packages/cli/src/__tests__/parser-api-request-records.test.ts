@@ -281,24 +281,92 @@ describe("E1 §8.6b — a head-parse throw is a miss, not an abort (Fable F1)", 
     expect(line.indexOf(',"params":')).toBe(line.indexOf('"params":2') - 1); // premise: the nested key, not the real one
     // If the reader threw, this await would reject and the test would fail —
     // the no-throw property is proven by the parse resolving at all.
-    const r = await parse([user(1_000), line, assistant(2_000, "msg_1")]);
+    // The never-LOG half of the Fable F1/F2 failure discipline (test-critic
+    // F2): a miss is counted and silent — zero console output of any kind.
+    // The spies are asserted BEFORE mockRestore: restore clears the recorded
+    // calls, which would make a post-restore assertion vacuous.
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let r;
+    try {
+      r = await parse([user(1_000), line, assistant(2_000, "msg_1")]);
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(errSpy).not.toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+      errSpy.mockRestore();
+    }
 
-    expect(r.apiRequests).toHaveLength(0);
-    expect(r.apiRequestHeadMisses).toBe(1);
-    expect(r.errors).toEqual([]);
-    expect(r.lastGoodOffset).toBe(fs.statSync(file).size);
-    expect(r.messages).toHaveLength(1); // the rest of the file parsed fine
+    expect(r!.apiRequests).toHaveLength(0);
+    expect(r!.apiRequestHeadMisses).toBe(1);
+    expect(r!.errors).toEqual([]);
+    expect(r!.lastGoodOffset).toBe(fs.statSync(file).size);
+    expect(r!.messages).toHaveLength(1); // the rest of the file parsed fine
   });
 
   it("a raw control character inside a head string: same miss path", async () => {
     // \u0001 is not a line terminator, so the line survives readline intact —
     // and is invalid JSON for the head slice.
     const line = '{"type":"api-request","sessionId":"' + SID + '","id":"req_1","querySource":"a\u0001b","params":{"model":"m"}}';
-    const r = await parse([user(1_000), line, assistant(2_000, "msg_1")]);
-    expect(r.apiRequests).toHaveLength(0);
-    expect(r.apiRequestHeadMisses).toBe(1);
-    expect(r.errors).toEqual([]);
-    expect(r.lastGoodOffset).toBe(fs.statSync(file).size);
+    // Same never-log discipline as above (test-critic F2).
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let r;
+    try {
+      r = await parse([user(1_000), line, assistant(2_000, "msg_1")]);
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(errSpy).not.toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+      errSpy.mockRestore();
+    }
+    expect(r!.apiRequests).toHaveLength(0);
+    expect(r!.apiRequestHeadMisses).toBe(1);
+    expect(r!.errors).toEqual([]);
+    expect(r!.lastGoodOffset).toBe(fs.statSync(file).size);
+  });
+});
+
+// ─── torn api-request line at EOF (test-critic F3) ───────────────────────────
+
+describe("E1 — a torn api-request line at EOF is a partial write, not a row", () => {
+  it("no trailing newline: no row, lastGoodOffset stops before the line, no quarantine — completing the line stores the row", async () => {
+    // Newline termination is the ONLY completeness test for an api-request
+    // line (streamProcessableLines yields the final pending line only if
+    // bytes were read beyond its end). Dropping that guard would store a
+    // bogus row from a half-written line AND advance the checkpoint past it,
+    // losing the rest of the line forever. The torn line below has a fully
+    // readable head — if it were yielded, the row WOULD be stored.
+    const full = apiRequestLine({ id: "req_torn" });
+    const cut = full.indexOf(',"keep"'); // mid-tail, after the params key
+    expect(cut).toBeGreaterThan(full.indexOf(',"params":')); // premise
+    const torn = full.slice(0, cut);
+
+    fs.writeFileSync(file, user(1_000) + "\n" + torn); // NO trailing newline
+    const userBytes = Buffer.byteLength(user(1_000) + "\n", "utf8");
+    const r1 = await parseSessionFile(file, "/proj", 0);
+
+    expect(r1.apiRequests).toEqual([]); // the torn line was never yielded
+    expect(r1.apiRequestHeadMisses).toBe(0); // not read at all — not a miss
+    expect(r1.errors).toEqual([]); // no quarantine: a torn EOF line is a partial write
+    expect(r1.lastGoodOffset).toBe(userBytes); // stops before the torn line
+
+    // The writer finishes the line and terminates it; resume from the
+    // phase-1 offset — the realistic incremental path.
+    fs.appendFileSync(file, full.slice(cut) + "\n");
+    const r2 = await parseSessionFile(file, "/proj", r1.lastGoodOffset);
+    expect(r2.apiRequests).toEqual([
+      { requestId: "req_torn", agentId: "agent-1", timestamp: TS_MS, shapeHash: REAL_HASH },
+    ]);
+    expect(r2.apiRequestHeadMisses).toBe(0);
+    expect(r2.errors).toEqual([]);
+    expect(r2.lastGoodOffset).toBe(fs.statSync(file).size);
   });
 });
 
@@ -324,6 +392,11 @@ describe("E1 §8.7 — the tail is never sliced or parsed (Fable F2 silence rule
       r = await parseSessionFile(file, "/proj", 0);
     } finally {
       const args = parseSpy.mock.calls.map((c) => String(c[0]));
+      // Captured BEFORE mockRestore: restore clears the recorded calls, which
+      // would make a post-restore `not.toHaveBeenCalled()` vacuous.
+      const logCalls = logSpy.mock.calls.length;
+      const warnCalls = warnSpy.mock.calls.length;
+      const errCalls = errSpy.mock.calls.length;
       parseSpy.mockRestore();
       logSpy.mockRestore();
       warnSpy.mockRestore();
@@ -339,12 +412,16 @@ describe("E1 §8.7 — the tail is never sliced or parsed (Fable F2 silence rule
       });
       // No call's argument starts with the tail — the tail was never sliced.
       expect(args.some((a) => a.startsWith('{"cacheControl"'))).toBe(false);
+      // Test-critic F4: no call's argument CONTAINS the tail keys at all —
+      // not just startsWith — so a silent small re-parse of the tail cannot
+      // pass. (The other fixture lines carry neither key either.)
+      expect(args.some((a) => a.includes("cacheControl") || a.includes("requestDigest"))).toBe(false);
       // Zero error output of any kind: no quarantine, no console output.
       expect(r!.errors).toEqual([]);
       expect(r!.apiRequestHeadMisses).toBe(0);
-      expect(logSpy).not.toHaveBeenCalled();
-      expect(warnSpy).not.toHaveBeenCalled();
-      expect(errSpy).not.toHaveBeenCalled();
+      expect(logCalls).toBe(0);
+      expect(warnCalls).toBe(0);
+      expect(errCalls).toBe(0);
     }
   });
 });
