@@ -283,6 +283,10 @@ describe("org projection column allowlist", () => {
    * to the payload unless it is added here deliberately.
    */
   const ALLOWED_COLUMNS = new Set<string>([
+    // Read only as the lookup key for the session's exact cost
+    // (`sessionCosts.get`); never copied onto the payload — the per-session-id
+    // absence is asserted in aggregate-fast-geo.test.ts.
+    "session_id",
     "account_uuid",
     "first_timestamp",
     "last_timestamp",
