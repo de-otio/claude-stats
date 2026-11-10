@@ -6,11 +6,9 @@ claude-stats' MCP tools to recommend which Claude plan to buy — Team or
 Enterprise, how many seats, which seat tier, what spend limits — grounded in
 real usage data instead of guesswork.
 
-This is grounded in a real Claude-licensing sizing exercise, kept in a
-private notes repository. Because this repo is public, no
-company-identifying detail (name, headcount, internal tooling) is reproduced
-anywhere in this folder — only the generalizable shape of the decision
-problem and Anthropic's own publicly documented plan mechanics, cited inline.
+Every company profile in this folder is hypothetical and illustrative. It
+contains only the generalizable shape of the decision problem and
+Anthropic's own publicly documented plan mechanics, cited inline.
 
 ## TL;DR
 

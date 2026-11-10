@@ -110,11 +110,11 @@ Design notes:
   ([account.ts:25](../../../packages/cli/src/account.ts#L25)). The `label` field
   exists precisely so the user can put a human name on a non-current account's
   UUID.
-- **Currency is per account and never auto-converted.** €125 stays €125. The app
+- **Currency is per account and never auto-converted.** €100 stays €100. The app
   is internally USD for *estimated* costs, but the fee is a *paid* amount in the
   user's real currency. Mixing a EUR fee into a USD estimate would be a category
   error. If both accounts share a currency (the common case) the Projects tab can
-  show a single total (€339); if they differ, show per-currency subtotals rather
+  show a single total (€300); if they differ, show per-currency subtotals rather
   than summing. See [03 §3.5](03-distribution-model.md).
 - **Backward compatible.** If `accountFees` is absent, fall back to the existing
   `plan.monthly_fee` applied to the single/dominant account, then to

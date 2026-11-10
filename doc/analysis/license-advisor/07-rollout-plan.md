@@ -108,11 +108,10 @@ review cycle.
 
 ## Why not start with Phase 3
 
-The real-world sizing exercise this analysis is grounded in
-([01](01-problem-and-use-case.md)) used none of this. Headcount math,
-Anthropic's published benchmarks, and an explicit spend-limit policy choice
-were enough to produce a defensible recommendation — entirely within what
-Phase 1 provides. claude-stats' distinctive contribution is sharpest at the
+A first sizing exercise ([01](01-problem-and-use-case.md)) needs none of
+this. Headcount math, Anthropic's published benchmarks, and an explicit
+spend-limit policy choice are enough to produce a defensible recommendation
+— entirely within what Phase 1 provides. claude-stats' distinctive contribution is sharpest at the
 Phase 1→2 transition, where a company's *own* measured usage replaces a
 generic benchmark; Phase 3 is a scale-out for organizations already
 committed to a continuous process, not a prerequisite for the feature to be

@@ -64,7 +64,7 @@ segments. The Tier-2 digest produced looks like:
   "items": [
     {
       "id": "claude-stats-russian",   // stable hash of segment_ids + commit shas
-      "project": "/Users/rmyers/repos/dot/claude-stats",
+      "project": "~/repos/myproject",
       "repoUrl": "github.com/.../claude-stats",
       "sessionIds": ["abc123", "def456"],
       "segmentIds": ["abc123#0", "def456#2"],   // session-id#segment-index

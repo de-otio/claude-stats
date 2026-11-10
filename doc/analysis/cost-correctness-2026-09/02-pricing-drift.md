@@ -30,8 +30,8 @@ Columns are base input / 5m write / 1h write / cache hits / output, $ per MTok.
 
 `claude-opus-4-7` is absent and resolves by prefix to `claude-opus-4` — the
 retired $15/$75 row, a **3× over-charge**, and it is **the largest single
-correction in this release**: $26,922.87 over-charged in this database against
-$1,112.85 for Fable 5.1. See [01 §1.2.1](01-measured-defects.md#121-the-same-defect-24-larger-claude-opus-4-7),
+correction in this release**: in this database the dollar error is about 24×
+the Fable 5.1 one. See [01 §1.2.1](01-measured-defects.md#121-the-same-defect-24-larger-claude-opus-4-7),
 which also records why an earlier draft mis-ranked it.
 
 ### Not defects

@@ -25,8 +25,8 @@ feeAttribution?: {
   prorate: number;               // periodDays / 30.4
   byCurrency: Array<{
     currency: string;
-    periodTotal: number;         // e.g. €78 this week
-    monthlyTotal: number;        // e.g. €339/mo
+    periodTotal: number;         // e.g. €69 this week
+    monthlyTotal: number;        // e.g. €300/mo
     attributed: number;          // sum over projects
     idle: Array<{ label: string; amount: number }>;  // §3.4 idle pools
   }>;
@@ -44,16 +44,16 @@ through `ReportOptions` the way `planFee`/`planType` already are
 A new card at the top of the Projects tab:
 
 ```
-Subscription fee by project · this week (€78 of €339/mo)
+Subscription fee by project · this week (€69 of €300/mo)
 
-  client-api          ███████████████████░░░  €23.01   29%
-  claude-stats        ████████████████████████ €36.93   47%
-  side-blog           ████████░░░░░░░░░░░░░░░░  €12.31   16%
-  internal-tooling    ████░░░░░░░░░░░░░░░░░░░░  €5.75    7%
+  client-api          █████████████░░░░░░░░░░░  €18.40   27%
+  claude-stats        ████████████████████████ €34.50   50%
+  side-blog           ████████░░░░░░░░░░░░░░░░  €11.50   17%
+  internal-tooling    ███░░░░░░░░░░░░░░░░░░░░░  €4.60    7%
   ── idle ──────────────────────────────────────────────
   Personal subscription (no usage this week)    €0.00    —
 
-  Attributed €78.00 · pro-rated from €339/mo over 7 days
+  Attributed €69.00 · pro-rated from €300/mo over 7 days
 ```
 
 Components:
@@ -91,7 +91,7 @@ The card must degrade honestly:
   reads the split as approximate. This reuses the `(unknown)` key the dashboard
   already produces ([dashboard/index.ts:755](../../../packages/cli/src/dashboard/index.ts#L755)).
 - **Single account**: collapses gracefully — one pool, no idle slice, behaves like
-  the user's mental "€125 split across my work projects."
+  the user's mental "€100 split across my work projects."
 
 ## 5.5 Relationship to the existing project cost number
 
