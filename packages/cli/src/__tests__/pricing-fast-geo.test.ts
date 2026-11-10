@@ -235,8 +235,12 @@ describe("resolveRequestPricing", () => {
       costOptionsKey({ speed: "fast" }),
     ]);
     expect(keys.size).toBe(4);
-    // Standard spellings of "no modifier" share one key.
-    expect(costOptionsKey({ speed: "standard", inferenceGeo: "global", longContext: false })).not.toBe(costOptionsKey(undefined));
+    // Every spelling of "no modifier" shares one key (one cache entry, one rate row).
+    for (const spelled of [{ speed: "standard", inferenceGeo: "global", longContext: false }, { speed: null, inferenceGeo: null }, {}, { inferenceGeo: "eu" }]) {
+      expect(costOptionsKey(spelled)).toBe(costOptionsKey(undefined));
+    }
+    // An unknown speed is its own key: it is refused, so it must not share a rate row with standard.
+    expect(costOptionsKey({ speed: "turbo" })).not.toBe(costOptionsKey(undefined));
   });
 
   it("a refusal carries its reason and no rates", () => {
@@ -265,6 +269,26 @@ describe("the fetched cache keeps the built-in multipliers (3.2)", () => {
     expect(estimateCost("claude-fable-5-2", M, 0, 0, 0, undefined, undefined, { speed: "fast" })).toMatchObject({
       known: false, reason: "fast-unpriced",
     });
+  });
+
+  it("a VALID fetched multiplier wins over the inherited one", () => {
+    applyPricingCache({ "claude-fable-5-2": fetched("claude-fable-5-2", { fastMultiplier: 3, usGeoMultiplier: 1.25 }) }, "2026-11-11");
+    const p = lookupPricing("claude-fable-5-2")!;
+    expect(p.fastMultiplier).toBe(3);
+    expect(p.usGeoMultiplier).toBe(1.25);
+    expect(estimateCost("claude-fable-5-2", M, 0, 0, 0, undefined, undefined, { speed: "fast" }).cost).toBeCloseTo(24, 10);
+    expect(estimateCost("claude-fable-5-2", M, 0, 0, 0, undefined, undefined, { inferenceGeo: "us" }).cost).toBeCloseTo(10, 10);
+  });
+
+  it("a malformed multiplier on a REPRICED row ends undefined: nothing to inherit, nothing trusted", () => {
+    for (const bad of [0, 0.5, Number.NaN, "2" as unknown as number]) {
+      applyPricingCache({ "claude-fable-5-2": fetched("claude-fable-5-2", { inputPerMillion: 6, fastMultiplier: bad, usGeoMultiplier: bad }) }, "2026-11-11");
+      const p = lookupPricing("claude-fable-5-2")!;
+      expect(p.inputPerMillion).toBe(6);
+      expect(p.fastMultiplier).toBeUndefined();
+      expect(p.usGeoMultiplier).toBeUndefined();
+      expect(estimateCost("claude-fable-5-2", M, 0, 0, 0, undefined, undefined, { speed: "fast" })).toMatchObject({ known: false, reason: "fast-unpriced" });
+    }
   });
 
   it("a malformed multiplier is dropped, never trusted (and falls back to the shipped one)", () => {

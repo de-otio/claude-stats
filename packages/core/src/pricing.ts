@@ -908,10 +908,12 @@ export function resolveRequestPricing(model: string, opts?: CostOptions, overrid
 /**
  * Stable string key of the pricing modifiers, for per-call rate caches that used
  * to be keyed by model id alone. Two requests with the same model and the same
- * key resolve to the same rate row.
+ * key resolve to the same rate row; every spelling of "no modifier" (absent,
+ * null, `standard`, any non-US geo, `longContext: false`) shares one key.
  */
 export function costOptionsKey(opts?: CostOptions): string {
-  return `${opts?.longContext ? 1 : 0}|${opts?.inferenceGeo === "us" ? "us" : ""}|${opts?.speed ?? ""}`;
+  const speed = opts?.speed;
+  return `${opts?.longContext ? 1 : 0}|${opts?.inferenceGeo === "us" ? "us" : ""}|${speed && speed !== "standard" ? speed : ""}`;
 }
 
 /**
@@ -1014,13 +1016,6 @@ export const PLAN_FEES: Record<string, number> = {
   max_20x: 200,
   team_standard: 25,
   team_premium: 125,
-  // Ultra: $200 / month, as listed on claude.com/pricing (read 2026-11-10 through
-  // a summarising fetch, not verbatim: re-check before relying on it). The
-  // `subscription_type` string Claude Code reports for Ultra has NOT been
-  // observed, so this key matches only a literal "ultra" and the string-to-plan
-  // map in cli/src/config.ts is deliberately left alone (PlanType is not widened).
-  // P1-DECISION: fee added here only; config.ts PLAN_FEES / PlanType follow-up.
-  ultra: 200,
   // Bare "team" prefix — conservative fallback to standard seat price
   team: 25,
 };
