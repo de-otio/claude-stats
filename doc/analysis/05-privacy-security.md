@@ -388,7 +388,7 @@ or per-session evidence text (`ticket_links.evidence`). A policy event's
   This was **not** the pack's original behavior: the raw absolute path was
   embedded in the scope line and in every row of two CSVs, and was found and
   fixed during review before the feature shipped. A
-  local path like `/Users/alice/repos/<client>/<codename>` is Medium
+  local path like `/Users/<user>/repos/<client>/<codename>` is Medium
   sensitivity per the classification table at the top of this document, and
   this is the one artifact built to leave the machine, so shipping it by
   default inverted the pack's own rule that every section is opt-in and the

@@ -8,10 +8,10 @@ Each user links one or more Claude accounts to their profile:
 
 ```
 User Profile
-├── Account: "Work" (acme org, Max 5x plan)
+├── Account: "Work" (example-org, Team plan, standard seat)
 │   ├── shareWithTeams: true
 │   └── sharePrompts: true       # Opt-in: sync prompt text (after secret scanning)
-└── Account: "Personal" (individual, Pro plan)
+└── Account: "Personal" (individual, Max 5x plan)
     ├── shareWithTeams: false
     └── sharePrompts: false      # Default: off
 ```
@@ -73,12 +73,12 @@ Each linked account has a `shareWithTeams` boolean. When `false`, sessions tagge
 ```
 ┌─ My Accounts ─────────────────────────────────┐
 │                                                │
-│  Work (Acme Corp)           Share: [✓]        │
-│  Max 5x · ID: a1b2...      Prompts: [✓]      │
+│  Work (Example Org)         Share: [✓]        │
+│  Team (std) · ID: a1b2...  Prompts: [✓]      │
 │  142 sessions this month                       │
 │                                                │
 │  Personal                   Share: [ ]         │
-│  Pro · ID: c3d4...          Prompts: [ ]      │
+│  Max 5x · ID: c3d4...       Prompts: [ ]      │
 │  67 sessions this month                        │
 │                                                │
 │  ℹ️ Only shared accounts contribute to team    │

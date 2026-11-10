@@ -7,8 +7,8 @@ The generalizable answer to "split a multi-account back-catalogue by cost."
 Users run more than one Claude subscription (e.g. a personal plan and a
 work/client plan) and often use **both accounts within the same project** —
 sometimes by *nature* (a work project touched from a personal login), sometimes
-by *necessity* (rotating through several subscriptions on one project because
-even the largest plan's limits are insufficient). For **cost** attribution the
+by *necessity* (rotating through several subscriptions on one project when a
+single account hits its weekly limit). For **cost** attribution the
 question is usually not *which account was logged in* — it is *which subscription
 should bear the project's cost*, by the project's nature (personal vs
 work/client). That is a **business policy**, so:
@@ -50,7 +50,7 @@ rule := { match: { path?: glob, remote?: glob }, target: <uuid|label> | "split" 
     rank, authoritative).
   - **`split`** — the project has **no single owner** because the user rotates
     through several subscriptions on it to get enough capacity (a single plan's
-    5-hour/weekly limits are insufficient). Cost must divide across subscriptions
+    5-hour/weekly limits can be hit). Cost must divide across subscriptions
     **by actual usage**, so these sessions are *not* overridden — they fall
     through to the measured-account engine (observation timeline → propagation →
     OTEL, docs [03](03-attribution-methods.md)/[09](09-historical-split-without-labelling.md)),

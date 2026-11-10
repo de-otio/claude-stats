@@ -52,20 +52,20 @@ privacy-preserving per-account fingerprint useful for backfill
 
 ## Immediate win
 
-The sub-question that started this — **"is my work plan premium or standard,
-and is that why I'm hitting limits?"** — needs no attribution at all. The plan
+A common sub-question — **"is a work seat premium or standard, when the user
+does not know which tier was assigned?"** — needs no attribution at all. The plan
 tier is sitting in plain text in `~/.claude.json`:
 
 ```
 oauthAccount.organizationType          # e.g. claude_max, team
-oauthAccount.organizationRateLimitTier # e.g. default_claude_max_20x
+oauthAccount.organizationRateLimitTier # e.g. default_claude_max_5x
 oauthAccount.userRateLimitTier         # per-seat tier (Team)
 oauthAccount.seatTier                  # Team seat: premium vs standard
 oauthAccount.billingType               # stripe_subscription vs api
 oauthAccount.hasExtraUsageEnabled      # overage on/off
 ```
 
-To answer it: **log into the work account and read those fields** (the value
+To answer it: **log into the account in question and read those fields** (the value
 reflects whoever is logged in). Comparing the two accounts' `*RateLimitTier` /
 `seatTier` is a direct, documented answer — no inference, no waiting for a
 timeline to accrue. claude-stats should expose this as a one-shot

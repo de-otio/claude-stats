@@ -29,7 +29,7 @@ Items 3, 6, 7 and 8 are **new since the reviews** and none is optional:
   *invisible* under-charge. Only 4 of 19 `estimateCost` call sites read
   `.known`; the other 15 add `cost` (which is `0` on refusal) straight into a
   total. The day `claude-opus-5-1` ships, Opus spend would silently read zero.
-- **6** — `usage_windows` holds **$113,221.90** of stored pre-fix cost across 555
+- **6** — `usage_windows` holds stored pre-fix cost across 555
   rows and `collect()` recomputes only the last two days; the recap cache keys on
   `algo:2` and its own comment says to bump it when cost attribution changes.
   Without these the changelog's "your cost changed" is true on some surfaces and

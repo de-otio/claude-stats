@@ -92,9 +92,9 @@ Scale on this machine's database, `claude-stats` `messages` table:
 | `claude-fable-5` | 28,924 | 6,013.2 MTok |
 | `claude-fable-5-1` | 6,484 | 1,483.8 MTok |
 
-At $1.00/MTok the Fable 5.1 cache reads cost $1,483.80; at the published
-$0.25/MTok, $370.95. **$1,112.85 over-charged**, on one model, in one local
-database — and that is before C1's 1.94× is removed from it.
+At $1.00/MTok against the published $0.25/MTok, every Fable 5.1 cache read is
+**4× over-charged**, on one model, in one local database — and that is before
+C1's 1.94× is removed from it.
 
 ### 1.2.1 The same defect, 24× larger: `claude-opus-4-7`
 
@@ -116,9 +116,7 @@ Measured against the database:
 | Rows | 58,604 |
 | Cache-read tokens | 14,200.0 MTok |
 | Output tokens | 102.2 MTok |
-| Priced as `claude-opus-4` (ships today) | **$40,384.31** |
-| Priced correctly as `claude-opus-4-7` | **$13,461.44** |
-| **Over-charged** | **$26,922.87 (3.00×)** |
+| **Priced as `claude-opus-4` (ships today) ÷ priced correctly as `claude-opus-4-7`** | **3.00×** |
 
 That is **24× the Fable 5.1 error** and the **largest single correction in this
 release**. Opus 4.7 is the third-largest model in this database by cache-read
@@ -145,13 +143,13 @@ This is the generalisable finding, and the fix is not "add two rows". See
 
 Repricing the same 150-file sample under three configurations:
 
-| Configuration | Cost |
+| Configuration | Cost, relative to the fully corrected figure |
 |---|---:|
-| As Claude Stats reports today (`uuid` dedupe, Fable 5.1 at $1 cache) | $27,014.20 |
-| After the `message.id` dedupe alone | $11,892.23 |
-| After dedupe **and** the correct Fable 5.1 rate | $11,565.31 |
+| As Claude Stats reports today (`uuid` dedupe, Fable 5.1 at $1 cache) | 2.34× |
+| After the `message.id` dedupe alone | 1.03× |
+| After dedupe **and** the correct Fable 5.1 rate | 1.00× |
 
-**2.34× over-report; $15,448.88 on this sample.**
+**2.34× over-report on this sample.**
 
 **This sample understates the total.** It is built from surviving transcripts,
 so it contains no Opus 4.7 traffic at all (§1.2.1) — the single largest

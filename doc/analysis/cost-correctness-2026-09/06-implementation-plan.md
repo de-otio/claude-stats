@@ -274,7 +274,7 @@ those two as regressions.
 **The measurement that decides the release.** Reprice the **whole `messages`
 table**, per model, before and after — not the transcript-derived sample, which
 contains no Opus 4.7 traffic and so misses the largest correction. Expected:
-`claude-opus-4-7` from $40,384 → $13,461, `claude-fable-5-1` cache reads ÷4, and
+`claude-opus-4-7` cost ÷3, `claude-fable-5-1` cache reads ÷4, and
 token totals per session halving where a session's entries were multi-block. A
 green suite proves the code does what it was written to do; only this proves the
 number is right.

@@ -52,7 +52,7 @@ Review caught three, all mine:
    `claude-opus-4-7` latent because a grep over transcripts found no Opus 4.7
    traffic. But 90.2% of sessions have had their transcripts deleted while their
    rows remain in `stats.db` forever. Measured against the database, Opus 4.7 is
-   **$26,923 over-charged — 24× the Fable 5.1 error and the largest single
+   **3× over-charged — 24× the Fable 5.1 dollar error and the largest single
    correction in the release**. *Measure the surface the defect lives on.*
 2. **§2.3 contradicted §2.5.** The suffix rule refused any remainder it did not
    recognise, which included `[1m]` — while §2.5 confirmed twice that
@@ -74,7 +74,7 @@ Review caught three, all mine:
 | Parser-local dedupe misses groups straddling a collect boundary | Enforce the carrier rule at the store, partial unique index |
 | `MONOTONIC_COUNTER_FIELDS` `max()` pins inflated counters across devices forever | Recompute aggregates from the merged union instead |
 | `known: false` is silently swallowed at 15 of 19 call sites | New scope item: unknown-share surface |
-| `usage_windows` ($113,222 stored), recap `algo:2`, `message_hourly` keep pre-fix numbers | New scope item: reprice the caches |
+| `usage_windows` (stored pre-fix cost), recap `algo:2`, `message_hourly` keep pre-fix numbers | New scope item: reprice the caches |
 | Parser buffers whole files; largest here is 994 MB | Stream the line buffer |
 | `sessions.source_file` is sync-controlled; feeding it to the parser writes arbitrary bytes into `quarantine` | Repair is scanner-driven only |
 | New TEXT columns unvalidated, and `SELECT *` auto-enrols them in the personal-plane export | Shape-validate at the parser boundary |
