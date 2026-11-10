@@ -218,7 +218,7 @@ Created only when `config.domainName` is set. Creates a dedicated Route 53 hoste
 ```typescript
 export class DnsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: DnsStackProps) {
-    // App hosted zone: e.g. "stats.acme.com"
+    // App hosted zone: e.g. "stats.example.com"
     //   This zone owns all DNS records for the app
     //   Isolated from the parent zone — the app can manage its own records
     //   without needing write access to the parent zone
@@ -235,7 +235,7 @@ export class DnsStack extends cdk.Stack {
     //   Auto-renewed by ACM — no manual rotation
     //
     // Cognito custom domain (optional):
-    //   auth.stats.acme.com → Cognito hosted UI
+    //   auth.stats.example.com → Cognito hosted UI
     //   CNAME record in the app zone
     //
     // Publishes to SSM (all under /{prefix}/dns/):
@@ -248,7 +248,7 @@ export class DnsStack extends cdk.Stack {
 
 **Why a separate zone?**
 - The CDK deployment role only needs `route53:*` on the app zone, not the parent zone (except for the one-time NS delegation)
-- Multiple environments can have independent zones (e.g., `stats-dev.acme.com`, `stats.acme.com`)
+- Multiple environments can have independent zones (e.g., `stats-dev.example.com`, `stats.example.com`)
 - If the app is torn down, deleting the app zone cleanly removes all its records without touching the parent
 
 ### FrontendStack

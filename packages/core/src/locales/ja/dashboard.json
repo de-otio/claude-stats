@@ -273,7 +273,9 @@
           "value": "約 4 mL/kWh のエンジニアリング処分体積 — 原廃棄物ではありません。Posiva KBS-3 / Onkalo に基づく HLW 処分（銅キャニスタ、ベントナイト緩衝材、熱トンネル間隔を考慮すると使用済燃料原体積の約 1,500 倍）、ILW（約 5 倍）、LLW（約 3 倍）処分の加重平均、IAEA 体積シェア使用。参照: Posiva 2012 セーフティケース、SKB TR-11-01、IAEA Radioactive Waste Inventory。"
         }
       }
-    }
+    },
+    "atLeast": "{{value}} 以上",
+    "floorNote": "Fable と Mythos には公表されているエネルギー値がないため、Opus の係数で計算しています。これらの合計は下限値として扱ってください。"
   },
   "settings": {
     "configuration": "設定",
@@ -737,7 +739,8 @@
     "mixedRepaired": "この範囲で集計対象の {{total}} 行のうち {{rows}} 行（{{percent}}%）は、レスポンス単位の修正より前のもの（cost_basis = pre-dedupe）で、約 2 倍に水増しされています。修復はすでに実行済みですが、残りの行には再解析できるトランスクリプトが残っていません。"
   },
   "pricingDrift": {
-    "unpricedCaveat": "{{count}} 件のモデル ID は料金が解決できなかったため、コスト合計から除外されています ({{tokens}} token): {{models}}。料金行を追加するか、設定で上書きしてください。"
+    "unpricedCaveat": "{{count}} 件のモデル ID は料金が解決できなかったため、コスト合計から除外されています ({{tokens}} token): {{models}}。料金行を追加するか、設定で上書きしてください。",
+    "fastModeUnpriced": "この合計では、{{count}} 件の fast モードのリクエストが標準レートで計算されています。実際の請求コストはこれより高くなります。"
   },
   "agentCost": {
     "title": "エージェントとスキル",

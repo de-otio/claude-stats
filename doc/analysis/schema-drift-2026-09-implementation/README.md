@@ -23,7 +23,7 @@ independently, on three different samples, by three different lines of enquiry:
 > - Assistant usage is summed once per transcript **entry** rather than per API
 >   response. Blocks of one response share a `message.id` but carry distinct
 >   envelope uuids, so the `uuid` dedupe misses them. Measured against Claude
->   Code's own `cost-state` rollup: **$124.25 vs $60.52 — a 2.05× over-report**;
+>   Code's own `cost-state` rollup: **a 2.05× over-report**;
 >   deduping on `message.id` matched ground truth exactly on all four token
 >   classes.
 > - User entries are not deduped at all — **62.5% are replays**.

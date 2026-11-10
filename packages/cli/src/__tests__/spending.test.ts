@@ -18,6 +18,8 @@ function makeMsg(overrides: Partial<SpendingMessageRow> = {}): SpendingMessageRo
     stop_reason: "end_turn",
     thinking_tokens: null,
     usage_counted: 1,
+    speed: null,
+    inference_geo: null,
     ...overrides,
   };
 }

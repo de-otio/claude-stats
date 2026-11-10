@@ -273,7 +273,9 @@
           "value": "约 4 mL/kWh 工程仓库体积 — 非原始废料。Posiva KBS-3 / Onkalo 的 HLW 处置（考虑铜罐、膨润土缓冲层和热隧道间距后为原始乏燃料体积的约 1,500 倍）、ILW（约 5 倍）、LLW（约 3 倍）处置加权平均，使用 IAEA 体积份额。参考: Posiva 2012 安全案例、SKB TR-11-01、IAEA Radioactive Waste Inventory。"
         }
       }
-    }
+    },
+    "atLeast": "至少 {{value}}",
+    "floorNote": "Fable 和 Mythos 没有公开的能耗数据,因此按 Opus 的费率计算。请将这些总计视为下限。"
   },
   "settings": {
     "configuration": "配置",
@@ -737,7 +739,8 @@
     "mixedRepaired": "此范围内 {{total}} 行计入行中有 {{rows}} 行（{{percent}}%）早于逐响应修复（cost_basis = pre-dedupe），数值约被高估 2 倍。修复已运行；其余行已没有可重新解析的 transcript。"
   },
   "pricingDrift": {
-    "unpricedCaveat": "{{count}} 个模型 ID 未能匹配到费率，已从费用总计中排除（{{tokens}} 个 token）：{{models}}。请添加定价行或配置覆盖项。"
+    "unpricedCaveat": "{{count}} 个模型 ID 未能匹配到费率，已从费用总计中排除（{{tokens}} 个 token）：{{models}}。请添加定价行或配置覆盖项。",
+    "fastModeUnpriced": "此总计中有 {{count}} 个快速模式请求按标准费率计价;其实际计费成本更高。"
   },
   "agentCost": {
     "title": "代理与技能",

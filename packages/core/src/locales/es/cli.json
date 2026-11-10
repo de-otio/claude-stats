@@ -318,7 +318,8 @@
     "ticketAmbiguousNote": "{{count}} sesión(es) ambigua(s) (vinculadas a más de un ticket).",
     "confidenceHigh": "confianza alta",
     "confidenceMedium": "confianza media",
-    "confidenceLow": "confianza baja"
+    "confidenceLow": "confianza baja",
+    "fastModeUnpriced": "{{count}} solicitudes en modo rápido se valoran a la tarifa estándar en este total; su costo facturado es mayor."
   },
   "status": {
     "databaseSize": "Tamaño de la base de datos",

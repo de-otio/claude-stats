@@ -88,7 +88,7 @@ function assistantLine(spec: Spec): Record<string, unknown> {
         cache_creation_input_tokens: spec.cacheCreation ?? 0,
         cache_read_input_tokens: spec.cacheRead ?? 0,
         cache_creation: { ephemeral_5m_input_tokens: spec.eph5m ?? 0, ephemeral_1h_input_tokens: spec.eph1h ?? 0 },
-        inference_geo: spec.geo ?? "us",
+        inference_geo: spec.geo ?? "global",
       },
     },
   };
@@ -105,25 +105,25 @@ const OPUS = "claude-opus-4-6";
 const UNKNOWN_MODEL = "claude-nonesuch-9"; // no rate row: cost 0, tokens still counted
 
 /**
- * Every case the plan lists, spread over two hours, two projects and two
- * inference_geo values so the rollup read must MERGE buckets, with distinct
+ * Every case the plan lists, spread over two hours, two projects and three
+ * inference_geo values (one of them "us", which prices at x1.1) so the rollup read must MERGE buckets, with distinct
  * non-zero cache values per row so a swapped column cannot go unnoticed.
  */
 const FIXTURE: Spec[] = [
-  { model: SONNET, input: 1000, output: 100, cacheRead: 11_000, cacheCreation: 20_000, eph5m: 15_000, eph1h: 5_000, effort: "low", project: "A", hour: 0, geo: "us" },
+  { model: SONNET, input: 1000, output: 100, cacheRead: 11_000, cacheCreation: 20_000, eph5m: 15_000, eph1h: 5_000, effort: "low", project: "A", hour: 0, geo: "global" },
   { model: SONNET, input: 2000, output: 200, cacheRead: 22_000, cacheCreation: 40_000, eph5m: 10_000, eph1h: 30_000, effort: "medium", project: "A", hour: 1, geo: "eu" },
-  { model: SONNET, input: 3000, output: 300, cacheRead: 33_000, cacheCreation: 60_000, eph5m: 60_000, eph1h: 0, effort: "high", project: "B", hour: 0, geo: "us" },
-  { model: OPUS, input: 4000, output: 400, cacheRead: 44_000, cacheCreation: 80_000, eph5m: 0, eph1h: 80_000, effort: "xhigh", project: "A", hour: 1, geo: "us" },
+  { model: SONNET, input: 3000, output: 300, cacheRead: 33_000, cacheCreation: 60_000, eph5m: 60_000, eph1h: 0, effort: "high", project: "B", hour: 0, geo: "global" },
+  { model: OPUS, input: 4000, output: 400, cacheRead: 44_000, cacheCreation: 80_000, eph5m: 0, eph1h: 80_000, effort: "xhigh", project: "A", hour: 1, geo: "us" }, // US-pinned: x1.1 on every rate, in raw and rollup alike
   { model: OPUS, input: 5000, output: 500, cacheRead: 55_000, cacheCreation: 100_000, eph5m: 40_000, eph1h: 60_000, effort: "high", project: "B", hour: 1, geo: "eu" },
-  { model: SONNET, input: 600, output: 60, cacheRead: 66_000, cacheCreation: 120_000, eph5m: 120_000, eph1h: 0, project: "A", hour: 1, geo: "us" }, // no effort at all
+  { model: SONNET, input: 600, output: 60, cacheRead: 66_000, cacheCreation: 120_000, eph5m: 120_000, eph1h: 0, project: "A", hour: 1, geo: "global" }, // no effort at all
   { model: SONNET, input: 700, output: 70, cacheRead: 77_000, cacheCreation: 140_000, eph5m: 100_000, eph1h: 40_000, perTurnEffort: "high", project: "B", hour: 0, geo: "eu" }, // perTurnEffort only
-  { model: OPUS, input: 800, output: 80, cacheRead: 88_000, cacheCreation: 160_000, eph5m: 0, eph1h: 160_000, effort: "turbo", project: "A", hour: 0, geo: "us" }, // unknown future tier
-  { model: UNKNOWN_MODEL, input: 900, output: 90, cacheRead: 99_000, cacheCreation: 180_000, eph5m: 80_000, eph1h: 100_000, effort: "high", project: "B", hour: 1, geo: "us" }, // unpriced model, tagged
-  { model: SONNET, input: 0, output: 0, effort: "low", project: "A", hour: 1, geo: "us" }, // zero-token tagged row
+  { model: OPUS, input: 800, output: 80, cacheRead: 88_000, cacheCreation: 160_000, eph5m: 0, eph1h: 160_000, effort: "turbo", project: "A", hour: 0, geo: "global" }, // unknown future tier
+  { model: UNKNOWN_MODEL, input: 900, output: 90, cacheRead: 99_000, cacheCreation: 180_000, eph5m: 80_000, eph1h: 100_000, effort: "high", project: "B", hour: 1, geo: "global" }, // unpriced model, tagged
+  { model: SONNET, input: 0, output: 0, effort: "low", project: "A", hour: 1, geo: "global" }, // zero-token tagged row
   // One response written as two lines: the larger one is the carrier; the
   // smaller one keeps its own (different) effort but loses its tokens.
-  { model: SONNET, input: 10, output: 1, cacheRead: 1, effort: "low", project: "B", hour: 0, geo: "us", msgId: "msg_shared", counted: false },
-  { model: SONNET, input: 1200, output: 120, cacheRead: 111_000, cacheCreation: 200_000, eph5m: 200_000, eph1h: 0, effort: "xhigh", project: "B", hour: 0, geo: "us", msgId: "msg_shared", counted: true },
+  { model: SONNET, input: 10, output: 1, cacheRead: 1, effort: "low", project: "B", hour: 0, geo: "global", msgId: "msg_shared", counted: false },
+  { model: SONNET, input: 1200, output: 120, cacheRead: 111_000, cacheCreation: 200_000, eph5m: 200_000, eph1h: 0, effort: "xhigh", project: "B", hour: 0, geo: "global", msgId: "msg_shared", counted: true },
 ];
 
 // ── independent expectations, computed from the specs alone ──────────────────
@@ -137,6 +137,7 @@ function price(s: Spec, split: boolean): number {
   return estimateCost(
     s.model, n(s, s.input), n(s, s.output), n(s, s.cacheRead), n(s, s.cacheCreation), undefined,
     split ? { ephemeral5mCacheTokens: n(s, s.eph5m), ephemeral1hCacheTokens: n(s, s.eph1h) } : undefined,
+    { inferenceGeo: s.geo },
   ).cost;
 }
 function expectFor(rows: Spec[], split: boolean) {
@@ -336,7 +337,7 @@ describe("byEffort reconciles with the headline and byModel", () => {
     db.close();
     expect(buckets.h).toBeGreaterThanOrEqual(2);
     expect(buckets.p).toBe(2);
-    expect(buckets.g).toBe(2);
+    expect(buckets.g).toBe(3);
     expect(buckets.c).toBeGreaterThan(raw.length);
     const rolled = store.getMessageTotals();
     expect(rolled.every((r) => r.ephemeral_1h_cache_tokens === 0)).toBe(true);
@@ -367,11 +368,15 @@ describe("byEffort reconciles with the headline and byModel", () => {
     expect(xhigh.inputTokens).toBe(4000 + 1200);
   });
 
-  it("foldTotalsByModel collapses tiers back to one row per model with every sum unchanged", () => {
+  it("foldTotalsByModel collapses effort tiers to one row per (model, US geo) with every sum unchanged", () => {
     const folded = foldTotalsByModel(store.getMessageTotals());
-    expect(folded.map((r) => r.model).sort()).toEqual([OPUS, SONNET, UNKNOWN_MODEL].sort());
+    // Effort folds away; the US-pinned group keeps its own row because it prices at its own rates.
+    const keyOf = (model: string, us: boolean): string => `${model}|${us ? 1 : 0}`;
+    expect(folded.map((r) => keyOf(r.model, r.us_geo === 1)).sort()).toEqual(
+      [keyOf(OPUS, false), keyOf(OPUS, true), keyOf(SONNET, false), keyOf(UNKNOWN_MODEL, false)].sort(),
+    );
     for (const r of folded) {
-      const rows = FIXTURE.filter((s) => s.model === r.model);
+      const rows = FIXTURE.filter((s) => s.model === r.model && (s.geo === "us") === (r.us_geo === 1));
       const e = expectFor(rows, true);
       expect(r.input_tokens).toBe(e.input);
       expect(r.output_tokens).toBe(e.output);
@@ -516,10 +521,10 @@ describe("effortMix", () => {
   it("groups a session's messages and cost by tier, null last", () => {
     const priced = (input: number, output: number): number => estimateCost(SONNET, input, output, 0, 0).cost;
     const mix = buildEffortMix([
-      { model: SONNET, effort: "high", input_tokens: 1000, output_tokens: 100 },
-      { model: SONNET, effort: "low", input_tokens: 200, output_tokens: 20 },
-      { model: SONNET, effort: "high", input_tokens: 3000, output_tokens: 300 },
-      { model: SONNET, effort: null, input_tokens: 10, output_tokens: 1 },
+      { model: SONNET, effort: "high", input_tokens: 1000, output_tokens: 100, speed: null, inference_geo: null },
+      { model: SONNET, effort: "low", input_tokens: 200, output_tokens: 20, speed: null, inference_geo: null },
+      { model: SONNET, effort: "high", input_tokens: 3000, output_tokens: 300, speed: null, inference_geo: null },
+      { model: SONNET, effort: null, input_tokens: 10, output_tokens: 1, speed: null, inference_geo: null },
     ]);
     expect(mix.map((r) => [r.effort, r.messages])).toEqual([["low", 1], ["high", 2], [null, 1]]);
     expect(mix.find((r) => r.effort === "high")!.estimatedCost).toBeCloseTo(priced(1000, 100) + priced(3000, 300), 2);

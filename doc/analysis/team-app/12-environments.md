@@ -33,8 +33,8 @@ export interface EnvironmentConfig {
   dynamoDbRemovalPolicy: "RETAIN" | "DESTROY";
 
   // DNS & Frontend
-  domainName: string | null;    // App subdomain, e.g. "stats.acme.com". null = CloudFront default
-  parentZoneName: string | null;  // Parent hosted zone, e.g. "acme.com". Required if domainName is set
+  domainName: string | null;    // App subdomain, e.g. "stats.example.com". null = CloudFront default
+  parentZoneName: string | null;  // Parent hosted zone, e.g. "example.com". Required if domainName is set
   parentZoneId: string | null;    // Route 53 hosted zone ID of parent zone (for NS delegation)
 
   // Branding
@@ -42,7 +42,7 @@ export interface EnvironmentConfig {
     primaryColor: string;           // Tailwind color name or hex, e.g. "indigo" or "#4F46E5"
     accentColor: string;            // Secondary accent, e.g. "emerald"
     logoUrl: string | null;         // URL to organization logo (S3 or external). Shown in nav bar.
-    appTitle: string;               // e.g. "Acme Claude Stats". Default: "Claude Stats"
+    appTitle: string;               // e.g. "Example Claude Stats". Default: "Claude Stats"
   };
 
   // MCP
@@ -74,7 +74,7 @@ export const devConfig: EnvironmentConfig = {
   region: process.env.CDK_DEV_REGION ?? "us-east-1",
 
   // Auth — permissive for testing
-  allowedEmailDomains: ["acme.com", "acme.io", "example.com"],
+  allowedEmailDomains: ["example.com", "example.org", "example.net"],
   magicLinkTtlMinutes: 60,           // Longer TTL for dev convenience
   magicLinkMaxRequestsPerHour: 20,
   cognitoAdvancedSecurity: false,     // Save cost in dev
@@ -135,7 +135,7 @@ export const prodConfig: EnvironmentConfig = {
   region: process.env.CDK_PROD_REGION ?? "us-east-1",
 
   // Auth — strict
-  allowedEmailDomains: ["acme.com"],
+  allowedEmailDomains: ["example.com"],
   magicLinkTtlMinutes: 15,
   magicLinkMaxRequestsPerHour: 3,
   cognitoAdvancedSecurity: true,
@@ -155,16 +155,16 @@ export const prodConfig: EnvironmentConfig = {
   dynamoDbRemovalPolicy: "RETAIN",
 
   // DNS & Frontend
-  domainName: "stats.acme.com",
-  parentZoneName: "acme.com",
-  parentZoneId: "Z0123456789ABCDEFGHIJ",  // Hosted zone ID of acme.com
+  domainName: "stats.example.com",
+  parentZoneName: "example.com",
+  parentZoneId: "Z0123456789ABCDEFGHIJ",  // Hosted zone ID of example.com
 
   // Branding
   branding: {
     primaryColor: "indigo",
     accentColor: "emerald",
-    logoUrl: "https://cdn.acme.com/logo.svg",  // Organization logo for nav bar
-    appTitle: "Acme Claude Stats",
+    logoUrl: "https://cdn.example.com/logo.svg",  // Organization logo for nav bar
+    appTitle: "Example Claude Stats",
   },
 
   // MCP

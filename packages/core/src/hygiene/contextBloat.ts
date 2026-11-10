@@ -37,8 +37,8 @@
  * written to be self-describing for exactly that reason.
  */
 import type { HygieneFinding, HygieneThresholds, HygieneMessageRow } from "./types.js";
-import { groupBySession, groupNum, contextIncrements, detectResets, type ContextIncrement } from "./util.js";
-import { resolvePricing, type RateOverrides } from "../pricing.js";
+import { groupBySession, groupNum, contextIncrements, detectResets, rowCostOptions, type ContextIncrement } from "./util.js";
+import { resolveRequestPricing, type RateOverrides } from "../pricing.js";
 
 /**
  * A tool name may be interpolated into `detail` ONLY if it matches this.
@@ -100,7 +100,11 @@ interface FlaggedIncrement {
  */
 function carryCostOf(row: HygieneMessageRow, increment: number, remainingRequestsInCycle: number, overrides?: RateOverrides): number {
   if (!row.model) return 0;
-  const { pricing } = resolvePricing(row.model, overrides);
+  // Priced at the rate the row's own request was billed at (long-context tier,
+  // fast mode, US geo). Tier is monotonic within a cycle, so this is a lower
+  // bound for the later requests that carry the increment, as the rest of this
+  // function already is.
+  const { pricing } = resolveRequestPricing(row.model, rowCostOptions(row), overrides);
   if (!pricing) return 0;
   return (increment / 1_000_000) * pricing.cacheReadPerMillion * remainingRequestsInCycle;
 }

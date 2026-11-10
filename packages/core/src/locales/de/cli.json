@@ -316,7 +316,8 @@
     "ticketAmbiguousNote": "{{count}} Session(s) mehrdeutig (mit mehr als einem Ticket verknüpft).",
     "confidenceHigh": "hohe Konfidenz",
     "confidenceMedium": "mittlere Konfidenz",
-    "confidenceLow": "niedrige Konfidenz"
+    "confidenceLow": "niedrige Konfidenz",
+    "fastModeUnpriced": "{{count}} Fast-Mode-Anfragen sind in dieser Summe mit dem Standardtarif berechnet; die tatsächlich abgerechneten Kosten sind höher."
   },
   "status": {
     "databaseSize": "Datenbankgröße",

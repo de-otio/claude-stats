@@ -318,7 +318,8 @@
     "ticketAmbiguousNote": "{{count}} sessão(ões) ambígua(s) (vinculada(s) a mais de um ticket).",
     "confidenceHigh": "confiança alta",
     "confidenceMedium": "confiança média",
-    "confidenceLow": "confiança baixa"
+    "confidenceLow": "confiança baixa",
+    "fastModeUnpriced": "{{count}} requisições em fast-mode são precificadas pela tarifa padrão neste total; o custo cobrado delas é maior."
   },
   "status": {
     "databaseSize": "Tamanho do banco",

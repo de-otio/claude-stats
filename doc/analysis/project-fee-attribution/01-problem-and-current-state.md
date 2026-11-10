@@ -5,15 +5,15 @@
 Two coupled features:
 
 1. **Settings tab** — configure a **monthly fee per account**. The user runs
-   two Claude accounts (work €125/mo, personal €214/mo) and switches between
+   two Claude accounts (work €100/mo, personal €200/mo) and switches between
    them. Today there is exactly one fee field.
-2. **Projects tab** — show the **total fee (€339/mo) distributed across
+2. **Projects tab** — show the **total fee (€300/mo) distributed across
    projects** for the selected period, so the flat subscription cost is
    attributed to the work it paid for.
 
 The deeper goal stated in the request: *"so that the AI costs can be attributed
 to projects proportionally."* The subscription fee is a **sunk, flat cost** —
-you pay €339 whether you run one prompt or ten thousand. The feature turns that
+you pay €300 whether you run one prompt or ten thousand. The feature turns that
 undifferentiated number into a per-project, per-period figure the user can
 reason about (e.g. bill a client, or decide a side-project isn't worth its share
 of the fee).
@@ -63,8 +63,8 @@ already surfaced to the Plan tab.
 already sums an auto-detected plan fee across accounts via
 [`lookupPlanFee(subscriptionType)`](../../../packages/core/src/pricing.ts#L110).
 **But** it can only produce *defaults* from the `PLAN_FEES` table
-([pricing.ts:96](../../../packages/core/src/pricing.ts#L96)) — `team_premium`
-→ $125, etc. It cannot know the user actually pays €214 for the personal account.
+([pricing.ts:96](../../../packages/core/src/pricing.ts#L96)) — `max_5x`
+→ $100, etc. It cannot know the user actually pays €200 for the personal account.
 That is precisely the gap the Settings feature fills.
 
 ### Proportional project distribution

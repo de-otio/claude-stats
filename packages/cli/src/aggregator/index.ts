@@ -12,7 +12,7 @@ import type { ParseResult } from "@claude-stats/core/parser/session";
 import { checkSchema } from "../schema/monitor.js";
 import { estimateCost } from "@claude-stats/core/pricing";
 import { collectAccountMap } from "@claude-stats/core/parser/telemetry";
-import type { Store } from "../store/index.js";
+import { groupCostOpts, type Store } from "../store/index.js";
 import type { RawSessionEntry, UsageWindow } from "@claude-stats/core/types";
 import { readClaudeAccount } from "../account.js";
 import { writeObservation } from "../attribution/observer.js";
@@ -651,7 +651,7 @@ function computeAndUpsertWindows(store: Store, since: number): void {
     const { cost } = estimateCost(row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens, undefined, {
       ephemeral5mCacheTokens: row.ephemeral_5m_cache_tokens,
       ephemeral1hCacheTokens: row.ephemeral_1h_cache_tokens,
-    }, { longContext: row.long_context === 1 });
+    }, groupCostOpts(row));
     entry.cost += cost;
     entry.tokensByModel[row.model] = (entry.tokensByModel[row.model] ?? 0) + row.input_tokens + row.output_tokens;
     sessionCostMap.set(row.session_id, entry);

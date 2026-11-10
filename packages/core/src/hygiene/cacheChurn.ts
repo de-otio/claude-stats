@@ -13,9 +13,9 @@
  * it. `minCacheCreationTokens` excludes trivial sessions where the ratio is
  * high only because everything is small.
  */
-import { estimateCost, isLongContextRequest, type CacheWriteSplit, type RateOverrides } from "../pricing.js";
+import { estimateCost, type CacheWriteSplit, type RateOverrides } from "../pricing.js";
 import type { HygieneFinding, HygieneThresholds } from "./types.js";
-import { groupBySession, groupNum } from "./util.js";
+import { groupBySession, groupNum, rowCostOptions } from "./util.js";
 import type { HygieneMessageRow } from "./types.js";
 
 export function detectCacheChurn(
@@ -46,9 +46,7 @@ export function detectCacheChurn(
         };
         // Priced as the request it was written in: a request over the
         // long-context threshold pays the tier rate on its writes too.
-        creationCost += estimateCost(m.model, 0, 0, 0, m.cacheCreationTokens, overrides, ttlSplit, {
-          longContext: isLongContextRequest(m.model, m.inputTokens, m.cacheReadTokens, m.cacheCreationTokens),
-        }).cost;
+        creationCost += estimateCost(m.model, 0, 0, 0, m.cacheCreationTokens, overrides, ttlSplit, rowCostOptions(m)).cost;
       }
     }
     if (creation < thresholds.minCacheCreationTokens) continue;

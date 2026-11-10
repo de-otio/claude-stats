@@ -161,8 +161,12 @@ describe("modelTier", () => {
   it.each([
     ["claude-opus-5", "top"],
     ["claude-opus-4-8", "top"],
-    ["claude-fable-5", "top"],
-    ["claude-mythos-5", "top"],
+    // Fable and Mythos are `frontier`, split from Opus (`top`): the two differ
+    // by 2x in price (Opus 5.5 $4/$20, Fable 5.2 $8/$40).
+    ["claude-fable-5", "frontier"],
+    ["claude-fable-5-2", "frontier"],
+    ["claude-mythos-5", "frontier"],
+    ["claude-mythos-5-2", "frontier"],
     ["claude-sonnet-5", "mid"],
     ["claude-sonnet-4-6", "mid"],
     ["claude-haiku-4-5", "low"],
@@ -176,5 +180,6 @@ describe("modelTier", () => {
     expect(modelTier("anthropic.claude-opus-5")).toBe("top");
     expect(modelTier("us.anthropic.claude-sonnet-4-6")).toBe("mid");
     expect(modelTier("claude-opus-4-5@20251101")).toBe("top");
+    expect(modelTier("anthropic.claude-fable-5-2")).toBe("frontier");
   });
 });

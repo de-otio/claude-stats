@@ -26,7 +26,7 @@ including the worked example ([03 §3.6](03-distribution-model.md)) as a test ca
 
 **Phase 1 — Settings tab.**
 Per-account fee table, account enumeration via `listAccounts`, `accountFees`
-persistence and merge. After this the user can *record* €125 / €214 even before
+persistence and merge. After this the user can *record* €100 / €200 even before
 the Projects view exists; the values immediately improve `planUtilization`
 ([§6.5](06-implementation-plan.md)).
 
@@ -77,7 +77,7 @@ attributed, pro-rated, subscription fee by project, set fees in settings, etc.
 
 Today `planUtilization.byAccount` can only *auto-detect* a default fee via
 `lookupPlanFee` ([dashboard/index.ts:841](../../../packages/cli/src/dashboard/index.ts#L841))
-— it has no way to know the personal account really costs €214, so its
+— it has no way to know the personal account really costs €200, so its
 "good-value / underusing" verdict ([dashboard/index.ts:843-848](../../../packages/cli/src/dashboard/index.ts#L843-L848))
 is computed against a guess. Once `accountFees` exists, make it the **primary**
 source for `detectedPlanFee` there too:
