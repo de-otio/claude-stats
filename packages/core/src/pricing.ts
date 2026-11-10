@@ -39,8 +39,24 @@ export interface ModelPricing {
    */
   longContext?: {
     thresholdTokens: number;
-    rates: Omit<ModelPricing, "longContext" | "ttlRateBasis">;
+    rates: Omit<ModelPricing, "longContext" | "ttlRateBasis" | "fastMultiplier" | "usGeoMultiplier">;
   };
+  /**
+   * Fast-mode multiplier, on the rows whose model has a PUBLISHED fast-mode
+   * rate only (Fable 5.2, Mythos 5.2, Opus 5.5, Opus 5, Opus 4.8: 2×). It scales
+   * all five rates: the pricing page states that the prompt-caching multipliers
+   * apply on top of fast-mode input pricing, which makes every cache rate
+   * 2× the standard one. Absent means the model has NO published fast rate, and
+   * `estimateCost` REFUSES a `speed = "fast"` request on it (cost 0,
+   * `known: false`, `reason: "fast-unpriced"`) rather than price it at standard.
+   */
+  fastMultiplier?: number;
+  /**
+   * Multiplier for US-only inference (`inference_geo: "us"`), 1.1× on every
+   * token category, on the rows the pricing page says it applies to ("Claude 4.6
+   * and later models"). Absent means × 1.
+   */
+  usGeoMultiplier?: number;
 }
 
 /**
@@ -53,37 +69,52 @@ export interface CacheWriteSplit {
   ephemeral1hCacheTokens: number;
 }
 
+/** Published fast-mode multiplier (every rate 2× standard). */
+const FAST_2X = 2;
+/** Published US-only inference multiplier (`inference_geo: "us"`). */
+const US_GEO = 1.1;
+
 // Default pricing table — used as fallback when auto-fetched cache is unavailable.
 // Verified against https://platform.claude.com/docs/en/about-claude/pricing
 // `cacheWrite1hPerMillion` is `2 × inputPerMillion` on every row — that is the
 // published multiplier, not a guess, hence `ttlRateBasis: "parsed"` throughout.
 const DEFAULT_PRICING: Record<string, ModelPricing> = {
+  // Fable 5.2 / Mythos 5.2 (2026-11-09) — $8 / $40, cache read 0.025× input
+  // (0.20), 5-minute write 1.25× (10), 1-hour write 2× (16). Read off the
+  // pricing page 2026-11-10. Without these rows the ids prefix-match
+  // `claude-fable-5` / `claude-mythos-5`, the `-2` remainder is a point-release
+  // suffix, and the model costs $0 with `known: false`. Fast mode is published
+  // for both at 2× ($16 / $80); cache rates stack on top of it.
+  "claude-fable-5-2":  { inputPerMillion: 8,    outputPerMillion: 40, cacheReadPerMillion: 0.20, cacheWritePerMillion: 10,    cacheWrite1hPerMillion: 16,   ttlRateBasis: "parsed", fastMultiplier: FAST_2X, usGeoMultiplier: US_GEO },
+  "claude-mythos-5-2": { inputPerMillion: 8,    outputPerMillion: 40, cacheReadPerMillion: 0.20, cacheWritePerMillion: 10,    cacheWrite1hPerMillion: 16,   ttlRateBasis: "parsed", fastMultiplier: FAST_2X, usGeoMultiplier: US_GEO },
   // Fable 5.1 / Mythos 5.1 — identical to their predecessors on four of five
   // rates. The exception is `cacheReadPerMillion`, which DROPPED from 1.00 to
   // 0.25. It is not derivable from the other four and it is not a typo; cache
   // reads are ~99.6% of input volume, so that one cell is a 4× error on the
   // dominant term. Without these rows the ids prefix-match the 5.0 rows and
   // inherit 1.00 with `known: true`.
-  "claude-fable-5-1":  { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 0.25, cacheWritePerMillion: 12.50, cacheWrite1hPerMillion: 20,   ttlRateBasis: "parsed" },
-  "claude-mythos-5-1": { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 0.25, cacheWritePerMillion: 12.50, cacheWrite1hPerMillion: 20,   ttlRateBasis: "parsed" },
+  "claude-fable-5-1":  { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 0.25, cacheWritePerMillion: 12.50, cacheWrite1hPerMillion: 20,   ttlRateBasis: "parsed", usGeoMultiplier: US_GEO },
+  "claude-mythos-5-1": { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 0.25, cacheWritePerMillion: 12.50, cacheWrite1hPerMillion: 20,   ttlRateBasis: "parsed", usGeoMultiplier: US_GEO },
   // Fable 5 / Mythos 5 — the top capability tier, priced above Opus.
-  "claude-fable-5":    { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 1.00, cacheWritePerMillion: 12.50, cacheWrite1hPerMillion: 20,   ttlRateBasis: "parsed" },
-  "claude-mythos-5":   { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 1.00, cacheWritePerMillion: 12.50, cacheWrite1hPerMillion: 20,   ttlRateBasis: "parsed" },
+  "claude-fable-5":    { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 1.00, cacheWritePerMillion: 12.50, cacheWrite1hPerMillion: 20,   ttlRateBasis: "parsed", usGeoMultiplier: US_GEO },
+  "claude-mythos-5":   { inputPerMillion: 10,   outputPerMillion: 50, cacheReadPerMillion: 1.00, cacheWritePerMillion: 12.50, cacheWrite1hPerMillion: 20,   ttlRateBasis: "parsed", usGeoMultiplier: US_GEO },
   // Claude Opus 5.5 — CHEAPER than Opus 5 on every rate, and its cache read is
   // 0.05× input (0.20), not the standard 0.1×. Verified against the published
   // page 2026-09-26. Without this row `claude-opus-5-5` hits the point-release
   // refusal on `claude-opus-5` and costs $0 with `known: false` — which, as the
   // default Claude Code model, zeroed almost the entire dashboard.
-  "claude-opus-5-5":   { inputPerMillion: 4,    outputPerMillion: 20, cacheReadPerMillion: 0.20, cacheWritePerMillion: 5,     cacheWrite1hPerMillion: 8,    ttlRateBasis: "parsed" },
+  "claude-opus-5-5":   { inputPerMillion: 4,    outputPerMillion: 20, cacheReadPerMillion: 0.20, cacheWritePerMillion: 5,     cacheWrite1hPerMillion: 8,    ttlRateBasis: "parsed", fastMultiplier: FAST_2X, usGeoMultiplier: US_GEO },
   // Claude Sonnet 5.5 and Haiku 5.5 — built-in rows so a first run, an offline
   // machine or a failed pricing fetch does not cost them at $0 with
   // `known: false`. Rates match the live pricing cache and the launch
   // changelog (2026-10-27). Sonnet 5.5's cache read is 0.10× input.
-  "claude-sonnet-5-5": { inputPerMillion: 2,    outputPerMillion: 10, cacheReadPerMillion: 0.10, cacheWritePerMillion: 2.50,  cacheWrite1hPerMillion: 4,    ttlRateBasis: "parsed" },
+  "claude-sonnet-5-5": { inputPerMillion: 2,    outputPerMillion: 10, cacheReadPerMillion: 0.10, cacheWritePerMillion: 2.50,  cacheWrite1hPerMillion: 4,    ttlRateBasis: "parsed", usGeoMultiplier: US_GEO },
   // Haiku 5.5 is the one model with a long-context tier: a request whose prompt
   // is over 100,000 tokens is priced at 5x every column, whole request (V6).
   "claude-haiku-5-5":  {
     inputPerMillion: 0.10, outputPerMillion: 0.50, cacheReadPerMillion: 0.01, cacheWritePerMillion: 0.125, cacheWrite1hPerMillion: 0.20, ttlRateBasis: "parsed",
+    // The US multiplier also applies to the over-100K tier prices (pricing page).
+    usGeoMultiplier: US_GEO,
     longContext: {
       thresholdTokens: 100_000,
       rates: { inputPerMillion: 0.50, outputPerMillion: 2.50, cacheReadPerMillion: 0.05, cacheWritePerMillion: 0.625, cacheWrite1hPerMillion: 1 },
@@ -91,13 +122,13 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
   },
   // Claude Opus 5 — same rates as Opus 4.8. Missing this row meant current-
   // generation Opus usage costed zero with `known: true` nowhere to be seen.
-  "claude-opus-5":     { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed" },
-  "claude-opus-4-8":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed" },
+  "claude-opus-5":     { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed", fastMultiplier: FAST_2X, usGeoMultiplier: US_GEO },
+  "claude-opus-4-8":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed", fastMultiplier: FAST_2X, usGeoMultiplier: US_GEO },
   // Opus 4.7 was absent and prefix-matched the RETIRED `claude-opus-4` row at
   // 15/18.75/30/1.50/75 — a 3× over-charge, the largest single correction in
   // this release. Current-generation Opus rates, same as 4.8 and 4.6.
-  "claude-opus-4-7":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed" },
-  "claude-opus-4-6":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed" },
+  "claude-opus-4-7":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed", usGeoMultiplier: US_GEO },
+  "claude-opus-4-6":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed", usGeoMultiplier: US_GEO },
   "claude-opus-4-5":   { inputPerMillion: 5,    outputPerMillion: 25, cacheReadPerMillion: 0.50, cacheWritePerMillion: 6.25,  cacheWrite1hPerMillion: 10,   ttlRateBasis: "parsed" },
   "claude-opus-4-1":   { inputPerMillion: 15,   outputPerMillion: 75, cacheReadPerMillion: 1.50, cacheWritePerMillion: 18.75, cacheWrite1hPerMillion: 30,   ttlRateBasis: "parsed" },
   "claude-opus-4":     { inputPerMillion: 15,   outputPerMillion: 75, cacheReadPerMillion: 1.50, cacheWritePerMillion: 18.75, cacheWrite1hPerMillion: 30,   ttlRateBasis: "parsed" },
@@ -108,8 +139,8 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
   // date), and the fetched pricing cache agrees. Making that edit would have
   // introduced a 50% over-report on every Sonnet 5 request. Rates below are
   // verified 2026-09-12 — do not bump them from a prediction; re-read the page.
-  "claude-sonnet-5":   { inputPerMillion: 2,    outputPerMillion: 10, cacheReadPerMillion: 0.20, cacheWritePerMillion: 2.50,  cacheWrite1hPerMillion: 4,    ttlRateBasis: "parsed" },
-  "claude-sonnet-4-6": { inputPerMillion: 3,    outputPerMillion: 15, cacheReadPerMillion: 0.30, cacheWritePerMillion: 3.75,  cacheWrite1hPerMillion: 6,    ttlRateBasis: "parsed" },
+  "claude-sonnet-5":   { inputPerMillion: 2,    outputPerMillion: 10, cacheReadPerMillion: 0.20, cacheWritePerMillion: 2.50,  cacheWrite1hPerMillion: 4,    ttlRateBasis: "parsed", usGeoMultiplier: US_GEO },
+  "claude-sonnet-4-6": { inputPerMillion: 3,    outputPerMillion: 15, cacheReadPerMillion: 0.30, cacheWritePerMillion: 3.75,  cacheWrite1hPerMillion: 6,    ttlRateBasis: "parsed", usGeoMultiplier: US_GEO },
   "claude-sonnet-4-5": { inputPerMillion: 3,    outputPerMillion: 15, cacheReadPerMillion: 0.30, cacheWritePerMillion: 3.75,  cacheWrite1hPerMillion: 6,    ttlRateBasis: "parsed" },
   "claude-sonnet-4":   { inputPerMillion: 3,    outputPerMillion: 15, cacheReadPerMillion: 0.30, cacheWritePerMillion: 3.75,  cacheWrite1hPerMillion: 6,    ttlRateBasis: "parsed" },
   "claude-haiku-4-5":  { inputPerMillion: 1,    outputPerMillion: 5,  cacheReadPerMillion: 0.10, cacheWritePerMillion: 1.25,  cacheWrite1hPerMillion: 2,    ttlRateBasis: "parsed" },
@@ -134,7 +165,7 @@ export let PRICING: Record<string, ModelPricing> = { ...DEFAULT_PRICING };
  * shipped table only. Do not "fix" the overwrite — a fetched table verified
  * later than the shipped one should say so.
  */
-export let PRICING_VERIFIED_DATE = "2026-09-26";
+export let PRICING_VERIFIED_DATE = "2026-11-10";
 
 /**
  * Fill a rate row's TTL fields when the source did not carry them.
@@ -216,6 +247,36 @@ function withLongContext(row: ModelPricing, fallback?: ModelPricing): ModelPrici
   return rest;
 }
 
+/** A usable multiplier: finite and at least 1 (neither fast mode nor the US premium is a discount). */
+function validMultiplier(m: unknown): m is number {
+  return typeof m === "number" && Number.isFinite(m) && m >= 1;
+}
+
+/**
+ * Validate a row's fast-mode and US-geo multipliers, and carry the shipped ones
+ * over when the source row has none.
+ *
+ * `pricing.json` carries no multiplier fields (the cache parser reads only the
+ * base table), and the merge is whole-row, so without the inheritance every
+ * cache refresh would delete them: fast mode would be refused on every model
+ * and the US premium would vanish. Inherit only when the base input rate agrees
+ * (same reasoning as `withLongContext`): a multiplier published against an old
+ * price is not evidence about a repriced one, and a refused fast row is a
+ * visible gap while a stale multiplier is a wrong number. A malformed value is
+ * dropped, never defaulted.
+ */
+function withMultipliers(row: ModelPricing, fallback?: ModelPricing): ModelPricing {
+  const { fastMultiplier: fm, usGeoMultiplier: gm, ...rest } = row;
+  const inherit = !!fallback && fallback.inputPerMillion === row.inputPerMillion;
+  const fast = validMultiplier(fm) ? fm : inherit ? fallback!.fastMultiplier : undefined;
+  const geo = validMultiplier(gm) ? gm : inherit ? fallback!.usGeoMultiplier : undefined;
+  return {
+    ...rest,
+    ...(validMultiplier(fast) ? { fastMultiplier: fast } : {}),
+    ...(validMultiplier(geo) ? { usGeoMultiplier: geo } : {}),
+  };
+}
+
 /**
  * Rate-coherence bound for a parsed or fetched row.
  *
@@ -260,7 +321,7 @@ export function applyPricingCache(
     // A model id arrives from remote HTML; never let one reach the prototype.
     if (key === "__proto__") continue;
     if (!row || typeof row !== "object") continue;
-    const filled = withLongContext(withTtlRates(row, DEFAULT_PRICING[key]), DEFAULT_PRICING[key]);
+    const filled = withMultipliers(withLongContext(withTtlRates(row, DEFAULT_PRICING[key]), DEFAULT_PRICING[key]), DEFAULT_PRICING[key]);
     // Incoherent → leave whatever `DEFAULT_PRICING` had for this key in place.
     // A key with no default is simply dropped, which surfaces as `known: false`
     // rather than as a confident figure from a rate we do not believe.
@@ -429,18 +490,24 @@ export function normalizeModelId(raw: string): NormalizedModel {
 }
 
 /**
- * Coarse capability tier for a served model id — top (Opus/Fable/Mythos),
- * mid (Sonnet), low (Haiku), or unknown (unrecognized id). Independent of the
- * rate table: a model this build has never priced can still be tiered from
- * its name, which is all the tier-mismatch detector (`hygiene/tierMismatch.ts`)
- * needs — it compares OUTCOMES across a tier boundary, not dollars per tier.
+ * Coarse capability tier for a served model id: frontier (Fable/Mythos), top
+ * (Opus), mid (Sonnet), low (Haiku), or unknown (unrecognized id). Independent
+ * of the rate table: a model this build has never priced can still be tiered
+ * from its name, which is all the tier-mismatch detector
+ * (`hygiene/tierMismatch.ts`) needs — it compares OUTCOMES across a tier
+ * boundary, not dollars per tier.
+ *
+ * `frontier` is split from `top` because the two differ by 2× in price (Opus 5.5
+ * $4 / $20, Fable 5.2 $8 / $40): lumped together, the most expensive routing
+ * choice a developer makes (Opus or Fable) was invisible to the detector.
  */
-export type ModelTier = "top" | "mid" | "low" | "unknown";
+export type ModelTier = "frontier" | "top" | "mid" | "low" | "unknown";
 
 export function modelTier(raw: string): ModelTier {
   const { canonical } = normalizeModelId(raw);
   const id = canonical.toLowerCase();
-  if (id.includes("opus") || id.includes("fable") || id.includes("mythos")) return "top";
+  if (id.includes("fable") || id.includes("mythos")) return "frontier";
+  if (id.includes("opus")) return "top";
   if (id.includes("sonnet")) return "mid";
   if (id.includes("haiku")) return "low";
   return "unknown";
@@ -740,6 +807,111 @@ export interface CostEstimate {
   unattributedWriteTokens: number;
   /** Split tokens exceeding `cacheCreationTokens` — an inconsistent source. */
   overAttributedWriteTokens: number;
+  /**
+   * Present exactly when a KNOWN model was refused a price because of the
+   * request's `speed`: `"fast-unpriced"` (fast mode on a model with no published
+   * fast rate) or `"speed-unknown"` (a `speed` value other than `standard` /
+   * `fast`). The estimate is then `{cost: 0, known: false}`, the same visibly
+   * missing number as an unknown model; this field lets a surface say why.
+   * Absent for an unknown model and for every priced request.
+   */
+  reason?: CostRefusalReason;
+}
+
+/** Why `estimateCost` refused to price a request of a model it otherwise knows. */
+export type CostRefusalReason = "fast-unpriced" | "speed-unknown";
+
+/** Per-request pricing modifiers. Every field is optional; omitted = base rates. */
+export interface CostOptions {
+  /** The request is in the model's long-context tier (see `isLongContextRequest`). */
+  longContext?: boolean;
+  /**
+   * `usage.speed` of the request: `standard`, `fast`, absent or null. `fast`
+   * multiplies every rate by the row's `fastMultiplier`, or REFUSES the request
+   * if the row has none. Any other value is refused as `speed-unknown`.
+   */
+  speed?: string | null;
+  /** `usage.inference_geo`. Exactly `"us"` applies the row's `usGeoMultiplier`; anything else is × 1. */
+  inferenceGeo?: string | null;
+}
+
+/** Scale all five rates; every other field is carried over unchanged. */
+function scaleRates(p: ModelPricing, m: number): ModelPricing {
+  return {
+    ...p,
+    inputPerMillion: p.inputPerMillion * m,
+    outputPerMillion: p.outputPerMillion * m,
+    cacheReadPerMillion: p.cacheReadPerMillion * m,
+    cacheWritePerMillion: p.cacheWritePerMillion * m,
+    cacheWrite1hPerMillion: p.cacheWrite1hPerMillion * m,
+  };
+}
+
+/** The rate row one request is priced at, with how it got there. */
+export interface RequestPricing {
+  /** Provenance of the base row (source, rate basis, canonical id, drift). */
+  resolved: ResolvedPricing;
+  /**
+   * The rates to price this request at: the matched row, replaced by its
+   * long-context tier when `opts.longContext` and the model has one, then every
+   * rate multiplied by the fast-mode and US-geo multipliers that apply. `null`
+   * for an unknown model AND for a refused request (see `reason`).
+   */
+  pricing: ModelPricing | null;
+  /** Set exactly when a known model was refused because of `opts.speed`. */
+  reason?: CostRefusalReason;
+}
+
+/**
+ * Resolve a model and a request's pricing modifiers to one rate row. The single
+ * implementation of the long-context × fast × geo composition: `estimateCost`
+ * prices dollars from it, and the analytics that read a rate directly (cache-TTL
+ * fit, context carry, context bloat, auto-compact fit) call it per request so
+ * they price a long-context, fast or US-pinned row at the rate it was billed at.
+ *
+ * Composition: tier rates (long context) × fast multiplier × US-geo multiplier,
+ * applied to all five rates. The pricing page says the cache multipliers and the
+ * data-residency multiplier apply on top of fast-mode pricing, and that the US
+ * multiplier also applies to Haiku 5.5's over-100K tier prices.
+ *
+ * Refusals (a visibly missing number, never a wrong one): `speed = "fast"` on a
+ * row with no `fastMultiplier` is `fast-unpriced`; any `speed` other than
+ * standard/fast/absent is `speed-unknown`. Absent, null or `standard` speed and
+ * any non-`us` geo leave the rates exactly as they were: bit-identical to the
+ * pre-modifier result.
+ */
+export function resolveRequestPricing(model: string, opts?: CostOptions, overrides?: RateOverrides): RequestPricing {
+  const resolved = resolvePricing(model, overrides);
+  // A long-context request is priced at the tier rates in every column. A model
+  // with no tier ignores the flag (base rates, not an error).
+  const tier = opts?.longContext ? resolved.pricing?.longContext : undefined;
+  let pricing: ModelPricing | null = resolved.pricing && tier ? { ...resolved.pricing, ...tier.rates } : resolved.pricing;
+  if (!pricing) return { resolved, pricing: null };
+
+  const speed = opts?.speed;
+  let multiplier = 1;
+  let reason: CostRefusalReason | undefined;
+  if (speed === undefined || speed === null || speed === "standard") {
+    // Unchanged: standard and absent speed price at the row's own rates.
+  } else if (speed === "fast") {
+    if (validMultiplier(pricing.fastMultiplier)) multiplier *= pricing.fastMultiplier;
+    else reason = "fast-unpriced";
+  } else {
+    reason = "speed-unknown";
+  }
+  if (reason) return { resolved, pricing: null, reason };
+  if (opts?.inferenceGeo === "us" && validMultiplier(pricing.usGeoMultiplier)) multiplier *= pricing.usGeoMultiplier;
+  if (multiplier !== 1) pricing = scaleRates(pricing, multiplier);
+  return { resolved, pricing };
+}
+
+/**
+ * Stable string key of the pricing modifiers, for per-call rate caches that used
+ * to be keyed by model id alone. Two requests with the same model and the same
+ * key resolve to the same rate row.
+ */
+export function costOptionsKey(opts?: CostOptions): string {
+  return `${opts?.longContext ? 1 : 0}|${opts?.inferenceGeo === "us" ? "us" : ""}|${opts?.speed ?? ""}`;
 }
 
 /**
@@ -770,14 +942,10 @@ export function estimateCost(
   cacheCreationTokens: number,
   overrides?: RateOverrides,
   ttlSplit?: CacheWriteSplit,
-  opts?: { longContext?: boolean },
+  opts?: CostOptions,
 ): CostEstimate {
-  const resolved = resolvePricing(model, overrides);
+  const { resolved, pricing, reason: refusal } = resolveRequestPricing(model, opts, overrides);
   const { source, rateBasis } = resolved;
-  // A long-context request is priced at the tier rates in every column. A model
-  // with no tier ignores the flag (base rates, not an error).
-  const tier = opts?.longContext ? resolved.pricing?.longContext : undefined;
-  const pricing: ModelPricing | null = resolved.pricing && tier ? { ...resolved.pricing, ...tier.rates } : resolved.pricing;
   if (!pricing) {
     // Unknown model: report zero AND `known: false`. Callers must surface the
     // unknown share rather than letting it vanish into a total — a silently
@@ -789,6 +957,7 @@ export function estimateCost(
       rateBasis,
       unattributedWriteTokens: cacheCreationTokens,
       overAttributedWriteTokens: 0,
+      ...(refusal ? { reason: refusal } : {}),
     };
   }
 
@@ -845,6 +1014,13 @@ export const PLAN_FEES: Record<string, number> = {
   max_20x: 200,
   team_standard: 25,
   team_premium: 125,
+  // Ultra: $200 / month, as listed on claude.com/pricing (read 2026-11-10 through
+  // a summarising fetch, not verbatim: re-check before relying on it). The
+  // `subscription_type` string Claude Code reports for Ultra has NOT been
+  // observed, so this key matches only a literal "ultra" and the string-to-plan
+  // map in cli/src/config.ts is deliberately left alone (PlanType is not widened).
+  // P1-DECISION: fee added here only; config.ts PLAN_FEES / PlanType follow-up.
+  ultra: 200,
   // Bare "team" prefix — conservative fallback to standard seat price
   team: 25,
 };
