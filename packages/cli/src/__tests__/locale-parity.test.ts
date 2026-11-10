@@ -95,6 +95,32 @@ describe("locale parity check", () => {
     expect(problems.some((p) => /missing key "a\.b\.c"/.test(p))).toBe(true);
   });
 
+  it("detects a value that is itself a JSON object (model wrapped the translation)", () => {
+    write("en", "cli.json", { report: { fastModeUnpriced: "{{count}} fast requests" } });
+    write("xx", "cli.json", {
+      report: { fastModeUnpriced: JSON.stringify({ "report.fastModeUnpriced": "{{count}} schnelle" }) },
+    });
+
+    const problems = runCheck(dir, "en").get("xx") as string[];
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/JSON-wrapped value at "report\.fastModeUnpriced"/);
+  });
+
+  it("does not flag a value that merely contains braces", () => {
+    write("en", "cli.json", { a: "Use {{x}} and {flag}", b: "Plain" });
+    write("xx", "cli.json", { a: "Nutze {{x}} und {flag}", b: '{"nicht json' });
+
+    expect(runCheck(dir, "en").get("xx")).toEqual([]);
+  });
+
+  it("flags a wrapped value even under a key en does not have", () => {
+    write("en", "cli.json", { a: "A" });
+    write("xx", "cli.json", { a: "A-xx", extra: '{"k":"v"}' });
+
+    const problems = runCheck(dir, "en").get("xx") as string[];
+    expect(problems.some((p) => /JSON-wrapped value at "extra"/.test(p))).toBe(true);
+  });
+
   it("reports the current repo as in parity (integration guard)", async () => {
     // This is the actual contract: whatever state master is in, it must be
     // clean. If this fails, either a key was added to en without a matching

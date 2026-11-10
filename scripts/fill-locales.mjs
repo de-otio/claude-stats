@@ -48,6 +48,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { isJsonWrapped } from "./check-locale-parity.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOCALES_DIR = path.resolve(__dirname, "..", "packages", "core", "src", "locales");
@@ -317,6 +318,76 @@ function validateBatch(request, response) {
   return errors;
 }
 
+/** Sorted, de-duplicated `{{name}}` identifiers in a string (or, for arrays, in its JSON form). */
+function placeholderSet(value) {
+  const text = typeof value === "string" ? value : JSON.stringify(value) ?? "";
+  const set = new Set();
+  for (const m of text.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)) set.add(m[1]);
+  return [...set].sort();
+}
+
+/** Clip a value for an error message so a wrapped blob cannot flood the log. */
+function clip(value) {
+  const s = typeof value === "string" ? value : JSON.stringify(value);
+  return s.length > 80 ? `${s.slice(0, 80)}…` : s;
+}
+
+/**
+ * If `value` is a JSON object holding exactly one string value, return that
+ * string; otherwise null. The key is not checked: the model has been seen to
+ * wrap with the same key (`{"report.x":"…"}`) and with a different one.
+ */
+function unwrapSingleString(value) {
+  if (!isJsonWrapped(value)) return null;
+  const vals = Object.values(JSON.parse(value));
+  return vals.length === 1 && typeof vals[0] === "string" ? vals[0] : null;
+}
+
+/**
+ * Post-process a translation batch BEFORE anything is written. Pure: no I/O.
+ *
+ * The model sometimes answers a key with the whole `{key: translation}` pair as
+ * the value (4 occurrences in one run). Per key this
+ *   1. unwraps a value that is a JSON object with exactly one string value,
+ *   2. rejects a value that still looks like JSON after that,
+ *   3. rejects a value whose `{{placeholder}}` set differs from en's.
+ *
+ * Returns `accepted` (only the keys safe to write, unwrapped where needed),
+ * `unwrapped` (keys that were repaired) and `errors` (one line per rejected key,
+ * which the caller must surface — a rejected key is never written). Keys absent
+ * from `request` or from `response` are left to validateBatch().
+ */
+function postProcessTranslations(request, response) {
+  const accepted = {};
+  const unwrapped = [];
+  const errors = [];
+  for (const [key, enValue] of request.entries()) {
+    if (!Object.prototype.hasOwnProperty.call(response, key)) continue;
+    let value = response[key];
+
+    if (typeof value === "string" && typeof enValue === "string") {
+      const inner = unwrapSingleString(value);
+      if (inner !== null) {
+        value = inner;
+        unwrapped.push(key);
+      }
+      if (isJsonWrapped(value)) {
+        errors.push(`"${key}": value still looks like JSON after unwrapping: ${clip(value)}`);
+        continue;
+      }
+    }
+
+    const want = placeholderSet(enValue);
+    const got = placeholderSet(value);
+    if (want.join(",") !== got.join(",")) {
+      errors.push(`"${key}": placeholders [${got.join(",")}] do not match en [${want.join(",")}]`);
+      continue;
+    }
+    accepted[key] = value;
+  }
+  return { accepted, unwrapped, errors };
+}
+
 // ── Model invocation (claude -p, headless CLI — uses the user's Claude
 // subscription via the CLI's own auth state, not a separate API key) ────────
 
@@ -494,15 +565,30 @@ async function fillLocale(locale, opts) {
         throw new Error(`[${locale}/${ns}] chunk ${i + 1}/${chunks.length} shape validation failed:\n  ${errors.join("\n  ")}`);
       }
 
+      // Unwrap `{"key":"…"}` values and reject JSON leftovers / placeholder
+      // drift. Rejected keys are not written (so a re-run sees them as still
+      // missing); the good ones are persisted before the failure is raised.
+      const post = postProcessTranslations(chunk, translated);
+      if (opts.verbose && post.unwrapped.length > 0) {
+        console.log(`  [${locale}/${ns}] unwrapped JSON-wrapped value(s): ${post.unwrapped.join(", ")}`);
+      }
+
       // Merge this chunk's translations into target, by path, and persist
       // immediately (see chunking comment above).
-      for (const [keyPath, value] of Object.entries(translated)) {
+      for (const [keyPath, value] of Object.entries(post.accepted)) {
         setByPath(target, keyPath, value);
       }
       writeJson(targetPath, target);
 
-      summary.namespaces[ns].filled += Object.keys(translated).length;
-      summary.filled += Object.keys(translated).length;
+      const filledNow = Object.keys(post.accepted).length;
+      summary.namespaces[ns].filled += filledNow;
+      summary.filled += filledNow;
+
+      if (post.errors.length > 0) {
+        throw new Error(
+          `[${locale}/${ns}] chunk ${i + 1}/${chunks.length} rejected ${post.errors.length} key(s), not written:\n  ${post.errors.join("\n  ")}`,
+        );
+      }
     }
 
     if (opts.verbose) {
@@ -558,4 +644,14 @@ if (isMain) {
 }
 
 // Exported for tests.
-export { diffKeys, flatten, setByPath, extractJson, validateBatch, buildJsonSchema, chunkMap, fillLocale };
+export {
+  diffKeys,
+  flatten,
+  setByPath,
+  extractJson,
+  validateBatch,
+  postProcessTranslations,
+  buildJsonSchema,
+  chunkMap,
+  fillLocale,
+};
