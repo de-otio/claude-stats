@@ -4,7 +4,6 @@
 |---|---|
 | Cost lever | Lower tokens (often eliminates synthesis entirely) |
 | When it pays off | Most "what did I do today" calls |
-| Effort | Tiny |
 
 ## Rationale
 

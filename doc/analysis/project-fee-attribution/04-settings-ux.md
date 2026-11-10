@@ -108,6 +108,5 @@ with the new config — the Projects tab fee view updates immediately.
 Every new string (`Subscriptions`, `Monthly fee`, `Currency`, `Label`,
 `Idle subscription`, `Total configured`, …) is user-facing and must be added to
 **every** locale, generated locally — the repo's parity check fails on drift (see
-the project's translation policy). Budget for this in the implementation
-([06 §6.4](06-implementation-plan.md)); it is the single largest source of "looks
+the project's translation policy). Budget for this in the implementation; it is the single largest source of "looks
 done but CI is red."

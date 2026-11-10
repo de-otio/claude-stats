@@ -7,8 +7,7 @@ on the developer's machine; what crosses to the org plane is decided in
 
 ## 2.1 Why not reuse `session_tags`
 
-The tagging substrate (`packages/cli/src/store/index.ts:177`, design in
-`plans/10-session-tagging.md`) is the obvious vehicle, and rung-1 manual
+The tagging substrate (`packages/cli/src/store/index.ts:177`) is the obvious vehicle, and rung-1 manual
 linking can ride on it today. But it is the wrong *store* for attribution:
 
 - `validateTag` enforces lowercase `[a-z0-9][a-z0-9_-]{0,49}`

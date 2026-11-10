@@ -76,26 +76,13 @@ explicit labels that override proxies.
 | 02 | [02-signal-inventory.md](02-signal-inventory.md) | Exact mapping to existing code with file:line; the cost double-count bug; per-model attribution; the cross-day window problem |
 | 03 | [03-outcome-model.md](03-outcome-model.md) | The three-state outcome taxonomy, the proxy→label hierarchy, coverage reporting, and the labeling UX |
 | 04 | [04-limitations-and-privacy.md](04-limitations-and-privacy.md) | Honest limits, the biases that move the number, privacy, opt-in posture |
-| 05 | [05-accuracy-gap.md](05-accuracy-gap.md) | **Post-ship diagnosis:** why finished tasks showed "in-flight" (fixed) and why the auto success rate pins at ~100% — the success/failure asymmetry and landing≠correctness |
+| 05 | [05-accuracy-gap.md](05-accuracy-gap.md) | Why finished tasks can show as "in-flight" and why the auto success rate pins near 100% — the success/failure asymmetry and landing≠correctness |
 | 06 | [06-automated-outcome-signals.md](06-automated-outcome-signals.md) | Inventory of signals that detect outcome *automatically* (test/build results, conversational repair, churn-survival, PR review, LLM-judge), tiered by acquisition cost, grounded in external research |
-| 07 | [07-accuracy-plan.md](07-accuracy-plan.md) | The plan: evidence-combining score + abstain band, phased rollout, a calibration harness against the user's own labels, and trust-gated honest presentation |
-
-Docs 05–07 were added after the feature shipped, in response to two real
-reports — *"finished tasks show in-flight"* and *"100% success rate is
-suspicious"* — and answer the follow-up ask: **more automation and accuracy**,
-not just a UI caveat. They draw on external work on automatic outcome
-evaluation: SWE-bench's test-based oracle, the LLM-as-judge calibration/bias
-literature (incl. self-attribution bias), GitClear's code-churn data, and the
-implicit-user-feedback literature — see the References in
-[06](06-automated-outcome-signals.md) and [07](07-accuracy-plan.md).
-
-The implementation plan derived from this analysis lives in
-[`plans/cost-per-successful-task/`](../../../plans/cost-per-successful-task/).
 
 ## Relationship to the deep-analysis catalog
 
 This metric is the concrete, shippable instance of three ideas already in the
-[`deep-analysis/`](../deep-analysis/) "wise mentor" catalog: *Model-fit savings*
+`deep-analysis` "wise mentor" catalog: *Model-fit savings*
 (`model × archetype × cost`), *Token-per-outcome* (`tokens ÷ surviving
 change`), and *Model-mix appropriateness* (`model × archetype × outcome`). It
 inherits that catalog's tiering (`T0` metadata · `T1` local content) and its

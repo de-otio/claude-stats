@@ -8,11 +8,9 @@ concretely.
 
 ## Contents
 
-1. [Status of `--embeddings` in 0.3.0](01-status.md)
-2. [Why this matters](02-why-it-matters.md)
-3. [What "ship the binary" should mean](03-ship-the-binary.md)
-4. [Size budget](04-size-budget.md)
-5. [Failure modes after bundling](05-failure-modes.md)
-6. [Recommendations](06-recommendations.md)
-7. [VS Code default — `auto`](07-default-mode.md)
-8. [Privacy & security posture](08-privacy-security.md)
+- [02 — Why this matters](02-why-it-matters.md)
+- [03 — What "ship the binary" should mean](03-ship-the-binary.md)
+- [04 — Size budget](04-size-budget.md)
+- [05 — Failure modes after bundling](05-failure-modes.md)
+- [07 — VS Code default: `auto`](07-default-mode.md)
+- [08 — Privacy & security posture](08-privacy-security.md)

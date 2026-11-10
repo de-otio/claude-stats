@@ -221,7 +221,7 @@ function baseLadder(item: ClassifierItem): TaskOutcome {
  * are folded into the base verdict by {@link combineOutcome}. When omitted, this
  * returns the legacy verdict verbatim — behaviour-preserving by construction, so
  * the live metric is unchanged until calibration flips the flag on (see
- * doc/analysis/cost-per-successful-task/07-accuracy-plan.md §7.5).
+ * doc/analysis/cost-per-successful-task/06-automated-outcome-signals.md).
  *
  * @param item.hasMutatingWork  whether the task used a workspace-mutating tool.
  * @param extendedSignals  Tier-0 signals; when present, refine a held-out base.

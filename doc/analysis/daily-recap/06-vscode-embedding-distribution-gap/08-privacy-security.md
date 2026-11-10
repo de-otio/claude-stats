@@ -45,5 +45,4 @@ tampered VSIX, with `auto` as the default. The integrity check is the same;
 the consequence of triggering it is now a default-on user experience that
 silently downgrades. **A SHA-256 mismatch on the bundled model is a security
 event** (it implies marketplace tamper or local FS tamper) and should
-surface as a VS Code warning, not a silent fallback. See
-[06-recommendations.md](06-recommendations.md) item 7.
+surface as a VS Code warning, not a silent fallback.

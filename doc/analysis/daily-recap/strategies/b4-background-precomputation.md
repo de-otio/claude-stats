@@ -4,7 +4,6 @@
 |---|---|
 | Cost lever | Latency win + cache primes |
 | When it pays off | Daily morning-recap pattern |
-| Effort | Medium |
 
 ## Rationale
 

@@ -1,20 +1,18 @@
 # `#5` — non-additive metrics → ingest-time derived tables: design
 
-The last wide-period lever. After Phase A / `#7` / Phase B, the dominant
-remaining `buildDashboard("all")` cost is the two **per-message, non-additive**
-passes (profiled, warm, "all"): `buildModelEfficiency` ~400ms and
-`buildContextAnalysis` ~280ms — together ~680ms of the ~1.3s "all" refresh.
-They can't be served by an additive rollup (turn classification and per-session
-token trajectory are sequence-dependent), so the fix is to compute them **once
-at ingest** into derived tables the dashboard then aggregates cheaply.
+The last wide-period lever. Once additive aggregation is served by query-time
+`GROUP BY` and the hourly rollup (see [05-rollup-design.md](05-rollup-design.md)),
+the dominant remaining cost of `buildDashboard("all")` is the two
+**per-message, non-additive** passes: `buildModelEfficiency` and
+`buildContextAnalysis`. They can't be served by an additive rollup (turn
+classification and per-session token trajectory are sequence-dependent), so the
+fix is to compute them **once at ingest** into derived tables the dashboard then
+aggregates cheaply.
 
-> **Honest scoping note.** This is the biggest, most correctness-sensitive
-> phase of the program — comparable to the whole of Build 2 — and the lowest
-> marginal value (it speeds the *opt-in* "all"/wide views; the default "day"
-> path is already ~0.14s). It writes to the user's live DB via the collector,
-> so a consistency bug corrupts real data. Build it as a focused effort with
-> the full parity discipline; do not rush it. Recommended to **stage by half**
-> (turn-efficiency first, context second), each its own analyze→build→verify.
+This is the most correctness-sensitive part of the design: it writes to the
+user's live DB via the collector, so a consistency bug corrupts real data, and it
+benefits only the opt-in "all"/wide views (the default "day" path is already
+fast). It needs the full parity discipline.
 
 ## Why these are per-session, not per-hour (simpler maintenance than `#7`)
 
@@ -32,7 +30,7 @@ messages.** No cross-session partition like hours. On `markSourceDeleted`,
 delete the session's derived rows (these reads DO filter source_deleted via
 the session join — confirm per the actual section queries).
 
-## Half A — turn-efficiency (`buildModelEfficiency`, ~400ms)
+## Half A — turn-efficiency (`buildModelEfficiency`)
 
 Current: `getMessagesForEfficiency` fetches all in-period messages, assembles
 turns (prompt-bearing message + continuations), `scoreComplexity` → tier →
@@ -66,7 +64,7 @@ CREATE INDEX idx_turn_eff_ts ON turn_efficiency (first_ts);
   with `first_ts` in window (or session-keyed to match the current
   `getMessagesForEfficiency` semantics — **confirm which axis** the section uses
   after Build 1; replicate EXACTLY) and aggregates `byModelTier` / `overuse` in
-  JS. Cardinality: ~one row per prompt (tens of thousands) — smaller than
+  JS. Cardinality: about one row per prompt — smaller than
   messages, but **not tiny**; the overuse list needs per-turn rows, so keep
   per-turn granularity and rely on the `first_ts` index for period pruning.
 - **Parity gate:** rollup-built `ModelEfficiencyData` == current
@@ -74,7 +72,7 @@ CREATE INDEX idx_turn_eff_ts ON turn_efficiency (first_ts);
   oracle pattern). `scoreComplexity`/`estimateCost` are pure, so per-turn rows
   reproduce exactly.
 
-## Half B — context-analysis (`buildContextAnalysis`, ~280ms)
+## Half B — context-analysis (`buildContextAnalysis`)
 
 Mixed: `lengthDistribution` + `longSessions` are **session-keyed** (already
 cheap, from `rows`/`sessionCostMap` — leave as-is). The per-message parts are
@@ -106,7 +104,7 @@ CREATE TABLE session_context (
    whether `getMessagesForEfficiency`/`getMessagesForContext` filter
    is_interactive / source_deleted / subagents (post-Build-1 they use
    `m.timestamp` + the EXISTS membership; replicate verbatim). Mismatch = silent
-   drift (this is the bug the `#7` review caught).
+   drift (the same bug class as the rollup's inclusion predicate).
 3. **Freshness guard** (like `#7`): the read dispatches to the derived table
    only when a watermark matches the messages count; else falls back to the
    live computation. Protects tests / non-collect callers.
@@ -126,93 +124,55 @@ CREATE TABLE session_context (
 
 ## Expected outcome
 
-`buildDashboard("all")` ~1.3s → ~0.6s (removing the ~680ms of per-message
-passes). Combined with the shipped phases, "all" approaches the < 0.5s target;
-the default "day" path is unaffected (already fast).
+The wide-period `buildDashboard("all")` path stops re-scoring every turn and
+re-walking every message on each load; it reads per-session and per-turn rows
+instead. The win's real source is "stop re-scoring every turn on every load"
+(the per-turn `scoreComplexity` plus two `estimateCost` calls), not "fewer rows":
+even done, "all" stays O(turns) — capped, not eliminated. The default "day" path
+is unaffected.
 
-## Recommendation
+## Constraints that follow from the code
 
-Build **Half A (turn-efficiency)** first — bigger win (~400ms), self-contained,
-clean per-session recompute. Verify + commit. Then **Half B**. Each via
-analyze→ (this design) →review→build→parity-verify→commit, mirroring `#7`.
+**Turn-assembly semantics are not per-session today.** `buildModelEfficiency`
+assembles turns from a **single global `ORDER BY m.timestamp ASC` stream** with
+one `current` turn carried across the whole stream. When sessions interleave in
+global time order (parallel sessions, subagents — common), a continuation from
+session B arriving while `current` belongs to session A hits the "different
+session → flush + drop" branch: A's turn is flushed early and B's continuation is
+dropped from classification. Turn boundaries therefore depend on cross-session
+interleaving; the function is pure in *global* order, not per session. A
+per-session derived table cannot reproduce today's output (per-session assembly
+absorbs continuations the live path drops, changing token sums, tier counts and
+the overuse list). Building Half A correctly means first refactoring
+`buildModelEfficiency` to assemble turns per session (group by session before the
+state machine, as `buildContextAnalysis` already does) — a **deliberate
+behaviour change** that needs sign-off and a test re-baseline. The alternative is
+to leave `buildModelEfficiency` as it is and not build Half A.
 
----
+**"All"-only scope.** The derived `first_ts` window is not the live per-message
+`m.timestamp` clip-then-assemble for any bounded period, so the optimisation is
+sound only for `period === "all"` (no clip). Bounded periods keep the live path,
+which is already fast; dispatch for the unbounded read only, as the rollup does.
 
-## Review outcome — BLOCKED on a behaviour decision + corrections
-
-A correctness review against the actual code found the design is **not
-output-preserving as written**. Five blockers; the first is a product decision.
-
-### ⛔ Blocking decision — turn-assembly semantics (the user's call)
-
-`buildModelEfficiency` assembles turns from a **single global `ORDER BY
-m.timestamp ASC` stream** (`store/index.ts:1257`) with one `current` turn
-carried across the whole stream (`dashboard/index.ts:1467-1501`). When sessions
-**interleave** in global time order (parallel sessions, subagents — common), a
-continuation from session B arriving while `current` belongs to A hits the
-"different session → flush + drop" branch (`:1494`): A's turn is flushed early
-and B's continuation is **dropped from classification**. So turn boundaries
-**depend on cross-session interleaving** — the function is pure in *global*
-order, NOT per-session.
-
-A per-session derived table (this design's premise) therefore **cannot
-reproduce** today's output: per-session assembly would absorb continuations the
-live path drops, changing token sums, tier counts, and the overuse list.
-
-To build Half A correctly we must **first refactor `buildModelEfficiency` to
-assemble turns per-session** (group by session before the state machine, as
-`buildContextAnalysis` already does). That is a **deliberate behaviour change**
-— some continuations get classified differently — requiring sign-off and a
-test re-baseline, exactly like the message-timestamp decision. Only then does a
-per-session derived table match.
-
-**Decision needed:** adopt per-session turn assembly (behaviour change, then
-build) — or leave `buildModelEfficiency` as-is and abandon Half A.
-
-### "all"-only scope (BLOCKER 1 + 3)
-
-The derived `first_ts` window ≠ the live per-message `m.timestamp` clip-then-
-assemble for any bounded period. The optimization is sound **only for
-`period === "all"`** (since=undefined → no clip), which is the target anyway.
-Bounded periods keep the live path (they're already fast post-Build-1). Make
-this explicit, mirroring `#7`'s `getMessageTotals` unbounded-only dispatch.
-
-### Corrections to fold in
-
-- **`summary.totalMessages`** = count of in-period *messages* (incl. orphan
-  continuations the turn loop drops); not reconstructable from turn rows. Source
-  it from a message `COUNT(*)`, not `SUM(turn.message_count)`.
-- **`markSourceDeleted` → do NOT delete** derived rows. Reads are EXISTS-only
-  (confirmed: `getMessagesForEfficiency`/`getMessagesForContext` filter neither
-  is_interactive nor source_deleted nor is_subagent); `markSourceDeleted` leaves
-  the session row present so EXISTS stays true. Deleting would cause drift.
-  (My original rule was backwards — same lesson as `#7`.)
-- **Recompute must `getSessionMessages` (full re-read)**, not `parsed.messages`
-  (append only yields the delta; turn assembly + position array need the whole
-  ordered session). Accumulate `touchedSessions` and recompute after upserts
-  commit, like `recomputeMessageHourly`.
-- **Per-table freshness watermarks** (`turn_efficiency_watermark`,
-  `session_context_watermark`), written in the same txn as each recompute;
-  COUNT-based watermark is necessary-not-sufficient (in-place message updates
-  change turn boundaries without changing COUNT) — rely on collect always
-  recomputing touched sessions; non-collect mutations fall back to live.
-- **contextGrowthCurve** reconstructs correctly ONLY if the reader sums raw
-  per-position values + counts sessions (not averages-of-averages), and
-  replicates the `break`-on-`count<3` and 50-position cap exactly.
-
-### Honest cost note
-
-The win's real source is "stop re-scoring every turn on every load" (the
-per-turn `scoreComplexity`+2×`estimateCost`), not "fewer rows." Even done, "all"
-stays **O(turns)** (grows with history) — capped, not eliminated. Marginal
-value: speeds the **opt-in** "all"/wide views (~1.3s → ~0.6s); the default
-"day" path is already ~0.14s.
-
-### Recommendation
-
-`#5` is the largest, most correctness-sensitive, lowest-marginal-value phase,
-and Half A now requires a **behaviour-change decision** before it's buildable.
-Recommend: decide the turn-assembly question first; given the value/risk, this
-is a reasonable place to **stop the program** (default startup long-solved,
-wide periods already much improved with a spinner) unless "all" < 0.5s is a
-hard requirement.
+**Corrections to the sketch above.**
+- `summary.totalMessages` is the count of in-period *messages* (including orphan
+  continuations the turn loop drops); it is not reconstructable from turn rows.
+  Source it from a message `COUNT(*)`, not `SUM(turn.message_count)`.
+- Do **not** delete derived rows on `markSourceDeleted`. Reads are EXISTS-only —
+  `getMessagesForEfficiency` and `getMessagesForContext` filter neither
+  `is_interactive`, `source_deleted` nor `is_subagent` — and `markSourceDeleted`
+  leaves the session row present, so EXISTS stays true. Deleting would cause
+  drift.
+- Recompute must re-read the whole session (`getSessionMessages`), not
+  `parsed.messages`: an append yields only the delta, while turn assembly and the
+  position array need the whole ordered session. Accumulate `touchedSessions` and
+  recompute after upserts commit, like `recomputeMessageHourly`.
+- Use per-table freshness watermarks (`turn_efficiency_watermark`,
+  `session_context_watermark`) written in the same transaction as each
+  recompute. A COUNT-based watermark is necessary but not sufficient (in-place
+  message updates change turn boundaries without changing the count), so rely on
+  collect always recomputing touched sessions; non-collect mutations fall back to
+  the live path.
+- `contextGrowthCurve` reconstructs correctly only if the reader sums raw
+  per-position values and counts sessions (not averages of averages), and
+  replicates the `break`-on-`count<3` rule and the 50-position cap exactly.

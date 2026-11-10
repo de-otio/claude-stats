@@ -103,9 +103,8 @@ here for the extension checklist):
   (precedence rule), not an error and not the preset.
 - **`extension.test.ts`** — spot-check the webview message-passing path if
   the test harness covers `postMessage` handling; otherwise this surface's
-  new UI code is likely better covered by a quick manual check (see
-  [06](06-rollout-plan.md)) than by adding webview-message unit tests for a
-  UI shell.
+  new UI code is likely better covered by a quick manual check than by adding
+  webview-message unit tests for a UI shell.
 - **`alerts.test.ts`** — no changes; confirms the explicit out-of-scope
   decision above by absence.
 

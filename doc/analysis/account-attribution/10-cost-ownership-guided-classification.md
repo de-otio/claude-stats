@@ -43,7 +43,7 @@ rule := { match: { path?: glob, remote?: glob }, target: <uuid|label> | "split" 
 - **Matcher basis: path + remote** (chosen default). A session matches if its
   `project_path` matches `path` **or** its `repo_url` owner matches `remote`.
   Path is always present; the remote is a robust fallback (survives moved
-  folders) but only ~25% of sessions carry one — hence *both*.
+  folders) but only a minority of sessions carry one — hence *both*.
 - **`target`** is one of:
   - **an account/subscription** — the project has a single owner; every session
     in it is billed there regardless of the account actually used (`override`
@@ -74,8 +74,8 @@ The tool does the clustering so the user only makes cluster-level decisions:
    - **git-remote owners** — org/host of each project's remote, where present.
    Generic detection; no baked-in patterns.
 2. **Rank clusters by cost** (est. $ / sessions), descending. Because a small
-   number of clusters cover most spend (in the reference dataset, ~23 projects =
-   80%), the top few decisions capture almost everything.
+   number of clusters typically cover most spend, the top few decisions capture
+   almost everything.
 3. **"Classify your projects" panel** — one row per cluster: label, # projects,
    # sessions, **$ at stake**, and a picker with the choices **[a subscription] ·
    [Split by usage] · [Leave unknown]**. "Split by usage" marks a project whose
@@ -132,16 +132,6 @@ rule table, one `applyOverride` writer, one precedence rank. Clustering is a pur
 read-only computation over `sessions` (`project_path`, `repo_url`, cost); no new
 persistence beyond the rules.
 
-## Phases
-
-| Phase | Work | Model / effort |
-|---|---|---|
-| P1 | pure `ownership.ts`: `clusterProjects(sessions)` + `resolveOwner(session, rules)` (glob match, specificity, unmatched→unknown) | Opus / high |
-| P2 | store: extend rule table (path/remote matchers) + `applyOverride`; CLI `account own/classify` | Sonnet / medium |
-| P3 | dashboard "Classify your projects" panel (ranked clusters, picker, drill-in, live $ preview) + config read/write | Sonnet / medium |
-| P4 | wire into reattribute/collect; i18n across 10 locales | Haiku / low + Sonnet |
-| P5 | tests (glob match, specificity, unmatched, clustering, precedence over inference) + coverage | Sonnet / medium |
-
 ## Tests (fail-when-wrong)
 
 - `resolveOwner`: path-glob and remote-glob match; **both** bases; specificity
@@ -155,10 +145,6 @@ persistence beyond the rules.
 - e2e: a rule reclassifies all of a project's sessions (both accounts) to the
   owning subscription; `reattribute` re-applies; clearing a rule reverts.
 - property: resolution is total and order-independent given fixed specificity.
-
-Coverage to the repo gate; fixtures use `00000000-…` UUIDs, `@example.com`,
-`~/repos/work/**`, `github.com/example-org/*` — **no real orgs, paths, or client
-names** (public repo + published artifact; marker-grep every diff).
 
 ## Confidentiality
 

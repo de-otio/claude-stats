@@ -4,7 +4,6 @@
 |---|---|
 | Cost lever | Higher quality (catches hallucinations) |
 | When it pays off | Always when synthesis is used |
-| Effort | Small |
 
 ## Rationale
 

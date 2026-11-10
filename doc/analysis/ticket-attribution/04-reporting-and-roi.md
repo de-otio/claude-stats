@@ -16,9 +16,8 @@ cost, the user owns the unit of value — claude-stats' job is to make its half
   or "cost vs cycle time" across both sources. Neither the store nor the
   backend ever calls Jira ([02 §2.7](02-local-data-model.md),
   [03 §3.5](03-org-plane-and-backend.md)).
-- This also implements the "value-tagging surface" that
-  [value-per-cost/06-what-to-build.md](../value-per-cost/06-what-to-build.md)
-  calls for: the ticket key is the value tag with the lowest possible
+- This also implements the "frictionless value-tagging surface" that the
+  [value-per-cost](../value-per-cost/) analysis calls for: the ticket key is the value tag with the lowest possible
   friction, because for most developers it already exists in the branch name.
 
 ## 4.2 The report that survives a skeptical reader
@@ -80,20 +79,3 @@ no-network posture (claude-stats never calls AWS):
   sessions, no assigning overhead to the nearest ticket.
 - **No per-ticket data without consent** — ticket sync never rides silently
   on the existing org-sync opt-in ([03 §3.4](03-org-plane-and-backend.md)).
-
-## 4.5 Sequencing
-
-| Phase | Scope | Depends on |
-|---|---|---|
-| 0 | Bedrock/Vertex model-id normalization + metered-vs-plan account mode (actual-cost language, plan-fee logic off) | nothing — prerequisite for the acute audience ([README §Who this is acute for](README.md)) |
-| 1 | `ticket_links` table + extraction pass (branch/commit/prompt) + `ticket` in both filter halves + `get_cost_per_ticket` MCP + report/CLI surface | nothing — local only, [02](02-local-data-model.md) |
-| 2 | Per-message `git_branch` capture + bounded backfill + archive recommendation in setup | phase 1; moves bulk spend from medium to high confidence |
-| 3 | Manual surfaces: `ticket` CLI verb, dashboard link/negate card, correction-action kind | phase 1; grows rung-1 data |
-| 4 | Org plane: `TicketAggregateSyncInput` + mutation + client projection + opt-in flag | phases 1–2, [03 §3.2](03-org-plane-and-backend.md) |
-| 5 | Backend: `UserTicketAggregates` + resolver + stream rollup + export query + dashboard section + 05 amendment | phase 4, [03 §3.3–3.6](03-org-plane-and-backend.md) |
-| 6 | Invoice-reconciliation import (§4.3) + the [justification pack](05-justification-pack.md) as the integration artifact | phases 0–1 |
-
-Phase 1 alone already answers the motivating question for a single developer
-on a branch-per-ticket workflow; each later phase widens who can consume the
-answer (the developer's manager, then the org) without ever changing what the
-answer is made of: locally-computed, evidence-graded aggregates.

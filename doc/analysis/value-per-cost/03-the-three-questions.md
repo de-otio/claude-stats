@@ -58,8 +58,7 @@ cheapest-historically-sufficient path for this kind of work was \$Y; the gap is
 recoverable waste." This is *Model-fit savings* + *Model-mix appropriateness*
 from the deep-analysis catalogue, made into the primary metric
 ([04](04-efficiency-frontier.md)). The efficiency literature says the prize is
-large (routing/effort savings of 50–98% are documented), and the prior-art
-survey says **no existing tool computes it for a solo dev** ([05](05-prior-art-and-whitespace.md)).
+large (routing/effort savings of 50–98% are documented).
 
 **Blocker to call out now:** the tool cannot currently slice by **effort-level**
 — the message schema records `model` and token counts but no reasoning-effort /

@@ -158,12 +158,9 @@ introduces, rather than the flagged turn's own full cost — most of a
 flagged turn's cost was history it did not add, so pricing the whole turn
 overstated the waste attributable to the pattern the detector is naming.
 
-**Measured effect, in ratio form** (exact counts withheld per this
-document's no-real-figures convention — see
-[assumptions.md](../../../plans/context-carry-cost/assumptions.md) entry
-14 for how this was verified): on the workload used to validate this
-rewrite, the old level rule fired on roughly **half** of all sessions; the
-new increment rule fires on roughly **one in sixteen**. The detector still
+**Effect on selectivity:** the old level rule fired on a large share of
+sessions, because a long-running session is large almost by definition; the new
+increment rule fires on only a small minority. The detector still
 finds the same shape of thing — a real, repeated, addressable pattern of
 large single-step growth — just far more selectively, because "the context
 is large" stopped being conflated with "this turn made it large." Because

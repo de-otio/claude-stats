@@ -15,8 +15,7 @@ Reported symptoms (real user feedback):
 
 Neither is a coding bug in the arithmetic. Both are consequences of the proxy's
 design. The first has a clean fix (already applied, §5.1); the second is
-structural and motivates the automation work in [06](06-automated-outcome-signals.md)
-and [07](07-accuracy-plan.md).
+structural and motivates the automation work in [06](06-automated-outcome-signals.md).
 
 ## 5.1 Symptom 1 — finished work shown as "in-flight"
 
@@ -103,8 +102,8 @@ fixes:
 
 | Deficit | What it is | Where it bites | Addressed in |
 |---|---|---|---|
-| **Coverage bias** | `git == null` (no repo / no upstream / wrong email / no `gh`) makes real outcomes `unobservable` | the denominator (`coverage`) | [06 §6.4](06-automated-outcome-signals.md), [07](07-accuracy-plan.md) |
-| **Correctness blindness** | landing is detected; *wrongness-then-rework* is not | the numerator (success vs failure) | [06 §6.1–6.3](06-automated-outcome-signals.md), [07](07-accuracy-plan.md) |
+| **Coverage bias** | `git == null` (no repo / no upstream / wrong email / no `gh`) makes real outcomes `unobservable` | the denominator (`coverage`) | [06 §6.4](06-automated-outcome-signals.md) |
+| **Correctness blindness** | landing is detected; *wrongness-then-rework* is not | the numerator (success vs failure) | [06 §6.1–6.3](06-automated-outcome-signals.md) |
 
 ## 5.3 What "accurate and automated" has to mean here
 
@@ -121,8 +120,8 @@ proxy needs to catch, automatically:
 
 Today none of these feed the outcome. Most of the data to compute them is already
 on disk (§06). Until they do, the auto success rate should be presented as the
-hypothesis it is — see [07 §7.5](07-accuracy-plan.md) for the
-calibration-gated presentation.
+hypothesis it is, with any trust-gated presentation tied to how well it
+agrees with the user's own labels.
 
 ## 5.4 A note on the asymmetry being deliberate
 

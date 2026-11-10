@@ -4,7 +4,6 @@
 |---|---|
 | Cost lever | Lower tokens (≈10–20× on classifier-shaped calls) |
 | When it pays off | Whenever an LLM tiebreaker or classification step runs |
-| Effort | Small |
 
 ## Rationale
 

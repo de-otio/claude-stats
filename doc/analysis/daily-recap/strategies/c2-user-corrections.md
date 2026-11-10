@@ -4,7 +4,6 @@
 |---|---|
 | Cost lever | Higher quality + personalisation |
 | When it pays off | Power users who recap daily |
-| Effort | Medium |
 
 ## Rationale
 
