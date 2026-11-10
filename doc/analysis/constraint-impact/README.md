@@ -1,9 +1,9 @@
 # Constraint impact — what withholding capability actually costs
 
-> "They reduced our token budget, but they don't see how that slows us down.
-> They don't see the consequences of their decision." — and, in at least one
-> real org, the strategy is to take the top-tier model away entirely, so
-> developers must use a mid-tier model for tasks the top tier should be doing.
+> Hypothetical scenario: an organisation reduces its token budget, or takes
+> the top-tier model away entirely, so developers must use a mid-tier model
+> for tasks the top tier should be doing. The decision-makers see the saving
+> per token; they do not see how the constraint slows the work down.
 
 This folder designs the mirror image of
 [ticket-attribution/](../ticket-attribution/): where that analysis shows what

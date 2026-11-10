@@ -10,13 +10,13 @@ actually discriminate accounts from ones that only look like they might.
 The single richest source. It describes the **currently logged-in** account
 (19 fields observed). The account-relevant ones:
 
-| Field | Example (observed) | Use |
+| Field | Example (documented or reported values) | Use |
 |---|---|---|
 | `accountUuid` | UUID (36 ch) | **primary account key** |
 | `organizationUuid` | UUID (36 ch) | org key (Team/Max org) |
 | `emailAddress` | `<user>@<domain>` | human label (PII — hash at rest) |
 | `organizationType` | `claude_max` | plan family |
-| `organizationRateLimitTier` | `default_claude_max_20x` | **plan/limit tier** |
+| `organizationRateLimitTier` | `default_claude_max_5x` | **plan/limit tier** |
 | `userRateLimitTier` | `null` | per-seat tier (Team) |
 | `seatTier` | `null` | Team seat (premium/standard) |
 | `billingType` | `stripe_subscription` | subscription vs API |

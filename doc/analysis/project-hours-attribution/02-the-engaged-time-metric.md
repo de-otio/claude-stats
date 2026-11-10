@@ -111,7 +111,7 @@ bills is rarely one repo. Config shape:
 {
   "projectGroups": [
     { "label": "client-a",  "prefixes": ["~/repos/client-a/"] },
-    { "label": "internal",  "prefixes": ["~/repos/acme-internal/", "~/repos/tooling/"] }
+    { "label": "internal",  "prefixes": ["~/repos/example-internal/", "~/repos/tooling/"] }
   ]
 }
 ```

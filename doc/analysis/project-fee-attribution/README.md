@@ -1,11 +1,13 @@
 # Project Fee Attribution — distributing per-account subscription fees across projects
 
-This directory designs two related features requested by the owner:
+This directory designs two related features. All fee amounts, plan tiers and
+project names in these documents are round, illustrative figures chosen so the
+worked examples add up; they are not anyone's real plan fees.
 
 > "I have 2 Anthropic accounts: one for work, one personal. The work account
-> costs €125, the personal account costs €214. On the **Settings** tab I want
+> costs €100, the personal account costs €200. On the **Settings** tab I want
 > to configure the monthly fee for each account I use. On the **Projects** tab
-> I want to show the cost distribution of the total fee (€339/month) over the
+> I want to show the cost distribution of the total fee (€300/month) over the
 > projects for the selected period — so AI costs can be attributed to projects
 > proportionally."
 
@@ -39,9 +41,9 @@ than by accident.
 
 | # | Choice | Recommendation | Where argued |
 |---|--------|----------------|--------------|
-| 1 | **Pooling**: one global €339 pool, or one pool per account? | **Per-account pool.** The work fee must only flow to work usage; the personal fee only to personal usage. A global pool lets a personal side-project absorb part of the €125 work fee, which is wrong. | [03 §3.1](03-distribution-model.md) |
+| 1 | **Pooling**: one global €300 pool, or one pool per account? | **Per-account pool.** The work fee must only flow to work usage; the personal fee only to personal usage. A global pool lets a personal side-project absorb part of the €100 work fee, which is wrong. | [03 §3.1](03-distribution-model.md) |
 | 2 | **Proportionality weight**: output tokens, or API-equivalent cost? | **API-equivalent cost** (`estimateCost`). It already blends model + token mix, so an expensive-model project draws more fee than a cheap one at equal token count. Output-token weighting (today's `byProject`) under-charges expensive models. | [03 §3.2](03-distribution-model.md) |
-| 3 | **Period normalisation**: a monthly fee shown over a Day/Week/All window | **Pro-rate the fee to the period's calendar length**, then split by in-period usage share. €339/mo over a 7-day week ≈ €78 distributed. | [03 §3.3](03-distribution-model.md) |
+| 3 | **Period normalisation**: a monthly fee shown over a Day/Week/All window | **Pro-rate the fee to the period's calendar length**, then split by in-period usage share. €300/mo over a 7-day week ≈ €69 distributed. | [03 §3.3](03-distribution-model.md) |
 | 4 | **Idle capacity**: fee for an account with no usage in the period | **Show it as an explicit "unattributed / idle subscription" slice** — never silently inflate active projects. Paying for capacity you didn't use is itself the signal. | [03 §3.4](03-distribution-model.md) |
 | 5 | **Currency**: the app is USD-internal; the user pays EUR | **Store a per-account `currency` + treat `monthly_fee` as that currency**; do not auto-convert to USD. The fee is a *paid amount*, not an estimate. | [02 §2.3](02-data-model-and-attribution.md), [04 §4.3](04-settings-ux.md) |
 
@@ -51,7 +53,7 @@ than by accident.
 |---|------|----------|
 | 01 | [01-problem-and-current-state.md](01-problem-and-current-state.md) | What the user wants vs. what exists today: the single global `monthly_fee`, the existing per-account grouping, the existing proportional project split. The exact gap. |
 | 02 | [02-data-model-and-attribution.md](02-data-model-and-attribution.md) | How sessions are attributed to accounts (`account_uuid`), where that identity comes from (telemetry + `~/.claude.json` fallback), and the accuracy caveats that bound the whole feature. The config schema change. |
-| 03 | [03-distribution-model.md](03-distribution-model.md) | The math. Per-account pool, the proportionality weight, period pro-rating, idle slices, the worked €125/€214 example. |
+| 03 | [03-distribution-model.md](03-distribution-model.md) | The math. Per-account pool, the proportionality weight, period pro-rating, idle slices, the worked €100/€200 example. |
 | 04 | [04-settings-ux.md](04-settings-ux.md) | Settings-tab design: enumerate accounts via `listAccounts`, per-account fee + currency + friendly label, the config round-trip, backward compatibility with the existing `monthly_fee`. |
 | 05 | [05-projects-ux.md](05-projects-ux.md) | Projects-tab design: the fee-by-project table + chart, the period selector tie-in, the idle slice, what to show when fees are unconfigured. |
 | 06 | [06-implementation-plan.md](06-implementation-plan.md) | Phased plan, file-by-file change list, types, tests, i18n, and the smallest shippable slice. |
@@ -65,4 +67,4 @@ complementary question "**which projects is each account's fee being spent on?**
 They share the same `account_uuid` grouping and the same `lookupPlanFee`
 auto-detection, so the per-account fee config designed here should also become
 the override source for `planUtilization` (today it can only auto-detect a
-*default* fee, never the user's real €214). See [06 §6.5](06-implementation-plan.md).
+*default* fee, never the fee the user actually pays). See [06 §6.5](06-implementation-plan.md).

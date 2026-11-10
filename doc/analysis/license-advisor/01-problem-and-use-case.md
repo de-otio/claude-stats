@@ -19,13 +19,11 @@ should we buy."
 
 ## A note on sourcing
 
-This analysis is grounded in a real Claude-licensing sizing exercise carried
-out for a mid-size professional-services company, kept in a private notes
-repository. Because claude-stats is a public repository, no
-company-identifying detail (name, exact headcount, internal tooling, contract
-specifics) is reproduced here. What follows generalizes the *shape* of the
-decision problem and cites only Anthropic's own publicly documented plan
-mechanics — see [02](02-plan-mechanics-reference.md) for sources.
+This analysis describes the *shape* of the decision problem for a
+hypothetical company. Every company profile in it is illustrative, not a
+description of any real organisation. It cites only Anthropic's own publicly
+documented plan mechanics — see [02](02-plan-mechanics-reference.md) for
+sources.
 
 ## Why this is a genuinely hard problem today
 
@@ -48,10 +46,10 @@ that all resolve the same way: *it depends on how people actually use it.*
   can differ substantially depending on codebase size, how agentic the
   workflows are, and how long the team has had the tool.
 - Before a company has adopted Claude broadly, there is **no Claude-side
-  telemetry to size the purchase from.** The real-world analysis this
-  document is grounded in had to fall back to a proxy — an existing
-  internal LLM gateway's usage logs — plus Anthropic's own published
-  generic benchmarks, triangulated against third-party estimates. That's a
+  telemetry to size the purchase from.** A sizing exercise has to fall back
+  to a proxy — for example usage logs from whatever LLM tooling the company
+  already runs — plus Anthropic's own published generic benchmarks,
+  triangulated against third-party estimates. That's a
   reasonable fallback, but it's a proxy for the thing that actually matters:
   *this company's developers, using Claude Code specifically, on this
   company's codebases.*
@@ -73,10 +71,9 @@ is about.
 
 A company stakeholder should be able to tell their agent something like:
 
-> "We're a professional-services company, a few hundred people, roughly half
-> in technical/consultant roles. We handle customer data under DPAs. We're
-> planning a pilot of some tens of developers before deciding on a broader
-> rollout."
+> "We're a company of N people (for example 80, or 400, or 2,000), of whom
+> some fraction are developers. We're planning a pilot with a small group
+> before deciding on a broader rollout."
 
 ...and have the agent, using claude-stats' MCP tools (plus whatever live
 lookups it needs for current Anthropic pricing — see

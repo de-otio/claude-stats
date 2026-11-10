@@ -38,16 +38,16 @@ Two independent multipliers compound:
 | Defect | Effect | Prior coverage |
 |---|---|---|
 | Assistant usage deduped on `entry.uuid` instead of `message.id` | **1.94×** over-count of every token class | Fully designed — implementation set, defect **C1** |
-| `claude-opus-4-7` missing from the rate table, prefix-matched onto the **retired** `claude-opus-4` row | **3×** over-charge — **$26,923** in this database | **None** — new in this document |
-| `claude-fable-5-1` missing, prefix-matched onto `claude-fable-5` | **4×** over-charge on that model's cache reads — $1,113 | **None** — new in this document |
+| `claude-opus-4-7` missing from the rate table, prefix-matched onto the **retired** `claude-opus-4` row | **3×** over-charge — the largest single correction in this release | **None** — new in this document |
+| `claude-fable-5-1` missing, prefix-matched onto `claude-fable-5` | **4×** over-charge on that model's cache reads | **None** — new in this document |
 
 The two pricing rows are one defect, not two: a point-release model id is a
 string prefix of its predecessor's, so longest-prefix matching silently inherits
 an old rate row. Fixing the class matters more than adding two rows
 ([02 §2.3](02-pricing-drift.md#23-the-structural-fix)).
 
-Measured over the 150 most recently modified session files: **$27,014 reported
-against $11,565 actual**. That sample is transcript-derived and so contains **no
+Measured over the 150 most recently modified session files: Claude Stats
+reports **2.34×** the actual cost. That sample is transcript-derived and so contains **no
 Opus 4.7 traffic at all** — the largest correction is missing from it. Method,
 and why that matters, in [01-measured-defects.md](01-measured-defects.md).
 

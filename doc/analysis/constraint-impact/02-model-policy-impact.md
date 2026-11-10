@@ -3,7 +3,7 @@
 The sharpest constraint scenario: an org removes top-tier model access to save
 money, so developers run mid-tier models on tasks the top tier should be
 doing. This file designs the report that measures what that policy actually
-did — built to survive the reading of the manager who made the decision.
+did — built to survive the reading of the manager who owns such a policy.
 
 ## 2.1 The natural experiment
 

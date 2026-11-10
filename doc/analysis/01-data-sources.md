@@ -6,7 +6,7 @@ Claude Code stores all session and usage data locally in `~/.claude/`. Both the 
 
 **Location:** `~/.claude/projects/<encoded-project-path>/<session-id>.jsonl`
 
-The richest data source. Each line is a JSON object representing a message in the conversation. Project paths are encoded with `/` replaced by `-` (e.g., `-Users-rmyers-repos-myproject`).
+The richest data source. Each line is a JSON object representing a message in the conversation. Project paths are encoded with `/` replaced by `-` (e.g., `-Users-alice-repos-myproject`).
 
 **What it contains:**
 - Full conversation transcript (user prompts, assistant responses)

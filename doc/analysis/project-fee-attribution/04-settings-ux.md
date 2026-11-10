@@ -38,11 +38,11 @@ Subscriptions
 
   Account            Plan            Monthly fee   Currency   Label
   ───────────────────────────────────────────────────────────────────
-  you@work.com       team_premium    [ 125    ]    [ EUR ▾]   [ Work     ]   (current)
-  3f9a1c2e…          (max_20x?)      [ 214    ]    [ EUR ▾]   [ Personal ]
+  you@example.com    team_standard   [ 100    ]    [ EUR ▾]   [ Work     ]   (current)
+  3f9a1c2e…          (max_5x?)       [ 200    ]    [ EUR ▾]   [ Personal ]
                                                                 ↑ 1,204 sessions
 
-  Total configured: €339 / month
+  Total configured: €300 / month
 
   Cost alert thresholds          [ existing fields unchanged ]
   [ Save ]   Saved ✓
@@ -69,8 +69,8 @@ grows. On submit, collect the table into:
 
 ```ts
 config.accountFees = {
-  "<work-uuid>":     { monthlyFee: 125, currency: "EUR", label: "Work" },
-  "<personal-uuid>": { monthlyFee: 214, currency: "EUR", label: "Personal" },
+  "<work-uuid>":     { monthlyFee: 100, currency: "EUR", label: "Work" },
+  "<personal-uuid>": { monthlyFee: 200, currency: "EUR", label: "Personal" },
 };
 ```
 

@@ -191,7 +191,7 @@ Session resume marker.
   "display": "I want to refactor the auth module",
   "pastedContents": {},
   "timestamp": 1772558308674,
-  "project": "/Users/rmyers/repos/myproject",
+  "project": "~/repos/myproject",
   "sessionId": "uuid"
 }
 ```
