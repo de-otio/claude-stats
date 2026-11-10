@@ -145,6 +145,8 @@
   },
   "energy": {
     "totalEnergy": "Energía total",
+    "atLeast": "Al menos {{value}}",
+    "floorNote": "Fable y Mythos no tienen cifras de energía publicadas, así que se cuentan con la tarifa de Opus. Trata estos totales como un mínimo.",
     "totalCO2": "Emisiones de CO₂",
     "co2Range": "Incertidumbre ±55%: {{low}} – {{high}}",
     "region": "Región de la red eléctrica",

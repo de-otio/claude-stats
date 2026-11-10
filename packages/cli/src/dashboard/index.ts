@@ -49,7 +49,7 @@ import type { CostPerTaskReport, CostPerTaskOptions } from "../cost-per-task/ind
 import type { CalibrationReport } from "../cost-per-task/calibration.js";
 import type { CalibrationEstimate, CalibrationScope } from "@claude-stats/core/calibration";
 import { buildAttributionCalibration } from "../calibration/index.js";
-import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor, modelClass } from "@claude-stats/core/energy";
+import { estimateEnergy, aggregateEnergy, localeToRegion, REGIONS, MODEL_ENERGY, nearestJourneyAnchor, modelClass, isEnergyFloorModel } from "@claude-stats/core/energy";
 import type { ModelClass } from "@claude-stats/core/energy";
 import { decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
@@ -788,8 +788,14 @@ export interface DashboardEnergy {
   periodDays: number;
   /** Energy and CO₂ per calendar day. */
   byDay: Array<{ date: string; energyWh: number; co2Grams: number }>;
-  /** Energy and CO₂ per model (sorted by energyWh desc). */
-  byModel: Array<{ model: string; energyWh: number; co2Grams: number; pct: number }>;
+  /** Energy and CO₂ per model (sorted by energyWh desc). `floor` marks a model counted at a floor class (Fable, Mythos). */
+  byModel: Array<{ model: string; energyWh: number; co2Grams: number; pct: number; floor: boolean }>;
+  /**
+   * True when any model in the period (Fable, Mythos) is counted at the Opus
+   * class as a FLOOR: no energy figure is published for them. Every total here
+   * is then "at least" that much, and the surface must say so.
+   */
+  floor: boolean;
   /** Energy and CO₂ per project (sorted by energyWh desc). */
   byProject: Array<{ project: string; energyWh: number; co2Grams: number }>;
   /** Energy saved through cache read tokens (vs re-computing). */
@@ -3336,6 +3342,7 @@ export function buildEnergySection(
   // ── byModel ──
   const byModelEntries = agg.byModel.map((g, i) => ({
     model: g.model,
+    floor: isEnergyFloorModel(g.model),
     energyWh: modelEstimates[i]!.totalEnergyWh,
     co2Grams: modelEstimates[i]!.co2Grams,
     minTs: g.min_ts ?? Number.POSITIVE_INFINITY,
@@ -3351,6 +3358,7 @@ export function buildEnergySection(
       energyWh: Math.round(e.energyWh * 10000) / 10000,
       co2Grams: Math.round(e.co2Grams * 1000) / 1000,
       pct: totalEnergyWh > 0 ? Math.round((e.energyWh / totalEnergyWh) * 1000) / 10 : 0,
+      floor: e.floor,
     }));
 
   // ── byProject (sum per-(project,model) estimates into project totals) ──
@@ -3484,6 +3492,7 @@ export function buildEnergySection(
       detected: geoCount,
       coveragePct: Math.round(coveragePct * 10) / 10,
     },
+    floor: aggregated.floor,
     region: regionKey,
     gridIntensity,
     pue: aggregated.config.pue,

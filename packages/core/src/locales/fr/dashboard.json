@@ -145,6 +145,8 @@
   },
   "energy": {
     "totalEnergy": "Énergie totale",
+    "atLeast": "Au moins {{value}}",
+    "floorNote": "Fable et Mythos n'ont aucune donnée d'énergie publiée ; ils sont donc comptés au taux d'Opus. Considérez ces totaux comme une borne inférieure.",
     "totalCO2": "Émissions de CO₂",
     "co2Range": "Incertitude ±55% : {{low}} – {{high}}",
     "region": "Région du réseau électrique",

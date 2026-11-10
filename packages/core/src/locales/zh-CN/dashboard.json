@@ -145,6 +145,8 @@
   },
   "energy": {
     "totalEnergy": "总能耗",
+    "atLeast": "至少 {{value}}",
+    "floorNote": "Fable 和 Mythos 没有公开的能耗数据，因此按 Opus 的系数计算。请将这些总数视为下限。",
     "totalCO2": "CO₂ 排放",
     "co2Range": "±55% 不确定度: {{low}} – {{high}}",
     "region": "电网区域",

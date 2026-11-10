@@ -145,6 +145,8 @@
   },
   "energy": {
     "totalEnergy": "総エネルギー",
+    "atLeast": "少なくとも {{value}}",
+    "floorNote": "Fable と Mythos にはエネルギー消費の公表値がないため、Opus の係数で計算しています。これらの合計は下限値として扱ってください。",
     "totalCO2": "CO₂ 排出量",
     "co2Range": "±55% 不確実性: {{low}} – {{high}}",
     "region": "電力系統リージョン",

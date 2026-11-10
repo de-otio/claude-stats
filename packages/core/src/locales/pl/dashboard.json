@@ -145,6 +145,8 @@
   },
   "energy": {
     "totalEnergy": "Całkowita energia",
+    "atLeast": "Co najmniej {{value}}",
+    "floorNote": "Dla Fable i Mythos nie opublikowano danych o zużyciu energii, więc liczone są według stawki Opus. Traktuj te sumy jako dolną granicę.",
     "totalCO2": "Emisja CO₂",
     "co2Range": "Niepewność ±55%: {{low}} – {{high}}",
     "region": "Region sieci energetycznej",

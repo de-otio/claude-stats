@@ -145,6 +145,8 @@
   },
   "energy": {
     "totalEnergy": "Gesamtenergie",
+    "atLeast": "Mindestens {{value}}",
+    "floorNote": "Für Fable und Mythos gibt es keine veröffentlichten Energiewerte, daher werden sie mit dem Opus-Satz gerechnet. Diese Summen sind eine Untergrenze.",
     "totalCO2": "CO₂-Emissionen",
     "co2Range": "±55% Unsicherheit: {{low}} – {{high}}",
     "region": "Stromregion",

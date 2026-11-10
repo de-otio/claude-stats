@@ -1743,11 +1743,12 @@ ${TICKET_TABLE_CSS}
     <div class="summary-bar">
       <div class="summary-card">
         <div class="label">${t("dashboard:energy.totalEnergy")}</div>
-        <div class="value">${formatEnergy(data.energy.totalEnergyWh)}</div>
+        <div class="value">${data.energy.floor ? t("dashboard:energy.atLeast", { value: formatEnergy(data.energy.totalEnergyWh) }) : formatEnergy(data.energy.totalEnergyWh)}</div>
+        ${data.energy.floor ? `<div class="energy-floor-note" style="font-size:0.55rem;color:#ff9966;margin-top:0.15rem;">${t("dashboard:energy.floorNote")}</div>` : ""}
       </div>
       <div class="summary-card">
         <div class="label">${t("dashboard:energy.totalCO2")}</div>
-        <div class="value">${formatCO2(data.energy.totalCO2Grams)}</div>
+        <div class="value">${data.energy.floor ? t("dashboard:energy.atLeast", { value: formatCO2(data.energy.totalCO2Grams) }) : formatCO2(data.energy.totalCO2Grams)}</div>
         <div style="font-size:0.55rem;color:#888;margin-top:0.15rem;">${t("dashboard:energy.co2Range", { low: formatCO2(data.energy.co2GramsLow), high: formatCO2(data.energy.co2GramsHigh) })}</div>
       </div>
       <div class="summary-card">
@@ -3539,7 +3540,8 @@ CO₂_grams = total_kWh × grid_intensity</div>
           new Chart(ctx, {
             type: 'bar',
             data: {
-              labels: en.byModel.map(function (m) { return m.model; }),
+              // A trailing "≥" marks a model counted at a floor class (Fable, Mythos).
+              labels: en.byModel.map(function (m) { return m.floor ? m.model + ' ≥' : m.model; }),
               datasets: [{
                 label: 'Energy (kWh)',
                 data: en.byModel.map(function (m) { return m.energyWh / 1000; }),

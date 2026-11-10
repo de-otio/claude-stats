@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   modelClass,
+  isEnergyFloorModel,
   inferenceGeoToRegion,
   localeToRegion,
   estimateEnergy,
@@ -41,6 +42,42 @@ describe("modelClass", () => {
   it("falls back to sonnet for unknown models", () => {
     expect(modelClass("unknown-model-xyz")).toBe("sonnet");
     expect(modelClass("gpt-4")).toBe("sonnet");
+  });
+
+  it("maps Fable and Mythos to the opus class (as a floor), not the sonnet fallback", () => {
+    for (const id of ["claude-fable-5", "claude-fable-5-1", "claude-fable-5-2", "claude-mythos-5", "claude-mythos-5-2", "anthropic.claude-fable-5-2", "us.anthropic.claude-mythos-5-2", "claude-fable-5-2[1m]"]) {
+      expect(modelClass(id)).toBe("opus");
+    }
+  });
+});
+
+describe("isEnergyFloorModel (Fable and Mythos are counted at the Opus class as a floor)", () => {
+  it("is true for Fable and Mythos in every id family, false for everything else", () => {
+    for (const id of ["claude-fable-5-2", "claude-mythos-5-1", "anthropic.claude-fable-5-2", "CLAUDE-FABLE-5"]) {
+      expect(isEnergyFloorModel(id)).toBe(true);
+    }
+    for (const id of ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "unknown-model-xyz", "my-fable-proxy", ""]) {
+      expect(isEnergyFloorModel(id)).toBe(false);
+    }
+  });
+
+  it("estimateEnergy flags the estimate and uses exactly the opus coefficients (no invented numbers)", () => {
+    const usage = { inputTokens: 1000, outputTokens: 500, cacheCreationTokens: 100, cacheReadTokens: 2000, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 };
+    const fable = estimateEnergy({ model: "claude-fable-5-2", ...usage });
+    const opus = estimateEnergy({ model: "claude-opus-5-5", ...usage });
+    expect(fable.floor).toBe(true);
+    expect(opus.floor).toBe(false);
+    expect(fable.energyWh).toBe(opus.energyWh);
+    expect(fable.energyWh).toBeGreaterThan(estimateEnergy({ model: "claude-sonnet-5-5", ...usage }).energyWh);
+  });
+
+  it("aggregateEnergy is a floor when any part is; an empty aggregate is not", () => {
+    const base = { inputTokens: 10, outputTokens: 10, cacheCreationTokens: 0, cacheReadTokens: 0, ephemeral5mCacheTokens: 0, ephemeral1hCacheTokens: 0 };
+    const sonnet = estimateEnergy({ model: "claude-sonnet-5-5", ...base });
+    const fable = estimateEnergy({ model: "claude-fable-5-2", ...base });
+    expect(aggregateEnergy([sonnet, sonnet]).floor).toBe(false);
+    expect(aggregateEnergy([sonnet, fable]).floor).toBe(true);
+    expect(aggregateEnergy([]).floor).toBe(false);
   });
 });
 
@@ -465,9 +502,9 @@ const EXPECTED_ALL = {
     { date: "2026-06-21", energyWh: 4.2264, co2Grams: 1.775 },
   ],
   byModel: [
-    { model: "claude-opus-4-20250514", energyWh: 7.6739, co2Grams: 3.223, pct: 54.8 },
-    { model: "claude-sonnet-4-20250514", energyWh: 6.2843, co2Grams: 2.639, pct: 44.9 },
-    { model: "claude-haiku-4-20250514", energyWh: 0.0425, co2Grams: 0.018, pct: 0.3 },
+    { model: "claude-opus-4-20250514", energyWh: 7.6739, co2Grams: 3.223, pct: 54.8, floor: false },
+    { model: "claude-sonnet-4-20250514", energyWh: 6.2843, co2Grams: 2.639, pct: 44.9, floor: false },
+    { model: "claude-haiku-4-20250514", energyWh: 0.0425, co2Grams: 0.018, pct: 0.3, floor: false },
   ],
   byProject: [
     { project: "/Users/alice/repos/proj-b", energyWh: 7.7056, co2Grams: 3.236 },
@@ -476,7 +513,7 @@ const EXPECTED_ALL = {
   cacheImpact: { energySavedWh: 3.9283, co2SavedGrams: 1.65, cacheEfficiencyPct: 54.3 },
   thinkingImpact: { sessionsWithThinking: 3, pctEnergyFromThinking: 14 },
   inferenceGeo: { detected: { "us-east-1": 3, "eu-central-1": 2, "eu-west-3": 1 }, coveragePct: 66.7 },
-  region: "us-east", gridIntensity: 420, pue: 1.2,
+  floor: false, region: "us-east", gridIntensity: 420, pue: 1.2,
   byClass: [
     { cls: "opus", msgs: 2, inputTokens: 10000, outputTokens: 4300, cacheWriteTokens: 1000, cacheReadTokens: 600, rawEnergyWh: 6.39, inputWhPer1K: 0.225, outputWhPer1K: 0.9 },
     { cls: "sonnet", msgs: 5, inputTokens: 30000, outputTokens: 8000, cacheWriteTokens: 1900, cacheReadTokens: 47000, rawEnergyWh: 5.24, inputWhPer1K: 0.075, outputWhPer1K: 0.3 },
@@ -512,8 +549,8 @@ const EXPECTED_PROJA = {
     { date: "2026-06-21", energyWh: 4.2264, co2Grams: 1.775 },
   ],
   byModel: [
-    { model: "claude-sonnet-4-20250514", energyWh: 6.2843, co2Grams: 2.639, pct: 99.8 },
-    { model: "claude-haiku-4-20250514", energyWh: 0.0108, co2Grams: 0.005, pct: 0.2 },
+    { model: "claude-sonnet-4-20250514", energyWh: 6.2843, co2Grams: 2.639, pct: 99.8, floor: false },
+    { model: "claude-haiku-4-20250514", energyWh: 0.0108, co2Grams: 0.005, pct: 0.2, floor: false },
   ],
   byProject: [
     { project: "/Users/alice/repos/proj-a", energyWh: 6.2951, co2Grams: 2.644 },
@@ -521,7 +558,7 @@ const EXPECTED_PROJA = {
   cacheImpact: { energySavedWh: 3.7224, co2SavedGrams: 1.563, cacheEfficiencyPct: 60.6 },
   thinkingImpact: { sessionsWithThinking: 2, pctEnergyFromThinking: 9.4 },
   inferenceGeo: { detected: { "us-east-1": 3, "eu-central-1": 1 }, coveragePct: 66.7 },
-  region: "us-east", gridIntensity: 420, pue: 1.2,
+  floor: false, region: "us-east", gridIntensity: 420, pue: 1.2,
   byClass: [
     { cls: "sonnet", msgs: 5, inputTokens: 30000, outputTokens: 8000, cacheWriteTokens: 1900, cacheReadTokens: 47000, rawEnergyWh: 5.24, inputWhPer1K: 0.075, outputWhPer1K: 0.3 },
     { cls: "haiku", msgs: 1, inputTokens: 500, outputTokens: 100, cacheWriteTokens: 0, cacheReadTokens: 0, rawEnergyWh: 0.01, inputWhPer1K: 0.01, outputWhPer1K: 0.04 },
@@ -611,5 +648,34 @@ describe("buildEnergySection — GROUP BY aggregation parity", () => {
   it("returns null on a completely empty store", () => {
     const store = freshStore();
     expect(buildEnergySection(store, { timezone: "UTC" })).toBeNull();
+  });
+
+  it("marks the section and the Fable row as a floor, and counts Fable at the opus class", () => {
+    const store = freshStore();
+    const base = Date.UTC(2026, 5, 20, 0, 0, 0);
+    store.upsertSession(eSession({ sessionId: "f1", firstTimestamp: base }));
+    store.upsertMessages([
+      eMessage({ uuid: "f1-m1", sessionId: "f1", timestamp: base + 1_000, model: "claude-fable-5-2", inputTokens: 5_000, outputTokens: 1_000, cacheCreationTokens: 0, cacheReadTokens: 0 }),
+      eMessage({ uuid: "f1-m2", sessionId: "f1", timestamp: base + 2_000, model: "claude-sonnet-5-5", inputTokens: 5_000, outputTokens: 1_000, cacheCreationTokens: 0, cacheReadTokens: 0 }),
+    ]);
+    pinNow();
+    const e = buildEnergySection(store, { timezone: "UTC" })!;
+    expect(e.floor).toBe(true);
+    const fable = e.byModel.find((m) => m.model === "claude-fable-5-2")!;
+    const sonnet = e.byModel.find((m) => m.model === "claude-sonnet-5-5")!;
+    expect(fable.floor).toBe(true);
+    expect(sonnet.floor).toBe(false);
+    // Same tokens: Fable at the opus coefficients is 3x the sonnet row (0.225/0.075 and 0.9/0.3).
+    expect(fable.energyWh / sonnet.energyWh).toBeCloseTo(3, 3);
+    expect(e.byClass.find((c) => c.cls === "opus")!.msgs).toBe(1);
+  });
+
+  it("is not a floor when no Fable or Mythos usage is in the period", () => {
+    const store = freshStore();
+    seedRichStore(store);
+    pinNow();
+    const e = buildEnergySection(store, { timezone: "UTC" })!;
+    expect(e.floor).toBe(false);
+    expect(e.byModel.every((m) => m.floor === false)).toBe(true);
   });
 });
