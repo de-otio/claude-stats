@@ -2,6 +2,64 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.25.0 — 2026-11-10
+
+### Added — Claude Fable 5.2, fast mode and US-only inference
+
+- **Claude Fable 5.2 and Mythos 5.2 are priced** at $8 / $40 per million
+  input / output tokens, cache reads $0.20, cache writes $10 (5 minutes) and
+  $16 (1 hour). Before this release both cost $0 and were reported as an
+  unknown model until the pricing cache refreshed.
+- **Fast mode is priced per request.** A fast request on Fable 5.2, Mythos
+  5.2, Opus 5.5, Opus 5 or Opus 4.8 costs 2× the standard rate on every token
+  category, as published. A fast request on a model with no published fast
+  rate is not priced at the standard rate; it is shown as unpriced, like an
+  unknown model. Totals for an unbounded period ("all") come from the hourly
+  rollup, which does not record speed; when fast-mode requests are in such a
+  total, the CLI, the dashboard and `get_stats` say how many were priced at
+  the standard rate.
+- **US-only inference** (`inference_geo: "us"`) is priced at 1.1× on Claude
+  4.6 and later models, including Haiku 5.5's long-context tier.
+- **The cache-TTL fit, context-carry, context-bloat and auto-compact
+  analyses price each request at the rate it was billed at**, so fast, US and
+  Haiku 5.5 long-context requests are no longer read at the base rate there.
+- **A `frontier` model tier** (Fable, Mythos) sits above `top` (Opus), so the
+  tier-mismatch check also compares Opus against Fable.
+- **Energy**: Fable and Mythos have no published energy figure and are
+  counted at the Opus rate; the Energy tab marks those totals "at least".
+- **`get_plan_mechanics_reference`** includes the Fable 5.2 launch
+  allowance, which runs until 2026-11-16.
+
+### Added — reasoning effort
+
+- **Spend by reasoning-effort tier** (schema V26): `get_stats` splits tokens
+  and cost by effort tier, per model and overall; `get_agent_cost` and
+  `claude-stats agents` split each agent type's spend by tier, with the share
+  of cost that carries an effort tag; `get_session_detail` shows effort per
+  message. Rows from before Claude Code recorded effort stay untagged, never
+  folded into a tier.
+- **A `high-effort-low-output` check** in `get_efficiency_hints` flags long
+  runs of high-effort turns that are mostly tool round trips with little
+  output.
+
+### Fixed
+
+- **Haiku 5.5 requests over 100,000 tokens are priced at the long-context
+  rate** (5× every column), per request (schema V27). They were priced at the
+  base rate.
+- **Sonnet 5.5 and Haiku 5.5 have built-in rates**, so a first run, an
+  offline machine or a failed pricing fetch no longer costs them at $0.
+- **Subagent output from Claude Code before 2.1.307** is placeholder token
+  counts; those rows are flagged and left out of output-based measures, and
+  the share of spend on them is disclosed.
+- **Session durations survive transcript trimming**: when Claude Code
+  rewrites a transcript shorter, the stored active time and median response
+  time are no longer overwritten with the smaller values.
+- **Collection is faster**: the `api-request` lines Claude Code 2.1.300+
+  writes (about a fifth of transcript bytes) are skipped before parsing and
+  kept out of the transcript archive; a cold collect took about 28% less
+  time. Unparseable lines are stored truncated to 200 bytes.
+
 ## 0.24.1 — 2026-10-22
 
 ### Fixed
