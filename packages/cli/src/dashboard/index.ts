@@ -144,12 +144,12 @@ export interface DashboardSummary {
   /**
    * Fast-mode disclosure for a total priced from the hourly rollup (an
    * unbounded period). The rollup has no `speed` key, so it prices every
-   * fast-mode message at the standard rate, half the true cost on a model with
-   * a published fast rate. This is the number of such messages in the window,
-   * i.e. `estimatedCost` and every money figure derived from the rollup are a
-   * LOWER BOUND by that many messages' fast-mode premium. `null` when there
-   * are none, and `null` when the period is bounded (priced per message, exact).
-   * Removed once the rollup carries a `speed` key.
+   * fast-mode request at the standard rate. This is the number of such requests
+   * in the window: their billed cost is higher than what `estimatedCost` and
+   * every money figure derived from the rollup include for them (on a model with
+   * no published fast rate the exact path would refuse them instead). `null`
+   * when there are none, and `null` when the period is bounded (priced per
+   * message, exact). Removed once the rollup carries a `speed` key.
    */
   fastModeUnpriced?: number | null;
   totalDurationMs: number;
@@ -695,6 +695,10 @@ export interface Recommendation {
 }
 
 export interface DashboardSpending {
+  /** Requests priced at the standard rate although they were fast mode, when the
+   *  by-model cost came from the hourly rollup; null otherwise. Same disclosure
+   *  as `DashboardSummary.fastModeUnpriced`, for the spending section's own read. */
+  fastModeUnpriced?: number | null;
   topSessionsByCost: Array<{
     sessionId: string;
     projectPath: string;
@@ -2756,6 +2760,7 @@ function buildSpendingSection(
   return {
     topSessionsByCost,
     topToolsByCost,
+    fastModeUnpriced: report.fastModeUnpriced,
     costByModel,
     expensivePrompts,
     cacheEfficiency: {

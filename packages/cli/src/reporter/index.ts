@@ -786,6 +786,9 @@ export function printSpendingReport(store: Store, opts: SpendingOptions = {}): v
 
   const spendingCaveat = unpricedCaveat(collectPricingDrift(report.byModel), t, formatTokens);
   console.log(`${t("cli:report.spendingTotalCost")}: ${formatCost(grandTotal)}${spendingCaveat ? ` ${spendingCaveat}` : ""}`);
+  if (report.fastModeUnpriced !== null) {
+    console.log(`${t("cli:report.spendingTotalCost")}: ${t("cli:report.fastModeUnpriced", { count: report.fastModeUnpriced })}`);
+  }
   printCostBasisLine(
     costBasisLabel(
       costBasisFor(store, {

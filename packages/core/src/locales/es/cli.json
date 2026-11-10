@@ -253,7 +253,7 @@
     "cacheDetail": "{{read}} leído, {{created}} creado (eficiencia {{efficiency}}%)",
     "costLine": "~{{cost}} (coste API equivalente)",
     "costUnknown": "({{tokens}} tokens de modelos desconocidos excluidos)",
-    "fastModeUnpriced": "(este total es un mínimo: los mensajes en modo rápido se cobran aquí a la tarifa estándar, cantidad: {{count}})",
+    "fastModeUnpriced": "{{count}} solicitudes en modo rápido se cobran en este total a la tarifa estándar; su coste facturado es mayor.",
     "planROI": "Plan de {{planFee}}/mes → {{multiplier}}× de valor API recibido",
     "planPerUnit": "{{costPerPrompt}}/prompt   {{costPerSession}}/sesión",
     "velocityDetail": "{{tokPerMin}} tok/min   {{promptsPerHr}} prompts/h   {{outputPerPrompt}} salida/prompt",

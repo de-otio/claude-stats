@@ -25,7 +25,9 @@ import { applyPricingCache, estimateCost, PRICING_VERIFIED_DATE } from "@claude-
 import { Store, groupCostOpts, rowCostOpts } from "../store/index.js";
 import { buildDashboard } from "../dashboard/index.js";
 import { buildAgentCostReport } from "../agentCost/index.js";
-import { printSummary } from "../reporter/index.js";
+import { printSpendingReport, printSummary } from "../reporter/index.js";
+import { renderDashboard } from "../server/template.js";
+import { t } from "../i18n.js";
 
 const ORIGINAL_VERIFIED_DATE = PRICING_VERIFIED_DATE;
 
@@ -56,6 +58,8 @@ interface Spec {
   speed?: string;
   geo?: string;
   session: "A" | "B";
+  /** Reuse one `message.id` across entries: one API response written as several lines. */
+  msgId?: string;
 }
 
 function line(spec: Spec): Record<string, unknown> {
@@ -67,7 +71,7 @@ function line(spec: Spec): Record<string, unknown> {
     timestamp: T0 + seq * 1000,
     uuid: `fg-${seq}`,
     message: {
-      id: `msg_fg_${seq}`,
+      id: spec.msgId ?? `msg_fg_${seq}`,
       model: spec.model,
       stop_reason: "end_turn",
       content: [],
@@ -89,7 +93,9 @@ async function seed(store: Store, specs: Spec[]): Promise<void> {
     const lines = specs.filter((s) => s.session === session).map(line);
     if (lines.length === 0) continue;
     const file = tmp(".jsonl");
-    fs.writeFileSync(file, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+    // A queue-operation line marks the session interactive (the spending section needs it).
+    const queue = { type: "queue-operation", operation: "enqueue", sessionId: `sess-${session}`, timestamp: T0 };
+    fs.writeFileSync(file, [queue, ...lines].map((l) => JSON.stringify(l)).join("\n") + "\n");
     const parsed = await parseSessionFile(file, `/proj-${session}`);
     store.upsertSession(parsed.session!);
     store.upsertMessages(parsed.messages);
@@ -116,8 +122,14 @@ const HAIKU_US = (1_000 * 0.5 + M * 2.5 + 119_000 * 0.05) / 1e6 * 1.1;
 const A_EXACT = 48 + 96 + 0;
 const B_EXACT = 105.6 + 52.8 + 30 + HAIKU_US;
 const EXACT = A_EXACT + B_EXACT;
-/** What the rollup can price: geo exactly, speed not at all (all rows at standard). */
-const A_ROLLUP = 48 + 48 + 30; // the refused fast Opus 4.7 row reads as a standard row there
+/**
+ * What the rollup can price: geo exactly, speed not at all (every row at standard).
+ * Note the Opus 4.7 fast row: Opus 4.7 has no published fast rate, so the exact
+ * path REFUSES it ($0, unpriced) while the rollup prices it at standard ($30).
+ * That is why the disclosure says "priced at the standard rate", not "lower
+ * bound": for that row the rollup figure is ABOVE the exact one.
+ */
+const A_ROLLUP = 48 + 48 + 30;
 const B_ROLLUP = 52.8 + 52.8 + 30 + HAIKU_US;
 const ROLLUP = A_ROLLUP + B_ROLLUP;
 
@@ -260,11 +272,20 @@ describe("the hourly rollup prices geo exactly and discloses the fast messages i
     clean.close();
   });
 
-  it("the disclosed shortfall is exactly the fast premium: rollup + 48 + 52.8 - 30 = exact", () => {
-    // Fast Fable rows cost 48 (global) and 52.8 (us) more than the rollup priced them; the
-    // refused fast Opus 4.7 row the rollup priced at 30 is $0 in the exact figure.
+  it("the three disclosed requests differ from the exact figure in BOTH directions", () => {
+    // Fast Fable rows (global, us) cost 48 and 52.8 MORE than the rollup priced them; the fast
+    // Opus 4.7 row, which has no fast rate, is REFUSED ($0) on the exact path but priced at
+    // standard ($30) in the rollup, so the rollup is ABOVE the exact figure for that request.
+    const exactRows = store.getMessageTotals({ since: 1 });
+    const rolledRows = store.getMessageTotals();
+    const opus = (rows: typeof exactRows) => priceRows(rows.filter((r) => r.model === OPUS47));
+    expect(opus(exactRows)).toEqual({ cost: 30, unknown: 1 }); // standard row priced, fast row refused
+    expect(opus(rolledRows)).toEqual({ cost: 60, unknown: 0 }); // both rows at standard
+    const fable = (rows: typeof exactRows) => priceRows(rows.filter((r) => r.model === FABLE)).cost;
+    expect(fable(exactRows) - fable(rolledRows)).toBeCloseTo(48 + 52.8, 6);
     expect(ROLLUP + 48 + 52.8 - 30).toBeCloseTo(EXACT, 9);
-    expect(priceRows(store.getMessageTotals()).cost + 48 + 52.8 - 30).toBeCloseTo(priceRows(store.getMessageTotals({ since: 1 })).cost, 6);
+    // So "N requests priced at the standard rate" is true of all three; "lower bound" is not.
+    expect(store.getFastModeUnpriced()).toBe(3);
   });
 
   it("the CLI summary prints the disclosure for an unbounded period and not for a bounded one", () => {
@@ -277,9 +298,106 @@ describe("the hourly rollup prices geo exactly and discloses the fast messages i
         spy.mockRestore();
       }
     };
-    expect(out({})).toMatch(/fastModeUnpriced|fast-mode/);
+    const sentence = "3 fast-mode requests are priced at the standard rate in this total; their billed cost is higher.";
+    const unbounded = out({});
+    expect(unbounded).toContain(sentence);
+    expect(unbounded).not.toContain("fastModeUnpriced"); // not a raw i18n key
     const bounded = out({ since: "2023-01-01", until: "2099-01-01" });
-    expect(bounded).toMatch(/Cost|costLine/); // the bounded summary did print a cost line
-    expect(bounded).not.toMatch(/fastModeUnpriced|fast-mode/);
+    expect(bounded).toContain("equivalent API cost"); // the bounded summary did print its cost line
+    expect(bounded).not.toContain("fast-mode requests are priced");
+  });
+});
+
+const SENTENCE = (n: number): string => `${n} fast-mode requests are priced at the standard rate in this total; their billed cost is higher.`;
+
+describe("every rollup-served cost read carries the disclosure (spending report)", () => {
+  beforeEach(() => {
+    store.recomputeMessageHourly();
+  });
+
+  it("getSpendingReport: byModel from the rollup carries fastModeUnpriced; a bounded one carries null", () => {
+    const unbounded = store.getSpendingReport({});
+    expect(unbounded.fastModeUnpriced).toBe(3);
+    // byModel really was rollup-priced: no speed class anywhere, the figure is the rollup one.
+    expect(unbounded.byModel.every((r) => r.speed_class === null)).toBe(true);
+    expect(priceRows(unbounded.byModel).cost).toBeCloseTo(ROLLUP, 6);
+    const bounded = store.getSpendingReport({ since: 1 });
+    expect(bounded.fastModeUnpriced).toBeNull();
+    expect(priceRows(bounded.byModel).cost).toBeCloseTo(EXACT, 6);
+  });
+
+  it("the disclosure uses the same filter as byModel: a project-scoped read is per-message exact", () => {
+    expect(store.getSpendingReport({ projectPath: "/proj-A" }).fastModeUnpriced).toBeNull();
+  });
+
+  it("the CLI spending report prints it (text) and includes it (json) only when rollup-served", () => {
+    const run = (opts: Parameters<typeof printSpendingReport>[1]): string => {
+      const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+      try {
+        printSpendingReport(store, { timezone: "UTC", period: "all", ...opts });
+        return spy.mock.calls.map((c) => String(c[0])).join("\n");
+      } finally {
+        spy.mockRestore();
+      }
+    };
+    const text = run({});
+    expect(text).toContain(SENTENCE(3));
+    expect(text).not.toContain("fastModeUnpriced");
+    expect(JSON.parse(run({ json: true })).fastModeUnpriced).toBe(3);
+    const bounded = run({ since: "2023-01-01", until: "2099-01-01" });
+    expect(bounded).not.toContain("fast-mode requests are priced");
+    expect(bounded).toMatch(/\$/);
+    expect(JSON.parse(run({ json: true, since: "2023-01-01", until: "2099-01-01" })).fastModeUnpriced).toBeNull();
+  });
+
+  it("the dashboard's spending section carries it too", () => {
+    expect(buildDashboard(store, { period: "all" }).spending!.fastModeUnpriced).toBe(3);
+    expect(buildDashboard(store, { period: "all", since: "2023-01-01", until: "2099-01-01" }).spending!.fastModeUnpriced).toBeNull();
+  });
+});
+
+describe("the served page renders the disclosure", () => {
+  beforeEach(() => {
+    store.recomputeMessageHourly();
+  });
+
+  it("shows the sentence (summary and spending section) when set, and neither when null", () => {
+    const rolled = renderDashboard(buildDashboard(store, { period: "all" }), t);
+    expect(rolled).toContain("fast-mode-banner");
+    expect(rolled).toContain("fast-mode-banner-spending");
+    expect(rolled).toContain(SENTENCE(3));
+    expect(rolled).not.toContain("pricingDrift.fastModeUnpriced"); // not a raw i18n key
+    const bounded = renderDashboard(buildDashboard(store, { period: "all", since: "2023-01-01", until: "2099-01-01" }), t);
+    expect(bounded).not.toContain("fast-mode-banner");
+    expect(bounded).not.toContain("fast-mode requests are priced");
+  });
+
+  it("is never rendered for a zero count", () => {
+    const d = buildDashboard(store, { period: "all" });
+    const html = renderDashboard({ ...d, summary: { ...d.summary, fastModeUnpriced: 0 }, spending: { ...d.spending!, fastModeUnpriced: 0 } }, t);
+    expect(html).not.toContain("fast-mode-banner");
+  });
+});
+
+describe("the count is of requests, not transcript entries (carrier rows only)", () => {
+  it("one fast response written as three entries with one message.id counts once", async () => {
+    const dup = new Store(tmp(".db"));
+    seq = 0;
+    const one: Spec = { model: FABLE, input: 1_000, output: 100, speed: "fast", geo: "global", session: "A", msgId: "msg_one_response" };
+    await seed(dup, [
+      { ...one },
+      { ...one },
+      { ...one },
+      { model: FABLE, input: 1_000, output: 100, speed: "fast", geo: "global", session: "A", msgId: "msg_second_response" },
+    ]);
+    dup.recomputeMessageHourly();
+    // Premise: the three entries are three stored rows, and exactly one of them is the carrier.
+    const rows = dup.getSessionMessages("sess-A").filter((m) => m.message_id === "msg_one_response");
+    expect(rows).toHaveLength(3);
+    expect(rows.filter((m) => m.usage_counted === 1)).toHaveLength(1);
+    expect(rows.every((m) => m.speed === "fast")).toBe(true);
+    // Two fast REQUESTS, not four fast entries.
+    expect(dup.getFastModeUnpriced()).toBe(2);
+    dup.close();
   });
 });

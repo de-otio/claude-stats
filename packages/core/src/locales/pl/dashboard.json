@@ -747,7 +747,8 @@
     "mixedRepaired": "{{rows}} z {{total}} zliczonych wierszy ({{percent}}%) w tym zakresie pochodzi sprzed poprawki per-response (cost_basis = pre-dedupe) i jest zawyżonych około 2x. Naprawa została już wykonana; dla pozostałych wierszy nie ma już transkryptu do ponownego przetworzenia."
   },
   "pricingDrift": {
-    "unpricedCaveat": "{{count}} identyfikatorów modeli nie ma przypisanej stawki i zostały wykluczone z łącznego kosztu ({{tokens}} tokenów): {{models}}. Dodaj wiersz cennika lub nadpisanie w konfiguracji."
+    "unpricedCaveat": "{{count}} identyfikatorów modeli nie ma przypisanej stawki i zostały wykluczone z łącznego kosztu ({{tokens}} tokenów): {{models}}. Dodaj wiersz cennika lub nadpisanie w konfiguracji.",
+    "fastModeUnpriced": "{{count}} żądań w trybie szybkim jest w tej sumie liczonych według stawki standardowej; ich rzeczywisty koszt jest wyższy."
   },
   "agentCost": {
     "title": "Agenci i umiejętności",

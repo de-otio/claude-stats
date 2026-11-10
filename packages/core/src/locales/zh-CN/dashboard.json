@@ -739,7 +739,8 @@
     "mixedRepaired": "此范围内 {{total}} 行计入行中有 {{rows}} 行（{{percent}}%）早于逐响应修复（cost_basis = pre-dedupe），数值约被高估 2 倍。修复已运行；其余行已没有可重新解析的 transcript。"
   },
   "pricingDrift": {
-    "unpricedCaveat": "{{count}} 个模型 ID 未能匹配到费率，已从费用总计中排除（{{tokens}} 个 token）：{{models}}。请添加定价行或配置覆盖项。"
+    "unpricedCaveat": "{{count}} 个模型 ID 未能匹配到费率，已从费用总计中排除（{{tokens}} 个 token）：{{models}}。请添加定价行或配置覆盖项。",
+    "fastModeUnpriced": "此合计中有 {{count}} 个快速模式请求按标准费率计价，其实际计费更高。"
   },
   "agentCost": {
     "title": "代理与技能",

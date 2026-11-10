@@ -303,7 +303,7 @@ export function createMcpServer(store: Store): McpServer {
       "`period`/`since`/`until`/`project`/`account` filter. The one exception: `period: \"all\"` with no other filter " +
       "hits an internal fast path (a pre-aggregated rollup) that still prices every cache write at the 5-minute " +
       "rate — use `get_cache_ttl_fit` to see the real 1h/5m split for that all-time view.\n\n" +
-      "FAST MODE: `fastModeUnpriced` is a message count, or null. When non-null (an unbounded period priced from the hourly rollup, which has no `speed` key) it is the number of fast-mode messages in the window that were priced at the standard rate, so every cost in this payload is a lower bound by their fast-mode premium (2x on models with a published fast rate). " +
+      "FAST MODE: `fastModeUnpriced` is a request count, or null. When non-null (an unbounded period priced from the hourly rollup, which has no `speed` key) it is the number of fast-mode requests in the window that are priced at the STANDARD rate in the cost figures of this payload; their billed cost is higher (2x on models with a published fast rate; on a model without one the exact, bounded-period path would refuse them instead). " +
       "PLACEHOLDER OUTPUT: `placeholderOutputShare` is `{ rowShare, costShare, note }` — the share of the window's " +
       "assistant rows, and of their estimated cost, that Claude Code < 2.1.307 wrote as subagent placeholder-output " +
       "rows. Output tokens are under-reported on those rows, so subagent output cost is a lower bound. It is a " +

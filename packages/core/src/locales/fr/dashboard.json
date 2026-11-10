@@ -743,7 +743,8 @@
     "mixedRepaired": "{{rows}} des {{total}} lignes comptabilisées ({{percent}} %) de cette plage sont antérieures au correctif par réponse (cost_basis = pre-dedupe) et sont gonflées d'environ 2x. Une réparation a déjà été exécutée ; les lignes restantes n'ont plus de transcription à réanalyser."
   },
   "pricingDrift": {
-    "unpricedCaveat": "{{count}} identifiants de modèle n'ont été associés à aucun tarif et sont exclus du coût total ({{tokens}} tokens) : {{models}}. Ajoutez une ligne de tarification ou une surcharge dans la configuration."
+    "unpricedCaveat": "{{count}} identifiants de modèle n'ont été associés à aucun tarif et sont exclus du coût total ({{tokens}} tokens) : {{models}}. Ajoutez une ligne de tarification ou une surcharge dans la configuration.",
+    "fastModeUnpriced": "{{count}} requêtes en mode rapide sont comptées dans ce total au tarif standard ; leur coût facturé est plus élevé."
   },
   "agentCost": {
     "title": "Agents et compétences",

@@ -92,23 +92,24 @@ export function groupCostOpts(row: {
 /**
  * The `estimateCost` options for ONE message row: its long-context tier (from
  * its own token counts), its `speed` and its `inference_geo`. The per-message
- * counterpart of `groupCostOpts`. `speed` / `inference_geo` are optional only
- * because `MessageRow` declares them so; every row type this module adds for a
- * pricing read declares them required, so a SELECT that forgets them is a
- * type error rather than a silent standard-rate price.
+ * counterpart of `groupCostOpts`. `speed` and `inference_geo` are REQUIRED
+ * (`string | null`) in every row type that reaches it, so a SELECT whose row
+ * type declares them but forgets to select them is caught by the tests, and a
+ * row type that forgets to declare them stops type-checking, instead of
+ * silently pricing at the standard rate.
  */
 export function rowCostOpts(row: {
   model: string | null;
   input_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
-  speed?: string | null;
-  inference_geo?: string | null;
+  speed: string | null;
+  inference_geo: string | null;
 }): CostOptions {
   return {
     longContext: isLongContextRequest(row.model ?? "unknown", row.input_tokens, row.cache_read_tokens, row.cache_creation_tokens),
-    speed: row.speed ?? null,
-    inferenceGeo: row.inference_geo ?? null,
+    speed: row.speed,
+    inferenceGeo: row.inference_geo,
   };
 }
 
@@ -2599,13 +2600,17 @@ export class Store {
   /**
    * Fast-mode disclosure for a ROLLUP-priced total. `message_hourly` has no
    * `speed` key (adding one is a schema change, deferred to the transcript-capture
-   * migration), so a total served from it prices every fast-mode message at the
-   * standard rate, which is half the true cost on a model with a published fast
-   * rate. This returns how many messages in the window carry a non-standard
-   * `speed` (in practice `fast`), so the surface can say its total is a lower
-   * bound. `null` when there are none, and `null` when the total was NOT served
-   * from the rollup (the raw path groups by speed and prices it exactly). Same
-   * filter builder as `getMessageTotals`, so it describes the same window.
+   * migration), so a total served from it prices every fast-mode request at the
+   * standard rate. That is half the billed cost on a model with a published fast
+   * rate, and on a model WITHOUT one the exact path refuses the request (cost 0)
+   * while the rollup prices it at standard, so the disclosure says "priced at the
+   * standard rate", not "lower bound". This returns how many requests in the
+   * window carry a non-standard `speed` (in practice `fast`). Requests, not
+   * transcript entries: only carrier rows (`usage_counted = 1`) count, so a
+   * response written as N entries with one `message.id` counts once. `null` when
+   * there are none, and `null` when the total was NOT served from the rollup (the
+   * raw path groups by speed and prices it exactly). Same filter builder as
+   * `getMessageTotals`, so it describes the same window.
    */
   getFastModeUnpriced(filters: MessageFilter = {}): number | null {
     if (!this.servedFromRollup(filters)) return null;
@@ -2613,7 +2618,7 @@ export class Store {
     const sql = `
       SELECT COUNT(*) AS n
       FROM messages m
-      WHERE ${speedClassSql("m")} IS NOT NULL AND ${this.messageWhereExists(f)}
+      WHERE ${speedClassSql("m")} IS NOT NULL AND m.usage_counted = 1 AND ${this.messageWhereExists(f)}
     `;
     const stmt = this.db.prepare(sql);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -4683,15 +4688,17 @@ export class Store {
       return (stmt.all as (...args: any[]) => unknown[])(...sessionParams, limit) as SpendingMessageRow[];
     })();
 
-    // 3. By model — reuse getMessageTotals
-    const byModel = foldTotalsByModel(
-      this.getMessageTotals({
-        projectPath: filters.projectPath,
-        repoUrl: filters.repoUrl,
-        since: filters.since,
-        until: filters.until,
-      }),
-    );
+    // 3. By model — reuse getMessageTotals. An unfiltered window is served from
+    // the rollup, which cannot price speed: the same filter object drives the
+    // disclosure, so it describes exactly the read that priced `byModel`.
+    const byModelFilter = {
+      projectPath: filters.projectPath,
+      repoUrl: filters.repoUrl,
+      since: filters.since,
+      until: filters.until,
+    };
+    const byModel = foldTotalsByModel(this.getMessageTotals(byModelFilter));
+    const fastModeUnpriced = this.getFastModeUnpriced(byModelFilter);
 
     // 4. By project
     const byProject = (() => {
@@ -4748,7 +4755,7 @@ export class Store {
       return (stmt.all as (...args: any[]) => unknown[])(filters.since ?? 0) as SubagentCostRow[];
     })();
 
-    return { topSessions, topMessages, byModel, byProject, cacheEfficiency, subagentCosts };
+    return { topSessions, topMessages, byModel, fastModeUnpriced, byProject, cacheEfficiency, subagentCosts };
   }
 
   // ─── Cost-ownership rules (V15) ─────────────────────────────────────────────
@@ -5143,7 +5150,7 @@ export interface MessageRow {
   /** Reasoning-effort tier for the request (schema V23); null = not reported. */
   effort?: string | null;
   /** Inference speed mode (schema V23); null = not reported. */
-  speed?: string | null;
+  speed: string | null;
   /**
    * Thinking tokens, a SUBSET of `output_tokens` (schema V23). NULL means NOT
    * REPORTED — ~32% of history predates the field — and must never be read as 0.
@@ -5603,6 +5610,9 @@ export interface SpendingReport {
   topSessions: SessionRow[];
   topMessages: SpendingMessageRow[];
   byModel: MessageTotalRow[];
+  /** Requests in the window priced at the standard rate although they were fast
+   *  mode, when `byModel` came from the rollup; else null. See `getFastModeUnpriced`. */
+  fastModeUnpriced: number | null;
   byProject: SpendingProjectRow[];
   cacheEfficiency: CacheEfficiencyRow[];
   subagentCosts: SubagentCostRow[];

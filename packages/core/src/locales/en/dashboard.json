@@ -779,6 +779,7 @@
     "mixedRepaired": "{{rows}} of {{total}} counted rows ({{percent}}%) in this range predate the per-response fix (cost_basis = pre-dedupe) and are inflated by roughly 2x. A repair has already run; the remaining rows have no transcript left to re-parse."
   },
   "pricingDrift": {
-    "unpricedCaveat": "{{count}} model ids resolved to no rate and are excluded from the cost total ({{tokens}} tokens): {{models}}. Add a pricing row or a config override."
+    "unpricedCaveat": "{{count}} model ids resolved to no rate and are excluded from the cost total ({{tokens}} tokens): {{models}}. Add a pricing row or a config override.",
+    "fastModeUnpriced": "{{count}} fast-mode requests are priced at the standard rate in this total; their billed cost is higher."
   }
 }

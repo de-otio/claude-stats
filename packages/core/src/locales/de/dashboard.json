@@ -739,7 +739,8 @@
     "mixedRepaired": "{{rows}} von {{total}} gezählten Zeilen ({{percent}} %) in diesem Zeitraum stammen aus der Zeit vor dem Per-Response-Fix (cost_basis = pre-dedupe) und sind um etwa das 2-Fache überhöht. Eine Reparatur wurde bereits ausgeführt; für die verbleibenden Zeilen ist kein Transkript mehr vorhanden, das erneut geparst werden könnte."
   },
   "pricingDrift": {
-    "unpricedCaveat": "{{count}} Modell-IDs konnten keinem Tarif zugeordnet werden und sind von der Kostensumme ausgeschlossen ({{tokens}} Tokens): {{models}}. Fügen Sie eine Preiszeile oder eine Konfigurations-Überschreibung hinzu."
+    "unpricedCaveat": "{{count}} Modell-IDs konnten keinem Tarif zugeordnet werden und sind von der Kostensumme ausgeschlossen ({{tokens}} Tokens): {{models}}. Fügen Sie eine Preiszeile oder eine Konfigurations-Überschreibung hinzu.",
+    "fastModeUnpriced": "{{count}} Fast-Mode-Anfragen sind in dieser Summe zum Standardtarif berechnet; ihre tatsächlichen Kosten sind höher."
   },
   "agentCost": {
     "title": "Agenten & Fähigkeiten",

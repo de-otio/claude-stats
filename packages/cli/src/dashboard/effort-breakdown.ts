@@ -201,8 +201,8 @@ export interface EffortMixInput {
   output_tokens?: number | null;
   cache_read_tokens?: number | null;
   cache_creation_tokens?: number | null;
-  speed?: string | null;
-  inference_geo?: string | null;
+  speed: string | null;
+  inference_geo: string | null;
 }
 
 /**
@@ -223,8 +223,8 @@ export function buildEffortMix(messages: readonly EffortMixInput[]): EffortMixRo
       undefined,
       {
         longContext: isLongContextRequest(m.model ?? "unknown", m.input_tokens ?? 0, m.cache_read_tokens ?? 0, m.cache_creation_tokens ?? 0),
-        speed: m.speed ?? null,
-        inferenceGeo: m.inference_geo ?? null,
+        speed: m.speed,
+        inferenceGeo: m.inference_geo,
       },
     ).cost;
     const t = tiers.get(effort) ?? { messages: 0, cost: 0 };

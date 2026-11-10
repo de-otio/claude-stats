@@ -443,6 +443,15 @@ export function renderDashboard(data: DashboardData, t: TranslateFn = defaultT):
         }))}</span>
       </div>`
     : "";
+  // Fast-mode disclosure (plan P1): the hourly rollup behind an unbounded
+  // period has no `speed` key, so fast-mode requests are priced at the standard
+  // rate there. Same register and place as the unpriced banner; absent when null.
+  const fastModeBanner = (count: number | null | undefined, cls: string) => count != null && count > 0
+    ? `<div class="summary-card ${cls}" style="grid-column: 1 / -1; text-align: left; padding: 0.5rem 0.75rem; border-color:#e0a458; background:rgba(224,164,88,0.08);">
+        <span style="font-size:0.75rem; color:#e0a458;">${escapeHtml(t("dashboard:pricingDrift.fastModeUnpriced", { count: fmtNum(count) }))}</span>
+      </div>`
+    : "";
+  const fastBanner = fastModeBanner(data.summary.fastModeUnpriced, "fast-mode-banner");
   // Escape a string for safe embedding inside a single-quoted JS string
   // literal in the inline <script> block. Translations routinely contain
   // apostrophes ("haven't", French "l'autre", Ukrainian "прив'язано") — left
@@ -1181,6 +1190,7 @@ ${TICKET_TABLE_CSS}
       ` : ""}
       ${costBasisBanner}
       ${unpricedBanner}
+      ${fastBanner}
       <div style="grid-column: 1 / -1;">
         ${renderCard(costAnswer, {
           id: "card-cost",
@@ -1615,6 +1625,7 @@ ${TICKET_TABLE_CSS}
   ${data.spending ? `
   ${sectionOpen("spending")}
     <div class="summary-bar" style="margin-bottom:1rem;">
+      ${fastModeBanner(data.spending.fastModeUnpriced, "fast-mode-banner fast-mode-banner-spending")}
       <div class="summary-card" style="border-color:#e15759;">
         <div class="label">Cache Hit Rate</div>
         <div class="value">${data.spending.cacheEfficiency.overallHitRate}%</div>

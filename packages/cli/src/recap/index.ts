@@ -1040,8 +1040,8 @@ function buildDigestItem(
       output_tokens: number;
       cache_read_tokens: number;
       cache_creation_tokens: number;
-      speed?: string | null;
-      inference_geo?: string | null;
+      speed: string | null;
+      inference_geo: string | null;
     }>,
   ): void => {
     for (const row of rows) {

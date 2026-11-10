@@ -739,7 +739,8 @@
     "mixedRepaired": "この範囲で集計対象の {{total}} 行のうち {{rows}} 行（{{percent}}%）は、レスポンス単位の修正より前のもの（cost_basis = pre-dedupe）で、約 2 倍に水増しされています。修復はすでに実行済みですが、残りの行には再解析できるトランスクリプトが残っていません。"
   },
   "pricingDrift": {
-    "unpricedCaveat": "{{count}} 件のモデル ID は料金が解決できなかったため、コスト合計から除外されています ({{tokens}} token): {{models}}。料金行を追加するか、設定で上書きしてください。"
+    "unpricedCaveat": "{{count}} 件のモデル ID は料金が解決できなかったため、コスト合計から除外されています ({{tokens}} token): {{models}}。料金行を追加するか、設定で上書きしてください。",
+    "fastModeUnpriced": "このコストには、高速モードの {{count}} 件のリクエストが標準料金で計算されています。実際の請求額はそれより高くなります。"
   },
   "agentCost": {
     "title": "エージェントとスキル",

@@ -743,7 +743,8 @@
     "mixedRepaired": "{{rows}} de {{total}} linhas contabilizadas ({{percent}}%) neste intervalo são anteriores à correção por resposta (cost_basis = pre-dedupe) e estão infladas em aproximadamente 2x. Um reparo já foi executado; as linhas restantes não têm mais transcrição para reprocessar."
   },
   "pricingDrift": {
-    "unpricedCaveat": "{{count}} IDs de modelo não corresponderam a nenhuma tarifa e foram excluídos do custo total ({{tokens}} tokens): {{models}}. Adicione uma linha de preço ou um override na configuração."
+    "unpricedCaveat": "{{count}} IDs de modelo não corresponderam a nenhuma tarifa e foram excluídos do custo total ({{tokens}} tokens): {{models}}. Adicione uma linha de preço ou um override na configuração.",
+    "fastModeUnpriced": "{{count}} requisições no modo rápido são cobradas neste total pela tarifa padrão; o custo faturado delas é maior."
   },
   "agentCost": {
     "title": "Agentes e skills",

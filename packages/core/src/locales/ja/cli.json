@@ -253,7 +253,7 @@
     "cacheDetail": "{{read}} 読取、{{created}} 作成（効率 {{efficiency}}%）",
     "costLine": "~{{cost}}（API 相当コスト）",
     "costUnknown": "（{{tokens}} トークンは不明モデルのため除外）",
-    "fastModeUnpriced": "（この合計は下限値です。高速モードのメッセージはここでは標準料金で計算されています。件数: {{count}}）",
+    "fastModeUnpriced": "このコストには、高速モードの {{count}} 件のリクエストが標準料金で計算されています。実際の請求額はそれより高くなります。",
     "planROI": "{{planFee}}/月 プラン → {{multiplier}}× の API 価値を受領",
     "planPerUnit": "{{costPerPrompt}}/プロンプト   {{costPerSession}}/セッション",
     "velocityDetail": "{{tokPerMin}} トークン/分   {{promptsPerHr}} プロンプト/時   {{outputPerPrompt}} 出力/プロンプト",
