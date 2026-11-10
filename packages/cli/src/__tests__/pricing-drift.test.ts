@@ -124,7 +124,7 @@ describe("DEFAULT_PRICING rows added in this release", () => {
   });
 
   it("stamps the shipped table's verification date", () => {
-    expect(PRICING_VERIFIED_DATE).toBe("2026-09-26");
+    expect(PRICING_VERIFIED_DATE).toBe("2026-11-10");
   });
 });
 
@@ -311,7 +311,9 @@ describe("configured rate overrides obey the same rule", () => {
   });
 
   it("reports a refused override even when the built-in table has no row either", () => {
-    const r = resolvePricing("anthropic.claude-fable-5-2", fableOverride);
+    // `claude-fable-5-3` is a hypothetical successor: it stays unpriced in the
+    // built-in table (5.2 has a row since 2026-11), so both matchers refuse it.
+    const r = resolvePricing("anthropic.claude-fable-5-3", fableOverride);
     expect(r.pricing).toBeNull();
     // Two matchers refused; the built-in one explains the returned outcome.
     expect(r.drift?.table).toBe("built-in");

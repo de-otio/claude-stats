@@ -20,6 +20,7 @@ import {
   SEAT_PRICING,
   PER_USER_MONTHLY_BENCHMARKS,
   ENTERPRISE_ADDS,
+  FABLE_ALLOWANCE,
   USAGE_INTENSITY_THRESHOLDS,
   DEFAULT_TIER_MIX,
   DEFAULT_ADOPTION_SCENARIOS,
@@ -38,7 +39,17 @@ const FC_SEED = 424242;
 
 describe("plan-mechanics constants", () => {
   it("verified date is the pinned snapshot", () => {
-    expect(PLAN_MECHANICS_VERIFIED_DATE).toBe("2026-07-03");
+    expect(PLAN_MECHANICS_VERIFIED_DATE).toBe("2026-11-10");
+  });
+
+  it("Fable allowance is a dated, sourced, expiring set of verified-fact claims", () => {
+    expect(FABLE_ALLOWANCE.validThroughIso).toBe("2026-11-16");
+    expect(FABLE_ALLOWANCE.source).toMatch(/^https:\/\/support\.claude\.com\//);
+    expect(FABLE_ALLOWANCE.claims.length).toBeGreaterThanOrEqual(3);
+    for (const c of FABLE_ALLOWANCE.claims) expect(c.kind).toBe("verified-fact");
+    // The 50% cap applies to Pro and standard Team seats only, not to Max/Ultra.
+    const capped = FABLE_ALLOWANCE.claims.find((c) => c.claim.includes("50%"))!;
+    expect([...capped.plans]).toEqual(["pro", "team_standard"]);
   });
 
   it("Team seat range is 5–150", () => {

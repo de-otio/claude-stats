@@ -8,9 +8,16 @@ This file exists so that "we know, and here is the reasoning" is checkable
 rather than assumed. An advisory that is genuinely unreachable is still shipped
 code, and a reader deserves to see the argument rather than a reassurance.
 
-**Last reviewed:** 2026-10-22, for extension release 0.24.1.
+**Last reviewed:** 2026-11-10, for extension release 0.25.0.
 
 At this review `npm audit --omit=dev` reported **zero** advisories in both
+shipped trees (the VSIX's and the CLI's). The full tree reports one advisory,
+dev-only: `minimatch` (moderate), bundled inside `aws-cdk-lib` — see "Open"
+below. The `brace-expansion` copy bundled in `aws-cdk-lib` is now 5.0.12 and
+no longer reported, and the `tailwindcss@3` chain (`braces`, `micromatch`,
+`fast-glob`, `chokidar`) no longer appears in `npm audit`.
+
+At the 0.24.1 review (2026-10-22) `npm audit --omit=dev` reported **zero** advisories in both
 shipped trees (the VSIX's and the CLI's), after these fixes, all lockfile or
 in-range moves:
 
@@ -190,7 +197,26 @@ been overtaken by the advisory. The floor was raised to `^6.16.0`.
 
 ## Open — dev-only, never shipped
 
-### `brace-expansion` — DoS via unbounded intermediate arrays (high)
+### `minimatch` — DoS via globparts amplification (moderate)
+
+| | |
+|---|---|
+| Advisory | [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) (Dependabot alert #108) |
+| Affected | `minimatch 7.0.0 – 11.0.0` (the tree resolves 10.2.6) |
+| Reached via | `packages/infra` → `aws-cdk-lib@2.275.0` → **bundled** `minimatch` |
+| Upstream | None yet. 2.275.0 is the latest `aws-cdk-lib`; the fix is `minimatch` 11.0.1 |
+
+Same shape as the `brace-expansion` entry below, and the same two traps apply:
+the copy is `"inBundle": true`, so `overrides` cannot reach it, and the
+`npm audit fix --force` remedy it offers is a *downgrade* of `aws-cdk-lib` to
+2.239.0. Not shipped: the path is `"dev": true`, outside the VSIX and the CLI.
+It clears when AWS refreshes the bundle.
+
+### `brace-expansion` — DoS via unbounded intermediate arrays (high) — cleared upstream
+
+No longer reported as of the 0.25.0 review: `aws-cdk-lib@2.275.0` bundles
+`brace-expansion` 5.0.12. Kept for the reasoning, which applies to `minimatch`
+above.
 
 | | |
 |---|---|

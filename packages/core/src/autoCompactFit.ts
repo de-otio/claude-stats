@@ -335,7 +335,10 @@ export function computeAutoCompactFit(
     closed.push({
       increments: slice.turns.map((t) => t.increment),
       // Resolved ONCE here rather than inside the per-candidate loop.
-      rates: slice.turns.map((t) => rateOf(t.model)),
+      // A turn priced at a rate other than its model's base (long-context tier,
+      // fast mode, US geo) carries that rate; every other turn resolves from
+      // its model as before.
+      rates: slice.turns.map((t) => turnRate(t, rateOf)),
     });
   }
   const anyPricedTurn = closed.some((s) => s.rates.some((r) => r !== null));
@@ -725,6 +728,16 @@ function meanPricedResetCost(carry: ContextCarryResult): number | null {
   const priced = carry.resets.map((r) => r.resetRequestCost).filter((c) => Number.isFinite(c) && c > 0);
   if (priced.length === 0) return null;
   return priced.reduce((a, b) => a + b, 0) / priced.length;
+}
+
+/** The cache-read rate of one turn: its own `adjustedCacheReadRate` when
+ *  `computeContextCarry` set one (finite, or `null` for a refused request),
+ *  else its model's base rate. A non-finite adjusted rate is treated as no
+ *  rate, never as a number. */
+function turnRate(t: ContextCarryTurn, rateOf: RateResolver): number | null {
+  const adj = t.adjustedCacheReadRate;
+  if (adj === undefined) return rateOf(t.model);
+  return typeof adj === "number" && Number.isFinite(adj) ? adj : null;
 }
 
 /** Resolver for one call: one `resolvePricing` per distinct raw model id, and

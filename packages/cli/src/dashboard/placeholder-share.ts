@@ -13,7 +13,7 @@
  */
 import { estimateCost } from "@claude-stats/core/pricing";
 import type { RateOverrides } from "@claude-stats/core/pricing";
-import type { PlaceholderTotalRow, Store, MessageFilter } from "../store/index.js";
+import { groupCostOpts, type PlaceholderTotalRow, type Store, type MessageFilter } from "../store/index.js";
 
 /** The one fixed sentence; a closed string, not localised, not interpolated. */
 export const PLACEHOLDER_OUTPUT_NOTE =
@@ -53,7 +53,7 @@ export function buildPlaceholderOutputShare(
       g.cache_creation_tokens,
       rateOverrides,
       { ephemeral5mCacheTokens: g.ephemeral_5m_cache_tokens, ephemeral1hCacheTokens: g.ephemeral_1h_cache_tokens },
-      { longContext: g.long_context === 1 },
+      groupCostOpts(g),
     );
     rows += g.row_count;
     cost += priced.cost;

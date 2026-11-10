@@ -320,7 +320,8 @@
     "ticketAmbiguousNote": "Niejednoznaczne sesje: {{count}} (powiązane z więcej niż jednym zgłoszeniem).",
     "confidenceHigh": "wysoka pewność",
     "confidenceMedium": "średnia pewność",
-    "confidenceLow": "niska pewność"
+    "confidenceLow": "niska pewność",
+    "fastModeUnpriced": "W tej sumie liczba żądań w trybie fast: {{count}} jest wyceniona według stawki standardowej; ich faktyczny koszt rozliczeniowy jest wyższy."
   },
   "status": {
     "databaseSize": "Rozmiar bazy danych",

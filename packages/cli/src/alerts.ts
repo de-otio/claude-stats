@@ -2,7 +2,7 @@
  * Cost threshold alert checking.
  * Compares current period spending against configured thresholds.
  */
-import { foldTotalsByModel, type Store } from "./store/index.js";
+import { foldTotalsByModel, groupCostOpts, type Store } from "./store/index.js";
 import type { Config } from "./config.js";
 import { estimateCost } from "@claude-stats/core/pricing";
 import { periodStart } from "./reporter/index.js";
@@ -40,7 +40,7 @@ export function checkThresholds(store: Store, config: Config): ThresholdCheck[] 
         mt.cache_creation_tokens,
         undefined,
         undefined,
-        { longContext: mt.long_context === 1 },
+        groupCostOpts(mt),
       );
       if (result.known) {
         currentCost += result.cost;
