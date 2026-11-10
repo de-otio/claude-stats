@@ -424,6 +424,19 @@
       "dryRunSummary": "{{files}} archivos de transcripción se re-analizarían, {{sessions}} sesiones ganarían un tipo de agente, {{messages}} mensajes ganarían una habilidad.",
       "parseErrors": "⚠  {{count}} errores de análisis reportados durante el re-análisis.",
       "lockHeld": "Otra reparación se está ejecutando (pid {{pid}}, iniciada {{started}}). Espere a que termine, o elimine la fila de metadatos repair_dedupe_lock si ese proceso se ha ido."
+    },
+    "requestRecords": {
+      "description": "Vuelve a analizar todas las sesiones cuya transcripción aún existe para que el historial existente obtenga registros por solicitud (filas de `api_requests` y `messages.request_ref`). Se ejecuta una sola vez; las sesiones sin transcripción no conservan datos de solicitudes.",
+      "dryRunOption": "Informa de cuántos archivos y líneas de api-request se leerían, sin escribir ni crear una copia de seguridad.",
+      "forceOption": "Vuelve a ejecutar el relleno retroactivo aunque ya se haya completado.",
+      "dryRunHeader": "Relleno retroactivo de registros de solicitud (simulación): no se ha escrito ningún cambio:",
+      "doneHeader": "Relleno retroactivo de registros de solicitud completado:",
+      "alreadyDone": "El relleno retroactivo de registros de solicitud ya se ejecutó en esta base de datos; no hay nada que hacer (use --force para volver a ejecutarlo).",
+      "backupWritten": "Copia de seguridad escrita en {{path}}",
+      "summary": "{{files}} archivos de transcripción reanalizados, {{lines}} líneas de api-request leídas, {{requests}} registros de solicitud almacenados.",
+      "dryRunSummary": "Se reanalizarían {{files}} archivos de transcripción y se leerían {{lines}} líneas de api-request.",
+      "parseErrors": "⚠  Se notificaron {{count}} errores de análisis durante el reanálisis.",
+      "lockHeld": "Hay otra reparación en curso (pid {{pid}}, iniciada {{started}}). Espere a que termine o elimine la fila de metadatos repair_dedupe_lock si ese proceso ya no existe."
     }
   },
   "archive": {

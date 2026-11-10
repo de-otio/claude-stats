@@ -427,6 +427,19 @@
       "dryRunSummary": "{{files}} pliki transkryptu byłyby ponownie przeanalizowane, {{sessions}} sesji byłoby zyskać typ agenta, {{messages}} wiadomości byłoby zyskać umiejętność.",
       "parseErrors": "⚠  {{count}} błędy analizy zgłoszone podczas ponownej analizy.",
       "lockHeld": "Inna naprawa jest uruchomiona (pid {{pid}}, rozpoczęta {{started}}). Poczekaj na jej zakończenie lub usuń wiersz metadanych repair_dedupe_lock, jeśli ten proces zniknął."
+    },
+    "requestRecords": {
+      "description": "Ponownie analizuje każdą sesję, której transkrypt nadal istnieje, aby istniejąca historia zyskała rekordy per żądanie (wiersze api_requests i messages.request_ref). Uruchamiane jednorazowo; sesje bez transkryptu nie będą miały danych o żądaniach.",
+      "dryRunOption": "Podaje, ile plików i wierszy api-request zostałoby odczytanych, bez zapisywania zmian i tworzenia kopii zapasowej.",
+      "forceOption": "Uruchamia uzupełnianie ponownie, nawet jeśli zostało już ukończone.",
+      "dryRunHeader": "Uzupełnianie rekordów żądań (próba) — nie zapisano żadnych zmian:",
+      "doneHeader": "Uzupełnianie rekordów żądań zakończone:",
+      "alreadyDone": "Uzupełnianie rekordów żądań zostało już wykonane w tej bazie danych; nie ma nic do zrobienia (użyj --force, aby uruchomić ponownie).",
+      "backupWritten": "Kopię zapasową zapisano w {{path}}",
+      "summary": "Ponownie przeanalizowano plików transkryptów: {{files}}, odczytano wierszy api-request: {{lines}}, zapisano rekordów żądań: {{requests}}.",
+      "dryRunSummary": "Plików transkryptów do ponownej analizy: {{files}}, wierszy api-request do odczytania: {{lines}}.",
+      "parseErrors": "⚠  Błędy analizy zgłoszone podczas ponownej analizy: {{count}}.",
+      "lockHeld": "Trwa inna naprawa (pid {{pid}}, rozpoczęta {{started}}). Poczekaj na jej zakończenie lub usuń wiersz metadanych repair_dedupe_lock, jeśli ten proces już nie istnieje."
     }
   },
   "archive": {

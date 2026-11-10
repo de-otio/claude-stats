@@ -421,6 +421,19 @@
       "dryRunSummary": "{{files}} Transkript-Dateien würden neu analysiert, {{sessions}} Sitzungen würden einen Agententyp erhalten, {{messages}} Nachrichten würden einen Skill erhalten.",
       "parseErrors": "⚠  {{count}} Parse-Fehler während der Neuanalyse gemeldet.",
       "lockHeld": "Eine andere Reparatur läuft (pid {{pid}}, gestartet {{started}}). Warten Sie, bis sie beendet ist, oder löschen Sie die repair_dedupe_lock-Metadaten-Zeile, wenn dieser Prozess weg ist."
+    },
+    "requestRecords": {
+      "description": "Analysiert jede Session erneut, deren Transkript noch vorhanden ist, damit der bestehende Verlauf Datensätze pro Anfrage erhält (Zeilen in api_requests und messages.request_ref). Wird einmalig ausgeführt; Sessions ohne Transkript behalten keine Anfragedaten.",
+      "dryRunOption": "Meldet, wie viele Dateien und api-request-Zeilen gelesen würden, ohne etwas zu schreiben oder ein Backup zu erstellen.",
+      "forceOption": "Führt das Backfill erneut aus, auch wenn es bereits abgeschlossen wurde.",
+      "dryRunHeader": "Backfill der Anfragedatensätze (Testlauf) — es wurden keine Änderungen geschrieben:",
+      "doneHeader": "Backfill der Anfragedatensätze abgeschlossen:",
+      "alreadyDone": "Das Backfill der Anfragedatensätze wurde für diese Datenbank bereits ausgeführt; es ist nichts zu tun (mit --force erneut ausführen).",
+      "backupWritten": "Backup nach {{path}} geschrieben",
+      "summary": "{{files}} Transkriptdateien erneut analysiert, {{lines}} api-request-Zeilen gelesen, {{requests}} Anfragedatensätze gespeichert.",
+      "dryRunSummary": "{{files}} Transkriptdateien würden erneut analysiert, {{lines}} api-request-Zeilen würden gelesen.",
+      "parseErrors": "⚠  {{count}} Parse-Fehler während der erneuten Analyse gemeldet.",
+      "lockHeld": "Eine andere Reparatur läuft (pid {{pid}}, gestartet {{started}}). Warten Sie, bis sie abgeschlossen ist, oder löschen Sie die Metadatenzeile repair_dedupe_lock, falls dieser Prozess nicht mehr existiert."
     }
   },
   "archive": {
