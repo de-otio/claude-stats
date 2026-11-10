@@ -37,7 +37,7 @@
     "postcss-selector-parser": "^7.1.6"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.135.0",
+    "@anthropic-ai/sdk": "^1.6.0",
     "@types/node": "^26.6.6",
     "@types/vscode": "^1.145.0",
     "@vitest/coverage-v8": "^5.1.0",
