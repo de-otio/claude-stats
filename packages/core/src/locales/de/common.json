@@ -220,5 +220,8 @@
     "refresh": "Aktualisieren",
     "save": "Speichern",
     "send": "Senden"
+  },
+  "reprice": {
+    "equalTokenVolumeNote": "Gleiches Token-Volumen – eine Obergrenze, wenn das Zielmodell pro Aufgabe weniger Tokens verbraucht."
   }
 }

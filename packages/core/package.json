@@ -183,6 +183,10 @@
     "./effort": {
       "types": "./dist/effort.d.ts",
       "default": "./dist/effort.js"
+    },
+    "./repricing": {
+      "types": "./dist/repricing.d.ts",
+      "default": "./dist/repricing.js"
     }
   },
   "scripts": {

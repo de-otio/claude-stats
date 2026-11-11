@@ -1017,6 +1017,25 @@ export function printCostPerTask(
     }
   }
 
+  // Per-(model, effort) table. Cells under the minimum sample print the same
+  // "n/a (<N obs)" the per-model rows do, never a figure; `no effort` is its own row.
+  if (report.byModelEffort && report.byModelEffort.cells.length > 0) {
+    write("");
+    write(`${t("cli:report.costPerTaskByModelEffort")}:`);
+    for (const c of report.byModelEffort.cells) {
+      const name = shortModel(c.model).padEnd(16).slice(0, 16);
+      const effort = (c.effort ?? t("cli:report.costPerTaskNoEffort")).padEnd(10).slice(0, 10);
+      const cps = (c.costPerSuccessfulTask !== null
+        ? `${formatCost(c.costPerSuccessfulTask)}/${t("cli:report.costPerTaskSuccessShort")}`
+        : na).padStart(14);
+      const rate = (c.status === "ok" && c.successRate !== null
+        ? `${fmtPct(c.successRate)} ${t("cli:report.costPerTaskSuccessShort")}`
+        : t("cli:report.costPerTaskInsufficient", { min: report.byModelEffort.minObservable })).padEnd(18);
+      write(`  ${name} ${effort} ${cps}   ${rate} ${String(c.tasksObservable).padStart(4)} ${t("cli:report.costPerTaskObsShort")}   ${formatCost(c.costByCellExact).padStart(9)}`);
+    }
+    write(t("cli:report.costPerTaskEffortCoverage", { share: fmtPct(report.byModelEffort.effortTaggedShare) }));
+  }
+
   // ── Efficiency frontier (value-per-cost Phase 1) ──
   // Shown when the report carries an efficiency block with non-trivial data.
   // Human text for Lever.kind is rendered here from the enum (never in the

@@ -53,6 +53,12 @@ import { computeFrontier } from './efficiency/frontier.js';
 import { deriveLevers } from './efficiency/levers.js';
 import { buildEfficiencyReport } from './efficiency/index.js';
 import type { Archetype, ClassifiedTask, EfficiencyReport } from './efficiency/types.js';
+import { aggregateByModelEffort, type ModelEffortReport } from './model-effort.js';
+import type { CostPerTaskGroupBy } from './group-by.js';
+import type { CostByModelEffortEntry } from '../recap/types.js';
+
+export { COST_PER_TASK_GROUP_BY, type CostPerTaskGroupBy } from './group-by.js';
+export type { ModelEffortCell, ModelEffortReport, ModelEffortStatus } from './model-effort.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -73,6 +79,12 @@ export interface TaskRecord {
   project: string;
   cost: number;
   costByModel: Readonly<Record<string, number>>;
+  /**
+   * The same cost split by `(model, effort)`; `effort: null` = Claude Code
+   * recorded none. Absent on a record whose digest predates the split, which the
+   * `(model, effort)` grouping reads as effort unknown (`null`).
+   */
+  costByModelEffort?: readonly CostByModelEffortEntry[];
   /** Model with the largest cost share for this task (proxy for who did it). */
   dominantModel: string | null;
   outcome: TaskOutcome;
@@ -144,6 +156,14 @@ export interface CostPerTaskReport {
   /** How many outcomes are user-labelled (vs proxied) — ground-truth share. */
   labelledCount: number;
   byModel: ModelCostPerTask[];
+  /**
+   * Per-`(model, effort)` breakdown. Present ONLY when the report was built with
+   * `groupBy: 'model_effort'`. Cells under the minimum observable-task sample are
+   * `insufficient` and carry no rate or cost figure; `effort: null` is its own
+   * row and `effortTaggedShare` says how much spend sits outside it. Numbers,
+   * model ids and effort tokens only.
+   */
+  byModelEffort?: ModelEffortReport;
   /**
    * Per-task list for in-dashboard labelling. Present ONLY when
    * `opts.includeTasks` is set (VS Code webview). Undefined on the read-only
@@ -468,6 +488,11 @@ export interface CostPerTaskOptions {
   includeCI?: boolean;
   byModel?: boolean;
   /**
+   * `'model_effort'` adds the per-`(model, effort)` breakdown (`byModelEffort`)
+   * to the report; `'model'` or unset leaves it out. Independent of `byModel`.
+   */
+  groupBy?: CostPerTaskGroupBy;
+  /**
    * When true, the report includes a `tasks` list (per-task id/title/signature)
    * for in-dashboard labelling. Carries prompt-derived text — leave OFF for the
    * read-only MCP and `serve` surfaces. Default: false.
@@ -591,6 +616,7 @@ export async function buildCostPerTaskReport(
         project: item.project,
         cost: item.estimatedCost,
         costByModel: item.costByModel,
+        costByModelEffort: item.costByModelEffort,
         dominantModel: dominantModel(item.costByModel),
         outcome,
         labelled,
@@ -618,7 +644,7 @@ export async function buildCostPerTaskReport(
     }
   }
 
-  const report = aggregate(records, period, windowStart, windowEnd, opts.byModel !== false);
+  const report = aggregate(records, period, windowStart, windowEnd, opts.byModel !== false, opts.groupBy);
   if (opts.includeTasks) {
     // Most-expensive-first: the tasks whose label most moves the metric. Cost
     // is on the record, not the task; align by id (ids are unique per window).
@@ -727,6 +753,7 @@ export function aggregate(
   windowStart: number,
   windowEnd: number,
   byModel: boolean,
+  groupBy?: CostPerTaskGroupBy,
 ): CostPerTaskReport {
   const successCount = records.filter((r) => r.outcome === 'success').length;
   const failedCount = records.filter((r) => r.outcome === 'failed').length;
@@ -773,6 +800,9 @@ export function aggregate(
     costPerSuccessfulTask,
     labelledCount,
     byModel: byModel ? aggregateByModel(observableRecords) : [],
+    ...(groupBy === 'model_effort'
+      ? { byModelEffort: aggregateByModelEffort(observableRecords, MIN_OBSERVABLE_FOR_MODEL_RATE) }
+      : {}),
     efficiency,
   };
 }

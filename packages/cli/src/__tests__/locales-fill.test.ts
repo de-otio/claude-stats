@@ -27,6 +27,7 @@ import {
   setByPath,
   extractJson,
   validateBatch,
+  postProcessTranslations,
   buildJsonSchema,
   chunkMap,
   fillLocale,
@@ -122,6 +123,99 @@ describe("validateBatch", () => {
     const req = new Map<string, unknown>([["steps", [{ heading: "x", body: "y" }]]]);
     const errs = validateBatch(req, { steps: [] });
     expect(errs.some((e: string) => /array length 1 → 0/.test(e))).toBe(true);
+  });
+});
+
+describe("postProcessTranslations", () => {
+  const key = "report.fastModeUnpriced";
+  const en = "{{count}} fast requests were priced at standard";
+
+  it("unwraps a value that is a JSON object with one string value under another key", () => {
+    const wrapped = JSON.stringify({ translation: "{{count}} schnelle Anfragen" });
+    const r = postProcessTranslations(new Map([[key, en]]), { [key]: wrapped });
+    expect(r.errors).toEqual([]);
+    expect(r.accepted).toEqual({ [key]: "{{count}} schnelle Anfragen" });
+    expect(r.unwrapped).toEqual([key]);
+  });
+
+  it("unwraps a value wrapped under the same key", () => {
+    const wrapped = JSON.stringify({ [key]: "{{count}} schnelle Anfragen" });
+    const r = postProcessTranslations(new Map([[key, en]]), { [key]: wrapped });
+    expect(r.errors).toEqual([]);
+    expect(r.accepted).toEqual({ [key]: "{{count}} schnelle Anfragen" });
+    expect(r.unwrapped).toEqual([key]);
+  });
+
+  it("passes a plain translated value through untouched", () => {
+    const r = postProcessTranslations(new Map([[key, en]]), { [key]: "{{count}} schnelle Anfragen" });
+    expect(r).toEqual({ accepted: { [key]: "{{count}} schnelle Anfragen" }, unwrapped: [], errors: [] });
+  });
+
+  it("rejects a placeholder mismatch and does not accept the key", () => {
+    const r = postProcessTranslations(new Map([[key, en]]), { [key]: "{{anzahl}} schnelle Anfragen" });
+    expect(r.accepted).toEqual({});
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toMatch(/placeholders \[anzahl\] do not match en \[count\]/);
+  });
+
+  it("rejects a dropped placeholder", () => {
+    const r = postProcessTranslations(new Map([[key, en]]), { [key]: "schnelle Anfragen" });
+    expect(r.accepted).toEqual({});
+    expect(r.errors[0]).toMatch(/do not match en \[count\]/);
+  });
+
+  it("checks placeholders after unwrapping, on the inner value", () => {
+    const wrapped = JSON.stringify({ [key]: "schnelle Anfragen" });
+    const r = postProcessTranslations(new Map([[key, en]]), { [key]: wrapped });
+    expect(r.accepted).toEqual({});
+    expect(r.errors).toHaveLength(1);
+  });
+
+  it("rejects JSON that cannot be unwrapped to a single string (multiple values)", () => {
+    const wrapped = JSON.stringify({ a: "{{count}} x", b: "{{count}} y" });
+    const r = postProcessTranslations(new Map([[key, en]]), { [key]: wrapped });
+    expect(r.accepted).toEqual({});
+    expect(r.errors[0]).toMatch(/still looks like JSON/);
+  });
+
+  it("rejects a doubly-wrapped value rather than writing JSON", () => {
+    const inner = JSON.stringify({ [key]: "{{count}} x" });
+    const wrapped = JSON.stringify({ [key]: inner });
+    const r = postProcessTranslations(new Map([[key, en]]), { [key]: wrapped });
+    expect(r.accepted).toEqual({});
+    expect(r.errors[0]).toMatch(/still looks like JSON/);
+  });
+
+  it("accepts a value that legitimately contains braces but is not JSON", () => {
+    const enBraces = "Run {{cmd}} with {--since} then {\"quoted\" text";
+    const tr = "Führe {{cmd}} mit {--since} aus, dann {\"zitiert\" Text";
+    const r = postProcessTranslations(new Map([[key, enBraces]]), { [key]: tr });
+    expect(r).toEqual({ accepted: { [key]: tr }, unwrapped: [], errors: [] });
+  });
+
+  it("keeps good keys and rejects only the bad ones in a mixed batch", () => {
+    const req = new Map([["a", "Hi {{n}}"], ["b", "Bye {{n}}"], ["c", "Plain"]]);
+    const r = postProcessTranslations(req, {
+      a: JSON.stringify({ a: "Hallo {{n}}" }),
+      b: "Tschüss",
+      c: "Schlicht",
+    });
+    expect(r.accepted).toEqual({ a: "Hallo {{n}}", c: "Schlicht" });
+    expect(r.unwrapped).toEqual(["a"]);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toMatch(/^"b"/);
+  });
+
+  it("compares array values by the placeholders in their strings", () => {
+    const steps = [{ heading: "H {{n}}", body: "B" }];
+    const ok = postProcessTranslations(new Map<string, unknown>([["steps", steps]]), {
+      steps: [{ heading: "K {{n}}", body: "T" }],
+    });
+    expect(ok.errors).toEqual([]);
+    const bad = postProcessTranslations(new Map<string, unknown>([["steps", steps]]), {
+      steps: [{ heading: "K", body: "T" }],
+    });
+    expect(bad.errors).toHaveLength(1);
   });
 });
 

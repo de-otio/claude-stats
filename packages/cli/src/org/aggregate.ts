@@ -51,6 +51,44 @@ export interface AggregateProjectionOptions {
   readonly unattributedCohortId: string;
   /** Value stamped into `_schema`. Defaults to {@link AGGREGATE_SCHEMA_VERSION}. */
   readonly schemaVersion?: number;
+  /** Exact per-session cost; see {@link SessionCosts}. */
+  readonly sessionCosts?: SessionCosts;
+}
+
+/**
+ * Exact estimated cost per `session_id`, priced from the session's per-request
+ * message rows (`Store.getCostBySession`): per model, with each request's
+ * long-context tier, `speed` and `inference_geo` applied.
+ *
+ * A `sessions` row holds only session totals and a model list, so it cannot say
+ * which requests were fast-mode or US-pinned; pricing it from the row alone
+ * prices every token at the standard rate and under-reports a team's spend by
+ * the fast (x2) and US-geo (x1.1) multipliers. A session present here uses this
+ * figure; a session absent (no message rows, e.g. a legacy import) falls back to
+ * the row-level estimate, which is the best a bare row allows.
+ */
+export type SessionCosts = ReadonlyMap<string, number>;
+
+/**
+ * One session's estimated cost: the exact figure when {@link SessionCosts} has
+ * it, else the row-level estimate (all session tokens at the primary model's
+ * standard rate). Zero when there is neither a figure nor a model.
+ */
+function sessionCostUsd(
+  row: SessionRow,
+  primaryModel: string | undefined,
+  sessionCosts: SessionCosts | undefined,
+): number {
+  const exact = sessionCosts?.get(row.session_id);
+  if (exact !== undefined) return exact;
+  if (!primaryModel) return 0;
+  return estimateCost(
+    primaryModel,
+    row.input_tokens,
+    row.output_tokens,
+    row.cache_read_tokens,
+    row.cache_creation_tokens,
+  ).cost;
 }
 
 /**
@@ -164,16 +202,7 @@ export function projectAggregates(
     bucket.cacheCreationTokens += row.cache_creation_tokens;
     bucket.cacheReadTokens += row.cache_read_tokens;
 
-    const primaryModel = models[0];
-    if (primaryModel) {
-      bucket.estimatedCostUsd += estimateCost(
-        primaryModel,
-        row.input_tokens,
-        row.output_tokens,
-        row.cache_read_tokens,
-        row.cache_creation_tokens,
-      ).cost;
-    }
+    bucket.estimatedCostUsd += sessionCostUsd(row, models[0], options.sessionCosts);
   }
 
   return [...buckets.values()]
@@ -260,6 +289,8 @@ export interface UserAggregateOptions {
   readonly accountId: string;
   /** Bucket granularity; the deployed readers expect daily buckets. Default "day". */
   readonly periodKind?: PeriodKind;
+  /** Exact per-session cost; see {@link SessionCosts}. */
+  readonly sessionCosts?: SessionCosts;
 }
 
 /**
@@ -312,16 +343,7 @@ export function projectUserAggregates(
     for (const m of models) b.models.add(m);
     mergeToolCounts(b.toolUseCounts, row.tool_use_counts);
 
-    const primaryModel = models[0];
-    if (primaryModel) {
-      b.estimatedCost += estimateCost(
-        primaryModel,
-        row.input_tokens,
-        row.output_tokens,
-        row.cache_read_tokens,
-        row.cache_creation_tokens,
-      ).cost;
-    }
+    b.estimatedCost += sessionCostUsd(row, models[0], options.sessionCosts);
   }
 
   return [...buckets.values()]

@@ -205,7 +205,14 @@
     "agentsPeriod": "時間期間：日、週、月、またはすべて（デフォルト：月）",
     "agentsLimit": "リスト内に表示する名前付き行数。残りはひとつの残りの行にまとめられます（デフォルト：10）",
     "agentsJson": "機械可読のJSON出力（完全なAgentCostReport）",
-    "exportIncludeAgentNames": "エージェントタイプ、スポーン深さ、スポーンツール呼び出しIDもエクスポート（ユーザー作成の名前。デフォルトでは省略）"
+    "exportIncludeAgentNames": "エージェントタイプ、スポーン深さ、スポーンツール呼び出しIDもエクスポート（ユーザー作成の名前。デフォルトでは省略）",
+    "costPerTaskGroupBy": "内訳のグループ化基準: model(既定)または model_effort(モデルと推論 effort)",
+    "reprice": "指定期間の token 数を別モデルの料金で再計算します(token 量は同一で、上限値となります)",
+    "repriceFrom": "開始日、YYYY-MM-DD(この日を含む)",
+    "repriceTo": "終了日、YYYY-MM-DD(この日を含む)",
+    "repriceModel": "token を処理したモデル(例: claude-opus-5-5)",
+    "repriceAs": "再計算に使用するモデル(例: claude-fable-5-2)",
+    "repriceProject": "このプロジェクトパスのみ"
   },
   "collection": {
     "collecting": "収集中...",
@@ -317,7 +324,10 @@
     "confidenceHigh": "信頼度: 高",
     "confidenceMedium": "信頼度: 中",
     "confidenceLow": "信頼度: 低",
-    "fastModeUnpriced": "この合計では、{{count}} 件の高速モードのリクエストが標準料金で計算されています。実際の請求コストはこれより高くなります。"
+    "fastModeUnpriced": "この合計では、{{count}} 件の高速モードのリクエストが標準料金で計算されています。実際の請求コストはこれより高くなります。",
+    "costPerTaskByModelEffort": "モデルと effort 別",
+    "costPerTaskNoEffort": "effort なし",
+    "costPerTaskEffortCoverage": "effort タグ付きの支出の割合: {{share}}(「effort なし」の行が残りです)"
   },
   "status": {
     "databaseSize": "データベースサイズ",
@@ -374,7 +384,9 @@
     "invalidDateRange": "無効な日付範囲です: {{message}}",
     "invalidPackPeriod": "無効なパック期間です: {{message}}",
     "invalidInvoiceCsv": "--invoice-csv {{path}} を読み取れませんでした: {{message}}",
-    "invalidAgentsLimit": "無効な--limit \\\"{{value}}\\\"：1以上の整数を使用してください"
+    "invalidAgentsLimit": "無効な--limit \\\"{{value}}\\\"：1以上の整数を使用してください",
+    "invalidGroupBy": "--group-by \"{{value}}\" は無効です: model または model_effort を指定してください",
+    "invalidReprice": "再計算できません: {{message}}"
   },
   "repair": {
     "description": "通常の収集では遡って修正できない派生データを修復します。",
@@ -669,5 +681,28 @@
     "depthUnrecorded": "深さ記録なし：{{cost}}（{{share}}）· {{messages}}個のメッセージ",
     "otherDepthRow": "（その他：{{buckets}}個の深さ）：{{cost}}（{{share}}）· {{messages}}個のメッセージ",
     "byDepthEmpty": "このウィンドウではサブエージェント支出はありません。"
+  },
+  "reprice": {
+    "title": "{{model}} を {{asModel}} の料金で再計算 · {{from}} から {{to}}",
+    "colCategory": "カテゴリ",
+    "colActual": "実績",
+    "colRepriced": "{{asModel}} の場合",
+    "input": "入力",
+    "output": "出力",
+    "cacheWrite5m": "Cache 書き込み(5分)",
+    "cacheWrite1h": "Cache 書き込み(1時間)",
+    "cacheRead": "Cache 読み取り",
+    "total": "合計",
+    "rowsLine": "{{model}} のメッセージ行: {{rows}} 件",
+    "noRows": "この期間に {{model}} のメッセージはありません。",
+    "unpricedCounterfactual": "{{rows}} 件の行は {{asModel}} の料金で価格を算出できなかったため({{reasons}})、この列から除外されています。これらの実際のコスト: {{actualCost}}。",
+    "unpricedActual": "{{rows}} 件の行は実際に処理したモデルの料金で価格を算出できなかったため({{reasons}})、実績列から除外されています。",
+    "comparable": "同条件での比較(両方で価格を算出できた行): 実績 {{actual}}、{{asModel}} の場合 {{repriced}}",
+    "unattributedWrite": "{{tokens}} の cache 書き込み token は TTL の内訳がなかったため、5分の料金で計算されています。",
+    "reason": {
+      "fastUnpriced": "fast モード、公開されている fast 料金なし",
+      "speedUnknown": "認識できない speed 値",
+      "unknownModel": "不明なモデル"
+    }
   }
 }

@@ -220,5 +220,8 @@
     "refresh": "更新",
     "save": "保存",
     "send": "送信"
+  },
+  "reprice": {
+    "equalTokenVolumeNote": "token 量が同一の場合 — 対象モデルがタスクあたりに使用する token が少ない場合の上限値です。"
   }
 }

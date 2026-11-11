@@ -205,7 +205,14 @@
     "agentsPeriod": "Период времени: день, неделя, месяц или всё (по умолчанию: месяц)",
     "agentsLimit": "Именованных строк в списке перед свёртыванием остальных в одну строку (по умолчанию: 10)",
     "agentsJson": "Машиночитаемый вывод JSON (полный AgentCostReport)",
-    "exportIncludeAgentNames": "Также экспортировать тип агента, глубину порождения и id вызова инструмента порождения (пользовательские имена; по умолчанию опущены)"
+    "exportIncludeAgentNames": "Также экспортировать тип агента, глубину порождения и id вызова инструмента порождения (пользовательские имена; по умолчанию опущены)",
+    "costPerTaskGroupBy": "Группировка разбивки: по model (по умолчанию) или model_effort (модель и уровень reasoning effort)",
+    "reprice": "Пересчитать токены за период по тарифам другой модели (тот же объём токенов, верхняя оценка)",
+    "repriceFrom": "Первый день, YYYY-MM-DD (включительно)",
+    "repriceTo": "Последний день, YYYY-MM-DD (включительно)",
+    "repriceModel": "Модель, обработавшая токены (например, claude-opus-5-5)",
+    "repriceAs": "Модель, по тарифам которой пересчитать (например, claude-fable-5-2)",
+    "repriceProject": "Только этот путь проекта"
   },
   "collection": {
     "collecting": "Сбор...",
@@ -321,7 +328,10 @@
     "confidenceHigh": "высокая достоверность",
     "confidenceMedium": "средняя достоверность",
     "confidenceLow": "низкая достоверность",
-    "fastModeUnpriced": "Запросов в режиме fast mode: {{count}}. В этой сумме они оценены по стандартному тарифу, их фактическая стоимость выше."
+    "fastModeUnpriced": "Запросов в режиме fast mode: {{count}}. В этой сумме они оценены по стандартному тарифу, их фактическая стоимость выше.",
+    "costPerTaskByModelEffort": "По модели и effort",
+    "costPerTaskNoEffort": "без effort",
+    "costPerTaskEffortCoverage": "Доля расходов с меткой effort: {{share}} (строки «без effort» — остальное)"
   },
   "status": {
     "databaseSize": "Размер базы данных",
@@ -380,7 +390,9 @@
     "invalidDateRange": "Недопустимый диапазон дат: {{message}}",
     "invalidPackPeriod": "Недопустимый период пакета: {{message}}",
     "invalidInvoiceCsv": "Не удалось прочитать --invoice-csv {{path}}: {{message}}",
-    "invalidAgentsLimit": "Неверный --limit \"{{value}}\": используйте целое число 1 или больше"
+    "invalidAgentsLimit": "Неверный --limit \"{{value}}\": используйте целое число 1 или больше",
+    "invalidGroupBy": "Недопустимое значение --group-by \"{{value}}\": используйте model или model_effort",
+    "invalidReprice": "Не удалось пересчитать: {{message}}"
   },
   "repair": {
     "description": "Восстановление производных данных, которые обычный сбор не может исправить задним числом.",
@@ -675,5 +687,28 @@
     "depthUnrecorded": "Глубина не записана: {{cost}} ({{share}}) · {{messages}} сообщений",
     "otherDepthRow": "(другое: ещё {{buckets}} глубин): {{cost}} ({{share}}) · {{messages}} сообщений",
     "byDepthEmpty": "Нет трат субагентов в этом окне."
+  },
+  "reprice": {
+    "title": "Пересчёт {{model}} по тарифам {{asModel}} · с {{from}} по {{to}}",
+    "colCategory": "Категория",
+    "colActual": "Фактически",
+    "colRepriced": "По {{asModel}}",
+    "input": "Входные",
+    "output": "Выходные",
+    "cacheWrite5m": "Запись в cache (5 мин)",
+    "cacheWrite1h": "Запись в cache (1 ч)",
+    "cacheRead": "Чтение из cache",
+    "total": "Итого",
+    "rowsLine": "Строк сообщений {{model}}: {{rows}}",
+    "noRows": "Нет сообщений для {{model}} в этом периоде.",
+    "unpricedCounterfactual": "Строк, которые не удалось оценить по тарифам {{asModel}} ({{reasons}}): {{rows}}. Они исключены из этого столбца. Их фактическая стоимость: {{actualCost}}.",
+    "unpricedActual": "Строк, которые не удалось оценить по тарифам обслужившей модели ({{reasons}}): {{rows}}. Они исключены из столбца фактических значений.",
+    "comparable": "Сопоставимо (строки, оценённые в обоих вариантах): фактически {{actual}}, по {{asModel}} {{repriced}}",
+    "unattributedWrite": "Для {{tokens}} токенов записи в cache не было разбивки по TTL, они оценены по 5-минутному тарифу.",
+    "reason": {
+      "fastUnpriced": "fast-режим, нет опубликованного тарифа для fast",
+      "speedUnknown": "нераспознанное значение speed",
+      "unknownModel": "неизвестная модель"
+    }
   }
 }

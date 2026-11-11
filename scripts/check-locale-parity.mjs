@@ -9,7 +9,9 @@
  *   2. Exactly the same set of keys in each file (dot-flattened).
  *   3. The same {{placeholder}} identifiers in each value (order-insensitive).
  *   4. The same $(codicon) tokens in each value (order-insensitive).
- *   5. No GROWTH in the number of values that are byte-identical to `en`,
+ *   5. No value that is itself a JSON object (`{"key":"translation"}`), a
+ *      model-output wrapping defect none of the other checks can see.
+ *   6. No GROWTH in the number of values that are byte-identical to `en`,
  *      per (locale, namespace), against a committed baseline.
  *
  * Exits non-zero and prints a readable report on any drift. Designed to be
@@ -114,6 +116,27 @@ function codicons(value) {
   const set = new Set();
   for (const m of value.matchAll(/\$\(([a-zA-Z0-9-]+)\)/g)) set.add(m[1]);
   return [...set].sort();
+}
+
+/**
+ * Is this value a JSON object that was written where a translated string
+ * belongs, e.g. `{"report.fastModeUnpriced":"…translated…"}`?
+ *
+ * A model asked for `{key: translation}` sometimes returns the whole pair as the
+ * value. The result is a locale whose UI string is raw JSON, and no other check
+ * notices: keys, placeholders and codicons all still line up. Only strings that
+ * start with `{"` (optionally spaced) AND parse as a JSON object count, so prose
+ * that merely contains braces is never flagged.
+ */
+export function isJsonWrapped(value) {
+  if (typeof value !== "string") return false;
+  if (!/^\s*\{\s*"/.test(value)) return false;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed);
+  } catch {
+    return false;
+  }
 }
 
 function arraysEqual(a, b) {
@@ -277,6 +300,17 @@ function compareLocale(refLocale, otherLocale, localesDir, baseline = null, coun
       if (!arraysEqual(refCi, otherCi)) {
         problems.push(
           `${file}: codicons mismatch at "${key}" — ${refLocale}=[${refCi.join(",")}] vs ${otherLocale}=[${otherCi.join(",")}]`,
+        );
+      }
+    }
+
+    // JSON-wrapped values: every value, including keys `en` lacks, since a
+    // wrapped string is wrong wherever it sits.
+    for (const [key, value] of otherMap.entries()) {
+      if (isJsonWrapped(value)) {
+        problems.push(
+          `${file}: JSON-wrapped value at "${key}" — the translation is itself a JSON object ` +
+            `(re-run fill-locales for this key, or unwrap it by hand)`,
         );
       }
     }

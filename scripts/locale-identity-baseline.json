@@ -8,14 +8,14 @@
     "frontend": 22
   },
   "es": {
-    "cli": 93,
+    "cli": 94,
     "common": 13,
     "dashboard": 25,
     "extension": 11,
     "frontend": 12
   },
   "fr": {
-    "cli": 109,
+    "cli": 110,
     "common": 18,
     "dashboard": 36,
     "extension": 12,
@@ -36,7 +36,7 @@
     "frontend": 4
   },
   "pt-BR": {
-    "cli": 96,
+    "cli": 97,
     "common": 15,
     "dashboard": 27,
     "extension": 13,

@@ -672,6 +672,51 @@ export async function buildCli(): Promise<Command> {
     });
 
   program
+    .command("reprice")
+    .description(t("cli:commands.reprice"))
+    .requiredOption("--from <date>", t("cli:commands.repriceFrom"))
+    .requiredOption("--to <date>", t("cli:commands.repriceTo"))
+    .requiredOption("--model <id>", t("cli:commands.repriceModel"))
+    .requiredOption("--as <id>", t("cli:commands.repriceAs"))
+    .option("--project <path>", t("cli:commands.repriceProject"))
+    .option("--timezone <tz>", t("cli:commands.reportTimezone"))
+    .option("--json", t("cli:commands.spendingJson"))
+    .action(async (opts: {
+      from: string;
+      to: string;
+      model: string;
+      as: string;
+      project?: string;
+      timezone?: string;
+      json?: boolean;
+    }) => {
+      loadCachedPricing();
+      const { buildRepriceResult } = await import("../reprice/index.js");
+      const { printReprice } = await import("../reprice/format.js");
+      const config = loadConfig();
+      const store = new Store();
+      try {
+        const outcome = await buildRepriceResult(store, {
+          from: opts.from,
+          to: opts.to,
+          project: opts.project,
+          model: opts.model,
+          asModel: opts.as,
+          timezone: opts.timezone,
+          rateOverrides: config.pricing?.rates,
+        });
+        if (!outcome.ok) {
+          console.error(t("cli:errors.invalidReprice", { message: outcome.error }));
+          process.exitCode = 1;
+          return;
+        }
+        printReprice(outcome.result, { from: opts.from, to: opts.to }, process.stdout, { json: opts.json });
+      } finally {
+        store.close();
+      }
+    });
+
+  program
     .command("cost-per-task")
     .description(t("cli:commands.costPerTask"))
     .option("--period <period>", t("cli:commands.costPerTaskPeriod"), "month")
@@ -682,6 +727,7 @@ export async function buildCli(): Promise<Command> {
     .option("--repo <url>", t("cli:commands.reportRepo"))
     .option("--include-ci", t("cli:commands.reportIncludeCi"))
     .option("--by-model", t("cli:commands.costPerTaskByModel"))
+    .option("--group-by <by>", t("cli:commands.costPerTaskGroupBy"))
     .option("--timezone <tz>", t("cli:commands.reportTimezone"))
     .option("--json", t("cli:commands.spendingJson"))
     .option("--calibrate", t("cli:commands.costPerTaskCalibrate"))
@@ -695,13 +741,20 @@ export async function buildCli(): Promise<Command> {
       repo?: string;
       includeCi?: boolean;
       byModel?: boolean;
+      groupBy?: string;
       timezone?: string;
       json?: boolean;
       calibrate?: boolean;
       llmJudge?: boolean;
     }) => {
       loadCachedPricing();
-      const { buildCostPerTaskReport, buildCalibrationReport } = await import("../cost-per-task/index.js");
+      const { buildCostPerTaskReport, buildCalibrationReport, COST_PER_TASK_GROUP_BY } = await import("../cost-per-task/index.js");
+      const groupBy = COST_PER_TASK_GROUP_BY.find((g) => g === opts.groupBy);
+      if (opts.groupBy !== undefined && groupBy === undefined) {
+        console.error(t("cli:errors.invalidGroupBy", { value: opts.groupBy }));
+        process.exitCode = 1;
+        return;
+      }
       const { printCostPerTask } = await import("../reporter/index.js");
       const { createEmbeddingProvider } = await import("../recap/embeddings.js");
       const config = loadConfig();
@@ -785,6 +838,7 @@ export async function buildCli(): Promise<Command> {
         const report = await buildCostPerTaskReport(store, {
           ...common,
           byModel: opts.byModel === true,
+          groupBy,
         });
         printCostPerTask(report, process.stdout, { json: opts.json });
       } catch (err) {

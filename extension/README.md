@@ -49,7 +49,8 @@ Most tools accept an optional `account` filter (UUID, full or prefix-matched) to
 | `list_projects` | Per-project usage breakdown |
 | `get_status` | Database health, session count, last collection time |
 | `search_history` | Search prompt history by keyword |
-| `get_cost_per_task` | Cost per successful task — outcome-cost overall and per model (read-only) |
+| `get_cost_per_task` | Cost per successful task — outcome-cost overall and per model, or per (model, effort) with `groupBy: "model_effort"` (read-only) |
+| `reprice_period` | What one model's tokens in a date range would have cost at another model's rates — equal token volume, an upper bound (read-only) |
 | `summarize_day` | Structured daily-recap digest with semantic clustering — "what did I get done today?" |
 | `get_cost_per_ticket` | Cost attributed to work-item ticket keys (e.g. `PROJ-123`) from local evidence — branch names, commit subjects, prompt mentions — with a coverage denominator and confidence tier. No tracker API is called |
 | `get_calibration` | Whether those confidence tiers have ever been checked against your own corrections — an agreement rate, never "accuracy" |

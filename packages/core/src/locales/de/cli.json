@@ -205,7 +205,14 @@
     "agentsPeriod": "Zeitraum: Tag, Woche, Monat oder alle (Standard: Monat)",
     "agentsLimit": "Benannte Zeilen pro Liste, bevor der Rest in eine Restzeile zusammengefasst wird (Standard: 10)",
     "agentsJson": "Maschinenlesbarer JSON-Output (der vollständige AgentCostReport)",
-    "exportIncludeAgentNames": "Außerdem Agententyp, Spawn-Tiefe und Spawn-Tool-Call-ID exportieren (benutzerdefinierte Namen; standardmäßig weggelassen)"
+    "exportIncludeAgentNames": "Außerdem Agententyp, Spawn-Tiefe und Spawn-Tool-Call-ID exportieren (benutzerdefinierte Namen; standardmäßig weggelassen)",
+    "costPerTaskGroupBy": "Aufschlüsselung gruppieren nach: model (Standard) oder model_effort (Modell und Reasoning-Aufwand)",
+    "reprice": "Token-Anzahlen eines Zeitfensters zu den Preisen eines anderen Modells neu bewerten (gleiches Token-Volumen, eine Obergrenze)",
+    "repriceFrom": "Erster Tag, YYYY-MM-DD (einschließlich)",
+    "repriceTo": "Letzter Tag, YYYY-MM-DD (einschließlich)",
+    "repriceModel": "Modell, das die Tokens geliefert hat (z. B. claude-opus-5-5)",
+    "repriceAs": "Modell, zu dessen Preisen neu bewertet wird (z. B. claude-fable-5-2)",
+    "repriceProject": "Nur dieser Projektpfad"
   },
   "collection": {
     "collecting": "Erfassung läuft...",
@@ -317,7 +324,10 @@
     "confidenceHigh": "hohe Konfidenz",
     "confidenceMedium": "mittlere Konfidenz",
     "confidenceLow": "niedrige Konfidenz",
-    "fastModeUnpriced": "{{count}} Fast-Mode-Anfragen sind in dieser Summe mit dem Standardtarif berechnet; die tatsächlich abgerechneten Kosten sind höher."
+    "fastModeUnpriced": "{{count}} Fast-Mode-Anfragen sind in dieser Summe mit dem Standardtarif berechnet; die tatsächlich abgerechneten Kosten sind höher.",
+    "costPerTaskByModelEffort": "Nach Modell und Aufwand",
+    "costPerTaskNoEffort": "kein Aufwand",
+    "costPerTaskEffortCoverage": "Anteil der Ausgaben mit Aufwandsangabe: {{share}} (die Zeilen „kein Aufwand“ sind der Rest)"
   },
   "status": {
     "databaseSize": "Datenbankgröße",
@@ -374,7 +384,9 @@
     "invalidDateRange": "Ungültiger Zeitraum: {{message}}",
     "invalidPackPeriod": "Ungültiger Paketzeitraum: {{message}}",
     "invalidInvoiceCsv": "--invoice-csv {{path}} konnte nicht gelesen werden: {{message}}",
-    "invalidAgentsLimit": "Ungültig --limit \\\"{{value}}\\\": Verwenden Sie eine ganze Zahl von 1 oder mehr"
+    "invalidAgentsLimit": "Ungültig --limit \\\"{{value}}\\\": Verwenden Sie eine ganze Zahl von 1 oder mehr",
+    "invalidGroupBy": "Ungültiger Wert für --group-by „{{value}}“: model oder model_effort verwenden",
+    "invalidReprice": "Neubewertung nicht möglich: {{message}}"
   },
   "repair": {
     "description": "Repariert abgeleitete Daten, die die normale Erfassung nicht rückwirkend beheben kann.",
@@ -669,5 +681,28 @@
     "depthUnrecorded": "Tiefe nicht aufgezeichnet: {{cost}} ({{share}}) · {{messages}} Nachrichten",
     "otherDepthRow": "(sonstige: {{buckets}} weitere Tiefen): {{cost}} ({{share}}) · {{messages}} Nachrichten",
     "byDepthEmpty": "Keine Subagenten-Kosten in diesem Zeitfenster."
+  },
+  "reprice": {
+    "title": "{{model}} zu {{asModel}}-Preisen neu bewertet · {{from}} bis {{to}}",
+    "colCategory": "Kategorie",
+    "colActual": "Tatsächlich",
+    "colRepriced": "Bei {{asModel}}",
+    "input": "Eingabe",
+    "output": "Ausgabe",
+    "cacheWrite5m": "Cache-Schreiben (5 Min.)",
+    "cacheWrite1h": "Cache-Schreiben (1 Std.)",
+    "cacheRead": "Cache-Lesen",
+    "total": "Gesamt",
+    "rowsLine": "{{rows}} Nachrichtenzeilen von {{model}}",
+    "noRows": "Keine Nachrichten für {{model}} in diesem Zeitfenster.",
+    "unpricedCounterfactual": "{{rows}} Zeilen konnten nicht zu {{asModel}}-Preisen bewertet werden ({{reasons}}) und fehlen in dieser Spalte. Ihre tatsächlichen Kosten: {{actualCost}}.",
+    "unpricedActual": "{{rows}} Zeilen konnten nicht zum Preis des liefernden Modells bewertet werden ({{reasons}}) und fehlen in der Spalte „Tatsächlich“.",
+    "comparable": "Vergleichbar (auf beiden Seiten bewertete Zeilen): tatsächlich {{actual}}, bei {{asModel}} {{repriced}}",
+    "unattributedWrite": "{{tokens}} Cache-Write-Tokens hatten keine TTL-Aufteilung und werden zum 5-Minuten-Preis bewertet.",
+    "reason": {
+      "fastUnpriced": "Fast-Modus, kein veröffentlichter Fast-Preis",
+      "speedUnknown": "unbekannter Speed-Wert",
+      "unknownModel": "unbekanntes Modell"
+    }
   }
 }

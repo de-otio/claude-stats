@@ -353,7 +353,13 @@ export function buildAggregatePayload(
   const accountId =
     primary.accountId || deriveAccountId(primary.accountUuid, userSalt);
 
-  return projectUserAggregates(sessions, { accountId, periodKind });
+  // Price each session from its per-request message rows, so fast-mode and
+  // US-geo requests carry their multipliers. A `sessions` row cannot (it has no
+  // speed or geo); the projection falls back to it only for a session with no
+  // message rows.
+  const sessionCosts = store.getCostBySession(sessions.map((s) => s.session_id));
+
+  return projectUserAggregates(sessions, { accountId, periodKind, sessionCosts });
 }
 
 // ── Account linking ────────────────────────────────────────────────────────

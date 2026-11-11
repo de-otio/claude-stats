@@ -3047,6 +3047,49 @@ export class Store {
   }
 
   /**
+   * Token sums per pricing context, for counterfactual repricing
+   * (`reprice_period`). Same message set and filter builder as
+   * `getMessageTotalsRaw`, grouped by `(model, long-context tier, US geo, speed
+   * class)` and by one extra dimension: whether the request is in the TARGET
+   * model's long-context tier. `targetLongContextThreshold` is the prompt-token
+   * threshold of that tier (`longContextThresholdFor`), or null when the target
+   * has none (the flag is then 0 on every row).
+   *
+   * ALWAYS the raw path: it groups by `speed`, which the `message_hourly` rollup
+   * does not carry, so every fast-mode row is priced exactly and no
+   * `fastModeUnpriced` disclosure is needed. The threshold is inlined as an
+   * integer (it comes from the rate table, never from a caller).
+   */
+  getRepriceGroups(filters: MessageFilter, targetLongContextThreshold: number | null): RepriceGroupRow[] {
+    const f = this.buildMessageFilter(filters);
+    const targetLc =
+      targetLongContextThreshold === null
+        ? "0"
+        : `CASE WHEN (COALESCE(m.input_tokens,0) + COALESCE(m.cache_read_tokens,0) + COALESCE(m.cache_creation_tokens,0)) > ${Math.trunc(targetLongContextThreshold)} THEN 1 ELSE 0 END`;
+    const sql = `
+      SELECT
+        m.model,
+        ${lcSql("m")} AS long_context,
+        ${targetLc} AS target_long_context,
+        ${usGeoSql("m")} AS us_geo,
+        ${speedClassSql("m")} AS speed_class,
+        SUM(m.input_tokens) AS input_tokens,
+        SUM(m.output_tokens) AS output_tokens,
+        SUM(m.cache_read_tokens) AS cache_read_tokens,
+        SUM(m.cache_creation_tokens) AS cache_creation_tokens,
+        SUM(m.ephemeral_5m_cache_tokens) AS ephemeral_5m_cache_tokens,
+        SUM(m.ephemeral_1h_cache_tokens) AS ephemeral_1h_cache_tokens,
+        COUNT(*) AS msg_count
+      FROM messages m
+      WHERE ${this.messageWhereExists(f)} AND m.model IS NOT NULL
+      GROUP BY m.model, long_context, target_long_context, us_geo, speed_class
+    `;
+    const stmt = this.db.prepare(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (stmt.all as (...args: any[]) => unknown[])(...f.params) as RepriceGroupRow[];
+  }
+
+  /**
    * Per-account, per-model token totals for messages SENT in the window — the
    * SAME query `getMessageTotalsRaw` runs (message-timestamp filter + the same
    * session-scoped conditions), just carrying `account_uuid` and grouping by it.
@@ -4156,7 +4199,7 @@ export class Store {
       const placeholders = batch.map(() => "?").join(",");
       const stmt = this.db.prepare(`
         SELECT uuid, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
-          speed, inference_geo
+          speed, inference_geo, effort
         FROM messages
         WHERE uuid IN (${placeholders})
       `);
@@ -5454,6 +5497,17 @@ export interface MessageEffortTotalRow extends MessageTotalRow {
 }
 
 /**
+ * One pricing-context group of `getRepriceGroups`. Mirrors `MessageEffortTotalRow`
+ * without `effort`, plus `target_long_context` (the request's tier under the
+ * TARGET model's rule).
+ */
+export interface RepriceGroupRow extends MessageTotalRow {
+  /** 1 when the request is in the target model's long-context tier, else 0. */
+  target_long_context: number;
+  msg_count: number;
+}
+
+/**
  * Collapse (model, effort) rows to one row per (model, long-context tier, US
  * geo, speed class): token sums add, so for every model with no tier, and a
  * store with no US-pinned or fast-mode rows, the result equals the pre-V26
@@ -5539,6 +5593,8 @@ export interface MessageCostInputRow {
   speed: string | null;
   /** `messages.inference_geo`; null = not reported. */
   inference_geo: string | null;
+  /** `messages.effort` (V23); null = Claude Code did not report a tier. */
+  effort: string | null;
 }
 
 export interface EfficiencyMessageRow {
