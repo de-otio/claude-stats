@@ -62,6 +62,31 @@ export interface CollectResult {
    * `collect --verbose`.
    */
   unprefixedApiRequestLines: number;
+  /**
+   * Plain `api-request` lines whose head could not be read (no `params` key in
+   * the first 2,048 characters, a head slice that did not parse, or an
+   * invalid `id`). Counted by the parser, never thrown; non-zero means the
+   * writer's line shape changed. Printed by `collect --verbose`.
+   */
+  apiRequestHeadMisses: number;
+  /**
+   * `api_requests` rows actually handed to the store this run (schema V28,
+   * E1). Counted where the upsert happens — NOT per parsed line — so a row
+   * dropped for lack of a session id is not counted as read. Reported so a
+   * caller (the `repair request-records` summary) can state the same count a
+   * dry run would read (the lines total adds `apiRequestHeadMisses` and
+   * `apiRequestRowsDropped`).
+   */
+  apiRequestsRead: number;
+  /**
+   * `api_requests` rows the parser produced but this run could not hand to
+   * the store: no session id was resolvable (neither the parse range nor the
+   * store had one — the pathological first collect of a file whose first-ever
+   * parse saw only api-request lines). The checkpoint is NOT advanced past
+   * such a range, so the next collect re-reads it and stores the rows once a
+   * session exists; nothing is silently lost. Printed by `collect --verbose`.
+   */
+  apiRequestRowsDropped: number;
   schemaChanges: string[];
 }
 
@@ -81,6 +106,9 @@ export async function collect(
     ownerOverrides: 0,
     parseErrors: 0,
     unprefixedApiRequestLines: 0,
+    apiRequestHeadMisses: 0,
+    apiRequestsRead: 0,
+    apiRequestRowsDropped: 0,
     schemaChanges: [],
   };
 
@@ -185,6 +213,10 @@ export async function collect(
     result.filesProcessed++;
     result.parseErrors += parsed.errors.length;
     result.unprefixedApiRequestLines += parsed.unprefixedApiRequestLines;
+    result.apiRequestHeadMisses += parsed.apiRequestHeadMisses;
+    // `apiRequestsRead` is NOT incremented here: it counts rows actually
+    // handed to the store, which is decided inside the transaction below
+    // (the upsert is gated on a resolvable session id).
 
     // Store everything in a single transaction for crash safety
     // Resolve repo URL once per project path. Use the parser's corrected
@@ -256,6 +288,38 @@ export async function collect(
         store.upsertApiErrorEvents(parsed.apiErrorEvents);
       }
 
+      // V28 (E1): the per-request records read from `api-request` line heads,
+      // in the SAME transaction as the messages upsert. The session id is the
+      // store's own id of the file being parsed — never a value read from the
+      // request line.
+      //
+      // A collect range can hold api-request lines WITHOUT any
+      // session-establishing entry: the line is written when the request is
+      // SENT, and the assistant message that would establish the session
+      // arrives with the response (spec decision 3, test 4). The parser then
+      // reports no session, so fall back to the store — any incremental
+      // collect's file already has a sessions row, written together with its
+      // first checkpoint in the same transaction.
+      let droppedApiRequestRows = false;
+      if (parsed.apiRequests.length > 0) {
+        const sessionId =
+          parsed.session?.sessionId ?? store.findSessionIdBySourceFile(sf.filePath);
+        if (sessionId != null) {
+          store.upsertApiRequests(sessionId, parsed.apiRequests);
+          result.apiRequestsRead += parsed.apiRequests.length;
+        } else {
+          // Pathological first collect: this file's first-ever parse saw only
+          // api-request lines, so no sessions row exists to attribute the rows
+          // to (api_requests.session_id is NOT NULL). Do not silently lose
+          // them: the checkpoint OFFSET is held back (see below) so the next
+          // collect re-reads the range — the re-parse is idempotent — and the
+          // rows are stored once any session-establishing entry exists. The
+          // drop is reported separately (apiRequestRowsDropped).
+          result.apiRequestRowsDropped += parsed.apiRequests.length;
+          droppedApiRequestRows = true;
+        }
+      }
+
       if (parsed.errors.length > 0) {
         store.addToQuarantine(parsed.errors);
       }
@@ -287,10 +351,18 @@ export async function collect(
         }
       }
 
+      // V28 (E1) hold-back: when api-request rows were dropped (no session id
+      // to attribute them to), the OFFSET must not advance — advancing it would
+      // strand the rows permanently, because the range would never be re-read.
+      // The size, mtime and first-KB hash are still recorded, at the OLD offset
+      // (`startOffset`: byte 0 on a first collect). An unchanged file is then
+      // skipped by the ordinary size+mtime test instead of being re-parsed from
+      // the start on every collect; a changed file is re-read from the old
+      // offset (idempotent) and stores the rows once a session exists.
       store.upsertCheckpoint({
         filePath: sf.filePath,
         fileSize: fileStats.size,
-        lastByteOffset: parsed.lastGoodOffset,
+        lastByteOffset: droppedApiRequestRows ? startOffset : parsed.lastGoodOffset,
         lastMtime: fileStats.mtime,
         firstKbHash: parsed.firstKbHash,
         sourceDeleted: false,
@@ -318,6 +390,21 @@ export async function collect(
     console.log(
       `[warning] ${result.unprefixedApiRequestLines} api-request line(s) escaped the prefix test ` +
         `and were skipped after a full parse; the transcript line shape may have changed`
+    );
+  }
+
+  if (opts.verbose && result.apiRequestHeadMisses > 0) {
+    console.log(
+      `[warning] ${result.apiRequestHeadMisses} api-request line(s) had no readable head ` +
+        `(no params key in the first 2,048 characters, a malformed head, or an invalid id) ` +
+        `and were counted as head misses; the transcript line shape may have changed`
+    );
+  }
+
+  if (opts.verbose && result.apiRequestRowsDropped > 0) {
+    console.log(
+      `[warning] ${result.apiRequestRowsDropped} api-request row(s) had no session to be attributed to ` +
+        `and were NOT stored; their checkpoint offsets were held back, so the next collect after the file changes re-reads them`
     );
   }
 

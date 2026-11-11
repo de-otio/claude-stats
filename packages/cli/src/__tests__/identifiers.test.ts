@@ -7,6 +7,7 @@ import {
   isBuiltInAgentType,
   isBuiltInToolName,
   validIdentifier,
+  validOpaqueId,
   validSpawnDepth,
   validToolUseId,
 } from "@claude-stats/core/identifiers";
@@ -70,6 +71,45 @@ describe("validIdentifier", () => {
     // 100x the input may cost at most ~100x (with generous slack), never the
     // exponential blow-up a backtracking pattern would show.
     expect(large / Math.max(small, 1)).toBeLessThan(1_000);
+  });
+});
+
+describe("validOpaqueId", () => {
+  it.each([
+    "6f1c2a9e-3b4d-4e5f-8a7b-0c1d2e3f4a5b", // UUID (request id / requestRef)
+    "a0123456789abcdef", // 17 hex chars (agentId)
+    "req_1",
+    "agent-1",
+    "r".repeat(64),
+  ])("accepts %s", (v) => {
+    expect(validOpaqueId(v)).toBe(v);
+  });
+  it.each([
+    "team.reviewer",
+    "name@team",
+    "plugin:skill",
+    "a/b",
+    "../x",
+    "-lead",
+    "=cmd",
+    "has space",
+    "tab\there",
+    "ctl\u0001",
+    "r".repeat(65),
+    "",
+    7,
+    null,
+    undefined,
+    {},
+  ])("rejects %p", (v) => {
+    expect(validOpaqueId(v)).toBeNull();
+  });
+  it("never accepts anything validIdentifier would reject (the opaque class is a strict subset)", () => {
+    fc.assert(
+      fc.property(fc.string({ maxLength: 80 }), (v) => {
+        if (validOpaqueId(v) !== null) expect(validIdentifier(v)).toBe(v);
+      }),
+    );
   });
 });
 

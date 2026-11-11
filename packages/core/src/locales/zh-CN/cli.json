@@ -433,6 +433,19 @@
       "dryRunSummary": "将重新解析 {{files}} 个脚本文件，{{sessions}} 个会话将获得代理类型，{{messages}} 条消息将获得技能。",
       "parseErrors": "⚠  重新解析期间报告了 {{count}} 个解析错误。",
       "lockHeld": "另一项修复正在运行（pid {{pid}}，启动于 {{started}}）。等待其完成，或如果该进程已消失，请删除 repair_dedupe_lock 元数据行。"
+    },
+    "requestRecords": {
+      "description": "重新解析所有仍保留转录文件的 session,使现有历史记录获得按请求划分的记录(api_requests 行和 messages.request_ref)。仅运行一次;没有转录文件的 session 不会保留请求数据。",
+      "dryRunOption": "报告将读取的文件数和 api-request 行数,但不写入数据,也不创建备份。",
+      "forceOption": "即使回填已完成,也重新运行。",
+      "dryRunHeader": "请求记录回填(试运行)— 未写入任何更改:",
+      "doneHeader": "请求记录回填已完成:",
+      "alreadyDone": "此数据库已运行过请求记录回填,无需操作(使用 --force 可重新运行)。",
+      "backupWritten": "备份已写入 {{path}}",
+      "summary": "已重新解析 {{files}} 个转录文件,读取 {{lines}} 行 api-request,存储 {{requests}} 条请求记录。",
+      "dryRunSummary": "将重新解析 {{files}} 个转录文件,读取 {{lines}} 行 api-request。",
+      "parseErrors": "⚠  重新解析期间报告了 {{count}} 个解析错误。",
+      "lockHeld": "另一个修复正在运行(pid {{pid}},启动于 {{started}})。请等待其完成;如果该进程已不存在,请删除 repair_dedupe_lock 元数据行。"
     }
   },
   "archive": {

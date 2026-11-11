@@ -22,6 +22,7 @@ import type {
   OwnerRule,
   OwnerTarget,
   ApiErrorEvent,
+  ApiRequestFields,
 } from "@claude-stats/core/types";
 import { estimateCost, isLongContextRequest, longContextSqlExpr, longContextSqlExprHash, type CostOptions } from "@claude-stats/core/pricing";
 import { isPlaceholderOutput } from "@claude-stats/core/hygiene";
@@ -29,7 +30,7 @@ import { placeholderOutputSql } from "./placeholder-sql.js";
 import { requireTicketKey } from "@claude-stats/core/tickets";
 import { sanitizePromptText, decodeHtmlEntities } from "@claude-stats/core/sanitize";
 
-export const SCHEMA_VERSION = 27;
+export const SCHEMA_VERSION = 28;
 
 /**
  * SQL (0/1) classifying a `messages` row as a long-context request, over the
@@ -234,6 +235,7 @@ export class Store {
     if (current < 25) this.migrateToV25();
     if (current < 26) this.migrateToV26();
     if (current < 27) this.migrateToV27();
+    if (current < 28) this.migrateToV28();
 
     // Stamp the version FORWARD ONLY.
     //
@@ -613,6 +615,91 @@ export class Store {
       .get() as { n: number };
     if (tables.n < 2) return;
     this.recomputeMessageHourly();
+  }
+
+  /**
+   * V28 — per-request records from `api-request` lines (E1, O1 core).
+   *
+   * `api_requests` holds ONE row per `api-request` line Claude Code 2.1.300+
+   * writes beside the conversation: the request id, the store's session id of
+   * the file the line was first seen in, the agent id, the timestamp and the
+   * request shape hash. Sizes and names only — nothing inside `params` (which
+   * holds the system prompt and up to 272 KB of classifier context), the tail
+   * fields, or anything from `api-request-shape` / `api-request-blob` is ever
+   * read or stored. Exactly these five columns (E1 decision 7, shrunk with
+   * the E2 drop): no `cc_version`, `query_source_*`, `requested_ttl`.
+   *
+   * `messages.request_ref` links an assistant row to its request; NULL =
+   * not recorded. The link is a plain join key, NOT a foreign key, and
+   * `api_requests.session_id` carries no foreign key either: the request row
+   * records WHERE THE LINE WAS FIRST SEEN, never who spent — attribution
+   * comes from `messages.session_id` (Fable F5) — and `request_ref` can point
+   * at a row that does not exist on a peer device, because sync-merge does
+   * not carry `api_requests` (accepted for V28; any coverage figure computed
+   * from `request_ref` under-reports there).
+   *
+   * Additive + idempotent (addColumn checks table_info; CREATE IF NOT
+   * EXISTS), zero backfill: history gains request data only through the
+   * opt-in `repair request-records` command, exactly as V20/V22/V25 document
+   * for their transcript-derived columns.
+   *
+   * No index on `messages.request_ref`: it measurably slows a cold collect
+   * and nothing reads it yet.
+   */
+  private migrateToV28(): void {
+    // `api_requests` stands alone (no foreign key), so it is created even in a
+    // partial fixture that lacks `sessions`/`messages`: `upsertApiRequests` is
+    // then always safe to call. Only the column needs `messages`.
+    const hasMessages =
+      (this.db
+        .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'messages'")
+        .get() as { n: number }).n > 0;
+    const hasSessions =
+      (this.db
+        .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'sessions'")
+        .get() as { n: number }).n > 0;
+
+    // The CLI, the MCP server and the extension can start together on one
+    // file, and the schema version is only stamped after every step. The
+    // check-then-ALTER must therefore be atomic: BEGIN IMMEDIATE takes the
+    // write lock BEFORE the column check (a competing opener waits out its
+    // busy_timeout, then sees the finished schema), and COMMIT/ROLLBACK keeps a
+    // half-applied V28 from ever being visible.
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      if (hasMessages && hasSessions) {
+        const cols = this.db.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>;
+        if (!cols.some((c) => c.name === "request_ref")) {
+          try {
+            this.db.exec("ALTER TABLE messages ADD COLUMN request_ref TEXT");
+          } catch (err) {
+            // Belt and braces: a process that does not honour the lock
+            // protocol (an older build) may have added the column between the
+            // check and the ALTER. That is the state we wanted.
+            if (!/duplicate column name/i.test(String((err as Error)?.message))) throw err;
+          }
+        }
+        // The reader (the E3 request-to-message join) adds the index on
+        // messages(request_ref) in its own migration.
+      }
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS api_requests (
+          request_id  TEXT PRIMARY KEY,
+          session_id  TEXT NOT NULL,
+          agent_id    TEXT,
+          timestamp   INTEGER,
+          shape_hash  TEXT
+        );
+      `);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {
+        /* the transaction was already closed */
+      }
+      throw err;
+    }
   }
 
   private migrateToV13(): void {
@@ -1714,8 +1801,9 @@ export class Store {
         service_tier, inference_geo, ephemeral_5m_cache_tokens, ephemeral_1h_cache_tokens,
         prompt_text, tool_error_count,
         is_turn_start, web_search_requests, web_fetch_requests, is_throttled,
-        message_id, usage_counted, cost_basis, effort, speed, thinking_tokens, skill
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        message_id, usage_counted, cost_basis, effort, speed, thinking_tokens, skill,
+        request_ref
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (uuid) DO UPDATE SET
         model                       = excluded.model,
         ${keepIfNoUsage("input_tokens")},
@@ -1747,6 +1835,10 @@ export class Store {
         -- V25: a label, so COALESCE like effort/speed — a writer that does not
         -- know the column (older peer's shard) must not clear it.
         skill                       = COALESCE(excluded.skill, messages.skill),
+        -- V28 (E1): same never-clear rule for the request link — a writer
+        -- that does not know the column (an older build, an un-upgraded
+        -- peer's shard) supplies NULL and must not erase a known value.
+        request_ref                 = COALESCE(excluded.request_ref, messages.request_ref),
         -- A re-parse is authoritative about its OWN basis, in both directions:
         -- this is how a repair clears 'pre-dedupe'. The worst-wins rule applies
         -- to the cross-device MERGE (sync-merge/merge.ts), not here.
@@ -1848,8 +1940,42 @@ export class Store {
         r.effort ?? null, r.speed ?? null,
         zero ? null : (r.thinkingTokens ?? null),
         r.skill ?? null,
+        r.requestRef ?? null,
       );
     }
+  }
+
+  /**
+   * Upsert per-request records (V28, E1). One row per `api-request` line,
+   * keyed by request id; `sessionId` is the store's session id of the file
+   * being parsed (never read from the line). `ON CONFLICT DO NOTHING` is
+   * first-writer-wins: a forked or resumed transcript can replay the same
+   * request line into a second file, and the rows are identical except
+   * `session_id`, which records only where the line was first seen.
+   *
+   * The collector calls this in the SAME transaction as the messages upsert,
+   * so a collect that runs between the request line and its response stores
+   * both halves atomically — a join by key does not care which run wrote
+   * which side.
+   */
+  upsertApiRequests(sessionId: string, rows: ApiRequestFields[]): void {
+    if (rows.length === 0) return;
+    const stmt = this.db.prepare(`
+      INSERT INTO api_requests (request_id, session_id, agent_id, timestamp, shape_hash)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (request_id) DO NOTHING
+    `);
+    for (const r of rows) {
+      stmt.run(r.requestId, sessionId, r.agentId, r.timestamp, r.shapeHash);
+    }
+  }
+
+  /** Row count of `api_requests` (V28) — repair summaries and diagnostics. */
+  countApiRequests(): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS n FROM api_requests")
+      .get() as { n: number };
+    return row.n;
   }
 
   /** Append-only upsert for `api_error_events` (V22). See `migrateToV22`'s
@@ -3195,6 +3321,24 @@ export class Store {
     if (rows.length === 0) return null;
     if (rows.length > 1) throw new Error(`Ambiguous session ID prefix: ${partialId}`);
     return rows[0]!;
+  }
+
+  /**
+   * The session id whose row points at `sourceFile`, or null. Schema V28
+   * (E1): the aggregator uses this to attribute `api_requests` rows when a
+   * collect range contains api-request lines but no session-establishing
+   * entry — the line is written when the request is sent and the assistant
+   * message that would establish the session arrives with the response. Any
+   * incremental collect's file already has a sessions row (written together
+   * with its first checkpoint in the same transaction), so the lookup
+   * resolves exactly the session the file belongs to. `source_file` is not
+   * unique in principle, so the pick is deterministic.
+   */
+  findSessionIdBySourceFile(sourceFile: string): string | null {
+    const row = this.db
+      .prepare("SELECT session_id FROM sessions WHERE source_file = ? ORDER BY session_id LIMIT 1")
+      .get(sourceFile) as { session_id: string } | undefined;
+    return row?.session_id ?? null;
   }
 
   /**
@@ -5201,6 +5345,13 @@ export interface MessageRow {
   thinking_tokens?: number | null;
   /** Skill active for this message (schema V25); null = not recorded. */
   skill?: string | null;
+  /**
+   * The `api-request` line this message answers (schema V28, E1); null = not
+   * recorded. An opaque random id with no content, so it rides the
+   * personal-plane export (E1 decision 6); on a peer device it can point at
+   * an `api_requests` row that does not exist locally.
+   */
+  request_ref?: string | null;
 }
 
 /**

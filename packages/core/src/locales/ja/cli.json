@@ -433,6 +433,19 @@
       "dryRunSummary": "{{files}}個のトランスクリプトファイルが再解析され、{{sessions}}個のセッションがエージェントタイプを獲得し、{{messages}}個のメッセージがスキルを獲得します。",
       "parseErrors": "⚠  再解析中に{{count}}個の解析エラーが報告されました。",
       "lockHeld": "別の修復が実行中です（pid {{pid}}、開始 {{started}}）。完了するまで待つか、そのプロセスが消えている場合はrepair_dedupe_lockメタデータ行を削除してください。"
+    },
+    "requestRecords": {
+      "description": "トランスクリプトがまだ存在するすべての session を再解析し、既存の履歴にリクエスト単位のレコード (api_requests 行と messages.request_ref) を追加します。実行は 1 回のみで、トランスクリプトのない session にはリクエストデータは追加されません。",
+      "dryRunOption": "書き込みやバックアップの作成を行わずに、読み取られるファイル数と api-request 行数を報告します。",
+      "forceOption": "バックフィルが既に完了していても再実行します。",
+      "dryRunHeader": "リクエストレコードのバックフィル (ドライラン) — 変更は書き込まれません:",
+      "doneHeader": "リクエストレコードのバックフィルが完了しました:",
+      "alreadyDone": "リクエストレコードのバックフィルはこのデータベースで既に実行済みです。実行する処理はありません (再実行するには --force を使用してください)。",
+      "backupWritten": "バックアップを {{path}} に書き込みました",
+      "summary": "{{files}} 個のトランスクリプトファイルを再解析し、{{lines}} 行の api-request 行を読み取り、{{requests}} 件のリクエストレコードを保存しました。",
+      "dryRunSummary": "{{files}} 個のトランスクリプトファイルが再解析され、{{lines}} 行の api-request 行が読み取られます。",
+      "parseErrors": "⚠  再解析中に {{count}} 件の解析エラーが報告されました。",
+      "lockHeld": "別の修復処理が実行中です (pid {{pid}}、開始: {{started}})。完了するまでお待ちください。該当のプロセスが既に存在しない場合は、repair_dedupe_lock メタデータ行を削除してください。"
     }
   },
   "archive": {

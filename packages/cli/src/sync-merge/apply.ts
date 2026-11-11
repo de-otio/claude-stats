@@ -15,7 +15,7 @@
  */
 
 import type { MessageRecord, SessionRecord } from "@claude-stats/core/types";
-import { validIdentifier, validSpawnDepth, validToolUseId } from "@claude-stats/core/identifiers";
+import { validIdentifier, validOpaqueId, validSpawnDepth, validToolUseId } from "@claude-stats/core/identifiers";
 import type { DeviceId } from "@claude-stats/core/types/shard";
 import type { Store, MessageRow, SessionRow } from "../store/index.js";
 import type { MergedSession } from "./merge.js";
@@ -135,6 +135,12 @@ export function rowToMessageRecord(row: MessageRow): MessageRecord {
     effort: validShortToken(row.effort),
     speed: validShortToken(row.speed),
     skill: validIdentifier(row.skill),
+    // V28 (E1): a shard is another device's output, so the request link is
+    // re-validated where it enters this device's store. An invalid or
+    // oversized or name-shaped value applies as NULL ("not recorded"), never
+    // stored raw. Opaque-id shape, not `validIdentifier`: request_ref goes
+    // into the personal-plane export as "a random id with no content".
+    requestRef: validOpaqueId(row.request_ref),
     thinkingTokens: row.thinking_tokens ?? null,
     // Worst-wins is applied by the merge fold; an un-stamped row is doubt.
     costBasis: row.cost_basis === "per-response" ? "per-response" : "pre-dedupe",

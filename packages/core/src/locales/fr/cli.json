@@ -436,6 +436,19 @@
       "dryRunSummary": "{{files}} fichiers de transcription seraient réanalysés, {{sessions}} sessions acquerraient un type d'agent, {{messages}} messages acquerraient une compétence.",
       "parseErrors": "⚠  {{count}} erreurs d'analyse signalées lors de la réanalyse.",
       "lockHeld": "Une autre réparation est en cours (pid {{pid}}, démarrée {{started}}). Attendez qu'elle se termine, ou supprimez la ligne de métadonnées repair_dedupe_lock si ce processus est parti."
+    },
+    "requestRecords": {
+      "description": "Réanalyse chaque session dont la transcription existe encore afin que l'historique existant dispose d'enregistrements par requête (lignes api_requests et messages.request_ref). S'exécute une seule fois ; les sessions sans transcription n'auront aucune donnée de requête.",
+      "dryRunOption": "Indique combien de fichiers et de lignes api-request seraient lus, sans rien écrire ni créer de sauvegarde.",
+      "forceOption": "Relance le backfill même s'il a déjà été exécuté jusqu'au bout.",
+      "dryRunHeader": "Backfill des enregistrements de requête (simulation) — aucune modification écrite :",
+      "doneHeader": "Backfill des enregistrements de requête terminé :",
+      "alreadyDone": "Le backfill des enregistrements de requête a déjà été exécuté sur cette base de données ; rien à faire (utilisez --force pour le relancer).",
+      "backupWritten": "Sauvegarde écrite dans {{path}}",
+      "summary": "{{files}} fichiers de transcription réanalysés, {{lines}} lignes api-request lues, {{requests}} enregistrements de requête stockés.",
+      "dryRunSummary": "{{files}} fichiers de transcription seraient réanalysés, {{lines}} lignes api-request seraient lues.",
+      "parseErrors": "⚠  {{count}} erreurs d'analyse signalées pendant la réanalyse.",
+      "lockHeld": "Une autre réparation est en cours (pid {{pid}}, démarrée {{started}}). Attendez qu'elle se termine, ou supprimez la ligne de métadonnées repair_dedupe_lock si ce processus n'existe plus."
     }
   },
   "archive": {

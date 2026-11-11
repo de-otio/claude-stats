@@ -25,6 +25,12 @@
  *         metadata `agent_attribution_backfill = v25`. Auto-backup (0600),
  *         shared advisory lock; --dry-run = counts only, no write.
  *
+ *   repair request-records [--dry-run] [--force]
+ *       — one-time re-parse of surviving transcripts so existing history gains
+ *         `api_requests` rows and `messages.request_ref`. Gated on metadata
+ *         `request_records_backfill = v28`; --force re-runs anyway. Auto-backup
+ *         (0600), shared advisory lock; --dry-run = counts only, no write.
+ *
  * Thin command layer (cli/** is excluded from coverage — keep logic in
  * covered modules): parse args → call the covered repair function and print.
  *
@@ -36,6 +42,7 @@ import { repairProjectPaths } from "../repair/project-paths.js";
 import { reextractTicketLinks } from "../repair/ticket-links.js";
 import { repairDedupe, RepairLockHeldError } from "../repair/dedupe.js";
 import { repairAgentAttribution } from "../repair/agentAttribution.js";
+import { repairRequestRecords } from "../repair/requestRecords.js";
 import { loadConfig, ticketProjectKeys } from "../config.js";
 import { t } from "../i18n.js";
 import { formatTokens } from "../reporter/index.js";
@@ -76,6 +83,67 @@ export function registerRepairCommands(program: Command): void {
     .action(async (opts: { dryRun?: boolean }) => {
       await runRepairAgentAttribution(opts.dryRun ?? false);
     });
+
+  repair
+    .command("request-records")
+    .description(t("cli:repair.requestRecords.description"))
+    .option("--dry-run", t("cli:repair.requestRecords.dryRunOption"))
+    .option("--force", t("cli:repair.requestRecords.forceOption"))
+    .action(async (opts: { dryRun?: boolean; force?: boolean }) => {
+      await runRepairRequestRecords(opts.dryRun ?? false, opts.force ?? false);
+    });
+}
+
+async function runRepairRequestRecords(dryRun: boolean, force: boolean): Promise<void> {
+  const store = new Store();
+  try {
+    let summary;
+    try {
+      summary = await repairRequestRecords(
+        store,
+        { dryRun, force, ticketAllowlist: ticketProjectKeys(loadConfig()) },
+        Date.now,
+      );
+    } catch (err) {
+      if (err instanceof RepairLockHeldError) {
+        console.error(
+          t("cli:repair.requestRecords.lockHeld", {
+            pid: err.holder.pid,
+            started: new Date(err.holder.startedAt).toLocaleString(),
+          }),
+        );
+        process.exitCode = 1;
+        return;
+      }
+      throw err;
+    }
+
+    if (summary.alreadyDone) {
+      console.log(t("cli:repair.requestRecords.alreadyDone"));
+      return;
+    }
+    console.log(
+      summary.dryRun
+        ? t("cli:repair.requestRecords.dryRunHeader")
+        : t("cli:repair.requestRecords.doneHeader"),
+    );
+    if (summary.backupPath) {
+      console.log(t("cli:repair.requestRecords.backupWritten", { path: summary.backupPath }));
+    }
+    // Counts only — never request ids, shape hashes or any other field value.
+    console.log(
+      t(summary.dryRun ? "cli:repair.requestRecords.dryRunSummary" : "cli:repair.requestRecords.summary", {
+        files: summary.files,
+        lines: summary.requestLines,
+        requests: summary.requestsStored,
+      }),
+    );
+    if (summary.parseErrors > 0) {
+      console.warn(t("cli:repair.requestRecords.parseErrors", { count: summary.parseErrors }));
+    }
+  } finally {
+    store.close();
+  }
 }
 
 async function runRepairAgentAttribution(dryRun: boolean): Promise<void> {

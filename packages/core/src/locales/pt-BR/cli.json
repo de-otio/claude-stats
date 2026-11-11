@@ -436,6 +436,19 @@
       "dryRunSummary": "{{files}} arquivos de transcrição seriam re-analisados, {{sessions}} sessões ganhariam tipo de agente, {{messages}} mensagens ganhariam skill.",
       "parseErrors": "⚠  {{count}} erros de análise reportados durante a re-análise.",
       "lockHeld": "Outro reparo está em execução (pid {{pid}}, iniciado {{started}}). Aguarde sua conclusão ou delete a linha de metadados repair_dedupe_lock se esse processo desapareceu."
+    },
+    "requestRecords": {
+      "description": "Reanalisa todas as sessions cujo transcript ainda existe para que o histórico existente ganhe registros por requisição (linhas de api_requests e messages.request_ref). Executa uma única vez; sessions sem transcript não mantêm dados de requisição.",
+      "dryRunOption": "Informa quantos arquivos e linhas de api-request seriam lidos, sem gravar nem criar um backup.",
+      "forceOption": "Executa o backfill novamente, mesmo que já tenha sido concluído.",
+      "dryRunHeader": "Backfill de registros de requisição (simulação) — nenhuma alteração gravada:",
+      "doneHeader": "Backfill de registros de requisição concluído:",
+      "alreadyDone": "O backfill de registros de requisição já foi executado neste banco de dados; nada a fazer (use --force para executar novamente).",
+      "backupWritten": "Backup gravado em {{path}}",
+      "summary": "{{files}} arquivos de transcript reanalisados, {{lines}} linhas de api-request lidas, {{requests}} registros de requisição armazenados.",
+      "dryRunSummary": "{{files}} arquivos de transcript seriam reanalisados, {{lines}} linhas de api-request seriam lidas.",
+      "parseErrors": "⚠  {{count}} erros de análise relatados durante a reanálise.",
+      "lockHeld": "Outro reparo está em execução (pid {{pid}}, iniciado em {{started}}). Aguarde a conclusão ou exclua a linha de metadados repair_dedupe_lock se esse processo não existir mais."
     }
   },
   "archive": {
