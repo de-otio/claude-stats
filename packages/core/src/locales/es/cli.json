@@ -205,7 +205,14 @@
     "agentsPeriod": "Período de tiempo: día, semana, mes, o todo (predeterminado: mes)",
     "agentsLimit": "Filas nombradas por lista antes de que el resto se pliegue en una fila de resto (predeterminado: 10)",
     "agentsJson": "Salida JSON legible por máquina (el AgentCostReport completo)",
-    "exportIncludeAgentNames": "También exportar tipo de agente, profundidad de generación e ID de llamada de herramienta (nombres creados por el usuario; omitido de forma predeterminada)"
+    "exportIncludeAgentNames": "También exportar tipo de agente, profundidad de generación e ID de llamada de herramienta (nombres creados por el usuario; omitido de forma predeterminada)",
+    "costPerTaskGroupBy": "Agrupa el desglose por: model (predeterminado) o model_effort (modelo y esfuerzo de razonamiento)",
+    "reprice": "Recalcula el precio de los tokens de un periodo con las tarifas de otro modelo (mismo volumen de tokens, un límite superior)",
+    "repriceFrom": "Primer día, AAAA-MM-DD (inclusive)",
+    "repriceTo": "Último día, AAAA-MM-DD (inclusive)",
+    "repriceModel": "Modelo que sirvió los tokens (p. ej., claude-opus-5-5)",
+    "repriceAs": "Modelo con cuyas tarifas se recalcula (p. ej., claude-fable-5-2)",
+    "repriceProject": "Solo esta ruta de proyecto"
   },
   "collection": {
     "collecting": "Recopilando...",
@@ -319,7 +326,10 @@
     "confidenceHigh": "confianza alta",
     "confidenceMedium": "confianza media",
     "confidenceLow": "confianza baja",
-    "fastModeUnpriced": "{{count}} solicitudes en modo rápido se valoran a la tarifa estándar en este total; su costo facturado es mayor."
+    "fastModeUnpriced": "{{count}} solicitudes en modo rápido se valoran a la tarifa estándar en este total; su costo facturado es mayor.",
+    "costPerTaskByModelEffort": "Por modelo y esfuerzo",
+    "costPerTaskNoEffort": "sin esfuerzo",
+    "costPerTaskEffortCoverage": "Proporción del gasto con esfuerzo etiquetado: {{share}} (las filas \"sin esfuerzo\" son el resto)"
   },
   "status": {
     "databaseSize": "Tamaño de la base de datos",
@@ -377,7 +387,9 @@
     "invalidDateRange": "Rango de fechas no válido: {{message}}",
     "invalidPackPeriod": "Período de paquete no válido: {{message}}",
     "invalidInvoiceCsv": "No se pudo leer --invoice-csv {{path}}: {{message}}",
-    "invalidAgentsLimit": "Inválido --limit \\\"{{value}}\\\": use un número entero de 1 o más"
+    "invalidAgentsLimit": "Inválido --limit \\\"{{value}}\\\": use un número entero de 1 o más",
+    "invalidGroupBy": "Valor de --group-by no válido \"{{value}}\": use model o model_effort",
+    "invalidReprice": "No se puede recalcular el precio: {{message}}"
   },
   "repair": {
     "description": "Repara los datos derivados que la recopilación normal no puede corregir de forma retroactiva.",
@@ -659,5 +671,28 @@
     "depthUnrecorded": "Profundidad no registrada: {{cost}} ({{share}}) · {{messages}} mensajes",
     "otherDepthRow": "(otro: {{buckets}} más profundidades): {{cost}} ({{share}}) · {{messages}} mensajes",
     "byDepthEmpty": "No hay gasto de subagentes en esta ventana."
+  },
+  "reprice": {
+    "title": "Recálculo de {{model}} con tarifas de {{asModel}} · del {{from}} al {{to}}",
+    "colCategory": "Categoría",
+    "colActual": "Real",
+    "colRepriced": "Con {{asModel}}",
+    "input": "Entrada",
+    "output": "Salida",
+    "cacheWrite5m": "Escritura en cache (5 min)",
+    "cacheWrite1h": "Escritura en cache (1 h)",
+    "cacheRead": "Lectura de cache",
+    "total": "Total",
+    "rowsLine": "{{rows}} filas de mensajes de {{model}}",
+    "noRows": "No hay mensajes de {{model}} en este periodo.",
+    "unpricedCounterfactual": "No se pudo calcular el precio de {{rows}} filas con {{asModel}} ({{reasons}}) y se han excluido de esa columna. Su coste real: {{actualCost}}.",
+    "unpricedActual": "No se pudo calcular el precio de {{rows}} filas con el modelo que las sirvió ({{reasons}}) y se han excluido de la columna real.",
+    "comparable": "Comparación equivalente (filas con precio en ambos lados): real {{actual}}, con {{asModel}} {{repriced}}",
+    "unattributedWrite": "{{tokens}} tokens de escritura en cache no tenían desglose de TTL y se calculan con la tarifa de 5 minutos.",
+    "reason": {
+      "fastUnpriced": "modo rápido, sin tarifa rápida publicada",
+      "speedUnknown": "valor de velocidad no reconocido",
+      "unknownModel": "modelo desconocido"
+    }
   }
 }

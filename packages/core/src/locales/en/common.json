@@ -220,5 +220,8 @@
     "refresh": "Refresh",
     "save": "Save",
     "send": "Send"
+  },
+  "reprice": {
+    "equalTokenVolumeNote": "Equal token volume — an upper bound when the target model uses fewer tokens per task."
   }
 }

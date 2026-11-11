@@ -68,6 +68,13 @@ export interface ProjectGitActivity {
 
 export type Confidence = 'high' | 'medium' | 'low';
 
+/** One `(model, effort)` share of a task's cost. See `DailyDigestItem.costByModelEffort`. */
+export interface CostByModelEffortEntry {
+  model: string;
+  effort: string | null;
+  cost: number;
+}
+
 export interface DailyDigestItem {
   id: ItemId;
   project: string;
@@ -87,6 +94,15 @@ export interface DailyDigestItem {
    * before this field existed normalise to `{}` on read.
    */
   costByModel: Readonly<Record<string, number>>;
+  /**
+   * The same cost split by `(model, effort)`: one entry per distinct pair,
+   * values sum to `estimatedCost`. `effort` is the reasoning-effort tier Claude
+   * Code recorded for the message, or `null` when it recorded none — a bucket,
+   * never a tier. Sorted by model, then `compareEffort`, so the order is
+   * deterministic. Optional because a digest cached before this field existed
+   * lacks it (readers treat that as "effort unknown", i.e. `null`).
+   */
+  costByModelEffort?: readonly CostByModelEffortEntry[];
   toolHistogram: Readonly<Record<string, number>>;
   filePathsTouched: readonly string[];
   git: ProjectGitActivity | null;

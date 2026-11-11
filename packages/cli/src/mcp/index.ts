@@ -26,6 +26,8 @@ import { readStatusHealth, sessionCostBasis } from "../reporter/index.js";
 import { placeholderOutputShareFor } from "../dashboard/placeholder-share.js";
 import { costBasisFor, countCostBasisRows, summarizeCostBasis } from "../reporter/cost-basis.js";
 import { MCP_VERSION } from "./version.js";
+import { COST_PER_TASK_GROUP_BY } from "../cost-per-task/group-by.js";
+import { isModelIdShape } from "@claude-stats/core/repricing";
 import { t } from "../i18n.js";
 import { readClaudeAccount } from "../account.js";
 import {
@@ -660,6 +662,12 @@ export function createMcpServer(store: Store): McpServer {
       "Labelling is a human action (CLI `task-outcome` / the dashboard), keeping " +
       "the producer of the number separate from the judge of success. The " +
       "response is numbers and model names only — no stored prompt text.\n\n" +
+      "`groupBy: \"model_effort\"` adds `byModelEffort`: one cell per `(model, reasoning effort)` with its tasks, " +
+      "successful tasks, success rate and cost per successful task (each task is assigned to the cell that carried " +
+      "most of its cost). A cell with fewer than `minObservable` observable tasks has `status: \"insufficient\"` and " +
+      "NO rate or cost figure. `effort: null` means Claude Code recorded no effort: it is its own row and is never " +
+      "folded into a tier; read `effortTaggedShare` (share of spend on rows with an effort tag) before comparing " +
+      "tiers. Untagged history cannot say which effort produced it.\n\n" +
       "PRICING-BASIS NOTE: unlike `get_stats`/`get_efficiency_hints`/`get_cost_per_ticket`, this tool's per-task " +
       "cost figures are NOT yet TTL-aware — every cache write is still priced at the flat 5-minute rate regardless " +
       "of which TTL was actually recorded. So a workload on the 1-hour TTL will show a LOWER cost here than the " +
@@ -674,8 +682,10 @@ export function createMcpServer(store: Store): McpServer {
         .describe("Filter to a specific account UUID (full or prefix match)"),
       byModel: z.boolean().default(true)
         .describe("Include the per-model breakdown (dominant-model assignment)"),
+      groupBy: z.enum(COST_PER_TASK_GROUP_BY).optional()
+        .describe("`model_effort` adds `byModelEffort`, the breakdown keyed by (model, reasoning effort); default `model`"),
     },
-    async ({ period, since, until, project, account, byModel }) => {
+    async ({ period, since, until, project, account, byModel, groupBy }) => {
       // Route `account` through the shared resolver so a prefix works here too
       // (it previously required an exact UUID — a prefix silently returned zero
       // rows). Consistent behavior across all four account-filtering tools.
@@ -690,6 +700,7 @@ export function createMcpServer(store: Store): McpServer {
         projectPath: project,
         accountUuid: resolved.accountUuid,
         byModel,
+        groupBy,
       });
       const { periodRange } = await import("../reporter/index.js");
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -702,6 +713,54 @@ export function createMcpServer(store: Store): McpServer {
           projectPath: project,
           accountUuid: resolved.accountUuid,
         }),
+      });
+    },
+  );
+
+  // ── reprice_period ─────────────────────────────────────────────────────────
+  server.tool(
+    "reprice_period",
+    "Counterfactual repricing: what the SAME token counts of one model in a date range would have cost at " +
+      "another model's rates (for example: this month's Opus tokens priced as Fable). Returns the actual cost and " +
+      "the repriced cost per token category (`input`, `output`, `cacheWrite5m`, `cacheWrite1h`, `cacheRead`) and in " +
+      "total, plus the token volume both sides are priced at.\n\n" +
+      "EQUAL TOKEN VOLUME: `equalTokenVolumeNote` states it. It is an upper bound when the target model uses fewer " +
+      "tokens per task; it says nothing about whether the target would have done the work. Compare outcomes with " +
+      "`get_cost_per_task` (`groupBy: \"model_effort\"`).\n\n" +
+      "Per-request modifiers (long-context tier, fast mode, US-only inference) are applied to BOTH sides, each by " +
+      "its own model's rules. A fast-mode row repriced to a model with no published fast rate is NOT priced at " +
+      "standard: it is counted in `unpriced.counterfactual` (rows, reasons and the rows' actual cost) and left out of " +
+      "`counterfactual`; `comparable` holds the like-for-like totals over rows priced on both sides. " +
+      "`cacheWriteUnattributedTokens` are cache writes with no recorded TTL, priced at the 5-minute rate.\n\n" +
+      "An unknown model id (no rate) is refused with an error, never priced at $0. `from`/`to` are inclusive dates in " +
+      "the host timezone. Reads the exact per-message path (never the hourly rollup), so `speed` is exact. READ-ONLY." +
+      COST_BASIS_SHORT,
+    {
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("First day, YYYY-MM-DD, inclusive"),
+      to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Last day, YYYY-MM-DD, inclusive"),
+      project: z.string().optional().describe("Filter to a specific project path"),
+      model: z.string().refine(isModelIdShape, { message: "not a model id" })
+        .describe("Model that served the tokens, e.g. claude-opus-5-5"),
+      asModel: z.string().refine(isModelIdShape, { message: "not a model id" })
+        .describe("Model to price the same tokens at, e.g. claude-fable-5-2"),
+    },
+    async ({ from, to, project, model, asModel }) => {
+      const { loadConfig } = await import("../config.js");
+      const { buildRepriceResult } = await import("../reprice/index.js");
+      const outcome = await buildRepriceResult(store, {
+        from,
+        to,
+        project,
+        model,
+        asModel,
+        rateOverrides: loadConfig().pricing?.rates,
+      });
+      if (!outcome.ok) return formatResult({ error: outcome.error });
+      return formatResult({
+        window: { from, to },
+        ...outcome.result,
+        equalTokenVolumeNote: t("common:reprice.equalTokenVolumeNote"),
+        costBasis: costBasisFor(store, outcome.filters),
       });
     },
   );

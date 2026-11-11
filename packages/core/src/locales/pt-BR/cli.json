@@ -205,7 +205,14 @@
     "agentsPeriod": "Período de tempo: dia, semana, mês ou tudo (padrão: mês)",
     "agentsLimit": "Linhas nomeadas a exibir por lista antes de agrupar o restante em uma linha de resto (padrão: 10)",
     "agentsJson": "Saída JSON legível por máquina (o AgentCostReport completo)",
-    "exportIncludeAgentNames": "Também exportar tipo de agente, profundidade de spawn e id de chamada de ferramenta de spawn (nomes criados pelo usuário; omitido por padrão)"
+    "exportIncludeAgentNames": "Também exportar tipo de agente, profundidade de spawn e id de chamada de ferramenta de spawn (nomes criados pelo usuário; omitido por padrão)",
+    "costPerTaskGroupBy": "Agrupa o detalhamento por: model (padrão) ou model_effort (modelo e esforço de raciocínio)",
+    "reprice": "Reprecifica os tokens de um período com as tarifas de outro modelo (mesmo volume de tokens, um limite superior)",
+    "repriceFrom": "Primeiro dia, AAAA-MM-DD (inclusivo)",
+    "repriceTo": "Último dia, AAAA-MM-DD (inclusivo)",
+    "repriceModel": "Modelo que atendeu os tokens (ex.: claude-opus-5-5)",
+    "repriceAs": "Modelo com o qual reprecificar (ex.: claude-fable-5-2)",
+    "repriceProject": "Somente este caminho de projeto"
   },
   "collection": {
     "collecting": "Coletando...",
@@ -319,7 +326,10 @@
     "confidenceHigh": "confiança alta",
     "confidenceMedium": "confiança média",
     "confidenceLow": "confiança baixa",
-    "fastModeUnpriced": "{{count}} requisições em fast-mode são precificadas pela tarifa padrão neste total; o custo cobrado delas é maior."
+    "fastModeUnpriced": "{{count}} requisições em fast-mode são precificadas pela tarifa padrão neste total; o custo cobrado delas é maior.",
+    "costPerTaskByModelEffort": "Por modelo e esforço",
+    "costPerTaskNoEffort": "sem esforço",
+    "costPerTaskEffortCoverage": "Parcela do gasto com esforço identificado: {{share}} (as linhas \"sem esforço\" são o restante)"
   },
   "status": {
     "databaseSize": "Tamanho do banco",
@@ -377,7 +387,9 @@
     "invalidDateRange": "Intervalo de datas inválido: {{message}}",
     "invalidPackPeriod": "Período de pacote inválido: {{message}}",
     "invalidInvoiceCsv": "Não foi possível ler --invoice-csv {{path}}: {{message}}",
-    "invalidAgentsLimit": "Inválido --limit \"{{value}}\": use um número inteiro de 1 ou mais"
+    "invalidAgentsLimit": "Inválido --limit \"{{value}}\": use um número inteiro de 1 ou mais",
+    "invalidGroupBy": "--group-by inválido \"{{value}}\": use model ou model_effort",
+    "invalidReprice": "Não foi possível reprecificar: {{message}}"
   },
   "repair": {
     "description": "Repara dados derivados que a coleta normal não consegue corrigir retroativamente.",
@@ -659,5 +671,28 @@
     "depthUnrecorded": "Profundidade não registrada: {{cost}} ({{share}}) · {{messages}} mensagens",
     "otherDepthRow": "(outro: {{buckets}} mais profundidades): {{cost}} ({{share}}) · {{messages}} mensagens",
     "byDepthEmpty": "Nenhum gasto de suagente nesta janela."
+  },
+  "reprice": {
+    "title": "Reprecificar {{model}} com tarifas de {{asModel}} · {{from}} a {{to}}",
+    "colCategory": "Categoria",
+    "colActual": "Real",
+    "colRepriced": "Com {{asModel}}",
+    "input": "Entrada",
+    "output": "Saída",
+    "cacheWrite5m": "Escrita em cache (5 min)",
+    "cacheWrite1h": "Escrita em cache (1 h)",
+    "cacheRead": "Leitura de cache",
+    "total": "Total",
+    "rowsLine": "{{rows}} linhas de mensagens de {{model}}",
+    "noRows": "Nenhuma mensagem de {{model}} neste período.",
+    "unpricedCounterfactual": "Não foi possível precificar {{rows}} linhas com {{asModel}} ({{reasons}}); elas ficam fora dessa coluna. Custo real delas: {{actualCost}}.",
+    "unpricedActual": "Não foi possível precificar {{rows}} linhas com o modelo que atendeu ({{reasons}}); elas ficam fora da coluna real.",
+    "comparable": "Comparação equivalente (linhas precificadas nos dois lados): real {{actual}}, com {{asModel}} {{repriced}}",
+    "unattributedWrite": "{{tokens}} tokens de escrita em cache não tinham divisão de TTL e foram precificados na tarifa de 5 minutos.",
+    "reason": {
+      "fastUnpriced": "modo fast, sem tarifa fast publicada",
+      "speedUnknown": "valor de velocidade não reconhecido",
+      "unknownModel": "modelo desconhecido"
+    }
   }
 }

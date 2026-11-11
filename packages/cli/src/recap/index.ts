@@ -21,6 +21,7 @@ import { rowCostOpts, type Store } from '../store/index.js';
 import type {
   CachedEntry,
   Confidence,
+  CostByModelEffortEntry,
   DailyDigest,
   DailyDigestItem,
   DailyDigestOptions,
@@ -48,6 +49,7 @@ import type { CacheClient, SnapshotHashInputs } from './cache.js';
 import { wrapUntrusted } from '../mcp/index.js';
 import { sanitizePromptText } from '@claude-stats/core/sanitize';
 import { estimateCost } from '@claude-stats/core/pricing';
+import { compareEffort, normaliseEffort } from '@claude-stats/core/effort';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1033,9 +1035,13 @@ function buildDigestItem(
   // subagent cost. Bucketed by model in the same pass.
   let estimatedCost = 0;
   const costByModel: Record<string, number> = {};
+  // Same split keyed by (model, effort); effort is normalised so "" and absent
+  // are both `null`, and `null` stays its own bucket.
+  const costByModelEffort = new Map<string, CostByModelEffortEntry>();
   const addCost = (
     rows: ReadonlyArray<{
       model: string | null;
+      effort?: string | null;
       input_tokens: number;
       output_tokens: number;
       cache_read_tokens: number;
@@ -1058,6 +1064,11 @@ function buildDigestItem(
       );
       estimatedCost += cost;
       costByModel[row.model] = (costByModel[row.model] ?? 0) + cost;
+      const effort = normaliseEffort(row.effort);
+      const key = `${row.model}\u0000${effort ?? ''}\u0000${effort === null ? 'n' : 's'}`;
+      const cell = costByModelEffort.get(key);
+      if (cell) cell.cost += cost;
+      else costByModelEffort.set(key, { model: row.model, effort, cost });
     }
   };
 
@@ -1147,6 +1158,11 @@ function buildDigestItem(
     duration: { wallMs, activeMs },
     estimatedCost,
     costByModel: Object.freeze(costByModel),
+    costByModelEffort: Object.freeze(
+      [...costByModelEffort.values()].sort(
+        (a, b) => (a.model < b.model ? -1 : a.model > b.model ? 1 : 0) || compareEffort(a.effort, b.effort),
+      ),
+    ),
     toolHistogram: Object.freeze(toolHistogram),
     filePathsTouched,
     git,

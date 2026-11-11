@@ -220,5 +220,8 @@
     "refresh": "刷新",
     "save": "保存",
     "send": "发送"
+  },
+  "reprice": {
+    "equalTokenVolumeNote": "相同 token 量 — 若目标模型每个任务使用的 token 更少,则此为上限。"
   }
 }

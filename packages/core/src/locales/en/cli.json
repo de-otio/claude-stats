@@ -181,9 +181,16 @@
     "costPerTask": "Cost per successful task — equivalent-API dollars per shipped/confirmed task, overall and per model",
     "costPerTaskPeriod": "Time period: day, week, month, or all (default: month)",
     "costPerTaskByModel": "Break the metric down by dominant model",
+    "costPerTaskGroupBy": "Group the breakdown by: model (default) or model_effort (model and reasoning effort)",
     "costPerTaskCalibrate": "Output calibration metrics (proxy/signal agreement vs your labels) as JSON",
     "costPerTaskLlmJudge": "Run the opt-in LLM judge on ambiguous tasks (needs llmJudge config; sends a blinded task summary to your endpoint)",
     "costPerTaskLlmJudgeUnconfigured": "--llm-judge requested but llmJudge.endpoint/model are not set; skipping the judge.",
+    "reprice": "Reprice a window's token counts at another model's rates (equal token volume, an upper bound)",
+    "repriceFrom": "First day, YYYY-MM-DD (inclusive)",
+    "repriceTo": "Last day, YYYY-MM-DD (inclusive)",
+    "repriceModel": "Model that served the tokens (e.g. claude-opus-5-5)",
+    "repriceAs": "Model to reprice them at (e.g. claude-fable-5-2)",
+    "repriceProject": "Only this project path",
     "ticket": "Link, negate, or list manual ticket attributions for a session",
     "ticketSessionArg": "Session ID (or prefix)",
     "ticketKeyArg": "Ticket key (e.g. PROJ-123). Omitted with no other flag: lists current links",
@@ -307,6 +314,9 @@
     "costPerTaskSuccessShort": "success",
     "costPerTaskInsufficient": "n/a (<{{min}} obs)",
     "costPerTaskObsShort": "obs",
+    "costPerTaskByModelEffort": "By model and effort",
+    "costPerTaskNoEffort": "no effort",
+    "costPerTaskEffortCoverage": "Effort-tagged share of spend: {{share}} (the \"no effort\" rows are the rest)",
     "ticketTitle": "Ticket {{key}} — {{period}}",
     "ticketNotFound": "No attributed spend found for {{key}} in this period — check the key and the date range.",
     "ticketTokensLabel": "Tokens",
@@ -432,7 +442,9 @@
     "invalidDateRange": "Invalid date range: {{message}}",
     "invalidPackPeriod": "Invalid pack period: {{message}}",
     "invalidInvoiceCsv": "Could not read --invoice-csv {{path}}: {{message}}",
-    "invalidAgentsLimit": "Invalid --limit \"{{value}}\": use a whole number of 1 or more"
+    "invalidAgentsLimit": "Invalid --limit \"{{value}}\": use a whole number of 1 or more",
+    "invalidGroupBy": "Invalid --group-by \"{{value}}\": use model or model_effort",
+    "invalidReprice": "Cannot reprice: {{message}}"
   },
   "archive": {
     "description": "Manage transcript archives.",
@@ -656,5 +668,28 @@
     "finding": "  {{model}} refused the rate of {{matchedKey}} ({{reason}}, {{table}} table) — add a pricing row or a config override",
     "none": "Every priced model id resolved to a rate.",
     "statusLabel": "Unpriced models"
+  },
+  "reprice": {
+    "title": "Reprice {{model}} at {{asModel}} rates · {{from}} to {{to}}",
+    "colCategory": "Category",
+    "colActual": "Actual",
+    "colRepriced": "At {{asModel}}",
+    "input": "Input",
+    "output": "Output",
+    "cacheWrite5m": "Cache write (5m)",
+    "cacheWrite1h": "Cache write (1h)",
+    "cacheRead": "Cache read",
+    "total": "Total",
+    "rowsLine": "{{rows}} message rows of {{model}}",
+    "noRows": "No messages for {{model}} in this window.",
+    "unpricedCounterfactual": "{{rows}} rows could not be priced at {{asModel}} ({{reasons}}) and are left out of that column. Their actual cost: {{actualCost}}.",
+    "unpricedActual": "{{rows}} rows could not be priced at the serving model ({{reasons}}) and are left out of the actual column.",
+    "comparable": "Like-for-like (rows priced on both sides): actual {{actual}}, at {{asModel}} {{repriced}}",
+    "unattributedWrite": "{{tokens}} cache-write tokens had no TTL split and are priced at the 5-minute rate.",
+    "reason": {
+      "fastUnpriced": "fast mode, no published fast rate",
+      "speedUnknown": "unrecognised speed value",
+      "unknownModel": "unknown model"
+    }
   }
 }

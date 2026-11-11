@@ -86,7 +86,8 @@ list and that file ever disagree, the file wins.
 | `get_status`         | Database health, session count, last collection time                           |
 | `search_history`     | Search prompt history by keyword                                               |
 | `summarize_day`      | Clustered digest of what you got done on a given day                           |
-| `get_cost_per_task`  | Cost per successful task — outcome-cost overall and per model (read-only)       |
+| `get_cost_per_task`  | Cost per successful task — outcome-cost overall and per model; `groupBy: "model_effort"` adds a per-(model, reasoning effort) breakdown that reports `insufficient` rather than a figure under the minimum sample (read-only) |
+| `reprice_period`     | What one model's token counts in a date range would have cost at another model's rates, per token category — equal token volume, so an upper bound when the target uses fewer tokens per task |
 | `get_cost_per_ticket` | Cost attributed to work-item ticket keys (e.g. `PROJ-123`) from locally observed evidence — git branch, commit subjects, prompt mentions — with a coverage denominator and per-figure confidence tier. No Jira/tracker API is called. |
 | `get_calibration`    | Whether this tool's own confidence tiers have ever been checked against your corrections — an agreement rate on the reviewed subset, never "accuracy," and "uncalibrated" below a minimum sample |
 | `get_efficiency_hints` | Self-audit: your own wasted spend from seven local patterns (cache churn, retry loops, abandoned spend, context bloat, re-entry burn, tier mismatch, high effort with low output) — nothing here ranks developers or leaves the machine |
@@ -151,7 +152,8 @@ claude-stats report --html        # export a standalone HTML dashboard file
 | `collect`      | Incrementally import session data from `~/.claude/projects/`    |
 | `report`       | Print usage summary, per-session detail, or trend breakdown     |
 | `spending`     | Detailed cost breakdown by model, session, tool, and MCP server |
-| `cost-per-task`| Cost per successful task — outcome-cost overall and per model   |
+| `cost-per-task`| Cost per successful task — outcome-cost overall and per model (`--group-by model_effort` for model and effort) |
+| `reprice`      | Price a window's tokens at another model's rates (equal token volume, an upper bound) |
 | `task-outcome` | Label a task `success`/`partial`/`fail` to ground the metric    |
 | `pack`         | Write the justification pack (HTML + CSV) for one month         |
 | `constraint-impact` | What a *declared* policy change cost or saved, per task class |

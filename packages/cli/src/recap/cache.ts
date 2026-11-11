@@ -100,7 +100,9 @@ export function computeSnapshotHash(inputs: SnapshotHashInputs): string {
     // (one charge per API response, not one per transcript entry) plus the
     // corrected rate rows — every cached dollar figure below it is wrong, and
     // `maxUuid` cannot notice because a repair changes VALUES, not uuids.
-    `algo:3`,
+    // v4: items carry `costByModelEffort`, so a cached v3 item would read as
+    // "effort unknown" in the per-(model, effort) cost-per-task breakdown.
+    `algo:4`,
     `date:${inputs.date}`,
     `tz:${inputs.tz}`,
     `projects:${sortedPaths.join(',')}`,

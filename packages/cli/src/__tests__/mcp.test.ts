@@ -503,7 +503,7 @@ afterAll(() => {
 
 describe("MCP Server", () => {
   describe("tools/list", () => {
-    it("returns all 19 tools", async () => {
+    it("returns all 20 tools", async () => {
       const result = await client.listTools();
       const names = result.tools.map((t) => t.name).sort();
       expect(names).toEqual([
@@ -523,6 +523,7 @@ describe("MCP Server", () => {
         "get_status",
         "list_projects",
         "list_sessions",
+        "reprice_period",
         "search_history",
         "size_seats",
         "summarize_day",
@@ -985,6 +986,41 @@ describe("MCP Server", () => {
       // signatures) must NEVER be populated on the read-only MCP surface.
       const report = JSON.parse(raw) as { tasks?: unknown };
       expect(report.tasks).toBeUndefined();
+    });
+
+    // ── groupBy: "model_effort" ───────────────────────────────────────────
+    it('accepts groupBy "model_effort" and adds byModelEffort with the gate echoed', async () => {
+      const report = await callCostPerTask({ period: "all", groupBy: "model_effort" });
+      const grouped = report["byModelEffort"] as { cells: unknown[]; minObservable: number; effortTaggedShare: number };
+      expect(Array.isArray(grouped.cells)).toBe(true);
+      expect(grouped.minObservable).toBe(10);
+      expect(typeof grouped.effortTaggedShare).toBe("number");
+      // The per-model rows are still there and unchanged by the option.
+      const plain = await callCostPerTask({ period: "all" });
+      expect(report["byModel"]).toEqual(plain["byModel"]);
+      expect(plain).not.toHaveProperty("byModelEffort");
+    });
+
+    it('accepts groupBy "model" as the default (no byModelEffort)', async () => {
+      const report = await callCostPerTask({ period: "all", groupBy: "model" });
+      expect(report).not.toHaveProperty("byModelEffort");
+    });
+
+    it("rejects an unknown groupBy value at the schema", async () => {
+      for (const bad of ["effort", "model,effort", "", 3]) {
+        const result = await client.callTool({ name: "get_cost_per_task", arguments: { period: "all", groupBy: bad } });
+        expect(result.isError, JSON.stringify(bad)).toBe(true);
+      }
+    });
+
+    it("advertises the groupBy option, the insufficient gate and the null-effort rule in its description", async () => {
+      const result = await client.listTools();
+      const tool = result.tools.find((t) => t.name === "get_cost_per_task");
+      expect(tool!.description).toContain("model_effort");
+      expect(tool!.description).toMatch(/insufficient/);
+      expect(tool!.description).toMatch(/effort: null/);
+      const props = tool!.inputSchema.properties as Record<string, { enum?: string[] }>;
+      expect(props["groupBy"]!.enum).toEqual(["model", "model_effort"]);
     });
 
     it("advertises the read-only / no-prompt-text contract in its description", async () => {

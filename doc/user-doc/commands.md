@@ -1054,6 +1054,7 @@ claude-stats cost-per-task [options]
 | `--repo <url>` | _(all repos)_ | Filter to a specific git remote URL |
 | `--include-ci` | _(off)_ | Include CI/automated sessions |
 | `--by-model` | _(off)_ | Show the per-model breakdown table |
+| `--group-by <by>` | `model` | `model_effort` adds a table keyed by (model, reasoning effort); see below |
 | `--timezone <tz>` | System timezone | IANA timezone for period boundaries |
 | `--json` | _(off)_ | Output the full report as JSON |
 | `--calibrate` | _(off)_ | Output calibration metrics as JSON — how often the outcome proxy agreed with the outcomes you labelled by hand. Reports `uncalibrated` rather than a number below the minimum sample |
@@ -1064,6 +1065,7 @@ claude-stats cost-per-task [options]
 - **Headline** — cost per successful task, with its decomposition: `mean cost per attempt ÷ success rate`.
 - **Coverage & labelling** — a task is one of four states (`success` / `failed` / `in-flight` / `unobservable`). The success rate is computed over the **observable** subset (success ∪ failed) only; `coverage` and the labelled share are reported beside it. If coverage is low, the report leads with mean cost per attempt and warns.
 - **Per-model table** (`--by-model`) — cost-per-success and success rate by dominant model (suppressed below a minimum number of observable tasks).
+- **Per-model-and-effort table** (`--group-by model_effort`) — one row per (model, reasoning effort): observable tasks, success rate, cost per successful task, and the exact spend in that cell. Each task is assigned to the (model, effort) that carried most of its cost. A row with fewer observable tasks than the per-model minimum prints `n/a (<10 obs)` instead of a rate or a cost; it is never a figure. Messages for which Claude Code recorded no effort form their own `no effort` row and are never folded into a tier, and the line beneath the table gives the effort-tagged share of spend, so read it before comparing tiers. The MCP tool `get_cost_per_task` takes the same option as `groupBy: "model_effort"`.
 
 Outcome is proxied from git activity and recap confidence unless you label a task explicitly with `task-outcome`. A note: `--period all` on a cold cache is slow (per-day git enrichment) — run `recap precompute` first to warm it.
 
@@ -1078,6 +1080,37 @@ claude-stats cost-per-task --period week --by-model
 
 # As JSON
 claude-stats cost-per-task --json
+
+# Compare reasoning-effort tiers per model
+claude-stats cost-per-task --group-by model_effort
+```
+
+---
+
+## `reprice`
+
+Price the **same token counts** of one model at another model's rates: what this period's Opus tokens would have cost as Fable. Read-only; it reads the per-message data, never the hourly rollup.
+
+```
+claude-stats reprice --from <date> --to <date> --model <id> --as <id> [options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--from <date>` | — (required) | First day, `YYYY-MM-DD`, inclusive |
+| `--to <date>` | — (required) | Last day, `YYYY-MM-DD`, inclusive |
+| `--model <id>` | — (required) | The model that served the tokens, e.g. `claude-opus-5-5`. Dated and `[1m]` variants of the id are included |
+| `--as <id>` | — (required) | The model to price them at, e.g. `claude-fable-5-2` |
+| `--project <path>` | _(all projects)_ | Filter to one project |
+| `--timezone <tz>` | System timezone | IANA timezone for the day boundaries |
+| `--json` | _(off)_ | Output the full result as JSON |
+
+The output has one row per token category (input, output, cache write at the 5-minute and 1-hour TTL, cache read) with the actual cost and the repriced cost, and totals. **It is an equal-token-volume figure**: a target model that needs fewer tokens per task would cost less than this number, so treat it as an upper bound, and compare outcomes with `cost-per-task --group-by model_effort` before drawing a conclusion.
+
+Per-request modifiers are applied to both sides, each by its own model's rules: the long-context tier, fast mode and US-only inference. A fast-mode request repriced to a model with no published fast rate is **not** priced at the standard rate: it is counted as unpriced, the output says how many requests and what they actually cost, and a like-for-like total over the requests priced on both sides is printed. An id with no known rate is refused, never priced at $0. Cache writes with no recorded TTL are priced at the 5-minute rate and counted.
+
+```sh
+claude-stats reprice --from 2026-10-12 --to 2026-11-10 --model claude-opus-5-5 --as claude-fable-5-2
 ```
 
 ---
@@ -1401,7 +1434,8 @@ exhaustive tool-count assertion in `mcp.test.ts` is what keeps this true.
 | `get_status` | Database health, session count, last collection time |
 | `search_history` | Search prompt history by keyword |
 | `summarize_day` | Clustered digest of what you accomplished on a given day |
-| `get_cost_per_task` | Cost per successful task — outcome-cost overall and per model (read-only) |
+| `get_cost_per_task` | Cost per successful task — outcome-cost overall and per model; `groupBy: "model_effort"` adds `byModelEffort` (read-only) |
+| `reprice_period` | Counterfactual repricing: one model's tokens in a date range at another model's rates, per token category. Equivalent to `claude-stats reprice`; see [`reprice`](#reprice) |
 | `get_cost_per_ticket` | Cost attributed to work-item ticket keys from local evidence (git branch, commits, prompt mentions), with a coverage denominator and per-figure confidence tier. Pass `ticket` to drill into one key's evidence |
 | `get_calibration` | Whether ticket-attribution and task-outcome confidence tiers have been checked against your corrections — an agreement rate on the reviewed subset (never "accuracy"), `state: "uncalibrated"` below the minimum sample |
 | `get_efficiency_hints` | Self-audit: your own wasted spend across seven local patterns (cache churn, retry loops, abandoned spend, context bloat, re-entry burn, tier mismatch, high effort with low output). `high-effort-low-output` fires on a run of at least 20 consecutive turns at effort high or above, where at least 80% of turns call a tool, median output is at most 500 tokens, and the run contains no Edit, Write, MultiEdit, NotebookEdit, Agent or StructuredOutput call; it reports the run cost as measured spend (estimated waste 0), ignores turns with no reported effort, and ignores every subagent row written before Claude Code 2.1.307. Every finding names its rule, threshold, and the specific sessions it fired on. Subagent rows written by Claude Code before 2.1.307 that carry no stop reason have placeholder output tokens; `context-bloat` is unaffected (it reads input and cache counts only, which are real), `tier-mismatch` prices them without their output tokens, and the `report` stop-reason line leaves them out |

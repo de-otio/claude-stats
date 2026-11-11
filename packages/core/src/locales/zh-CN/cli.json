@@ -205,7 +205,14 @@
     "agentsPeriod": "时间段：日、周、月或全部（默认值：月）",
     "agentsLimit": "在其余行折叠到一个剩余行之前，每个列表中的命名行数（默认值：10）",
     "agentsJson": "机器可读的 JSON 输出（完整的 AgentCostReport）",
-    "exportIncludeAgentNames": "还导出代理类型、生成深度和生成工具调用 ID（用户编写的名称；默认省略）"
+    "exportIncludeAgentNames": "还导出代理类型、生成深度和生成工具调用 ID（用户编写的名称；默认省略）",
+    "costPerTaskGroupBy": "分组方式:model(默认)或 model_effort(模型与推理强度)",
+    "reprice": "按另一个模型的费率重新计价某时间段内的 token 数量(token 量相同,结果为上限)",
+    "repriceFrom": "起始日期,YYYY-MM-DD(含)",
+    "repriceTo": "结束日期,YYYY-MM-DD(含)",
+    "repriceModel": "提供这些 token 的模型(例如 claude-opus-5-5)",
+    "repriceAs": "用于重新计价的模型(例如 claude-fable-5-2)",
+    "repriceProject": "仅限此项目路径"
   },
   "collection": {
     "collecting": "收集中...",
@@ -317,7 +324,10 @@
     "confidenceHigh": "高置信度",
     "confidenceMedium": "中置信度",
     "confidenceLow": "低置信度",
-    "fastModeUnpriced": "此总计中有 {{count}} 个快速模式请求按标准费率计价;其实际计费成本更高。"
+    "fastModeUnpriced": "此总计中有 {{count}} 个快速模式请求按标准费率计价;其实际计费成本更高。",
+    "costPerTaskByModelEffort": "按模型和强度",
+    "costPerTaskNoEffort": "无强度",
+    "costPerTaskEffortCoverage": "带强度标记的支出占比:{{share}}(“无强度”行为其余部分)"
   },
   "status": {
     "databaseSize": "数据库大小",
@@ -374,7 +384,9 @@
     "invalidDateRange": "无效的日期范围：{{message}}",
     "invalidPackPeriod": "无效的材料包时间段：{{message}}",
     "invalidInvoiceCsv": "无法读取 --invoice-csv {{path}}：{{message}}",
-    "invalidAgentsLimit": "无效的 --limit \\\"{{value}}\\\"：请使用 1 或更大的整数"
+    "invalidAgentsLimit": "无效的 --limit \\\"{{value}}\\\"：请使用 1 或更大的整数",
+    "invalidGroupBy": "无效的 --group-by \"{{value}}\":请使用 model 或 model_effort",
+    "invalidReprice": "无法重新计价:{{message}}"
   },
   "repair": {
     "description": "修复常规采集无法追溯修正的派生数据。",
@@ -656,5 +668,28 @@
     "depthUnrecorded": "深度未记录：{{cost}}（{{share}}）· {{messages}} 条消息",
     "otherDepthRow": "（其他：{{buckets}} 个更多深度）：{{cost}}（{{share}}）· {{messages}} 条消息",
     "byDepthEmpty": "此时间窗口内没有子代理支出。"
+  },
+  "reprice": {
+    "title": "按 {{asModel}} 费率重新计价 {{model}} · {{from}} 至 {{to}}",
+    "colCategory": "类别",
+    "colActual": "实际",
+    "colRepriced": "按 {{asModel}}",
+    "input": "输入",
+    "output": "输出",
+    "cacheWrite5m": "Cache 写入(5 分钟)",
+    "cacheWrite1h": "Cache 写入(1 小时)",
+    "cacheRead": "Cache 读取",
+    "total": "总计",
+    "rowsLine": "{{model}} 的 {{rows}} 条消息行",
+    "noRows": "此时间段内没有 {{model}} 的消息。",
+    "unpricedCounterfactual": "有 {{rows}} 行无法按 {{asModel}} 计价({{reasons}}),已从该列中排除。其实际成本:{{actualCost}}。",
+    "unpricedActual": "有 {{rows}} 行无法按实际提供服务的模型计价({{reasons}}),已从实际列中排除。",
+    "comparable": "同口径对比(两侧均已计价的行):实际 {{actual}},按 {{asModel}} {{repriced}}",
+    "unattributedWrite": "有 {{tokens}} 个 cache 写入 token 没有 TTL 拆分,按 5 分钟费率计价。",
+    "reason": {
+      "fastUnpriced": "快速模式,无公布的快速费率",
+      "speedUnknown": "无法识别的速度值",
+      "unknownModel": "未知模型"
+    }
   }
 }
