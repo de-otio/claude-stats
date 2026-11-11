@@ -1729,6 +1729,41 @@ Backup written to ~/.claude-stats/stats.db.pre-repair-agent-attribution-17865500
 Sessions whose transcript Claude Code has already deleted stay unrecorded and
 show as "(unrecorded)" in [`agents`](#agents).
 
+### `repair request-records`
+
+Re-parse every session whose transcript still exists so that existing history
+gains **per-request records**: one row per Claude Code `api-request` line (the
+`api_requests` table, schema V28) and the link from each assistant message to
+the request that produced it. Sessions collected after the V28 upgrade get
+these automatically; this repair fills in history.
+
+```
+claude-stats repair request-records [--dry-run] [--force]
+```
+
+| Option | Description |
+|---|---|
+| `--dry-run` | Print how many transcript files and `api-request` lines would be read, without writing or creating a backup |
+| `--force` | Re-run the backfill even if it has already completed |
+
+Only the head of each `api-request` line is read, never the request body. The
+backfill goes through the normal collect path, so every existing cost and token
+column is left as it was. It runs once per database (it records
+`request_records_backfill = v28` only after a complete pass; an interrupted run
+resumes), shares the lock used by the other re-parse repairs, and takes a backup
+first at `<database>.pre-repair-request-records-<timestamp>`, written
+owner-only (mode 0600) because it holds the whole local store. A second run
+prints that there is nothing to do unless you pass `--force`. Output reports
+counts only, never request ids:
+
+```
+Request-record backfill complete:
+Backup written to ~/.claude-stats/stats.db.pre-repair-request-records-1786550000000
+214 transcript files re-parsed, 9 480 api-request lines read, 9 312 request records stored.
+```
+
+Sessions whose transcript Claude Code has already deleted keep no request data.
+
 ---
 
 ---

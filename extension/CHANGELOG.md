@@ -2,6 +2,56 @@
 
 All notable changes to the Claude Stats VS Code extension are documented here.
 
+## 0.26.0 — 2026-11-11
+
+### Added — what a model switch would cost
+
+- **`claude-stats reprice`** and the MCP tool **`reprice_period`** price one
+  model's tokens over a date range at another model's rates, per token
+  category (input, output, cache write at the 5-minute and 1-hour TTL, cache
+  read). The long-context tier, fast mode and US-only inference apply to both
+  sides by each model's own rules. A fast-mode request repriced to a model
+  with no published fast rate is counted as unpriced and disclosed, never
+  priced at the standard rate; an unknown model id is refused, never priced at
+  $0. The figure is an equal-token-volume upper bound, and every surface says
+  so.
+- **Cost per successful task by model and reasoning effort**:
+  `claude-stats cost-per-task --group-by model_effort` and `get_cost_per_task`
+  with `groupBy: "model_effort"` give one row per (model, effort) with tasks,
+  success rate and cost per successful task. A row with too few observed tasks
+  shows no rate or cost. Messages with no recorded effort form their own row
+  and are never folded into a tier, and the share of spend that carries an
+  effort tag is reported. The daily recap carries the same split; its cache
+  rebuilds once after the upgrade.
+
+### Added — per-request records (schema V28)
+
+- **Claude Code's `api-request` transcript lines are now recorded per
+  request**: request id, session, agent, timestamp and a shape hash, joined to
+  the assistant message that the request produced. Only the head of each line
+  is read, never the request body, and a line that does not parse is counted,
+  not stored. Request lines for a session that has not been collected yet are
+  held back and stored when the session appears.
+- **`claude-stats repair request-records [--dry-run] [--force]`** backfills
+  the records from the transcripts that still exist. It is resumable, takes
+  the shared lock and writes a backup of the database first.
+- **The upgrade migrates the database once on first open**, in a single
+  transaction, and adds no backfill unless you run the repair command. The
+  records are collected from this release on; nothing reads them yet except
+  the repair command. A cold collect is about 6% slower than before; an
+  everyday incremental collect is not slower.
+
+### Fixed
+
+- **Team and organisation totals price fast-mode and US-only requests.** The
+  figure synced for the team dashboard and per-member totals priced each
+  session from its token totals at the standard rate, so fast-mode (2×) and
+  US-only (1.1×) requests were missed. It now uses the same per-request
+  prices as the other views, and a session that used several models is priced
+  per model, not all at its first model. Estimated cost in team views rises
+  for users with fast-mode or US-only requests; days already synced may keep
+  the old figure on the server until they are sent again.
+
 ## 0.25.0 — 2026-11-10
 
 ### Added — Claude Fable 5.2, fast mode and US-only inference

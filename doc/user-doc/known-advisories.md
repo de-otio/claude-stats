@@ -8,14 +8,27 @@ This file exists so that "we know, and here is the reasoning" is checkable
 rather than assumed. An advisory that is genuinely unreachable is still shipped
 code, and a reader deserves to see the argument rather than a reassurance.
 
-**Last reviewed:** 2026-11-10, for extension release 0.25.0.
+**Last reviewed:** 2026-11-11, for extension release 0.26.0.
 
-At this review `npm audit --omit=dev` reported **zero** advisories in both
-shipped trees (the VSIX's and the CLI's). The full tree reports one advisory,
-dev-only: `minimatch` (moderate), bundled inside `aws-cdk-lib` — see "Open"
-below. The `brace-expansion` copy bundled in `aws-cdk-lib` is now 5.0.12 and
-no longer reported, and the `tailwindcss@3` chain (`braces`, `micromatch`,
-`fast-glob`, `chokidar`) no longer appears in `npm audit`.
+At this review `npm audit --omit=dev` reported **zero** advisories in the
+VSIX's tree (`extension/`) and none in the CLI's. The root audit, which covers
+every workspace, reports two:
+
+- `fast-xml-parser` `<= 5.11.2` (low), through the dashboard's
+  `aws-amplify` → `@aws-amplify/storage`. It is in the web dashboard's
+  dependencies, not in the VSIX or the CLI, and the fix (5.12.0) is inside the
+  declared range — see "Open" below.
+- `minimatch` (moderate), dev-only, bundled inside `aws-cdk-lib` — see "Open"
+  below. `aws-cdk-lib@2.276.0`, the latest, still bundles the vulnerable
+  10.2.6.
+
+The `brace-expansion` copy bundled in `aws-cdk-lib` stays at 5.0.12, no longer
+reported, and the `tailwindcss@3` chain (`braces`, `micromatch`, `fast-glob`,
+`chokidar`) does not appear in `npm audit`.
+
+At the 0.25.0 review (2026-11-10) `npm audit --omit=dev` reported **zero**
+advisories in both shipped trees (the VSIX's and the CLI's), and the full tree
+reported one, dev-only: `minimatch`.
 
 At the 0.24.1 review (2026-10-22) `npm audit --omit=dev` reported **zero** advisories in both
 shipped trees (the VSIX's and the CLI's), after these fixes, all lockfile or
@@ -195,6 +208,25 @@ been overtaken by the advisory. The floor was raised to `^6.16.0`.
 
 ---
 
+## Open — web dashboard dependency, not in the VSIX or the CLI
+
+### `fast-xml-parser` — quadratic CPU on unterminated stop-node tags (low)
+
+| | |
+|---|---|
+| Advisory | [GHSA-474x-hrwr-fgx4](https://github.com/advisories/GHSA-474x-hrwr-fgx4) |
+| Affected | `fast-xml-parser <= 5.11.2` (the tree resolves 5.11.1) |
+| Reached via | `packages/frontend` → `aws-amplify@6.22.2` → `@aws-amplify/storage@6.17.0` |
+| Upstream | Fixed in 5.12.0, which is inside the declared range |
+
+Not in the VSIX (`extension/` audits clean) or the CLI. It is a dependency of the
+web dashboard's `aws-amplify` umbrella package; no source file in
+`packages/frontend` imports Amplify Storage, which is what uses the parser.
+Dependabot did not report it at this review. It clears with a lockfile-only
+update (`npm update fast-xml-parser`, then a frontend build) — a change to the
+dashboard's dependencies, not to the extension, so it is not part of the
+extension release.
+
 ## Open — dev-only, never shipped
 
 ### `minimatch` — DoS via globparts amplification (moderate)
@@ -204,7 +236,7 @@ been overtaken by the advisory. The floor was raised to `^6.16.0`.
 | Advisory | [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) (Dependabot alert #108) |
 | Affected | `minimatch 7.0.0 – 11.0.0` (the tree resolves 10.2.6) |
 | Reached via | `packages/infra` → `aws-cdk-lib@2.275.0` → **bundled** `minimatch` |
-| Upstream | None yet. 2.275.0 is the latest `aws-cdk-lib`; the fix is `minimatch` 11.0.1 |
+| Upstream | None yet. 2.276.0 is the latest `aws-cdk-lib` and still bundles 10.2.6; the fix is `minimatch` 11.0.1 |
 
 Same shape as the `brace-expansion` entry below, and the same two traps apply:
 the copy is `"inBundle": true`, so `overrides` cannot reach it, and the
