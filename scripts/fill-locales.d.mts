@@ -19,6 +19,18 @@ export function setByPath(root: Record<string, unknown>, keyPath: string, value:
 export function diffKeys(enFlat: LocaleMap, targetFlat: LocaleMap, opts: DiffOptions): LocaleMap;
 export function extractJson(text: string): Record<string, unknown>;
 export function validateBatch(request: LocaleMap, response: Record<string, unknown>): string[];
+export type PostProcessResult = {
+  /** Keys safe to write, JSON-unwrapped where needed. */
+  accepted: Record<string, unknown>;
+  /** Keys whose value was a `{"…":"…"}` wrapper that was unwrapped. */
+  unwrapped: string[];
+  /** One line per rejected key; a rejected key is never in `accepted`. */
+  errors: string[];
+};
+export function postProcessTranslations(
+  request: LocaleMap,
+  response: Record<string, unknown>,
+): PostProcessResult;
 export function buildJsonSchema(missingEntries: LocaleMap): {
   type: "object";
   properties: Record<string, { type: "string" | "array" }>;
